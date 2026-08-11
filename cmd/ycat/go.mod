@@ -1,6 +1,6 @@
 module github.com/goccy/go-yaml/cmd/ycat
 
-go 1.21.0
+go 1.25.0
 
 require (
 	github.com/fatih/color v1.18.0
@@ -10,7 +10,7 @@ require (
 
 require (
 	github.com/mattn/go-isatty v0.0.20 // indirect
-	golang.org/x/sys v0.26.0 // indirect
+	golang.org/x/sys v0.44.0 // indirect
 )
 
 replace github.com/goccy/go-yaml => ../../
