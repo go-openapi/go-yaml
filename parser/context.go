@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/goccy/go-yaml/token"
+	"github.com/go-openapi/go-yaml/token"
 )
 
 // context context at parsing

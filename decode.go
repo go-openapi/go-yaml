@@ -17,11 +17,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/goccy/go-yaml/ast"
-	"github.com/goccy/go-yaml/internal/errors"
-	"github.com/goccy/go-yaml/internal/format"
-	"github.com/goccy/go-yaml/parser"
-	"github.com/goccy/go-yaml/token"
+	"github.com/go-openapi/go-yaml/ast"
+	"github.com/go-openapi/go-yaml/internal/errors"
+	"github.com/go-openapi/go-yaml/internal/format"
+	"github.com/go-openapi/go-yaml/parser"
+	"github.com/go-openapi/go-yaml/token"
 )
 
 // Decoder reads and decodes YAML values from an input stream.
@@ -664,7 +664,7 @@ func (d *Decoder) convertValue(v reflect.Value, typ reflect.Type, src ast.Node) 
 }
 
 func (d *Decoder) deleteStructKeys(structType reflect.Type, unknownFields map[string]ast.Node) error {
-	if structType.Kind() == reflect.Ptr {
+	if structType.Kind() == reflect.Pointer {
 		structType = structType.Elem()
 	}
 	structFieldMap, err := structFieldMap(structType)
@@ -798,7 +798,7 @@ func (d *Decoder) decodeByUnmarshaler(ctx context.Context, dst reflect.Value, sr
 	if unmarshaler, ok := iface.(InterfaceUnmarshalerContext); ok {
 		if err := unmarshaler.UnmarshalYAML(ctx, func(v interface{}) error {
 			rv := reflect.ValueOf(v)
-			if rv.Type().Kind() != reflect.Ptr {
+			if rv.Type().Kind() != reflect.Pointer {
 				return ErrDecodeRequiredPointerType
 			}
 			if err := d.decodeValue(ctx, rv.Elem(), src); err != nil {
@@ -814,7 +814,7 @@ func (d *Decoder) decodeByUnmarshaler(ctx context.Context, dst reflect.Value, sr
 	if unmarshaler, ok := iface.(InterfaceUnmarshaler); ok {
 		if err := unmarshaler.UnmarshalYAML(func(v interface{}) error {
 			rv := reflect.ValueOf(v)
-			if rv.Type().Kind() != reflect.Ptr {
+			if rv.Type().Kind() != reflect.Pointer {
 				return ErrDecodeRequiredPointerType
 			}
 			if err := d.decodeValue(ctx, rv.Elem(), src); err != nil {
@@ -913,7 +913,7 @@ func (d *Decoder) decodeValue(ctx context.Context, dst reflect.Value, src ast.No
 	}
 	valueType := dst.Type()
 	switch valueType.Kind() {
-	case reflect.Ptr:
+	case reflect.Pointer:
 		if dst.IsNil() {
 			return nil
 		}
@@ -1047,7 +1047,7 @@ func (d *Decoder) decodeValue(ctx context.Context, dst reflect.Value, src ast.No
 
 func (d *Decoder) createDecodableValue(typ reflect.Type) reflect.Value {
 	for {
-		if typ.Kind() == reflect.Ptr {
+		if typ.Kind() == reflect.Pointer {
 			typ = typ.Elem()
 			continue
 		}
@@ -1057,7 +1057,7 @@ func (d *Decoder) createDecodableValue(typ reflect.Type) reflect.Value {
 }
 
 func (d *Decoder) castToAssignableValue(value reflect.Value, target reflect.Type, src ast.Node) (reflect.Value, error) {
-	if target.Kind() != reflect.Ptr {
+	if target.Kind() != reflect.Pointer {
 		if !value.Type().AssignableTo(target) {
 			return reflect.Value{}, errors.ErrTypeMismatch(target, value.Type(), src.GetToken())
 		}
@@ -1104,7 +1104,7 @@ func (d *Decoder) createDecodedNewValue(
 	} else {
 		newValue = d.createDecodableValue(typ)
 	}
-	for defaultVal.Kind() == reflect.Ptr {
+	for defaultVal.Kind() == reflect.Pointer {
 		defaultVal = defaultVal.Elem()
 	}
 	if defaultVal.IsValid() && defaultVal.Type().AssignableTo(newValue.Type()) {
@@ -1183,7 +1183,7 @@ func (d *Decoder) keyToValueNodeMap(ctx context.Context, node ast.Node, ignoreMe
 }
 
 func (d *Decoder) setDefaultValueIfConflicted(v reflect.Value, fieldMap StructFieldMap) error {
-	for v.Type().Kind() == reflect.Ptr {
+	for v.Type().Kind() == reflect.Pointer {
 		v = v.Elem()
 	}
 	typ := v.Type()
@@ -1317,7 +1317,7 @@ func (d *Decoder) decodeStruct(ctx context.Context, dst reflect.Value, src ast.N
 	structType := dst.Type()
 	srcValue := reflect.ValueOf(src)
 	srcType := srcValue.Type()
-	if srcType.Kind() == reflect.Ptr {
+	if srcType.Kind() == reflect.Pointer {
 		srcType = srcType.Elem()
 		srcValue = srcValue.Elem()
 	}
@@ -1370,7 +1370,7 @@ func (d *Decoder) decodeStruct(ctx context.Context, dst reflect.Value, src ast.N
 			if !fieldValue.CanSet() {
 				return fmt.Errorf("cannot set embedded type as unexported field %s.%s", field.PkgPath, field.Name)
 			}
-			if fieldValue.Type().Kind() == reflect.Ptr && src.Type() == ast.NullType {
+			if fieldValue.Type().Kind() == reflect.Pointer && src.Type() == ast.NullType {
 				// set nil value to pointer
 				fieldValue.Set(reflect.Zero(fieldValue.Type()))
 				continue
@@ -1417,7 +1417,7 @@ func (d *Decoder) decodeStruct(ctx context.Context, dst reflect.Value, src ast.N
 		}
 		delete(unknownFields, structField.RenderName)
 		fieldValue := dst.FieldByName(field.Name)
-		if fieldValue.Type().Kind() == reflect.Ptr && src.Type() == ast.NullType {
+		if fieldValue.Type().Kind() == reflect.Pointer && src.Type() == ast.NullType {
 			// set nil value to pointer
 			fieldValue.Set(reflect.Zero(fieldValue.Type()))
 			continue
@@ -1548,7 +1548,7 @@ func (d *Decoder) decodeArray(ctx context.Context, dst reflect.Value, src ast.No
 	var foundErr error
 	for iter.Next() {
 		v := iter.Value()
-		if elemType.Kind() == reflect.Ptr && v.Type() == ast.NullType {
+		if elemType.Kind() == reflect.Pointer && v.Type() == ast.NullType {
 			// set nil value to pointer
 			arrayValue.Index(idx).Set(reflect.Zero(elemType))
 		} else {
@@ -1592,7 +1592,7 @@ func (d *Decoder) decodeSlice(ctx context.Context, dst reflect.Value, src ast.No
 	var foundErr error
 	for iter.Next() {
 		v := iter.Value()
-		if elemType.Kind() == reflect.Ptr && v.Type() == ast.NullType {
+		if elemType.Kind() == reflect.Pointer && v.Type() == ast.NullType {
 			// set nil value to pointer
 			sliceValue = reflect.Append(sliceValue, reflect.Zero(elemType))
 			continue
@@ -1762,7 +1762,7 @@ func (d *Decoder) decodeMap(ctx context.Context, dst reflect.Value, src ast.Node
 				return err
 			}
 		}
-		if valueType.Kind() == reflect.Ptr && value.Type() == ast.NullType {
+		if valueType.Kind() == reflect.Pointer && value.Type() == ast.NullType {
 			// set nil value to pointer
 			mapValue.SetMapIndex(k, reflect.Zero(valueType))
 			continue
@@ -1988,7 +1988,7 @@ func (d *Decoder) Decode(v interface{}) error {
 // and stores it in the value pointed to by v with context.Context.
 func (d *Decoder) DecodeContext(ctx context.Context, v interface{}) error {
 	rv := reflect.ValueOf(v)
-	if !rv.IsValid() || rv.Type().Kind() != reflect.Ptr {
+	if !rv.IsValid() || rv.Type().Kind() != reflect.Pointer {
 		return ErrDecodeRequiredPointerType
 	}
 	if d.isInitialized() {
@@ -2014,7 +2014,7 @@ func (d *Decoder) DecodeFromNode(node ast.Node, v interface{}) error {
 // DecodeFromNodeContext decodes node into the value pointed to by v with context.Context.
 func (d *Decoder) DecodeFromNodeContext(ctx context.Context, node ast.Node, v interface{}) error {
 	rv := reflect.ValueOf(v)
-	if rv.Type().Kind() != reflect.Ptr {
+	if rv.Type().Kind() != reflect.Pointer {
 		return ErrDecodeRequiredPointerType
 	}
 	if !d.isInitialized() {

@@ -9,8 +9,8 @@ import (
 	"runtime/debug"
 	"testing"
 
-	"github.com/goccy/go-yaml"
-	"github.com/goccy/go-yaml/testdata/yaml-test-suite"
+	"github.com/go-openapi/go-yaml"
+	"github.com/go-openapi/go-yaml/testdata/yaml-test-suite"
 )
 
 var failureTestNames = []string{

@@ -8,7 +8,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/goccy/go-yaml/token"
+	"github.com/go-openapi/go-yaml/token"
 )
 
 var (

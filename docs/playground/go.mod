@@ -1,11 +1,11 @@
 module demo
 
-go 1.22.8
+go 1.25.0
 
 require (
 	github.com/goccy/go-graphviz v0.2.10-0.20250109095217-4ceff9e58e1a
 	github.com/goccy/go-json v0.10.4
-	github.com/goccy/go-yaml v1.15.13
+	github.com/go-openapi/go-yaml v1.15.13
 )
 
 require (
@@ -18,6 +18,6 @@ require (
 	golang.org/x/text v0.19.0 // indirect
 )
 
-replace github.com/goccy/go-yaml => ../../
+replace github.com/go-openapi/go-yaml => ../../
 
 replace github.com/flopp/go-findfont => github.com/goccy/go-findfont v0.0.0-20250109093214-c2e12b298c75

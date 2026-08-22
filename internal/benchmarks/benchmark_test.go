@@ -3,9 +3,9 @@ package benchmarks
 import (
 	"testing"
 
-	"github.com/goccy/go-yaml"
+	"github.com/go-openapi/go-yaml"
+	goyaml3 "go.yaml.in/yaml/v3"
 	goyaml2 "gopkg.in/yaml.v2"
-	goyaml3 "gopkg.in/yaml.v3"
 )
 
 func Benchmark(b *testing.B) {
@@ -41,7 +41,7 @@ elements:
 			}
 		}
 	})
-	b.Run("github.com/goccy/go-yaml", func(b *testing.B) {
+	b.Run("github.com/go-openapi/go-yaml", func(b *testing.B) {
 		var t T
 		for i := 0; i < b.N; i++ {
 			if err := yaml.Unmarshal([]byte(src), &t); err != nil {

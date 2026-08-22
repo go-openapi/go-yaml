@@ -3,8 +3,8 @@ package format
 import (
 	"strings"
 
-	"github.com/goccy/go-yaml/ast"
-	"github.com/goccy/go-yaml/token"
+	"github.com/go-openapi/go-yaml/ast"
+	"github.com/go-openapi/go-yaml/token"
 )
 
 func FormatNodeWithResolvedAlias(n ast.Node, anchorNodeMap map[string]ast.Node) string {
@@ -277,9 +277,11 @@ func (f *Formatter) formatFile(file *ast.File) string {
 		return ""
 	}
 	var ret string
+	var retSb280 strings.Builder
 	for _, doc := range file.Docs {
-		ret += f.formatDocument(doc)
+		retSb280.WriteString(f.formatDocument(doc))
 	}
+	ret += retSb280.String()
 	return ret
 }
 
@@ -341,9 +343,11 @@ func (f *Formatter) formatMappingValue(n *ast.MappingValueNode) string {
 
 func (f *Formatter) formatDirective(n *ast.DirectiveNode) string {
 	ret := f.origin(n.Start) + f.formatNode(n.Name)
+	var retSb344 strings.Builder
 	for _, val := range n.Values {
-		ret += f.formatNode(val)
+		retSb344.WriteString(f.formatNode(val))
 	}
+	ret += retSb344.String()
 	return ret
 }
 
@@ -354,12 +358,14 @@ func (f *Formatter) formatMapping(n *ast.MappingNode) string {
 	} else {
 		ret += f.formatCommentGroup(n.Comment)
 	}
+	var retSb357 strings.Builder
 	for _, value := range n.Values {
 		if value.CollectEntry != nil {
-			ret += f.origin(value.CollectEntry)
+			retSb357.WriteString(f.origin(value.CollectEntry))
 		}
-		ret += f.formatMappingValue(value)
+		retSb357.WriteString(f.formatMappingValue(value))
 	}
+	ret += retSb357.String()
 	if n.IsFlowStyle {
 		ret += f.origin(n.End)
 		ret += f.formatCommentGroup(n.Comment)
@@ -383,9 +389,11 @@ func (f *Formatter) formatSequence(n *ast.SequenceNode) string {
 		// add head comment.
 		ret += f.formatCommentGroup(n.Comment)
 	}
+	var retSb386 strings.Builder
 	for _, entry := range n.Entries {
-		ret += f.formatNode(entry)
+		retSb386.WriteString(f.formatNode(entry))
 	}
+	ret += retSb386.String()
 	if n.IsFlowStyle {
 		ret += f.origin(n.End)
 		ret += f.formatCommentGroup(n.Comment)
@@ -469,9 +477,11 @@ func (f *Formatter) formatCommentGroup(g *ast.CommentGroupNode) string {
 		return ""
 	}
 	var ret string
+	var retSb472 strings.Builder
 	for _, cm := range g.Comments {
-		ret += f.formatComment(cm)
+		retSb472.WriteString(f.formatComment(cm))
 	}
+	ret += retSb472.String()
 	return ret
 }
 

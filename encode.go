@@ -12,11 +12,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/goccy/go-yaml/ast"
-	"github.com/goccy/go-yaml/internal/errors"
-	"github.com/goccy/go-yaml/parser"
-	"github.com/goccy/go-yaml/printer"
-	"github.com/goccy/go-yaml/token"
+	"github.com/go-openapi/go-yaml/ast"
+	"github.com/go-openapi/go-yaml/internal/errors"
+	"github.com/go-openapi/go-yaml/parser"
+	"github.com/go-openapi/go-yaml/printer"
+	"github.com/go-openapi/go-yaml/token"
 )
 
 const (
@@ -275,7 +275,7 @@ func (e *Encoder) isInvalidValue(v reflect.Value) bool {
 		return true
 	}
 	kind := v.Type().Kind()
-	if kind == reflect.Ptr && v.IsNil() {
+	if kind == reflect.Pointer && v.IsNil() {
 		return true
 	}
 	if kind == reflect.Interface && v.IsNil() {
@@ -460,7 +460,7 @@ func (e *Encoder) encodeValue(ctx context.Context, v reflect.Value, column int) 
 		return e.encodeFloat(v.Float(), 32), nil
 	case reflect.Float64:
 		return e.encodeFloat(v.Float(), 64), nil
-	case reflect.Ptr:
+	case reflect.Pointer:
 		if value := e.encodePtrAnchor(v, column); value != nil {
 			return value, nil
 		}
@@ -739,7 +739,7 @@ func (e *Encoder) isOmittedByOmitZero(v reflect.Value) bool {
 	kind := v.Kind()
 	if v.CanInterface() {
 		if z, ok := v.Interface().(IsZeroer); ok {
-			if (kind == reflect.Ptr || kind == reflect.Interface) && v.IsNil() {
+			if (kind == reflect.Pointer || kind == reflect.Interface) && v.IsNil() {
 				return true
 			}
 			return z.IsZero()
@@ -748,7 +748,7 @@ func (e *Encoder) isOmittedByOmitZero(v reflect.Value) bool {
 	switch kind {
 	case reflect.String:
 		return len(v.String()) == 0
-	case reflect.Interface, reflect.Ptr, reflect.Slice, reflect.Map:
+	case reflect.Interface, reflect.Pointer, reflect.Slice, reflect.Map:
 		return v.IsNil()
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
 		return v.Int() == 0
@@ -777,7 +777,7 @@ func (e *Encoder) isOmittedByOmitEmptyOption(v reflect.Value) bool {
 	switch v.Kind() {
 	case reflect.String:
 		return len(v.String()) == 0
-	case reflect.Interface, reflect.Ptr:
+	case reflect.Interface, reflect.Pointer:
 		return v.IsNil()
 	case reflect.Slice, reflect.Map:
 		return v.Len() == 0
@@ -803,7 +803,7 @@ func (e *Encoder) isOmittedByOmitEmptyOption(v reflect.Value) bool {
 func (e *Encoder) isOmittedByOmitEmptyTag(v reflect.Value) bool {
 	kind := v.Kind()
 	if z, ok := v.Interface().(IsZeroer); ok {
-		if (kind == reflect.Ptr || kind == reflect.Interface) && v.IsNil() {
+		if (kind == reflect.Pointer || kind == reflect.Interface) && v.IsNil() {
 			return true
 		}
 		return z.IsZero()
@@ -811,7 +811,7 @@ func (e *Encoder) isOmittedByOmitEmptyTag(v reflect.Value) bool {
 	switch kind {
 	case reflect.String:
 		return len(v.String()) == 0
-	case reflect.Interface, reflect.Ptr:
+	case reflect.Interface, reflect.Pointer:
 		return v.IsNil()
 	case reflect.Slice, reflect.Map:
 		return v.Len() == 0
@@ -866,7 +866,7 @@ func (e *Encoder) encodeAnchor(anchorName string, value ast.Node, fieldValue ref
 			anchorName = snode.Value
 		}
 	}
-	if fieldValue.Kind() == reflect.Ptr {
+	if fieldValue.Kind() == reflect.Pointer {
 		e.setAnchor(fieldValue.Pointer(), anchorName)
 	}
 	return anchorNode, nil
@@ -989,7 +989,7 @@ func (e *Encoder) encodeStruct(ctx context.Context, value reflect.Value, column 
 				anchorName = snode.Value
 			}
 		}
-		if inlineAnchorValue.Kind() == reflect.Ptr {
+		if inlineAnchorValue.Kind() == reflect.Pointer {
 			e.setAnchor(inlineAnchorValue.Pointer(), anchorName)
 		}
 		return anchorNode, nil
@@ -1003,7 +1003,7 @@ func (e *Encoder) toPointer(v reflect.Value) uintptr {
 	}
 
 	switch v.Type().Kind() {
-	case reflect.Ptr:
+	case reflect.Pointer:
 		return v.Pointer()
 	case reflect.Interface:
 		return e.toPointer(v.Elem())

@@ -1,3 +1,6 @@
 bin/
 .idea/
-cover.out
+*.out
+go.work.sum
+.mcp.json
+.worktrees

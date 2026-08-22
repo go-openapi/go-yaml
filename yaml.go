@@ -7,8 +7,8 @@ import (
 	"reflect"
 	"sync"
 
-	"github.com/goccy/go-yaml/ast"
-	"github.com/goccy/go-yaml/internal/errors"
+	"github.com/go-openapi/go-yaml/ast"
+	"github.com/go-openapi/go-yaml/internal/errors"
 )
 
 // BytesMarshaler interface may be implemented by types to customize their
@@ -110,7 +110,7 @@ func (s MapSlice) ToMap() map[interface{}]interface{} {
 //	             case the field will be included if that method returns true.
 //	             Note that this definition is slightly different from the Go's
 //	             encoding/json 'omitempty' definition. It combines some elements
-//	             of 'omitempty' and 'omitzero'. See https://github.com/goccy/go-yaml/issues/695.
+//	             of 'omitempty' and 'omitzero'. See https://github.com/go-openapi/go-yaml/issues/695.
 //
 //	omitzero      The omitzero tag behaves in the same way as the interpretation of the omitzero tag in the encoding/json library.
 //	              1) If the field type has an "IsZero() bool" method, that will be used to determine whether the value is zero.
