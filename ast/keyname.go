@@ -121,7 +121,7 @@ func TaggedKeyName(n *TagNode) (string, token.KeyKind, bool) {
 
 		return name, kind, true
 	case token.IntegerTag:
-		name, kind := token.KeyName(res.Text, integerKeyType(n.Value, res.Text))
+		name, kind := token.KeyName(res.Text, integerKeyType(res.Text, n.Schema))
 
 		return name, kind, true
 	case token.FloatTag:
@@ -140,18 +140,10 @@ const maxKeyNameDepth = 64
 // integerKeyType is the type the digits under an "!!int" tag are read as,
 // which settles what base they are written in.
 //
-// The scanner records the base on the token: "0x10" is HexIntegerType in a 1.2
-// document and "017" is OctetIntegerType in a 1.1 one, so the scalar's own
-// token answers first. A scalar the tag alone turned into an integer carries
-// no base -- the quoted key of `!!int "0x10"` is a DoubleQuoteType -- and its
-// text is read again under the 1.2 core schema, which is what
-// codec.castToInteger does with the same characters.
-//
-// Handing token.IntegerType over whatever the scalar was cost a based key its
-// resolution: `0x10: v` named the key "16" and `!!int 0x10: v` named it
-// "0x10", so the tag put the key in the strings' namespace.
-func integerKeyType(n Node, text string) token.Type {
-	typ, _ := token.IntegerBase(taggedScalarType(n), text)
+// [token.IntegerBase] holds the rule and the reason. A key reaching here has
+// already resolved, so a base is there to be had and the fallback never fires.
+func integerKeyType(text string, schema token.Schema) token.Type {
+	typ, _ := token.IntegerBase(text, schema)
 
 	return typ
 }

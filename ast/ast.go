@@ -1813,6 +1813,22 @@ type TagNode struct {
 	// handle expands to "!". A "%TAG" directive changes what a handle expands
 	// to, so read this rather than Start to find which tag the node carries.
 	URI string
+	// Schema is the scalar schema the document is read under, which decides
+	// what spellings the tag's type has: "017" is octal under %YAML 1.1 and
+	// decimal without it, and "0b101" is an integer under the first and no
+	// number at all under the second.
+	//
+	// The scanner types a plain scalar under this already, so for one the
+	// token carries the answer. A quoted or block scalar it never sniffs --
+	// the quotes make it a string when nothing else types it -- and a tag does
+	// type it, so its text is read under this instead. Both spellings of the
+	// same content then get one answer, which is what §3.3.2 requires: the
+	// "!" non-specific tag is given only to a node *lacking* an explicit tag,
+	// so `!!int "017"` and `!!int 017` are one node and cannot differ.
+	//
+	// It is stamped on the node for the same reason LaxTags is: a subtree
+	// handed to a consumer carries how to read it.
+	Schema token.Schema
 	// LaxTags says the document was read with
 	// [github.com/go-openapi/go-yaml/parser.WithLaxTags], so a consumer that
 	// can fall back to the text should, where it would otherwise refuse a tag

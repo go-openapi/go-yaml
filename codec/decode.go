@@ -1871,18 +1871,17 @@ func (d *Decoder) taggedValue(ctx context.Context, n *ast.TagNode, res ast.Resol
 	case token.TimestampTag:
 		return d.castToTime(ctx, n.Value)
 	case token.IntegerTag:
-		v, err := d.nodeToValue(ctx, n.Value)
-		if err != nil {
-			return nil, err
-		}
-
-		return castToInteger(v), nil
+		// Read from the text the tag stands over, in the base the document's
+		// own schema gives those digits. Resolving the node instead took a
+		// quoted scalar as the string it is and sent it through
+		// castToInteger's fixed 1.2 reading, so `!!int "017"` was 17 in a
+		// document where `!!int 017` was 15 -- and `!!int "0b101"` under 1.1
+		// was 0 where the plain spelling was 5. 3.3.2 gives the "!"
+		// non-specific tag only to a node lacking an explicit tag, so the two
+		// spellings are one node.
+		return castToInteger(taggedInteger(res.Text, res.Schema)), nil
 	case token.FloatTag:
-		v, err := d.nodeToValue(ctx, n.Value)
-		if err != nil {
-			return nil, err
-		}
-		return d.castToFloat(v), nil
+		return d.castToFloat(taggedFloat(res.Text, res.Schema)), nil
 	case token.NullTag:
 		return nil, nil
 	case token.BinaryTag:

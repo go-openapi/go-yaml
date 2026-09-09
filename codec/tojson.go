@@ -555,9 +555,9 @@ func (w *jsonWriter) taggedValue(t *ast.TagNode) ([]byte, bool) {
 	case token.StringTag:
 		written = appendJSONString(nil, res.Text)
 	case token.IntegerTag:
-		written = appendJSONScalar(nil, taggedInteger(res.Text, res.Type))
+		written = appendJSONScalar(nil, taggedInteger(res.Text, res.Schema))
 	case token.FloatTag:
-		written = appendJSONFloat(nil, taggedFloat(res.Text, res.Type))
+		written = appendJSONFloat(nil, taggedFloat(res.Text, res.Schema))
 	case token.BooleanTag:
 		b, _ := token.ParseBool(strings.ToLower(res.Text))
 		written = strconv.AppendBool(nil, b)
@@ -931,8 +931,8 @@ func jsonValueEnd(text []byte, i int) int {
 // taggedInteger reads the whole number a "!!int" stands on. A text that is not
 // a number at all counts as zero, and one written as a float keeps its whole
 // part: "!!int 3.7" is 3.
-func taggedInteger(text string, typ token.Type) any {
-	base, ok := token.IntegerBase(typ, text)
+func taggedInteger(text string, schema token.Schema) any {
+	base, ok := token.IntegerBase(text, schema)
 	if !ok {
 		// ast.Resolve reported a mismatch and the document was refused before
 		// this, so nothing reaches here with digits it cannot read.
@@ -958,17 +958,20 @@ func taggedInteger(text string, typ token.Type) any {
 // back an infinity or a zero, and writing that gave "0.0" for "!!float 1e+310"
 // and for "!!float 1e-400" alike. token.ParseBigFloat reads both, which is what
 // the untagged spellings already convert through.
-func taggedFloat(text string, typ token.Type) any {
-	base, ok := token.FloatBase(typ, text)
+func taggedFloat(text string, schema token.Schema) any {
+	base, ok := token.FloatBase(text, schema)
 	if !ok {
 		return float64(0)
 	}
 	switch base {
-	case token.InfinityType, token.NanType:
-		// JSON has no spelling for either, and appendJSONFloat refuses them.
-		f, _ := token.ParseFloat(text, token.FloatType)
+	case token.NanType:
+		return math.NaN()
+	case token.InfinityType:
+		if strings.HasPrefix(text, "-") {
+			return math.Inf(-1)
+		}
 
-		return f
+		return math.Inf(0)
 	}
 	if base.IsInteger() {
 		// A whole number under "!!float". The digits are read in the base the

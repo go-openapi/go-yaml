@@ -6,6 +6,7 @@ package codec_test
 import (
 	"bytes"
 	"fmt"
+	"math"
 	"strings"
 	"testing"
 
@@ -139,4 +140,74 @@ func TestTheTwoReadersAgreeOnATaggedNumber(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, `{"k":1e+400}`, strings.TrimSpace(string(got)))
 	})
+}
+
+// TestQuotingAScalarDoesNotChangeWhatItsTagMakesOfIt.
+//
+// YAML 1.2.2 §3.3.2 gives a non-specific tag -- "!" to a non-plain scalar, "?"
+// to everything else -- only to a node *lacking* an explicit tag. A node
+// carrying one has no non-specific tag to resolve, so `!!int "017"` and
+// `!!int 017` are one node: the same tag over the same content. Nothing in the
+// spec lets them differ.
+//
+// Three readings told them apart. ast.readsAs keyed the spelling rules on the
+// type the scanner gave the scalar, which types a plain scalar and not a quoted
+// one; Decoder.taggedValue resolved the node rather than the tagged text; and
+// codec.castToInteger read that text under a fixed 1.2 schema. Under
+// %YAML 1.1, `!!int "017"` came back 17 where `!!int 017` was 15 -- both
+// integers, no error, two units gone -- and `!!int "0b101"` was 0 where the
+// plain spelling was 5.
+func TestQuotingAScalarDoesNotChangeWhatItsTagMakesOfIt(t *testing.T) {
+	texts := []string{
+		"0x10", "0o17", "017", "09", "0b101", "1_000", "190:20:30", "0X10", "-0x10",
+		"1", "1.9", "1e3", "1.0e3", "1.0e+3", "1e400", "1_0.5", "0x1p-2", ".inf", ".nan", "-0",
+	}
+
+	for _, prefix := range []string{"", "%YAML 1.1\n---\n"} {
+		for _, tag := range []string{"!!int", "!!float"} {
+			for _, text := range texts {
+				plain := prefix + "k: " + tag + " " + text + "\n"
+				quoted := prefix + "k: " + tag + ` "` + text + "\"\n"
+
+				var got, want any
+				plainErr := codec.NewDecoder(strings.NewReader(plain)).Decode(&want)
+				quotedErr := codec.NewDecoder(strings.NewReader(quoted)).Decode(&got)
+
+				require.Equalf(t, plainErr == nil, quotedErr == nil,
+					"%q and its quoted spelling must both read or both be refused", plain)
+				if plainErr != nil {
+					continue
+				}
+				assert.Equalf(t, fmt.Sprintf("%v", want), fmt.Sprintf("%v", got),
+					"quoting %q under %q changed what the tag made of it", text, tag)
+			}
+		}
+	}
+}
+
+// TestAnInfinityUnderAFloatTagKeepsItsValue guards the branch that reads one.
+//
+// token.ParseFloat goes through shapeOfTypedNumber, which has no case for
+// InfinityType or NanType and reports false for both, so a taggedFloat routing
+// them through it answered 0 -- the incomplete representation ruled out for
+// "!!int" on 2026-09-09, arriving by another door.
+func TestAnInfinityUnderAFloatTagKeepsItsValue(t *testing.T) {
+	for _, tc := range []struct {
+		src  string
+		want func(float64) bool
+	}{
+		{src: "k: !!float .inf\n", want: func(f float64) bool { return math.IsInf(f, 1) }},
+		{src: "k: !!float .Inf\n", want: func(f float64) bool { return math.IsInf(f, 1) }},
+		{src: "k: !!float -.inf\n", want: func(f float64) bool { return math.IsInf(f, -1) }},
+		{src: `k: !!float ".inf"` + "\n", want: func(f float64) bool { return math.IsInf(f, 1) }},
+		{src: "k: !!float .nan\n", want: math.IsNaN},
+		{src: `k: !!float ".nan"` + "\n", want: math.IsNaN},
+	} {
+		var v map[string]any
+		require.NoErrorf(t, codec.NewDecoder(strings.NewReader(tc.src)).Decode(&v), "%q", tc.src)
+
+		f, ok := v["k"].(float64)
+		require.Truef(t, ok, "%q should read as a float64, got %T", tc.src, v["k"])
+		assert.Truef(t, tc.want(f), "%q read as %v", tc.src, f)
+	}
 }

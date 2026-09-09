@@ -65,18 +65,16 @@ type Resolution struct {
 	// read anything into it: "!!str 0x10" carries "0x10" and not "16". It is ""
 	// where the node is not a scalar.
 	Text string
-	// Type is the type the scanner gave that scalar, which carries the schema
-	// the document declared: "017" is OctetIntegerType under %YAML 1.1 and
-	// IntegerType without it. A consumer converting Text reads it so that the
-	// digits are taken in the base the document wrote them in -- pass it to
+	// Schema is the scalar schema the document is read under, from
+	// [TagNode.Schema]. Read it with
 	// [github.com/go-openapi/go-yaml/token.IntegerBase] or
-	// [github.com/go-openapi/go-yaml/token.FloatBase]. It is
-	// token.UnknownType where the node is not a scalar.
+	// [github.com/go-openapi/go-yaml/token.FloatBase] to take Text's digits in
+	// the base the document wrote them in: "017" is octal under %YAML 1.1 and
+	// decimal without it.
 	//
-	// Sniffing Text again instead reads it under one fixed schema, and the
-	// converters that did so disagreed with the decoder about nine spellings:
-	// "!!int 0b101" decoded to 5 under 1.1 and ToJSON wrote 0.
-	Type token.Type
+	// Sniffing Text under one fixed schema instead is how three consumers came
+	// to disagree: under 1.1 "!!int 0b101" decoded to 5 and ToJSON wrote 0.
+	Schema token.Schema
 	// Lax says the document was read with
 	// [github.com/go-openapi/go-yaml/parser.WithLaxTags]. A consumer that finds
 	// TagValueMismatch and can fall back reads Text as a string instead of
@@ -108,14 +106,13 @@ type Resolution struct {
 func (n *TagNode) Resolve() Resolution {
 	tag, reserved := token.ReservedTagOf(n.URI)
 	text, scalar, empty := taggedScalarText(n.Value)
-	typ := taggedScalarType(n.Value)
 	_, isNull := unwrapAnchor(n.Value).(*NullNode)
 
 	if !reserved {
-		return Resolution{Verdict: TagUnresolved, Text: text, Type: typ, Empty: empty, Lax: n.LaxTags}
+		return Resolution{Verdict: TagUnresolved, Text: text, Schema: n.Schema, Empty: empty, Lax: n.LaxTags}
 	}
 
-	res := Resolution{Tag: tag, Text: text, Type: typ, Empty: empty, Lax: n.LaxTags}
+	res := Resolution{Tag: tag, Text: text, Schema: n.Schema, Empty: empty, Lax: n.LaxTags}
 
 	if collectionTag(tag) {
 		// A collection tag on a scalar, and the other way about. n.Value is nil
@@ -147,7 +144,7 @@ func (n *TagNode) Resolve() Resolution {
 
 		return res
 	}
-	if !readsAs(tag, text, typ) {
+	if !readsAs(tag, text, n.Schema) {
 		res.Verdict = TagValueMismatch
 	}
 
@@ -179,7 +176,7 @@ func collectionTag(tag token.ReservedTagKeyword) bool {
 // The question is only whether a value is there to be had, not what it is: a
 // consumer that wants the value reads it from [Resolution.Text] in whatever
 // shape it needs.
-func readsAs(tag token.ReservedTagKeyword, text string, typ token.Type) bool {
+func readsAs(tag token.ReservedTagKeyword, text string, schema token.Schema) bool {
 	switch tag {
 	case token.StringTag:
 		// Every scalar is a string.
@@ -189,9 +186,9 @@ func readsAs(tag token.ReservedTagKeyword, text string, typ token.Type) bool {
 	case token.BooleanTag:
 		return readsAsBool(text)
 	case token.IntegerTag:
-		return readsAsInteger(text, typ)
+		return readsAsInteger(text, schema)
 	case token.FloatTag:
-		return readsAsFloat(text, typ)
+		return readsAsFloat(text, schema)
 	case token.BinaryTag:
 		_, err := base64.StdEncoding.DecodeString(text)
 
@@ -242,11 +239,16 @@ func readsAsBool(text string) bool {
 // tag:yaml.org,2002:int names the whole numbers, and 1.9 is not one of them, so
 // this reports the mismatch and the decoder refuses the document. Read such a
 // document with parser.WithLaxTags to take the text as a string instead.
-func readsAsInteger(text string, typ token.Type) bool {
-	base, ok := token.IntegerBase(typ, text)
+func readsAsInteger(text string, schema token.Schema) bool {
+	base, ok := token.IntegerBase(text, schema)
 	if !ok {
 		return false
 	}
+	return readsAsIntegerAt(text, base)
+}
+
+// readsAsIntegerAt reads the digits with a base already settled.
+func readsAsIntegerAt(text string, base token.Type) bool {
 	if _, _, whole := token.ParseWholeNumber(text, base); whole {
 		return true
 	}
@@ -255,7 +257,7 @@ func readsAsInteger(text string, typ token.Type) bool {
 	return big
 }
 
-// readsAsFloat reports whether the schema that typed the scalar reads its text
+// readsAsFloat reports whether schema reads the text
 // as a real number, an infinity or a NaN.
 //
 // strconv.ParseFloat stood here, and it reads Go's floating-point literals:
@@ -264,8 +266,8 @@ func readsAsInteger(text string, typ token.Type) bool {
 // either version and decoded to 0.25 and 10.5, where the same scalars untagged
 // read as the strings they are.
 //
-// The base and the separators come from the type instead, as they do for an
-// integer -- see [integerBase]. token.ParseFloat then reads the digits: it
+// The base and the separators come from the document's schema instead, as they do for an
+// integer -- see [token.IntegerBase]. token.ParseFloat then reads the digits: it
 // turns 1.1's sexagesimal into decimal before strconv sees it, so
 // "!!float 190:20:30.5" is 685230.5, and token.ParseBigFloat takes a number no
 // float64 holds, so "!!float 1e400" keeps its magnitude rather than becoming an
@@ -274,8 +276,8 @@ func readsAsInteger(text string, typ token.Type) bool {
 // A whole number is a real number, so an integer type reads here too:
 // "!!float 1" is 1.0, and "!!float 017" is 15.0 under 1.1 and 17.0 under 1.2,
 // each following the base its own schema gave the digits.
-func readsAsFloat(text string, typ token.Type) bool {
-	base, ok := token.FloatBase(typ, text)
+func readsAsFloat(text string, schema token.Schema) bool {
+	base, ok := token.FloatBase(text, schema)
 	if !ok {
 		return false
 	}
@@ -284,7 +286,7 @@ func readsAsFloat(text string, typ token.Type) bool {
 	case base == token.InfinityType || base == token.NanType:
 		return true
 	case base.IsInteger():
-		return readsAsInteger(text, base)
+		return readsAsIntegerAt(text, base)
 	}
 
 	if _, parsed := token.ParseFloat(text, base); parsed {

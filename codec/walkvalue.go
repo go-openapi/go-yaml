@@ -447,9 +447,12 @@ func (b *valueBuilder) taggedWalkValue(n *ast.TagNode, value any) (any, error) {
 	case token.NullTag:
 		return nil, nil
 	case token.IntegerTag:
-		return castToInteger(value), nil
+		// From the text and the document's schema, as Decoder.taggedValue
+		// reads it. Converting the walked value instead took a quoted scalar
+		// as the string it is, and the two paths parted on `!!float -0`.
+		return castToInteger(taggedInteger(res.Text, res.Schema)), nil
 	case token.FloatTag:
-		return castToFloatValue(value), nil
+		return castToFloatValue(taggedFloat(res.Text, res.Schema)), nil
 	case token.BooleanTag:
 		// Resolve has agreed there is a boolean to read, in whatever case the
 		// document wrote it.
