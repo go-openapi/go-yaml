@@ -91,3 +91,50 @@ func TestAnExplicitKeyNamesOneNode(t *testing.T) {
 		})
 	}
 }
+
+// TestAnExplicitEntrysColonStandsAtItsQuestionMarksColumn: a ':' at any other
+// column is not that entry's, and opens one of its own with an empty key.
+//
+// keyWindow.hasNoKey exempted an explicit key from the line rule -- a '?' and
+// its ':' are written on two lines by design -- and took the ':' "wherever it
+// stands". 8.2.2 stands it at the '?'s own indent. " ? a" over ": b" read as
+// {a: b}, a ':' left of its own '?', which every oracle refuses.
+//
+// Holding the column recovered two valid documents as well as refusing that
+// one: a ':' indented differently from the '?' above it is an entry with an
+// empty key, which is what the two below are, and both were refused before.
+func TestAnExplicitEntrysColonStandsAtItsQuestionMarksColumn(t *testing.T) {
+	t.Run("a ':' left of its '?' is not that entry's", func(t *testing.T) {
+		_, err := parser.ParseBytes([]byte(" ? a\n: b\n"))
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "value is not allowed in this context")
+	})
+
+	// Both are drawn by the generated corpus, and grammar.NewRecognizer accepts
+	// both. They are the accepting side of the same rule, which nothing reports
+	// on its own: a valid document wrongly refused stays refused quietly.
+	t.Run("a ':' at another column opens its own entry", func(t *testing.T) {
+		for _, src := range []string{
+			"---\n&a3\n# c1\n? &a1 '1_000'\n:\n #  ? &a2 '+0b11'\n : *a1\n",
+			"%TAG !x! tag:yaml.org,2002:\r\n---\r\n# c1\r\n?\t' '\r\n:\t# c2\r\n  # c3\r\n  -\t# c4\r\n    # c5\r\n    ?\t'-1_0'\r\n:\t|2-\r\n      'a\r\n# c6\r\n?\tfalse\r\n: !x!int\t-929\t# c7\r\n",
+		} {
+			_, err := parser.ParseBytes([]byte(src), parser.WithComments())
+			assert.NoErrorf(t, err, "%q", src)
+		}
+	})
+
+	// The line the grammar draws is exact indent equality, and it is narrower
+	// than "the ':' is never measured": a ':' indented past the '?' is valid
+	// where it continues a mapping that is itself the key. A column test on the
+	// body alone would take these two with the four above.
+	t.Run("a ':' continuing the key's own mapping is untouched", func(t *testing.T) {
+		for _, tc := range []struct{ src, want string }{
+			{"? a: b\n  : d\n: v\n", "? a: b\n  : d\n: v\n"},
+			{"?\n  : b\n", "? : b\n:\n"},
+		} {
+			f, err := parser.ParseBytes([]byte(tc.src))
+			require.NoErrorf(t, err, "%q", tc.src)
+			assert.Equalf(t, tc.want, f.String(), "%q", tc.src)
+		}
+	})
+}

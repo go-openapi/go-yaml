@@ -942,8 +942,11 @@ func (w *keyWindow) hasNoKey(last int, tk *tapeToken, inFlow bool) bool {
 	}
 	if candidate.Type() == token.MappingKeyType {
 		// An explicit key writes its "?" and its ':' on two lines by design --
-		// 8.1 -- so it is this ':'s key wherever the ':' stands.
-		return false
+		// 8.1 -- so the line rule below does not apply to it. The column does:
+		// 8.2.2 stands the ':' at the '?'s own indent, and taking it wherever
+		// it stood accepted a ':' written to the left of its own '?'.
+		// " ? a" over ": b" read as {a: b}, which every oracle refuses.
+		return tk.Column() != candidate.Column()
 	}
 
 	// Everything else is an implicit key and has to end on the ':'s own line,
