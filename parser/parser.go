@@ -1767,7 +1767,7 @@ func (p *Parser) mapKeyIdentity(n ast.Node) (string, token.KeyKind) {
 		// A tag names the type, so it names the key's identity: "!!str 1" is
 		// the string "1" and not the integer, and the two are two keys.
 		// Unwrapping to the node under it read the tag off and made them one.
-		if name, kind, tagged := taggedKeyIdentity(nn); tagged {
+		if name, kind, tagged := ast.TaggedKeyName(nn); tagged {
 			return name, kind
 		}
 
@@ -1819,36 +1819,6 @@ func (p *Parser) mapKeyIdentity(n ast.Node) (string, token.KeyKind) {
 	}
 
 	return token.KeyName(tk.Value, tk.Type)
-}
-
-// taggedKeyIdentity reads a key's identity off the tag standing on it, for the
-// tags that name one of the types a key is told apart by.
-func taggedKeyIdentity(n *ast.TagNode) (string, token.KeyKind, bool) {
-	res := n.Resolve()
-	if res.Verdict != ast.TagResolved {
-		return "", token.KeyOther, false
-	}
-
-	switch res.Tag {
-	case token.StringTag:
-		return res.Text, token.KeyString, true
-	case token.NullTag:
-		return "null", token.KeyNull, true
-	case token.BooleanTag:
-		name, kind := token.KeyName(res.Text, token.BoolType)
-
-		return name, kind, true
-	case token.IntegerTag:
-		name, kind := token.KeyName(res.Text, token.IntegerType)
-
-		return name, kind, true
-	case token.FloatTag:
-		name, kind := token.KeyName(res.Text, token.FloatType)
-
-		return name, kind, true
-	default:
-		return "", token.KeyOther, false
-	}
 }
 
 func (p *Parser) parseMapValue(ctx context, key ast.MapKeyNode, colonTk *tapeToken) (ast.Node, error) {

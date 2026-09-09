@@ -169,30 +169,13 @@ func writeEntriesIdentity(b *strings.Builder, entries []*MappingValueNode, depth
 // "1" is the integer, and the two are two keys. A tag the schema does not
 // resolve leaves the node to speak for itself.
 func writeTaggedIdentity(b *strings.Builder, n *TagNode, depth int, anchors AnchorIdentity) bool {
-	res := n.Resolve()
-	if res.Verdict != TagResolved {
+	name, kind, tagged := TaggedKeyName(n)
+	if !tagged {
+		// A tag the schema does not resolve, or one naming a kind -- !!seq,
+		// !!map, !!binary, !!timestamp. What it tags is what it is.
 		return writeKeyIdentity(b, n.Value, depth, anchors)
 	}
-
-	switch res.Tag {
-	case token.StringTag:
-		writeScalarIdentity(b, res.Text, token.KeyString)
-	case token.NullTag:
-		writeScalarIdentity(b, "null", token.KeyNull)
-	case token.BooleanTag:
-		name, kind := token.KeyName(res.Text, token.BoolType)
-		writeScalarIdentity(b, name, kind)
-	case token.IntegerTag:
-		name, kind := token.KeyName(res.Text, token.IntegerType)
-		writeScalarIdentity(b, name, kind)
-	case token.FloatTag:
-		name, kind := token.KeyName(res.Text, token.FloatType)
-		writeScalarIdentity(b, name, kind)
-	default:
-		// A tag naming a kind -- !!seq, !!map, !!binary, !!timestamp -- or one
-		// the application defined. What it tags is what it is.
-		return writeKeyIdentity(b, n.Value, depth, anchors)
-	}
+	writeScalarIdentity(b, name, kind)
 
 	return true
 }

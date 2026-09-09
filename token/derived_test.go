@@ -4,6 +4,7 @@
 package token_test
 
 import (
+	"slices"
 	"testing"
 
 	"github.com/go-openapi/testify/v2/assert"
@@ -43,4 +44,27 @@ func TestEveryTypeHasAnIndicator(t *testing.T) {
 	assert.Equal(t, token.CharacterTypeInvalid, token.InvalidType.CharacterType())
 	assert.Equal(t, token.CharacterTypeMiscellaneous, token.StringType.CharacterType())
 	assert.Equal(t, token.NotIndicator, token.StringType.Indicator())
+}
+
+// TestOnlyTheFourIntegerTypesAreIntegers holds Type.IsInteger to the types
+// ScalarType hands back for a whole number, so a type added later cannot join
+// them by accident.
+//
+// ast.integerKeyType reads it to pick the base an "!!int" key's digits are in,
+// and a type wrongly counted an integer there would send text to
+// ParseWholeNumber under a base it was not written in.
+func TestOnlyTheFourIntegerTypesAreIntegers(t *testing.T) {
+	integers := []token.Type{
+		token.IntegerType, token.BinaryIntegerType, token.OctetIntegerType, token.HexIntegerType,
+	}
+	for _, typ := range integers {
+		assert.Truef(t, typ.IsInteger(), "%s", typ)
+	}
+
+	for typ := token.UnknownType; typ <= token.InvalidType; typ++ {
+		if slices.Contains(integers, typ) {
+			continue
+		}
+		assert.Falsef(t, typ.IsInteger(), "%s", typ)
+	}
 }

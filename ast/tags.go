@@ -334,6 +334,27 @@ func taggedScalarText(n Node) (text string, scalar, empty bool) {
 	return "", false, false
 }
 
+// taggedScalarType is the type the scanner gave the scalar under a tag, which
+// records what base its digits are written in. It returns token.UnknownType
+// where the tag stands on no scalar of its own.
+func taggedScalarType(n Node) token.Type {
+	switch v := n.(type) {
+	case nil:
+		return token.UnknownType
+	case *AnchorNode:
+		return taggedScalarType(v.Value)
+	}
+
+	if !isScalarNode(n) {
+		return token.UnknownType
+	}
+	if tk := n.GetToken(); tk != nil {
+		return tk.Type
+	}
+
+	return token.UnknownType
+}
+
 // isScalarNode reports whether n holds a single value written as text.
 //
 // Narrower than the ScalarNode interface, which AnchorNode and AliasNode

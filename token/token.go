@@ -394,6 +394,23 @@ func (t Type) Indicator() Indicator {
 	}
 }
 
+// IsInteger reports whether a token of type t holds a whole number, in
+// whatever base it was written: 16 for HexIntegerType, 8 for OctetIntegerType,
+// 2 for BinaryIntegerType and 10 for IntegerType.
+//
+// [ScalarType] settles which of the four a plain scalar is, under the schema
+// the document is read with, and [ParseWholeNumber] reads the digits back with
+// that base. A caller holding a type from anywhere else -- a tag, say -- asks
+// this before treating it as the base.
+func (t Type) IsInteger() bool {
+	switch t {
+	case IntegerType, BinaryIntegerType, OctetIntegerType, HexIntegerType:
+		return true
+	default:
+		return false
+	}
+}
+
 // CharacterType returns the class of character a token of type t is written
 // with. It follows from the type, as [Type.Indicator] does.
 func (t Type) CharacterType() CharacterType {

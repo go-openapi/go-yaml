@@ -53,7 +53,11 @@ func keyNameAt(n Node, depth int) (string, token.KeyKind) {
 	case *AnchorNode:
 		return keyNameAt(nn.Value, depth+1)
 	case *TagNode:
-		return taggedKeyName(nn, depth)
+		if name, kind, tagged := TaggedKeyName(nn); tagged {
+			return name, kind
+		}
+
+		return keyNameAt(nn.Value, depth+1)
 	case *StringNode:
 		// The node's own text, not the token's: a double-quoted key holds what
 		// the escapes resolved to.
@@ -87,34 +91,72 @@ func keyNameAt(n Node, depth int) (string, token.KeyKind) {
 	return token.KeyName(tk.Value, tk.Type)
 }
 
-// taggedKeyName names a key from the tag standing on it, for the tags that name
-// one of the types a key is told apart by.
+// TaggedKeyName names a key from the tag standing on it, for the tags that name
+// one of the types a key is told apart by. It reports false where the tag names
+// no such type, and the caller then names [TagNode.Value] instead: a tag the
+// schema does not resolve, one naming a kind -- !!seq, !!map, !!binary -- or one
+// the application declared.
 //
-// A tag the schema does not resolve leaves the node to speak for itself, and so
-// does one naming a kind -- !!seq, !!map, !!binary -- or one the application
-// declared.
-func taggedKeyName(n *TagNode, depth int) (string, token.KeyKind) {
+// Three walks reach a tagged key and all three must agree, or one names a key
+// that another does not: [KeyName], [KeyIdentity], and the parser's duplicate
+// check, which keeps a walk of its own because it resolves an alias through the
+// anchors it has recorded and not through [AliasNode.Target]. They read this
+// rather than each carrying the switch. Three copies of it named "!!int 0x10"
+// the string "0x10" where "0x10" alone named the integer 16, so the two
+// spellings passed the duplicate check and then collided in the decoder, which
+// dropped the first value.
+func TaggedKeyName(n *TagNode) (string, token.KeyKind, bool) {
 	res := n.Resolve()
 	if res.Verdict != TagResolved {
-		return keyNameAt(n.Value, depth+1)
+		return "", token.KeyOther, false
 	}
 
 	switch res.Tag {
 	case token.StringTag:
-		return res.Text, token.KeyString
+		return res.Text, token.KeyString, true
 	case token.NullTag:
-		return "null", token.KeyNull
+		return "null", token.KeyNull, true
 	case token.BooleanTag:
-		return token.KeyName(res.Text, token.BoolType)
+		name, kind := token.KeyName(res.Text, token.BoolType)
+
+		return name, kind, true
 	case token.IntegerTag:
-		return token.KeyName(res.Text, token.IntegerType)
+		name, kind := token.KeyName(res.Text, integerKeyType(n.Value, res.Text))
+
+		return name, kind, true
 	case token.FloatTag:
-		return token.KeyName(res.Text, token.FloatType)
+		name, kind := token.KeyName(res.Text, token.FloatType)
+
+		return name, kind, true
 	default:
-		return keyNameAt(n.Value, depth+1)
+		return "", token.KeyOther, false
 	}
 }
 
 // maxKeyNameDepth bounds the descent through the properties standing in front
 // of a key.
 const maxKeyNameDepth = 64
+
+// integerKeyType is the type the digits under an "!!int" tag are read as,
+// which settles what base they are written in.
+//
+// The scanner records the base on the token: "0x10" is HexIntegerType in a 1.2
+// document and "017" is OctetIntegerType in a 1.1 one, so the scalar's own
+// token answers first. A scalar the tag alone turned into an integer carries
+// no base -- the quoted key of `!!int "0x10"` is a DoubleQuoteType -- and its
+// text is read again under the 1.2 core schema, which is what
+// codec.castToInteger does with the same characters.
+//
+// Handing token.IntegerType over whatever the scalar was cost a based key its
+// resolution: `0x10: v` named the key "16" and `!!int 0x10: v` named it
+// "0x10", so the tag put the key in the strings' namespace.
+func integerKeyType(n Node, text string) token.Type {
+	if typ := taggedScalarType(n); typ.IsInteger() {
+		return typ
+	}
+	if typ := token.ScalarType(text, token.Schema12); typ.IsInteger() {
+		return typ
+	}
+
+	return token.IntegerType
+}

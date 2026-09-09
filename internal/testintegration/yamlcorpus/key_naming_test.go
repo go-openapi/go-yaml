@@ -143,3 +143,51 @@ func TestFixedAnExplicitFloatTagOnAKeyKeepsItsFloatness(t *testing.T) {
 		}
 	})
 }
+
+// TestFixedAnExplicitIntTagOnAKeyKeepsItsBase: a key written in hex or octal is
+// named by the decimal it denotes, and writing "!!int" in front of it changes
+// nothing.
+//
+// Found on 2026-09-09. Three walks reached a tagged key -- [ast.KeyName],
+// [ast.KeyIdentity] and the parser's duplicate check -- and each carried its own
+// copy of the tag switch, handing token.IntegerType over whatever base the
+// scalar was written in. So "!!int 0x10: v" named the key "0x10" where
+// "0x10: v" named it "16", and the two spellings passed the duplicate check as
+// different keys and then collided in the decoder, which kept the second value
+// and dropped the first with no error. They read [ast.TaggedKeyName] now.
+func TestFixedAnExplicitIntTagOnAKeyKeepsItsBase(t *testing.T) {
+	for _, tc := range []struct{ src, key string }{
+		{src: "0x10: v\n", key: "16"},
+		{src: "!!int 0x10: v\n", key: "16"},
+		{src: "0o17: v\n", key: "15"},
+		{src: "!!int 0o17: v\n", key: "15"},
+
+		// The tag names the type and the quotes hide the base, so the text is
+		// read again under the 1.2 core schema.
+		{src: "!!int \"0x10\": v\n", key: "16"},
+		{src: "!!int '0o17': v\n", key: "15"},
+
+		// The base follows the schema that typed the scalar, not the tag: a
+		// leading zero is octal in 1.1 and decimal in 1.2.
+		{src: "!!int 017: v\n", key: "17"},
+		{src: "%YAML 1.1\n---\n!!int 017: v\n", key: "15"},
+		{src: "%YAML 1.1\n---\n!!int 0b101: v\n", key: "5"},
+
+		// An anchor names the node and says nothing about its type.
+		{src: "!!int &a 0x10: v\n", key: "16"},
+		{src: "&a !!int 0x10: v\n", key: "16"},
+	} {
+		assert.Contains(t, read(t, tc.src), tc.key, "%q should be keyed %q", tc.src, tc.key)
+	}
+
+	t.Run("and the tagged spelling collides with the untagged one", func(t *testing.T) {
+		for _, src := range []string{
+			"0x10: a\n!!int 0x10: b\n",
+			"!!int 0x10: a\n16: b\n",
+			"0o17: a\n!!int 0o17: b\n",
+			"{0x10: a, !!int 0x10: b}\n",
+		} {
+			assert.Contains(t, refuses(t, src), "already defined", "%q", src)
+		}
+	})
+}
