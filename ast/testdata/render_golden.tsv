@@ -385,8 +385,8 @@ default	suite/various-combinations-of-explicit-block-mappings	ceb9b0d213eb404e
 default	suite/various-combinations-of-tags-and-anchors	e0b2ec16b020ae27
 default	suite/various-empty-or-newline-only-quoted-strings	e73d7b130bf1deca
 default	suite/various-location-of-anchors-in-flow-sequence	44ce4f46c4d0b352
-default	suite/various-trailing-comments	2f0ca15cc99020a1
-default	suite/various-trailing-comments-1-3	2f0ca15cc99020a1
+default	suite/various-trailing-comments	365d029676f86c93
+default	suite/various-trailing-comments-1-3	365d029676f86c93
 default	suite/various-trailing-tabs	7f30d7f80003fdc9
 default	suite/whitespace-after-scalars-in-flow	c44bb3dc6df520c1
 default	suite/whitespace-around-colon-in-mappings	23bf6787d0cc7ae3
@@ -400,7 +400,7 @@ default	suite/yaml-directive-without-document-end-marker	refused
 default	suite/zero-indented-block-scalar	96d20ea23ff3d888
 default	suite/zero-indented-block-scalar-with-line-that-looks-like-a-comment	5cb40cfbe3ac00e8
 default	suite/zero-indented-sequences-in-explicit-mapping-keys	892393d883c8f837
-default	seeds-aggregate	ba735313821bee7e9d67e9909e136edd4c25238b8ce5db96ae40a560845e889f
+default	seeds-aggregate	138614532c17ae983606c5805d50004384177befc651f8e89b460dcd34cb88a0
 nocomments	suite/aliases-in-block-sequence	c3257c52c7ceaed0
 nocomments	suite/aliases-in-explicit-block-mapping	fb58d00e3fefa58e
 nocomments	suite/aliases-in-flow-objects	3ea0a458126c1608
@@ -1191,8 +1191,8 @@ indent4	suite/various-combinations-of-explicit-block-mappings	bc7b4c83dfdd0132
 indent4	suite/various-combinations-of-tags-and-anchors	b5e010b9fa7ba033
 indent4	suite/various-empty-or-newline-only-quoted-strings	e73d7b130bf1deca
 indent4	suite/various-location-of-anchors-in-flow-sequence	44ce4f46c4d0b352
-indent4	suite/various-trailing-comments	aca24e5476f2d7ee
-indent4	suite/various-trailing-comments-1-3	aca24e5476f2d7ee
+indent4	suite/various-trailing-comments	ee888c47b77a4407
+indent4	suite/various-trailing-comments-1-3	ee888c47b77a4407
 indent4	suite/various-trailing-tabs	7f30d7f80003fdc9
 indent4	suite/whitespace-after-scalars-in-flow	c44bb3dc6df520c1
 indent4	suite/whitespace-around-colon-in-mappings	171beaacaf262d8b
@@ -1206,7 +1206,7 @@ indent4	suite/yaml-directive-without-document-end-marker	refused
 indent4	suite/zero-indented-block-scalar	b5b8de23ec2cc27e
 indent4	suite/zero-indented-block-scalar-with-line-that-looks-like-a-comment	62e85933f841e569
 indent4	suite/zero-indented-sequences-in-explicit-mapping-keys	185788c3e20ba49d
-indent4	seeds-aggregate	61d45e3133e4a56f4bd12ad5d0179d3fb2685a05dd65a3a16087de75588b3bfc
+indent4	seeds-aggregate	a28cca482344316bda7e9b7ebcfd7a61939b2fa452cc803499ead218481c48c4
 indentseq	suite/aliases-in-block-sequence	c3257c52c7ceaed0
 indentseq	suite/aliases-in-explicit-block-mapping	fb58d00e3fefa58e
 indentseq	suite/aliases-in-flow-objects	3ea0a458126c1608
@@ -1594,8 +1594,8 @@ indentseq	suite/various-combinations-of-explicit-block-mappings	06464ac20b957573
 indentseq	suite/various-combinations-of-tags-and-anchors	e0b2ec16b020ae27
 indentseq	suite/various-empty-or-newline-only-quoted-strings	e73d7b130bf1deca
 indentseq	suite/various-location-of-anchors-in-flow-sequence	44ce4f46c4d0b352
-indentseq	suite/various-trailing-comments	35192bc235773bf3
-indentseq	suite/various-trailing-comments-1-3	35192bc235773bf3
+indentseq	suite/various-trailing-comments	d6d34c66ac426e9c
+indentseq	suite/various-trailing-comments-1-3	d6d34c66ac426e9c
 indentseq	suite/various-trailing-tabs	72e122897b71c08f
 indentseq	suite/whitespace-after-scalars-in-flow	c44bb3dc6df520c1
 indentseq	suite/whitespace-around-colon-in-mappings	23bf6787d0cc7ae3
@@ -1609,4 +1609,4 @@ indentseq	suite/yaml-directive-without-document-end-marker	refused
 indentseq	suite/zero-indented-block-scalar	96d20ea23ff3d888
 indentseq	suite/zero-indented-block-scalar-with-line-that-looks-like-a-comment	5cb40cfbe3ac00e8
 indentseq	suite/zero-indented-sequences-in-explicit-mapping-keys	932337a2ed55ff89
-indentseq	seeds-aggregate	6b5acaa28f28251b6af3243b063e13d181e9c6e99d212a488df9325ad9b3e866
+indentseq	seeds-aggregate	f85c7aef5057f3d062bc7d7b1ee52741140d3f22c9ff36670afcae15eace9274

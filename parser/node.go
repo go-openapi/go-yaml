@@ -330,11 +330,7 @@ func setEntryLineComment(ctx context, node *ast.MappingValueNode, tk *tapeToken)
 	comment.SetPathNode(ctx.path)
 	node.LineComment = comment
 
-	if node.Comment != nil {
-		return nil
-	}
-
-	return node.SetComment(comment)
+	return nil
 }
 
 func setHeadComment(cm *ast.CommentGroupNode, value ast.Node) error {

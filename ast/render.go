@@ -267,10 +267,28 @@ func (r *Renderer) mappingValue(n *MappingValueNode) rendered {
 	if _, explicit := n.Key.(*MappingKeyNode); explicit {
 		// The ':' goes on its own line. Written inline as "? a: b", YAML reads
 		// the whole of "a: b" as the key.
-		body := join(sepNone, r.render(n.Key), leaf("\n:"))
-		if value := r.value(n.Value, false); !value.empty() {
-			body = join(sepNone, body, value)
+		//
+		// A comment written on that ':' line goes back on it. It has nowhere
+		// else: on the value it becomes a head comment and takes the slot a
+		// comment written under the ':' needs, and above the entry it collides
+		// with one written above the '?'. The line comment claims the rest of
+		// the line, so the value goes below whatever shape it is.
+		var lineComment string
+		if r.comments && n.LineComment != nil {
+			lineComment = " " + r.String(n.LineComment)
 		}
+
+		value := r.value(n.Value, lineComment != "")
+		if lineComment != "" && !value.empty() && !value.leads {
+			// The comment claims the ':' line, so the value opens one of its
+			// own. Renderer.value lets a plain scalar share a commented key's
+			// line, which is right where the comment follows the value and
+			// wrong here, where it stands in front of it: the value would be
+			// written after a '#' and read back as part of the comment.
+			value = r.below(n.Value)
+		}
+
+		body := join(sepNone, r.render(n.Key), leaf("\n:"), leaf(lineComment), value)
 
 		return join(sepNone, head, body, r.footComment(n.FootComment))
 	}
@@ -506,6 +524,20 @@ func (r *Renderer) value(n Node, keyCommented bool) rendered {
 		// one of the key's level. Both layouts are legal; this is the one YAML
 		// is usually written in. A flow sequence is not laid out this way: it
 		// is a value like any other and indents under its key.
+		return join(sepNone, leaf("\n"), text)
+	}
+
+	return join(sepNone, leaf("\n"), text.indentedBy(r.indent))
+}
+
+// below renders a value on a line of its own, indented under whatever
+// introduced it.
+//
+// A block sequence sits at its key's own indentation unless asked otherwise,
+// which is the one shape that does not take the extra level.
+func (r *Renderer) below(n Node) rendered {
+	text := r.render(n)
+	if sequence, ok := r.deref(n).(*SequenceNode); ok && !sequence.IsFlowStyle && !r.indentSequence {
 		return join(sepNone, leaf("\n"), text)
 	}
 

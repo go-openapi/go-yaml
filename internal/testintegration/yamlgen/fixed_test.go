@@ -1433,9 +1433,9 @@ func TestFixedAQuotedExplicitKeyTakesABlockScalarValue(t *testing.T) {
 // the renderer's to do.
 func TestFixedACommentOnAnExplicitKeysColonLineIsKept(t *testing.T) {
 	for src, renders := range map[string]string{
-		"? a\n: # c3\n  v\n":   "# c3\n? a\n: v\n",
-		"? a\n: # c3\n  - 1\n": "# c3\n? a\n:\n- 1\n",
-		"?\n: #c1\n":           "#c1\n?\n:\n",
+		"? a\n: # c3\n  v\n":   "? a\n: # c3\n  v\n",
+		"? a\n: # c3\n  - 1\n": "? a\n: # c3\n- 1\n",
+		"?\n: #c1\n":           "?\n: #c1\n",
 		// Every other position kept it before and still does.
 		"a: # c3\n  v\n":   "a: v # c3\n",
 		"a: # c3\n  - 1\n": "a: # c3\n- 1\n",
@@ -2823,9 +2823,9 @@ func TestFixedASecondCommentOnAnExplicitKeysColonLineIsKept(t *testing.T) {
 
 	t.Run("every comment reaches the rendered text, and it settles", func(t *testing.T) {
 		for src, renders := range map[string]string{
-			"? a\n: # c4\n  # c5\n  - 1\n":  "# c4\n? a\n:\n# c5\n- 1\n",
-			"? a\n: # c4\n  # c5\n  v\n":    "# c4\n? a\n: v # c5\n",
-			"? a\n: # c4\n  # c5\n  b: 1\n": "# c4\n? a\n:\n  # c5\n  b: 1\n",
+			"? a\n: # c4\n  # c5\n  - 1\n":  "? a\n: # c4\n# c5\n- 1\n",
+			"? a\n: # c4\n  # c5\n  v\n":    "? a\n: # c4\n  v # c5\n",
+			"? a\n: # c4\n  # c5\n  b: 1\n": "? a\n: # c4\n  # c5\n  b: 1\n",
 		} {
 			wellFormed(t, src)
 			once := renderOnce(t, src)

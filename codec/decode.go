@@ -619,6 +619,8 @@ func (d *Decoder) addHeadOrLineCommentToMap(node ast.Node) {
 		d.addSequenceNodeCommentToMap(sequence)
 		return
 	}
+	d.addEntryLineCommentToMap(node)
+
 	commentGroup := node.GetComment()
 	if commentGroup == nil {
 		return
@@ -649,6 +651,22 @@ func (d *Decoder) addHeadOrLineCommentToMap(node ast.Node) {
 	} else {
 		d.addCommentToMap(commentPath, LineComment(texts[0]))
 	}
+}
+
+// addEntryLineCommentToMap records the comment written on a mapping entry's own
+// ":" line.
+//
+// An entry written the long way keeps it in a slot of its own, since neither
+// the key nor the value can hold it: [ast.MappingValueNode.LineComment]. An
+// entry written the short way puts it on the value, where the walk below finds
+// it.
+func (d *Decoder) addEntryLineCommentToMap(node ast.Node) {
+	entry, ok := node.(*ast.MappingValueNode)
+	if !ok || entry.LineComment == nil || len(entry.LineComment.Comments) == 0 {
+		return
+	}
+
+	d.addCommentToMap(entry.GetPath(), LineComment(entry.LineComment.Comments[0].Token.Value))
 }
 
 func (d *Decoder) addSequenceNodeCommentToMap(node *ast.SequenceNode) {

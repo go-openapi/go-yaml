@@ -197,9 +197,9 @@ func TestAnExplicitEntryKeepsBothComments(t *testing.T) {
 			head:   "#",
 			line:   "#c4",
 		},
-		"the ':' line alone, so the head slot is free": {
+		"the ':' line alone, so the head slot stays empty": {
 			source: "? k\n: # c\n",
-			head:   "# c", // the bridge, until the renderer reads LineComment
+			head:   "", // the renderer reads LineComment, so nothing bridges it
 			line:   "# c",
 		},
 	} {
@@ -208,6 +208,13 @@ func TestAnExplicitEntryKeepsBothComments(t *testing.T) {
 
 			require.NotNil(t, entry.LineComment, "the ':' line comment is not in the tree")
 			assert.Equal(t, tc.line, entry.LineComment.String())
+
+			if tc.head == "" {
+				assert.Nil(t, entry.Comment,
+					"the ':' line comment stands in LineComment alone, not in both slots")
+
+				return
+			}
 
 			require.NotNil(t, entry.Comment, "the head comment is not in the tree")
 			assert.Equal(t, tc.head, entry.Comment.String())
