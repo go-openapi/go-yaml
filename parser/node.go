@@ -66,10 +66,34 @@ func newMappingValueNode(ctx context, colonTk, entryTk *tapeToken, key ast.MapKe
 func newMappingKeyNode(ctx context, tk *tapeToken) (*ast.MappingKeyNode, error) {
 	node := ast.MappingKey(tk.RawToken())
 	node.SetPathNode(ctx.path)
-	if err := setLineComment(ctx, node, tk); err != nil {
-		return nil, err
-	}
+
 	return node, nil
+}
+
+// takeIndicatorComment returns the comment closing the line an explicit key's
+// '?' stands on, and drops it from the index.
+//
+// The token it is recorded against is the bare '?'. stageLineComments runs
+// before anything is grouped, and by the time parseMapKey reaches the key the
+// '?' has been wrapped twice -- once with the body naming the key, and again
+// with the entry's ':' -- so the token handed over is the outer wrapper.
+// Looking the comment up against that found nothing, and "? # c" over "  k"
+// over ": v" came back with no comment at all where "? k # c" keeps one: there
+// the comment closes the key's own line and is recorded against the scalar.
+//
+// A group reports the type it opens with, so a type test cannot tell the
+// wrapper from the '?' it wraps. Only the identity can, which is what the walk
+// down First() follows.
+func takeIndicatorComment(ctx context, tk *tapeToken) *token.Token {
+	for tk != nil && tk.Group != nil && tk.Group.Len() > 0 {
+		first := tk.Group.First()
+		if first == tk || first.Type() != token.MappingKeyType {
+			break
+		}
+		tk = first
+	}
+
+	return ctx.takeLineComment(tk)
 }
 
 func newAnchorNode(ctx context, tk *tapeToken) (*ast.AnchorNode, error) {

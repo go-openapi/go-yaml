@@ -4,6 +4,7 @@
 package parser_test
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/go-openapi/testify/v2/assert"
@@ -249,4 +250,76 @@ func firstMappingEntry(t *testing.T, src string) *ast.MappingValueNode {
 
 		return nil
 	}
+}
+
+// TestACommentAfterTheExplicitKeyIndicatorIsKept: a comment closing the "?"s
+// own line reaches the tree and the rendered text.
+//
+// stageLineComments runs before anything is grouped, so such a comment is
+// recorded against the bare "?" token. By the time parseMapKey reaches the key
+// the "?" has been wrapped twice -- once with the body naming the key, once
+// with the entry's ":" -- and the token handed over is the outer wrapper, so
+// the lookup found nothing. A group reports the type it opens with, which is
+// why a type test cannot tell the two apart and only the identity can.
+//
+// The comment goes on the node the key names, which is where the renderer
+// writes one: "? a # note" already keeps its comment that way, since there the
+// comment closes the scalar's line and is recorded against the scalar. So
+// "? # c" over "  k" comes back as "? k # c", the short spelling's placement,
+// and a key that cannot share its "?"s line keeps the comment where it was.
+//
+// 8.2.2 gives c-l-block-map-explicit-key(n) the shape "?"
+// s-l+block-indented(n,block-out) and s-l-comments sits inside it, so the
+// spelling is the document's to write: grammar.NewRecognizer accepts
+// "? # c" over "  k" over ": v" and the reference parser emits eight events
+// for it.
+func TestACommentAfterTheExplicitKeyIndicatorIsKept(t *testing.T) {
+	for name, tc := range map[string]struct{ source, renders string }{
+		"a scalar key, so the comment moves onto its line": {
+			source:  "? # c\n  k\n: v\n",
+			renders: "? k # c\n: v\n",
+		},
+		"a sequence key, which cannot share the '?'s line": {
+			source:  "? # c\n  - a\n: v\n",
+			renders: "? # c\n  - a\n: v\n",
+		},
+		"a mapping key written the long way": {
+			source:  "? #\n  ? \"\"\n  :\n:\n",
+			renders: "? #\n  ? \"\"\n  :\n:\n",
+		},
+		// The shapes that kept their comment before, so the fix cannot have
+		// moved them.
+		"the comment closing the key's own line": {
+			source:  "? k # c\n: v\n",
+			renders: "? k # c\n: v\n",
+		},
+		"with a value written after it": {
+			source:  "? a # note\n: b\n",
+			renders: "? a # note\n: b\n",
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			f, err := parser.ParseBytes([]byte(tc.source), parser.WithComments())
+			require.NoErrorf(t, err, "%q", tc.source)
+
+			once := f.String()
+			assert.Equal(t, tc.renders, once)
+
+			// It settled in two renderings before, losing the comment on the
+			// second: the first wrote "? #" and the parse of that held none.
+			g, err := parser.ParseBytes([]byte(once), parser.WithComments())
+			require.NoErrorf(t, err, "%q", once)
+			assert.Equalf(t, once, g.String(), "%q renders to %q and then moves", tc.source, once)
+		})
+	}
+
+	// The YAML Test Suite says it too: the document writes eight comments and
+	// seven reached the rendered text.
+	t.Run("a suite document stops losing one", func(t *testing.T) {
+		const src = "? # lala\n - seq1\n: # lala\n - #lala\n  seq2\n"
+
+		f, err := parser.ParseBytes([]byte(src), parser.WithComments())
+		require.NoError(t, err)
+		assert.Equal(t, 3, strings.Count(f.String(), "#"), "%q", f.String())
+	})
 }

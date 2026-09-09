@@ -1376,6 +1376,13 @@ func (p *Parser) parseMapKey(ctx context, g *tokenGroup) (ast.MapKeyNode, error)
 		if err != nil {
 			return nil, err
 		}
+		if cm := takeIndicatorComment(ctx, mapKeyTk); cm != nil {
+			group := ast.CommentGroup([]*token.Token{cm})
+			group.SetPathNode(ctx.path)
+			if err := key.SetComment(group); err != nil {
+				return nil, err
+			}
+		}
 
 		// A "?" stands around the node that addresses the entry, so it goes
 		// over before that node and closes after it -- the shape an anchor and
@@ -1407,6 +1414,25 @@ func (p *Parser) parseMapKey(ctx context, g *tokenGroup) (ast.MapKeyNode, error)
 		scalar, ok := value.(ast.MapKeyNode)
 		if !ok {
 			return nil, yamlerrors.NewSyntax("cannot use this node as a map key", value.GetToken())
+		}
+		// A comment closing the '?'s own line belongs to the key, and the node
+		// the key names is where the renderer writes one: "? a # note" already
+		// keeps its comment that way, since there the comment closes the
+		// scalar's line and is recorded against the scalar. Put on the
+		// MappingKeyNode instead it reached the tree and no renderer wrote it,
+		// so "? # c" over "  k" over ": v" rendered as "? k" over ": v" -- and
+		// the same document one level in, "?" over " #" over " ? \"\"", took two
+		// renderings to settle and lost the comment on the second.
+		//
+		// It moves onto the key's own line: "? # c" over "  k" comes back as
+		// "? k # c", which is where the short spelling puts it.
+		if cm := key.GetComment(); cm != nil && value.GetComment() == nil {
+			if err := key.SetComment(nil); err != nil {
+				return nil, err
+			}
+			if err := value.SetComment(cm); err != nil {
+				return nil, err
+			}
 		}
 		key.Value = scalar
 		if _, isScalar := value.(ast.ScalarNode); isScalar {
