@@ -261,8 +261,11 @@ func TestNoLabelOutrunsItsStyle(t *testing.T) {
 			yamlgen.FeatureTagDirective:    st.TagSpelling == yamlgen.SpellHandle,
 			yamlgen.FeatureNumberSigned:    st.NumberForm == yamlgen.NumberSigned,
 			yamlgen.FeatureNumberHex:       st.NumberForm == yamlgen.NumberHex,
-			yamlgen.FeatureNumberOctal:     st.NumberForm == yamlgen.NumberOctal,
-			yamlgen.FeatureNumberExponent:  st.NumberForm == yamlgen.NumberExponent,
+			// NumberOctal falls back to the leading-zero spelling under 1.1,
+			// which has no "0o" form, and the fallback claims nothing -- so the
+			// label appears only where the bytes hold a "0o".
+			yamlgen.FeatureNumberOctal:    st.NumberForm == yamlgen.NumberOctal && st.Version != "1.1",
+			yamlgen.FeatureNumberExponent: st.NumberForm == yamlgen.NumberExponent,
 			// TimeDate falls back to TimeISO for an instant carrying a clock,
 			// and the fallback claims nothing -- so the label still appears
 			// only under the form that asked for it.

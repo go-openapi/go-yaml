@@ -1220,7 +1220,7 @@ func intText(v int, st Style) (string, NumberForm) {
 	case NumberHex:
 		return "0x" + strconv.FormatInt(int64(v), 16), NumberHex
 	case NumberOctal:
-		return "0o" + strconv.FormatInt(int64(v), 8), NumberOctal
+		return octalText(strconv.FormatInt(int64(v), 8), st)
 	case NumberLeadingZero:
 		return "0" + strconv.Itoa(v), NumberLeadingZero
 	case NumberPlain, NumberExponent:
@@ -1228,6 +1228,25 @@ func intText(v int, st Style) (string, NumberForm) {
 	default:
 		return strconv.Itoa(v), NumberPlain
 	}
+}
+
+// octalText writes octal digits the way the document's version spells them.
+//
+// 1.2 writes "0o37" and has no leading-zero form; 1.1 writes "037" and has no
+// "0o" form -- [Style.Version] says so already. Writing "0o" at both versions
+// put a scalar 1.1 reads as a string under an "!!int" tag, which is a tag
+// naming a type its scalar is not.
+//
+// The 1.1 spelling is what NumberLeadingZero writes, so that is the form
+// reported and FeatureNumberOctal goes unclaimed -- the bytes hold no "0o" to
+// show it. [intText] reports the form it used rather than the one asked for,
+// as it already does for a negative number.
+func octalText(digits string, st Style) (string, NumberForm) {
+	if st.Version == "1.1" {
+		return "0" + digits, NumberLeadingZero
+	}
+
+	return "0o" + digits, NumberOctal
 }
 
 // bigIntText is [intText] for an integer past a machine word.
@@ -1242,7 +1261,7 @@ func bigIntText(v *big.Int, st Style) (string, NumberForm) {
 	case NumberHex:
 		return "0x" + v.Text(16), NumberHex
 	case NumberOctal:
-		return "0o" + v.Text(8), NumberOctal
+		return octalText(v.Text(8), st)
 	case NumberPlain, NumberExponent:
 		return v.String(), NumberPlain
 	default:
@@ -1264,7 +1283,7 @@ func floatText(v float64, st Style) (string, NumberForm) {
 			return "+" + plainFloat(v), NumberSigned
 		}
 	case NumberExponent:
-		return strconv.FormatFloat(v, 'e', -1, 64), NumberExponent
+		return withMantissaPoint(strconv.FormatFloat(v, 'e', -1, 64)), NumberExponent
 	case NumberPlain, NumberHex, NumberOctal:
 	}
 
@@ -1273,7 +1292,32 @@ func floatText(v float64, st Style) (string, NumberForm) {
 
 // bigFloatText is the shortest text that reads back as the same value at the
 // precision a big.Float carries, which is what the library parses it into.
-func bigFloatText(v *big.Float) string { return v.Text('g', -1) }
+func bigFloatText(v *big.Float) string { return withMantissaPoint(v.Text('g', -1)) }
+
+// withMantissaPoint puts a decimal point in a number that has none, so that the
+// text is a float under YAML 1.1 as well as under 1.2.
+//
+// 1.1's float makes the point mandatory -- yaml.org/type/float.html reads
+// "([0-9][0-9_]*)?\.[0-9_]*([eE][-+][0-9]+)?" -- where 1.2 takes an exponent
+// with no point at all. So "1e+330" is a float in a 1.2 document and a string
+// in a 1.1 one, and the generator emitted it under "!!float" at both, where 1.1
+// then has a tag naming a type its scalar is not.
+//
+// Inserting the point is exact: "1e+330" becomes "1.0e+330", the same value
+// spelled a way both schemas read. Re-formatting the number would risk a
+// rounding the generator would blame the library for, which is why the digits
+// are left alone.
+func withMantissaPoint(s string) string {
+	mantissa := s
+	if at := strings.IndexAny(s, "eE"); at >= 0 {
+		mantissa = s[:at]
+	}
+	if strings.Contains(mantissa, ".") {
+		return s
+	}
+
+	return mantissa + ".0" + s[len(mantissa):]
+}
 
 // plainFloat is the decimal spelling, which always carries a point.
 func plainFloat(v float64) string {
