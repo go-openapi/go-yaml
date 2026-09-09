@@ -64,8 +64,10 @@ func TestTheVerbatimDescentFollowsTheDocument(t *testing.T) {
 // descentCeiling is how many documents the verbatim descent may read out of
 // order.
 //
-// A count rather than a ledger, and it is not allowed to rise. Two shapes make
-// up the 23, and both are the tree reporting a token that is not the node's:
+// A count rather than a ledger, and it is not allowed to rise. It was 23 until
+// the parser's explicit-key fixes landed on 2026-09-09 and closed five. Two
+// shapes make up what is left, and both are the tree reporting a token that is
+// not the node's:
 //
 //   - "? []: x" gives a MappingValueNode whose Start is a SequenceStart "[" at
 //     offset 2, where the field holds the ":" that closes a key. Handed over
@@ -80,7 +82,7 @@ func TestTheVerbatimDescentFollowsTheDocument(t *testing.T) {
 // token read out of order was already written with an earlier one. They matter
 // when a node the source does not reach interrupts the copy, which is what the
 // insertion case does.
-const descentCeiling = 23
+const descentCeiling = 18
 
 // TestVerbatimWritesTheDocumentBack renders// TestVerbatimWritesANodeBack checks the per-node half: a node writes the
 // stretch of source it covers, and nothing of its neighbors.
