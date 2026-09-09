@@ -4,7 +4,6 @@
 package yamlgen
 
 import (
-	"fmt"
 	"regexp"
 	"slices"
 	"strings"
@@ -459,74 +458,6 @@ func writesAsABlockScalar(v Value, st Style) bool {
 	return false
 }
 
-func holdsAPropertiedKeyNamedTwoWays(v Value, explicit bool) bool {
-	switch n := v.(type) {
-	case Map:
-		for _, p := range n.Pairs {
-			if namedTwoWays(p.Key, explicit) {
-				return true
-			}
-
-			if holdsAPropertiedKeyNamedTwoWays(p.Key, explicit) ||
-				holdsAPropertiedKeyNamedTwoWays(p.Val, explicit) {
-				return true
-			}
-		}
-	case Seq:
-		return slices.ContainsFunc(n.Items, func(item Value) bool {
-			return holdsAPropertiedKeyNamedTwoWays(item, explicit)
-		})
-	case Anchored:
-		return holdsAPropertiedKeyNamedTwoWays(n.V, explicit)
-	case Alias:
-		return holdsAPropertiedKeyNamedTwoWays(n.V, explicit)
-	case Tagged:
-		return holdsAPropertiedKeyNamedTwoWays(n.V, explicit)
-	}
-
-	return false
-}
-
-// namedTwoWays reports whether a key stands behind a property and is named one
-// thing by KeyText and another by Go's %v of what it decodes to.
-//
-// The long form parts the two spellings. "? &a1 1.0" over ": x" keeps the
-// canonical name where "&a1 1.0: x" loses it, so an anchored key diverges only
-// where the entry is written short; an alias key loses it either way, since
-// "? *a1" over ": v" is named "+Inf" too.
-func namedTwoWays(k Value, explicit bool) bool {
-	var node Value
-
-	switch n := k.(type) {
-	case Anchored:
-		if explicit {
-			return false
-		}
-
-		node = peelProperties(n.V)
-	case Alias:
-		node = peelProperties(n.V)
-	default:
-		return false
-	}
-
-	return KeyText(node) != fmt.Sprintf("%v", node.Decoded())
-}
-
-// peelProperties returns the node an anchor and a tag decorate.
-func peelProperties(v Value) Value {
-	for {
-		switch n := v.(type) {
-		case Anchored:
-			v = n.V
-		case Tagged:
-			v = n.V
-		default:
-			return v
-		}
-	}
-}
-
 // writesABlankLineBeforeAComment reports whether st pads a block scalar with
 // blank lines in a document that also writes comments above its entries.
 func writesABlankLineBeforeAComment(v Value, st Style) bool {
@@ -566,63 +497,6 @@ func holdsAPaddedBlockScalar(v Value, st Style) bool {
 	}
 
 	return false
-}
-
-// writesACommentOnAnExplicitColonLine reports whether st writes an entry the
-// long way, with a line comment, over a value that may go on its own line.
-func writesACommentOnAnExplicitColonLine(v Value, st Style) bool {
-	if !writesAnExplicitKey(v, st) || (st.Comments != LineComments && st.Comments != AllComments) {
-		return false
-	}
-
-	return holdsAValueBelowItsColon(v, st)
-}
-
-func holdsAValueBelowItsColon(v Value, st Style) bool {
-	switch n := v.(type) {
-	case Map:
-		for _, p := range n.Pairs {
-			if goesOnItsOwnLine(p.Val, st) || holdsAValueBelowItsColon(p.Val, st) {
-				return true
-			}
-		}
-	case Seq:
-		return slices.ContainsFunc(n.Items, func(item Value) bool {
-			return holdsAValueBelowItsColon(item, st)
-		})
-	case Anchored:
-		return holdsAValueBelowItsColon(n.V, st)
-	case Alias:
-		return holdsAValueBelowItsColon(n.V, st)
-	case Tagged:
-		return holdsAValueBelowItsColon(n.V, st)
-	}
-
-	return false
-}
-
-// goesOnItsOwnLine reports the values that leave the ":" line empty behind
-// them: a collection with something in it, a block scalar, and a null the style
-// spells as nothing at all.
-func goesOnItsOwnLine(v Value, st Style) bool {
-	switch n := v.(type) {
-	case Null:
-		return st.NullSpelling == ""
-	case Seq:
-		return len(n.Items) > 0
-	case Map:
-		return len(n.Pairs) > 0
-	case Str:
-		return blockScalarIn(n.V, st)
-	case Anchored:
-		return goesOnItsOwnLine(n.V, st)
-	case Alias:
-		return goesOnItsOwnLine(n.V, st)
-	case Tagged:
-		return goesOnItsOwnLine(n.V, st)
-	default:
-		return false
-	}
 }
 
 // Known returns the ledger entry describing this pairing for the given
@@ -707,49 +581,6 @@ func writesAMergeKeyTheLongWay(v Value, st Style) bool {
 // merge to suppress.
 func writesATabBesideAMergeKey(v Value, st Style) bool {
 	return st.Version == Reading11Version && st.TabSeparation && holdsAMergeKey(v)
-}
-
-// writesAnExplicitKeyInsideAnExplicitKey reports whether a mapping stands as a
-// key while the style writes every entry the long way.
-//
-// Both halves are needed. A collection key takes the explicit form whatever the
-// style says, so the outer "?" is always there; the inner one is
-// Style.ExplicitKeys, which decides how the mapping *inside* the key is written.
-// A sequence key nests no "?" and reads correctly.
-func writesAnExplicitKeyInsideAnExplicitKey(v Value, st Style) bool {
-	return writesAnExplicitKey(v, st) && holdsAMappingAsAKey(v)
-}
-
-// holdsAMappingAsAKey reports whether a mapping stands as a mapping's key.
-//
-// peelProperties, because a key carries an anchor and a tag like any other node
-// since the tagger and the aliaser began walking keys: "&a1 !!map" over a
-// mapping is the same key node as the mapping alone, and asking the type
-// directly missed it. TestEmitParses found that on the first draw of the new
-// axis, reporting a parser fault where the ledger already held the shape.
-func holdsAMappingAsAKey(v Value) bool {
-	switch n := v.(type) {
-	case Map:
-		for _, p := range n.Pairs {
-			if _, isMap := peelProperties(p.Key).(Map); isMap {
-				return true
-			}
-
-			if holdsAMappingAsAKey(p.Key) || holdsAMappingAsAKey(p.Val) {
-				return true
-			}
-		}
-	case Seq:
-		return slices.ContainsFunc(n.Items, holdsAMappingAsAKey)
-	case Anchored:
-		return holdsAMappingAsAKey(n.V)
-	case Alias:
-		return holdsAMappingAsAKey(n.V)
-	case Tagged:
-		return holdsAMappingAsAKey(n.V)
-	}
-
-	return false
 }
 
 // writesACollectionKeyUnderAHeadComment reports whether a collection key is
