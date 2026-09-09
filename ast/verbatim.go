@@ -9,6 +9,71 @@ import (
 	"github.com/go-openapi/go-yaml/token"
 )
 
+// Written is one stretch of a rendering, handed to the function [WithTransform]
+// installed before it goes to the writer.
+//
+// A rendering is a run of these and nothing else, so a function that writes
+// every Text through changes nothing.
+type Written struct {
+	// Text is the stretch about to be written.
+	Text []byte
+	// Node is what the renderer is writing, or nil for the source standing
+	// between two nodes: the indentation, a flow collection's commas, a "---".
+	Node Node
+	// Token is the token Text was cut from, and nil where Text is not a token:
+	// the space before one, or text the renderer laid out for a node the source
+	// does not reach.
+	Token *token.Token
+	// FromSource says Text is the document's own bytes. It is false for a node
+	// a caller inserted, which the renderer lays out.
+	FromSource bool
+}
+
+// Trimmed returns Text without the run of spaces and line breaks at its end.
+//
+// A token's text runs to where the next one starts, so a token the scanner read
+// past carries what followed it. A transform that wraps text -- a colorizer, a
+// marker -- wants the token and not the gap after it, or the wrapping runs to
+// the end of the line and past the break.
+//
+// ⚠️ A block scalar's body ends in the line break the document wrote, and this
+// cuts it. Use it to decide what to wrap, not to rebuild the document.
+func (s Written) Trimmed() []byte {
+	end := len(s.Text)
+	for end > 0 {
+		switch s.Text[end-1] {
+		case ' ', '\t', '\n', '\r':
+			end--
+		default:
+			return s.Text[:end]
+		}
+	}
+
+	return s.Text[:0]
+}
+
+// Filler returns what Trimmed cut: the spaces and line breaks between this
+// stretch's text and the next.
+func (s Written) Filler() []byte {
+	return s.Text[len(s.Trimmed()):]
+}
+
+// TransformFunc writes one stretch of a rendering.
+//
+// Writing s.Text is what the renderer would have done. Writing anything else is
+// the transform: [github.com/go-openapi/go-yaml/transform/colorize] wraps the
+// text of a node in escapes and passes everything else through.
+type TransformFunc func(w io.Writer, s Written) error
+
+// WithTransform hands each stretch of a rendering to fn instead of writing it.
+//
+// ⚠️ It applies to [Renderer.Verbatim] and [Renderer.VerbatimFile]. The
+// depth-driven renderer builds its text before it knows where any of it goes,
+// so there is no stretch to hand over.
+func WithTransform(fn TransformFunc) RenderOption {
+	return func(r *Renderer) { r.transform = fn }
+}
+
 // WithSource gives a renderer the document a tree was parsed from, which is what
 // [Renderer.Verbatim] writes back out.
 //
@@ -154,6 +219,7 @@ func walkSourceTokens(n Node, fn func(*token.Token)) {
 // verbatimWriter copies the source forward, never back.
 type verbatimWriter struct {
 	w   io.Writer
+	fn  TransformFunc
 	src []byte
 	// cursor is how far the copy of the source has reached.
 	cursor int
@@ -181,9 +247,47 @@ func (vw *verbatimWriter) upTo(end int) {
 	}
 
 	written := vw.src[vw.cursor:end]
-	_, vw.err = vw.w.Write(written)
 	vw.cursor = end
-	vw.note(string(written))
+	vw.hand(Written{Text: written, FromSource: true})
+}
+
+// upToToken writes the source as far as tk, handing the space in front of it
+// over separately from the token's own text.
+//
+// A caller coloring a document wants the two apart: the indentation before a
+// token is not the token, and wrapping it would paint the start of the line.
+func (vw *verbatimWriter) upToToken(tk *token.Token, n Node) {
+	if vw.err != nil || tk == nil {
+		return
+	}
+
+	at := min(max(int(tk.Position.Offset()), vw.cursor), len(vw.src))
+	end := min(max(int(tk.EndOffset()), at), len(vw.src))
+	if at > vw.cursor {
+		lead := vw.src[vw.cursor:at]
+		vw.cursor = at
+		vw.hand(Written{Text: lead, FromSource: true})
+	}
+	if end > vw.cursor {
+		text := vw.src[vw.cursor:end]
+		vw.cursor = end
+		vw.hand(Written{Text: text, Node: n, Token: tk, FromSource: true})
+	}
+}
+
+// hand gives one stretch to the transform, or writes it where there is none.
+func (vw *verbatimWriter) hand(s Written) {
+	if vw.err != nil || len(s.Text) == 0 {
+		return
+	}
+	vw.note(string(s.Text))
+
+	if vw.fn == nil {
+		_, vw.err = vw.w.Write(s.Text)
+
+		return
+	}
+	vw.err = vw.fn(vw.w, s)
 }
 
 // note records what the last byte written was.
@@ -200,8 +304,7 @@ func (vw *verbatimWriter) raw(text string) {
 	if vw.err != nil || text == "" {
 		return
 	}
-	_, vw.err = io.WriteString(vw.w, text)
-	vw.note(text)
+	vw.hand(Written{Text: []byte(text)})
 }
 
 // indentAt is the indentation the line holding from opens with, taken from the
@@ -238,70 +341,117 @@ func (r *Renderer) write(vw *verbatimWriter, n Node) {
 		return
 	}
 
+	span := sourceExtent(n)
+	r.writeComments(vw, n, span, true)
+	defer r.writeComments(vw, n, span, false)
+
 	switch v := n.(type) {
 	case *DocumentNode:
-		r.writeToken(vw, v.Start)
+		r.writeTokenOf(vw, v.Start, v)
 		r.write(vw, v.Body)
-		r.writeToken(vw, v.End)
+		r.writeTokenOf(vw, v.End, v)
 	case *MappingNode:
 		if v.IsFlowStyle {
-			r.writeToken(vw, v.Start)
+			r.writeTokenOf(vw, v.Start, v)
 		}
 		for i, entry := range v.Values {
 			r.writeEntry(vw, entry, mappingSiblings(v.Values), i)
 		}
 		if v.IsFlowStyle {
-			r.writeToken(vw, v.End)
+			r.writeTokenOf(vw, v.End, v)
 		}
 	case *MappingValueNode:
-		r.writeToken(vw, v.CollectEntry)
+		r.writeTokenOf(vw, v.CollectEntry, v)
 		r.write(vw, v.Key)
-		r.writeToken(vw, v.Start)
+		r.writeTokenOf(vw, v.Start, v)
 		r.write(vw, v.Value)
 	case *MappingKeyNode:
-		r.writeToken(vw, v.Start)
+		r.writeTokenOf(vw, v.Start, v)
 		r.write(vw, v.Value)
 	case *SequenceNode:
 		if v.IsFlowStyle {
-			r.writeToken(vw, v.Start)
+			r.writeTokenOf(vw, v.Start, v)
 		}
 		for i, value := range v.Values {
 			if !v.IsFlowStyle && i < len(v.Entries) && v.Entries[i] != nil {
-				r.writeToken(vw, v.Entries[i].Start)
+				r.writeTokenOf(vw, v.Entries[i].Start, v)
 			}
 			r.writeEntry(vw, value, sliceSiblings(v.Values), i)
 		}
 		if v.IsFlowStyle {
-			r.writeToken(vw, v.End)
+			r.writeTokenOf(vw, v.End, v)
 		}
 	case *AnchorNode:
-		r.writeToken(vw, v.Start)
+		r.writeTokenOf(vw, v.Start, v)
 		r.write(vw, v.Name)
 		r.write(vw, v.Value)
 	case *AliasNode:
-		r.writeToken(vw, v.Start)
+		r.writeTokenOf(vw, v.Start, v)
 		r.write(vw, v.Value)
 	case *TagNode:
-		r.writeToken(vw, v.Start)
+		r.writeTokenOf(vw, v.Start, v)
 		r.write(vw, v.Value)
 	case *LiteralNode:
-		r.writeToken(vw, v.Start)
+		r.writeTokenOf(vw, v.Start, v)
 		r.write(vw, v.Value)
 	case *DirectiveNode:
-		r.writeToken(vw, v.Start)
+		r.writeTokenOf(vw, v.Start, v)
 		r.write(vw, v.Name)
 		for _, value := range v.Values {
 			r.write(vw, value)
 		}
 	default:
-		r.writeToken(vw, n.GetToken())
+		r.writeTokenOf(vw, n.GetToken(), n)
 	}
 }
 
 func (r *Renderer) writeToken(vw *verbatimWriter, tk *token.Token) {
-	if tk != nil && tk.FromSource() {
-		vw.upTo(int(tk.EndOffset()))
+	r.writeTokenOf(vw, tk, nil)
+}
+
+// writeComments hands over the comments a node carries, before its own text
+// where they stand above it and after where they stand beside it.
+//
+// A comment is written out with the token that follows it whether or not it is
+// handed over, since the copy moves forward and the source between two tokens
+// goes with the second. Handing it over separately is what lets a transform
+// know it is a comment: a colorizer that could not would leave every comment in
+// a document uncolored, and comments are the first thing anyone looks at.
+func (r *Renderer) writeComments(vw *verbatimWriter, n Node, span extent, above bool) {
+	if vw.fn == nil || vw.err != nil {
+		return
 	}
+	group := n.GetComment()
+	if group == nil {
+		return
+	}
+
+	for _, comment := range group.Comments {
+		tk := comment.GetToken()
+		if tk == nil || !tk.FromSource() || int(tk.Position.Offset()) < vw.cursor {
+			continue
+		}
+		// A comment above the node comes before its first token, one beside it
+		// after its last. Either is written when the copy reaches it and never
+		// before, so the one that has not been reached yet waits.
+		if span.found() && (tk.Position.Offset() < span.from) != above {
+			continue
+		}
+		vw.upToToken(tk, comment)
+	}
+}
+
+// writeTokenOf writes a token and says which node it belongs to.
+func (r *Renderer) writeTokenOf(vw *verbatimWriter, tk *token.Token, n Node) {
+	if tk == nil || !tk.FromSource() {
+		return
+	}
+	if vw.fn == nil {
+		vw.upTo(int(tk.EndOffset()))
+
+		return
+	}
+	vw.upToToken(tk, n)
 }
 
 // writeEntry puts out one entry of a collection, whether the document holds it
@@ -417,7 +567,7 @@ func (r *Renderer) Verbatim(w io.Writer, n Node) error {
 		return nil
 	}
 
-	vw := &verbatimWriter{w: w, src: r.src, cursor: int(span.from)}
+	vw := &verbatimWriter{w: w, fn: r.transform, src: r.src, cursor: int(span.from)}
 	r.write(vw, n)
 	vw.upTo(int(span.to))
 
@@ -431,7 +581,7 @@ func (r *Renderer) VerbatimFile(w io.Writer, f *File) error {
 		return nil
 	}
 
-	vw := &verbatimWriter{w: w, src: r.src}
+	vw := &verbatimWriter{w: w, fn: r.transform, src: r.src}
 	for _, doc := range f.Docs {
 		r.write(vw, doc)
 	}

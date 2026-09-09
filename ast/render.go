@@ -80,6 +80,9 @@ type Renderer struct {
 	// src is the document a tree was parsed from, for [Renderer.Verbatim]. It
 	// is nil unless [WithSource] was passed.
 	src []byte
+	// transform is handed each stretch of a verbatim rendering, and is nil
+	// unless [WithTransform] was passed.
+	transform TransformFunc
 }
 
 // defaultRenderer and bareRenderer back the String methods of the composite
