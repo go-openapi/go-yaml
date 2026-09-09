@@ -1639,6 +1639,33 @@ type Token struct {
 	Type Type
 }
 
+// FromSource reports whether the scanner cut this token from a document.
+//
+// A token built by hand or by the encoder answers false, and it cannot be told
+// apart any other way: [github.com/go-openapi/go-yaml/codec.ValueToNode] gives
+// every node a token at line 1, column 1, offset 0, which is exactly what a
+// real token at the start of a document reports. A reader that writes a
+// document back as it was written needs to know which of the two it holds.
+func (t *Token) FromSource() bool {
+	if t == nil {
+		return false
+	}
+
+	return t.spans>>fromSourceShift&1 != 0
+}
+
+// MarkFromSource records that this token was cut from a document.
+//
+// The scanner calls it at the one place every token it reads passes through.
+// Nothing else should: a token that claims a source it does not have is one a
+// verbatim reader will try to place by a position that means nothing.
+func (t *Token) MarkFromSource() {
+	if t == nil {
+		return
+	}
+	t.spans |= 1 << fromSourceShift
+}
+
 // TextBytes returns s as bytes without copying it.
 //
 // The bytes are the string's own. A Go string is immutable, and a token's text
@@ -2239,20 +2266,28 @@ func isBlank(c byte) bool { return c == ' ' || c == '\t' || c == '\r' || c == '\
 // The token's packed spans, from the low bit: EndLine in 32, CommentBreaksAbove
 // in 16, TrailingBreaks in 15, BlankLineAbove in 1.
 //
-// Four numbers in one field rather than four, because a call passes nine
-// registers and Go counts a struct's fields rather than its words.
+// Five facts in one field rather than five, because a call passes nine
+// registers, Go counts a struct's fields rather than its words, and
+// Scanner.NextToken returns a token and a bool -- so the token has eight and
+// the bool has the ninth. A field of its own for any of these puts the bool on
+// the stack, which TestTokenFitsTheRegisterABI holds the line on.
+//
+// TrailingBreaks gives up a bit to FromSource and now counts to 16,383 rather
+// than 32,767, clamping above that as it always has. A token followed by more
+// than sixteen thousand blank lines is not a document anyone wrote.
 const (
 	endLineBits  = 32
 	commentBits  = 16
-	trailingBits = 15
+	trailingBits = 14
 
 	endLineMask  = 1<<endLineBits - 1
 	commentMask  = 1<<commentBits - 1
 	trailingMask = 1<<trailingBits - 1
 
-	commentShift   = endLineBits
-	trailingShift  = endLineBits + commentBits
-	blankLineShift = endLineBits + commentBits + trailingBits
+	commentShift    = endLineBits
+	trailingShift   = endLineBits + commentBits
+	blankLineShift  = endLineBits + commentBits + trailingBits
+	fromSourceShift = blankLineShift + 1
 )
 
 // EndLine is the line the token's text ends on, counting from 1 as
@@ -2280,7 +2315,7 @@ func (t Token) CommentBreaksAbove() int32 {
 // BlankLineAbove reports whether the author left an empty line above this
 // token. The renderer writes one back where it finds one, which is how a
 // document keeps the spacing it was written with.
-func (t Token) BlankLineAbove() bool { return t.spans>>blankLineShift != 0 }
+func (t Token) BlankLineAbove() bool { return t.spans>>blankLineShift&1 != 0 }
 
 // TrailingBreaks counts the line breaks the whitespace after the token takes
 // up, before whatever is written next.

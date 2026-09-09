@@ -198,6 +198,9 @@ func (c *Context) addToken(tk *token.Token) {
 // A caller building a token only to hand it over should call [token.MakeLiteral] and its kind.
 // The [token.Literal] form puts the token on the heap for a value that is copied and dropped.
 func (c *Context) addTokenValue(tk token.Token) {
+	// Every token the scanner reads passes through here, which is what makes
+	// this the one place the mark can be set without a path missing it.
+	tk.MarkFromSource()
 	c.lookback.Derive(&tk)
 	c.recordToken(&tk)
 
