@@ -3097,6 +3097,19 @@ func (p *Parser) parseSequenceValue(ctx context, seqTk *tapeToken) (ast.Node, er
 }
 
 func (p *Parser) parseDirective(ctx context, g *tokenGroup) (*ast.DirectiveNode, error) {
+	// A directive's name and arguments belong to the directive. They are not
+	// nodes of the document -- 6.8 makes a directive an instruction to the
+	// processor and puts it outside the node graph -- so nothing built here
+	// goes over to a walk on its own account. The DirectiveNode does, from the
+	// caller, and a walk skips it there.
+	//
+	// "%&AML 1.2" cuts "&AML" as an anchor group, and parseScalarValue below
+	// builds an anchor from it. Handed over, that anchor arrived at depth 0
+	// before the directive did and the walk took it for the document's root:
+	// `%&AML 1.2` over `---` over `k: v` walked to 1.2 and the mapping was
+	// gone, where the tree read it correctly.
+	defer p.quiet()()
+
 	directiveNameGroup := g.First().Group
 	directive, err := p.parseDirectiveName(ctx.withGroup(p, directiveNameGroup))
 	if err != nil {
@@ -3172,6 +3185,14 @@ func (p *Parser) parseDirective(ctx context, g *tokenGroup) (*ast.DirectiveNode,
 }
 
 func (p *Parser) parseDirectiveName(ctx context) (*ast.DirectiveNode, error) {
+	// The name is read the same way whichever group reached here, so the quiet
+	// is taken again: emitDirective wraps a TokenGroupDirective only where the
+	// directive carries values of its own, and "%&AML 1.2" carries none --
+	// stageProperties runs before stageDirectives and had already folded the
+	// "1.2" into the anchor group. So that one arrives as a bare
+	// TokenGroupDirectiveName and never passes through parseDirective.
+	defer p.quiet()()
+
 	directive, err := newDirectiveNode(ctx, ctx.currentToken())
 	if err != nil {
 		return nil, err
