@@ -38,7 +38,7 @@ import (
 // removeRightSpaceFromBuf cut the space closing "&a1 " off the origin and the extent was taken from what was left.
 // cursor.originTrimmed counts those bytes back into the end.
 //
-// None of the seven is recorded by offsetMissLedger, and the overlap was measured rather than assumed. That ledger
+// None of the six is recorded by offsetMissLedger, and the overlap was measured rather than assumed. That ledger
 // reads a token's text back through the extents, so a token whose extent breaks gets an empty origin and is skipped.
 // Six of the 402 test suite documents break the extents, and in every one the break falls on the last token, so no
 // token downstream of a break has its origin shifted. Six tokens are invisible to offsetMissLedger for that reason,
@@ -58,7 +58,7 @@ import (
 // text itself, so growing the corpus adds an entry only when a document that breaks the tiling is genuinely new.
 //
 // Three things move when the scanner is fixed, not two. transform.Walk clamps an extent into the document rather
-// than refusing it, in walker.extent, so the seven still rebuild byte for byte: the bytes past the end are not there
+// than refusing it, in walker.extent, so the six still rebuild byte for byte: the bytes past the end are not there
 // to write. Emptying this ledger raises offsetMissLedger's String count and leaves that clamp guarding nothing, so
 // the entry, the count and the clamp go in one window. A clamp still standing after this ledger empties is dead code
 // hiding a fixed bug.
