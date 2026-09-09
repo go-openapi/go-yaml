@@ -256,8 +256,9 @@ type placement struct {
 	disturbed  int
 }
 
-// insertionCensus holds what each position measures. tested may not fall, and
-// unreadable and disturbed may not rise.
+// insertionCensus holds what each position measures. tested may not fall; the
+// other two are held exactly while it stands still and capped while it grows,
+// which is what mustHold does.
 //
 // What still fails are shapes the placement does not reach: a mapping standing
 // as the key of an explicit "?" pair, one written compactly after a "-", and
@@ -336,24 +337,40 @@ func TestInsertingIntoTheCorpus(t *testing.T) {
 			require.GreaterOrEqualf(t, tried, recorded.tested,
 				"%d documents reach the insertion where %d did: fewer documents are being measured, which is the harness or the parser and not the placement",
 				tried, recorded.tested)
-			require.LessOrEqualf(t, unreadable, recorded.unreadable,
-				"%d of %d documents no longer parse, recorded %d of %d -- %s",
-				unreadable, tried, recorded.unreadable, recorded.tested, whatMoved(tried, recorded.tested))
-			require.LessOrEqualf(t, disturbed, recorded.disturbed,
-				"%d of %d documents changed a line the caller did not touch, recorded %d of %d -- %s",
-				disturbed, tried, recorded.disturbed, recorded.tested, whatMoved(tried, recorded.tested))
+			mustHold(t, "the count of documents that no longer parse",
+				unreadable, recorded.unreadable, tried, recorded.tested)
+			mustHold(t, "the count of documents that changed a line the caller did not touch",
+				disturbed, recorded.disturbed, tried, recorded.tested)
 		})
 	}
 }
 
-// whatMoved says whether the corpus moved under a count that failed, so the
-// failure reads as a verdict rather than as a number to go and look up.
-func whatMoved(tested, recorded int) string {
-	if tested != recorded {
-		return "the corpus moved as well, so re-measure before reading this as a regression"
+// mustHold checks a measured count against the recorded one: exactly where the
+// same documents were measured, and as a ceiling where more were.
+//
+// The exact side is the ratchet. A ceiling alone passes when a count falls, so
+// the fix that took appending from 86 unreadable to 13 would have left 86
+// standing and over-stating the defect from then on. Where the denominator moved
+// a fall cannot be read -- fewer failures over more documents says nothing by
+// itself -- so a ceiling is the honest bound there rather than a compromise.
+//
+// Exact in both directions everywhere would go red on every parser fix that
+// accepts one more document, and a guard that fails on good news gets its
+// numbers bumped without being read.
+func mustHold(t *testing.T, what string, got, recorded, tested, testedRecorded int) {
+	t.Helper()
+
+	if tested == testedRecorded {
+		require.Equalf(t, recorded, got,
+			"the same %d documents were measured and %s moved from %d to %d: nothing but the renderer can have done that, so record the new number",
+			tested, what, recorded, got)
+
+		return
 	}
 
-	return "the same documents were measured, so this is the placement"
+	require.LessOrEqualf(t, got, recorded,
+		"%s is %d of %d where %d of %d was recorded: the corpus moved as well, so re-measure before reading this as a regression",
+		what, got, tested, recorded, testedRecorded)
 }
 
 const corpusMarker = "x-mark-9"

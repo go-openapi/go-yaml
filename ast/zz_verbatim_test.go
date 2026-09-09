@@ -120,8 +120,8 @@ func TestVerbatimWritesANodeBack(t *testing.T) {
 // The denominator is recorded with the count because a count on its own cannot
 // say whether the descent changed or the set of accepted documents did. tested
 // follows the parser: a fix that accepts one more suite document adds it here
-// with the renderer standing still. unlabeled follows the descent, and may not
-// rise while tested holds.
+// with the renderer standing still. unlabeled follows the descent, and is held
+// exactly while tested stands still.
 //
 // The ten are comments and trailing whitespace: spec-example-6-9-separated-comment,
 // various-trailing-comments, trailing-whitespace-in-streams/00 and their kind.
@@ -221,9 +221,8 @@ func TestVerbatimRebuildsEveryDocument(t *testing.T) {
 	require.GreaterOrEqualf(t, suiteN, unlabeledSuite.tested,
 		"%d suite documents are measured where %d were: fewer are accepted than were, so re-measure before reading the count below",
 		suiteN, unlabeledSuite.tested)
-	require.LessOrEqualf(t, suiteUnlabeled, unlabeledSuite.unlabeled,
-		"a token arrives unlabeled in %d of %d suite documents, recorded %d of %d: %v",
-		suiteUnlabeled, suiteN, unlabeledSuite.unlabeled, unlabeledSuite.tested, unlabeled)
+	mustHold(t, "the count of suite documents holding a token that arrives unlabeled",
+		suiteUnlabeled, unlabeledSuite.unlabeled, suiteN, unlabeledSuite.tested)
 }
 
 // TestVerbatimKeepsWhatARebuildFromValuesWouldLose pins the four distortions

@@ -94,10 +94,30 @@ func TestNoCommentIsReadAndThenDropped(t *testing.T) {
 	require.GreaterOrEqualf(t, accepted, commentedDocuments,
 		"%d accepted documents hold a comment where %d did: fewer are being measured, so re-measure before reading the counts below as the parse losing less",
 		accepted, commentedDocuments)
-	require.LessOrEqualf(t, stale, int64(staleCommentCeiling),
-		"comments staged and never taken rose to %d over %d documents, recorded %d over %d",
-		stale, accepted, staleCommentCeiling, commentedDocuments)
-	require.LessOrEqualf(t, overwrote, int64(overwroteHeadCeiling),
-		"head comments written over rose to %d over %d documents, recorded %d over %d",
-		overwrote, accepted, overwroteHeadCeiling, commentedDocuments)
+	mustHold(t, "comments staged and never taken", stale, staleCommentCeiling, accepted, commentedDocuments)
+	mustHold(t, "head comments written over", overwrote, overwroteHeadCeiling, accepted, commentedDocuments)
+}
+
+// mustHold checks a measured count against the recorded one: exactly where the
+// same documents were measured, and as a ceiling where more were.
+//
+// The exact side is the ratchet. A ceiling alone passes when a count falls, so a
+// fix that stops the parse dropping a comment would leave the old number
+// standing and over-stating the loss from then on. Where the denominator moved a
+// fall cannot be read -- fewer losses over more documents says nothing by itself
+// -- so a ceiling is the honest bound there.
+func mustHold(t *testing.T, what string, got int64, recorded, accepted, acceptedRecorded int) {
+	t.Helper()
+
+	if accepted == acceptedRecorded {
+		require.Equalf(t, int64(recorded), got,
+			"the same %d documents were measured and %s moved from %d to %d: nothing but the parse can have done that, so record the new number",
+			accepted, what, recorded, got)
+
+		return
+	}
+
+	require.LessOrEqualf(t, got, int64(recorded),
+		"%s is %d over %d documents where %d over %d was recorded: the corpus moved as well, so re-measure before reading this as a regression",
+		what, got, accepted, recorded, acceptedRecorded)
 }
