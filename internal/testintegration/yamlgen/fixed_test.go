@@ -2912,3 +2912,56 @@ func TestFixedAKeyBelowItsIndicatorKeepsItsIndentation(t *testing.T) {
 		}
 	})
 }
+
+// TestFixedADocumentSuffixReadsLikeAMarker: a "..." suffix followed by a bare
+// document whose root is a block scalar carrying an anchor or a tag reads the
+// same as the "---" spelling of the same stream.
+//
+// Two symptoms, one cause. scanDocumentStart cleared the scanner's indentation
+// state for a "---" and scanDocumentEnd did not for a "...", so
+// Scanner.lastDelimColumn crossed the marker: the next document's block scalar
+// measured its content against whatever enclosed the node before it. With an
+// indentation indicator a column of the content went missing; without one a
+// valid stream was refused outright.
+//
+// A property in front of the header is what shows it, because a header at
+// column 1 zeroes lastDelimColumn on its own -- "..." over "|2-" was right all
+// along and "..." over "&a1 |2-" was not.
+//
+// The reference parser settles the content question and it agrees with the
+// fix: "=VAL &a1 |  x" for both spellings. Do not reach for libfyaml or
+// go.yaml.in/yaml/v3 here -- both strip a column from every root block scalar
+// with an indicator, so they agree with each other and with neither the
+// grammar nor the specification.
+func TestFixedADocumentSuffixReadsLikeAMarker(t *testing.T) {
+	t.Run("the two spellings read alike", func(t *testing.T) {
+		for _, tc := range []struct{ suffix, marker, reads string }{
+			{"a: 1\n...\n&a1 |2-\n  \n", "a: 1\n---\n&a1 |2-\n  \n", " "},
+			{"a: 1\n...\n!!str |2-\n  x\n", "a: 1\n---\n!!str |2-\n  x\n", " x"},
+			{"a: 1\n...\n&a1 |2-\n   x\n", "a: 1\n---\n&a1 |2-\n   x\n", "  x"},
+			{"&a3 a: 1\n...\n&a1 >-\n -\n", "&a3 a: 1\n---\n&a1 >-\n -\n", "-"},
+			// A header at column 1 was right before the fix and still is.
+			{"a: 1\n...\n|2-\n  \n", "a: 1\n---\n|2-\n  \n", " "},
+			// The enclosing indentation of the document before the marker is
+			// what used to cross it, so a nested one is worth a case.
+			{"a:\n  b: 1\n...\n&a1 |2-\n   x\n", "a:\n  b: 1\n---\n&a1 |2-\n   x\n", "  x"},
+		} {
+			wellFormed(t, tc.suffix)
+
+			assert.Equalf(t, tc.reads, secondDocument(t, tc.suffix), "%q", tc.suffix)
+			assert.Equalf(t, tc.reads, secondDocument(t, tc.marker), "%q", tc.marker)
+		}
+	})
+
+	// The shapes that read before, kept so a fix here cannot quietly move them.
+	t.Run("one anchor, or a plain scalar, read as they did", func(t *testing.T) {
+		for _, src := range []string{
+			"a: 1\n...\n&a1 >-\n -\n",
+			"&a3 a: 1\n...\n>-\n -\n",
+			"&a3 a: 1\n...\n&a1 x\n",
+		} {
+			_, err := parser.ParseBytes([]byte(src), parser.WithComments())
+			assert.NoErrorf(t, err, "%q", src)
+		}
+	})
+}

@@ -86,6 +86,14 @@ func (s *Scanner) scanDocumentEnd(ctx *Context) bool {
 	ctx.addTokenValue(token.MakeDocumentEnd(ctx.origin()+endDocMarker, s.pos()))
 	s.progressColumn(ctx, 3)
 	ctx.clear()
+	// A "..." closes the document, so what enclosed the node before it encloses
+	// nothing after it -- the same reason scanDocumentStart clears the state for
+	// a "---". Left standing, lastDelimColumn crossed the marker and the next
+	// document's block scalar measured its content against it: "a: 1" over
+	// "..." over "&a1 |2-" over "   x" read " x" where the "---" spelling reads
+	// "  x". It showed only with a property in front of the header, since a
+	// header at column 1 zeroes lastDelimColumn on its own.
+	s.clearState()
 
 	return true
 }

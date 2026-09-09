@@ -66,13 +66,13 @@ var stateLedger = map[string]disagreement{ //nolint:gochecknoglobals // ok to st
 	// store for every character written.
 	// Inside a block scalar it could not: the two sites that rewrite the buffer set it outright, keeping the space that
 	// folds a line and dropping the tab that ends one, and no scan of the bytes tells those apart from content.
-	// 2 of 2,742 re-baselined 2026-09-08, from 3 of 1,348 measured 2026-09-07.
-	"buf.notSpaceCharPos==trimmed/plain": {0, 318110},
-	"buf.notSpaceCharPos==trimmed/block": {2, 2742},
+	// 2 of 2,743 re-baselined 2026-09-09, from 2 of 2,742 on 2026-09-08 and 3 of 1,348 on 2026-09-07.
+	"buf.notSpaceCharPos==trimmed/plain": {0, 318044},
+	"buf.notSpaceCharPos==trimmed/block": {2, 2743},
 
 	// A mark past the end of the buffer made bufferedSrc slice a byte the last token wrote.
 	// Fixed; nothing may raise this.
-	"buf.notSpaceCharPos<=len(buf)": {0, 320852},
+	"buf.notSpaceCharPos<=len(buf)": {0, 320787},
 
 	// Both entries count a space opening a line where indentNum has stopped tracking the column. They have different
 	// causes, and only the second is a surprise.
@@ -95,8 +95,8 @@ var stateLedger = map[string]disagreement{ //nolint:gochecknoglobals // ok to st
 	"indent.indentNum==column-1/spaces": {6, 30348},
 
 	// The indent level a token was given and the level the scanner stands at part company where a block opens, so the
-	// two are not a redundant pair. 5,400 of 158,692, from 4,213 of 129,685, 2,729 of 83,807, 2,793 of 69,177 and
-	// 3,000 of 76,279 before that.
+	// two are not a redundant pair. 5,398 of 158,695, from 5,399 of 158,692, 4,213 of 129,685, 2,729 of 83,807,
+	// 2,793 of 69,177 and 3,000 of 76,279 before that.
 	//
 	// Read the ratio, not the count. 3.40%, against 3.25% over a corpus 22% smaller, and 4.0% when the corpus was
 	// 69,177 pos() calls. The ratio has moved over a range of 0.75 points across five regenerations while the count
@@ -104,9 +104,14 @@ var stateLedger = map[string]disagreement{ //nolint:gochecknoglobals // ok to st
 	// change. 3.25% -> 3.40% is inside that range and no scanner change accounts for it: the corpus artifact is
 	// byte-identical across every commit from b120b7b to master.
 	//
+	// This is the first move of the four that a scanner change does account for, and it is one disagreement fewer
+	// on the same corpus: scanDocumentEnd clears the indentation state now, as scanDocumentStart always has, so the
+	// level a token is given no longer carries across a "...". 3.4022% -> 3.4013%, which is the ratio holding while
+	// the count falls -- the direction the ledger says an entry may come down for.
+	//
 	// A count re-baselined without the ratio beside it says nothing about whether the scanner changed, which is why
 	// the ledger records the denominator.
-	"indent.lastIndentLevel==indentLevel": {5399, 158692},
+	"indent.lastIndentLevel==indentLevel": {5398, 158695},
 
 	// bufferedToken assembles a token's extent from what the scanner already holds: where the origin began, how long
 	// it is, and the line the text ends on. It does not read the origin back to work the extent out.

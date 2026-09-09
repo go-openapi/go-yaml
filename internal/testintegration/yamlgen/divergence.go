@@ -280,38 +280,6 @@ var Ledger = []Divergence{
 		Match:    writesATabBesideAMergeKey,
 	},
 	{
-		Name: "parse/a-document-suffix-mishandles-a-propertied-block-scalar",
-		Pin:  "TestDefectADocumentSuffixMishandlesAPropertiedBlockScalar",
-		Reason: "A bare document after a `...` suffix, whose root is a block scalar carrying an anchor " +
-			"or a tag and written with an indentation indicator, loses one column of its content. " +
-			"`a: 1` over `...` over `&a1 |2-` over two spaces reads \"\" where the same document " +
-			"after `---` reads \" \", and `&a1 |2-` over `  x` reads \"x\" where `---` gives " +
-			"\" x\".\n\n" +
-			"Three things are needed. The suffix: the `---` spelling is right. The property: " +
-			"`...` over `|2-` over two spaces reads \" \" correctly, and an anchor or a tag in front " +
-			"of the scalar is what loses the column. The indicator: `|-` reads the same both ways.\n\n" +
-			"The reference parser settles which side is right, and it is `---`: it emits " +
-			"`=VAL &a1 | ` for both separators, the content being everything after the `|`. That is " +
-			"8.1.1.1 with l-bare-document's n of -1, so `|2-` at the root puts its content at " +
-			"column 1.\n\n" +
-			"⚠️ Do not reach for libfyaml or go.yaml.in/yaml/v3 here. Both strip one column too many " +
-			"from *every* root block scalar with an indicator -- `|2-` over `  x` reads \"x\" in " +
-			"both, where the reference parser and this library read \" x\" -- so on this question " +
-			"they agree with each other and with neither the grammar nor the specification. It is a " +
-			"content question, and the reference parser is the source that answers one.\n\n" +
-			"A second symptom, same suffix and same property: a valid stream is refused. " +
-			"`&a3 a: 1` over `...` over `&a1 >-` over ` -` reports `value is not allowed in this " +
-			"context` at the block scalar's content, and the `---` spelling of it reads. It takes " +
-			"an anchor on each side -- `a: 1` over `...` over `&a1 >-` reads, and so does " +
-			"`&a3 a: 1` over `...` over `>-` -- and the second one has to stand on a block scalar, " +
-			"since `&a1 x` reads. The reference parser emits " +
-			"`+MAP =VAL &a3 :a =VAL :1 -MAP -DOC ... +DOC =VAL &a1 >-` and grammar.NewRecognizer " +
-			"accepts it.\n\n" +
-			"Found on 2026-09-13 by the stream axis, on its first deep run.",
-		Property: StreamDecode,
-		Match:    writesAPropertiedRootBlockScalarAfterASuffix,
-	},
-	{
 		Name: "render/a-blank-line-before-a-comment-survives-one-rendering-and-not-the-next",
 		Pin:  "TestDefectABlankLineBeforeACommentDoesNotSettle",
 		Reason: "A blank line written before a comment is kept by the first rendering and dropped by " +
@@ -330,35 +298,6 @@ var Ledger = []Divergence{
 		Property: Settle,
 		Match:    writesABlankLineBeforeAComment,
 	},
-}
-
-// writesAPropertiedRootBlockScalarAfterASuffix reports whether the style
-// separates a stream with "..." and the value is a root block scalar carrying a
-// property.
-//
-// It asks blockScalarIn whether the string becomes a block scalar rather than
-// approximating it. The indicator is not required: it decides which of the two
-// symptoms shows -- a column dropped with one, a refusal without -- and both
-// are this entry.
-func writesAPropertiedRootBlockScalarAfterASuffix(v Value, st Style) bool {
-	if !st.DocumentSuffix {
-		return false
-	}
-
-	var propertied bool
-
-	for {
-		switch n := v.(type) {
-		case Anchored:
-			propertied, v = true, n.V
-		case Tagged:
-			propertied, v = true, n.V
-		default:
-			text, isText := v.(Str)
-
-			return propertied && isText && blockScalarIn(text.V, st)
-		}
-	}
 }
 
 // writesAPropertiedKeyBeforeABlockScalar reports whether an entry writes a key
