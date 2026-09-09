@@ -2855,3 +2855,60 @@ func commentsOf(t *testing.T, src string) map[string][]string {
 
 	return out
 }
+
+// TestFixedAKeyBelowItsIndicatorKeepsItsIndentation: a blank line under a "?"
+// no longer takes the key out of the key.
+//
+// Renderer.entry wrote what follows a marker with a hanging indent, which
+// leaves its first line where the marker left off. That is right while the
+// marker holds the line, and wrong once a blank line has ended it: the key's
+// content landed in column 1, where it reads as an entry of the document rather
+// than as the key. `?` over a blank line over ` "": 0` over `: v` came back as
+// `? ` over `"": 0` over `: v`, which parses, and then refuses to decode --
+// "mapping key null already defined" -- so a document that read became a
+// document that does not.
+//
+// A blank line ends the marker's line, so what follows takes the indentation
+// every other line under the marker takes.
+func TestFixedAKeyBelowItsIndicatorKeepsItsIndentation(t *testing.T) {
+	t.Run("a blank line above the key keeps its indentation", func(t *testing.T) {
+		const src = "?\n\n \"\": 0\n: v\n"
+
+		f, err := parser.ParseBytes([]byte(src), parser.WithComments())
+		require.NoError(t, err)
+		assert.Equal(t, "? \n\n  \"\": 0\n: v\n", f.String(),
+			"the key stands under its own indicator, and the blank line the author left stays")
+	})
+
+	t.Run("and the rendering reads back as the document that went in", func(t *testing.T) {
+		for _, src := range []string{
+			"?\n\n \"\": 0\n: v\n",
+			"?\n\n  a: 0\n: v\n",
+			"?\n\n  - a\n: v\n",
+			"? # c\n\n \"\": 0\n: v\n",
+		} {
+			var want any
+			require.NoErrorf(t, codec.Unmarshal([]byte(src), &want), "%q", src)
+
+			f, err := parser.ParseBytes([]byte(src), parser.WithComments())
+			require.NoErrorf(t, err, "%q", src)
+
+			var got any
+			once := f.String()
+			require.NoErrorf(t, codec.Unmarshal([]byte(once), &got), "%q rendered to %q", src, once)
+			assert.Equalf(t, want, got, "%q rendered to %q, which reads as something else", src, once)
+		}
+	})
+
+	t.Run("without the blank line the render settles", func(t *testing.T) {
+		for _, src := range []string{"?\n a: 0\n: v\n", "?\n - a\n: v\n"} {
+			f, err := parser.ParseBytes([]byte(src), parser.WithComments())
+			require.NoErrorf(t, err, "%q", src)
+
+			once := f.String()
+			g, err := parser.ParseBytes([]byte(once), parser.WithComments())
+			require.NoErrorf(t, err, "%q", once)
+			assert.Equalf(t, once, g.String(), "%q renders to %q and then moves", src, once)
+		}
+	})
+}

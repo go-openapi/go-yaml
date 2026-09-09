@@ -531,6 +531,14 @@ func (r *Renderer) mappingKey(n *MappingKeyNode) rendered {
 	if value.empty() {
 		return leaf(n.Start.Value)
 	}
+	if value.leads {
+		// The key opens below its "?" with a blank line between, and a blank
+		// line is two breaks: one ends the "?"'s own line and one is the gap.
+		// Written with the single break the entry carries, the gap was lost and
+		// the next rendering pulled the key back up onto the "?" line, so the
+		// document moved on every pass.
+		return join(sepNone, leaf(n.Start.Value+" "), leaf("\n"), value)
+	}
 
 	return join(sepNone, leaf(n.Start.Value+" "), value)
 }
@@ -543,16 +551,22 @@ func (r *Renderer) entry(n Node) rendered {
 		return piece
 	}
 
+	if piece.leads {
+		// A blank line ends the marker's line, so what follows no longer stands
+		// after the marker: it opens a line of its own and takes the
+		// indentation every other line under the marker takes. Written as a
+		// hanging indent it landed in column one, outside the key it belongs
+		// to -- "?" over a blank line over a mapping came back as two entries
+		// of the document rather than one key, and the rendered text no longer
+		// read as the document that was parsed.
+		return join(sepNone, leaf("\n"), piece.withoutLead().indentedBy(r.indent))
+	}
+
 	// The marker already holds the first line, so the piece is written where it
 	// left off and only the lines under it take the indentation. That is what
 	// hangingIndent did by cutting the first line off; the writer does it by
 	// putting the padding in at each line break instead.
-	var blank rendered
-	if piece.leads {
-		blank, piece = leaf("\n"), piece.withoutLead()
-	}
-
-	return join(sepNone, blank, piece.hangingBy(r.indent))
+	return piece.hangingBy(r.indent)
 }
 
 func (r *Renderer) sequence(n *SequenceNode) rendered {

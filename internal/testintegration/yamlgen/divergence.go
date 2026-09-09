@@ -207,23 +207,6 @@ var Ledger = []Divergence{
 		Match:    writesACollectionKeyAloneInFlow,
 	},
 	{
-		Name: "render/a-key-written-below-its-indicator-loses-its-indentation",
-		Pin:  "TestDefectAKeyBelowItsIndicatorLosesItsIndentation",
-		Reason: "A collection key written below its `?` comes back at column 1, where it is no longer " +
-			"the key. `?` over a blank line over ` \"\": 0` over `: v` renders to `? ` over " +
-			"`\"\": 0` over `: v` -- three entries where there was one, and the value changes with " +
-			"the shape.\n\n" +
-			"A head comment is what puts the blank line there, and the blank line is the whole " +
-			"trigger: `?` over ` a: 0` over `: v` renders to `? a: 0` over `: v`, which is a " +
-			"different spelling of the same document and settles.\n\n" +
-			"It claims Settle and RenderValid rather than Decode: the first read is right, and it is " +
-			"the text written back that stops being the document.\n\n" +
-			"Reached on 2026-09-07, when Keys began drawing a collection -- the key had to be one " +
-			"that cannot go on the `?`s own line before anything could be written below it.",
-		Property: Settle | RenderValid,
-		Match:    writesACollectionKeyUnderAHeadComment,
-	},
-	{
 		Name: "parse/a-propertied-key-refuses-a-block-scalar-value",
 		Pin:  "TestDefectAPropertiedKeyRefusesABlockScalarValue",
 		Reason: "An entry whose key carries an anchor or a tag and whose value is a block scalar is " +
@@ -581,17 +564,6 @@ func writesAMergeKeyTheLongWay(v Value, st Style) bool {
 // merge to suppress.
 func writesATabBesideAMergeKey(v Value, st Style) bool {
 	return st.Version == Reading11Version && st.TabSeparation && holdsAMergeKey(v)
-}
-
-// writesACollectionKeyUnderAHeadComment reports whether a collection key is
-// written below its "?" with a head comment above it.
-//
-// Both halves: the key has to be a collection, or it goes on the "?"s own line
-// and there is nothing below the indicator; and the head comment is what puts a
-// blank line between the two, which is what the renderer loses the indentation
-// over.
-func writesACollectionKeyUnderAHeadComment(v Value, st Style) bool {
-	return st.Comments.head() && holdsACollectionKey(v)
 }
 
 // holdsACollectionKey reports whether a mapping's key is a collection anywhere

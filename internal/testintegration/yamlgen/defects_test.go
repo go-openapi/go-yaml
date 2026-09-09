@@ -699,41 +699,6 @@ func TestDefectMergingNullIsReadByTheWalkAndRefusedByTheTree(t *testing.T) {
 	}
 }
 
-// TestDefectAKeyBelowItsIndicatorLosesItsIndentation pins the render.
-//
-// A collection key cannot go on its "?"s own line -- 8.2.2 puts it at
-// s-l+block-indented(n, block-out) and a block collection has nowhere to be
-// indented against there -- so it is written below. Rendering brings it back at
-// column 1, where it is no longer the key.
-//
-// The blank line is the trigger, and a head comment is what puts one there.
-// Without it the renderer moves the key up onto the "?"s line, which is a
-// different spelling of the same document and settles.
-//
-// Reached on 2026-09-07, when Keys began drawing a collection.
-func TestDefectAKeyBelowItsIndicatorLosesItsIndentation(t *testing.T) {
-	t.Run("today a blank line above the key loses its indentation", func(t *testing.T) {
-		const src = "?\n\n \"\": 0\n: v\n"
-
-		f, err := parser.ParseBytes([]byte(src), parser.WithComments())
-		require.NoError(t, err)
-		assert.Equal(t, "? \n\"\": 0\n: v\n", f.String(),
-			"today: the key comes back at column 1")
-	})
-
-	t.Run("without the blank line the render settles", func(t *testing.T) {
-		for _, src := range []string{"?\n a: 0\n: v\n", "?\n - a\n: v\n"} {
-			f, err := parser.ParseBytes([]byte(src), parser.WithComments())
-			require.NoErrorf(t, err, "%q", src)
-
-			once := f.String()
-			g, err := parser.ParseBytes([]byte(once), parser.WithComments())
-			require.NoErrorf(t, err, "%q", once)
-			assert.Equalf(t, once, g.String(), "%q renders to %q and then moves", src, once)
-		}
-	})
-}
-
 // TestDefectACollectionKeyWrittenAloneInFlowIsRefused pins it.
 //
 // 7.4.2 lets a flow mapping entry be a key with no value, and lets that key be
