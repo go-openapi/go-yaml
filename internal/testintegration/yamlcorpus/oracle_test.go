@@ -53,7 +53,8 @@ import (
 var uncorroborated = map[string]string{
 	"an explicit key whose own key is explicit": "8.2.2 puts an explicit entry's key at " +
 		"s-l+block-indented(n, block-out), which is any block node -- a mapping written the long way " +
-		"included. The same key written any other way reads here, so it is the nesting of the two '?'",
+		"included, and a '?' of its own with it. The key it builds is a mapping, which libfyaml " +
+		"cannot hash and yaml/v3 refuses, so neither can say what the document holds",
 	"two collection keys in one mapping": "3.2.1.1 makes two keys equal when they resolve to the same " +
 		"node, and two different mappings do not. libfyaml cannot hash either of them and yaml/v3 " +
 		"refuses both, so neither can say the document holds two entries",

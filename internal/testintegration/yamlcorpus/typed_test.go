@@ -161,6 +161,10 @@ var yardstickDefects = map[string]typedDefect{
 	// the two reads differ, the typed one is right, and there is nothing here to
 	// fix in the reflection path.
 	"two collection keys in one mapping": {why: "a collection key is not a Go map key"},
+	// The same, for the one whose key is a mapping written with its own '?'.
+	// The `any` read names it "map[a:0]"; no Go map can hold the mapping, and a
+	// struct field tagged with that name is not what the document says either.
+	"an explicit key whose own key is explicit": {why: "a collection key is not a Go map key"},
 	// A timestamp and a byte string have no canonical YAML spelling of their
 	// own, so ast.KeyName names such a key by the text the document wrote --
 	// "2001-12-14" and "aGVsbG8=". A map[any]any does not name a key at all: it

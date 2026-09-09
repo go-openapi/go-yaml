@@ -2741,3 +2741,53 @@ func TestFixedAnAliasKeyIsNamedAsTheNodeItsAnchorNamed(t *testing.T) {
 		assert.Equal(t, map[string]any{"k": "n", "n": uint64(1)}, walked)
 	})
 }
+
+// TestFixedAnExplicitKeyInsideAnExplicitKeyReads holds the nesting open.
+//
+// 8.2.2 puts an explicit entry's key at s-l+block-indented(n, block-out), which
+// is any block node -- a mapping written the long way included. Nesting the two
+// "?" was refused with "unexpected scalar value type", and in flow with "could
+// not find flow map content".
+//
+// groupExplicitKeyBody ran the mapping passes over the body and not the
+// explicit-key one, so a "?" inside the body stayed a bare indicator and the
+// parser met it where a node belongs. groupExplicitKeysIn is that pass over a
+// slice, and it recurses: "? ? ? a" nests three deep.
+//
+// Reached on 2026-09-07, when Keys began drawing a collection. No generated
+// document held a collection key before that, and the census reports the YAML
+// Test Suite holds no nested explicit key either, so nothing on either side had
+// provoked it.
+func TestFixedAnExplicitKeyInsideAnExplicitKeyReads(t *testing.T) {
+	t.Run("the nesting reads, in block and in flow", func(t *testing.T) {
+		for _, tc := range []struct {
+			src  string
+			want any
+		}{
+			{"?\n  ? a\n  : 0\n: v\n", map[string]any{"map[a:0]": "v"}},
+			{"? ? a\n  : 1\n: 2\n", map[string]any{"map[a:1]": uint64(2)}},
+			{"? {? a: 1}\n: v\n", map[string]any{"map[a:1]": "v"}},
+			{"{? {? a: 1}: v}\n", map[string]any{"map[a:1]": "v"}},
+			{"? ? ? a\n", map[string]any{"map[map[a:<nil>]:<nil>]": nil}},
+		} {
+			var got any
+			require.NoErrorf(t, codec.Unmarshal([]byte(tc.src), &got), "%q", tc.src)
+			assert.Equalf(t, tc.want, got, "%q", tc.src)
+		}
+	})
+
+	t.Run("the same key written any other way reads", func(t *testing.T) {
+		for _, tc := range []struct{ src, key string }{
+			{"?\n  a: 0\n: v\n", "map[a:0]"},
+			{"? {a: 0}\n: v\n", "map[a:0]"},
+			{"?\n  - a\n  - b\n: v\n", "[a b]"},
+		} {
+			// Into an `any`, which names the key by walking it. A typed map
+			// cannot hold one: `cannot use map[string]interface {} as a map
+			// key: it is not comparable`.
+			var got any
+			require.NoErrorf(t, codec.Unmarshal([]byte(tc.src), &got), "%q", tc.src)
+			assert.Equalf(t, map[string]any{tc.key: "v"}, got, "%q", tc.src)
+		}
+	})
+}

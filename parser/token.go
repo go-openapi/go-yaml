@@ -1064,7 +1064,15 @@ func (g *grouper) groupExplicitKeyBody(body []*tapeToken) ([]*tapeToken, error) 
 	g.nested++
 	defer func() { g.nested-- }()
 
-	grouped := g.groupMapKeysByValue(body)
+	// A '?' inside the body names a key of its own and nothing else groups it:
+	// stageExplicitKeys was holding the '?' this body belongs to when these
+	// tokens went by.
+	nested := g.groupExplicitKeysIn(body)
+	if g.err != nil {
+		return nil, g.err
+	}
+
+	grouped := g.groupMapKeysByValue(nested)
 	if g.err != nil {
 		return nil, g.err
 	}

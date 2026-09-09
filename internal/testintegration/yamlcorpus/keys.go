@@ -140,13 +140,12 @@ func KeyShapes() []stance.Shape {
 		{
 			// 8.2.2 puts an explicit entry's key at s-l+block-indented(n,
 			// block-out), which is any block node -- a mapping written the long
-			// way included. The same key written any other way reads here, so
-			// it is the nesting of the two '?' and nothing else.
+			// way included, and a '?' of its own with it.
 			Name:   "an explicit key whose own key is explicit",
 			Src:    []byte("?\n  ? a\n  : 0\n: v\n"),
 			Intent: []stance.Tag{TagKeyNotAString},
 			Means:  map[string]any{"map[a:0]": "v"},
-			Pin:    "TestDefectAnExplicitKeyInsideAnExplicitKeyIsRefused",
+			Pin:    "TestFixedAnExplicitKeyInsideAnExplicitKeyReads",
 		},
 		{
 			// 3.2.1.1 makes two keys equal when they resolve to the same node,

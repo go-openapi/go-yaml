@@ -261,13 +261,14 @@ func stageExplicitKeys(g *grouper, at int, tk *tapeToken, out []*tapeToken) []*t
 	}
 }
 
-// emitExplicitKey groups the '?' with the body read for it and hands it on.
-func (g *grouper) emitExplicitKey(at int, out []*tapeToken) ([]*tapeToken, bool) {
+// buildExplicitKey groups the '?' with the body read for it, and clears the
+// state so the next '?' starts empty.
+func (g *grouper) buildExplicitKey() (*tapeToken, bool) {
 	grouped, err := g.groupExplicitKeyBody(g.explicit.body)
 	if err != nil {
 		g.fail(err)
 
-		return out, false
+		return nil, false
 	}
 
 	// A '?' with nothing after it opens an entry whose key is the empty node,
@@ -282,7 +283,156 @@ func (g *grouper) emitExplicitKey(at int, out []*tapeToken) ([]*tapeToken, bool)
 
 	g.explicit.key, g.explicit.body = nil, g.explicit.body[:0]
 
-	return g.pass(at, g.group(TokenGroupMapKey, members), out), true
+	return g.group(TokenGroupMapKey, members), true
+}
+
+// emitExplicitKey groups the '?' with the body read for it and hands it on.
+func (g *grouper) emitExplicitKey(at int, out []*tapeToken) ([]*tapeToken, bool) {
+	grouped, ok := g.buildExplicitKey()
+	if !ok {
+		return out, false
+	}
+
+	return g.pass(at, grouped, out), true
+}
+
+// groupExplicitKeysIn groups the explicit keys written inside another key's
+// body, which stageExplicitKeys cannot: it is holding the '?' around them.
+//
+// It is that stage over a slice, the way groupMapKeysByValue is
+// stageMapKeysByValue over one, and it takes the state fresh so the run around
+// it keeps what it was holding.
+//
+// Without it a nested '?' stayed a bare indicator in the body and the parser
+// met it where a node belongs: "? ? a" over "  : 1" over ": 2" was refused with
+// "unexpected scalar value type", a document the grammar accepts.
+//
+// The '?'s open at once are a stack, and the innermost is built first. Handing
+// each finished key to the body around it as one group token is what keeps the
+// cost linear. Recursing instead put every deeper token in every enclosing body
+// and read them again at each level: 20,000 nested '?' took 4.05s that way and
+// take 180ms this way, and 100,000 take 693ms where the recursion would have
+// taken minutes.
+func (g *grouper) groupExplicitKeysIn(in []*tapeToken) []*tapeToken {
+	out := g.out(len(in))
+
+	// The stage's own state belongs to the '?' being read around this one, so
+	// the nested run takes a fresh one and gives it back.
+	saved := g.explicit
+	defer func() { g.explicit = saved }()
+
+	var (
+		open      []explicitKey // the '?'s still reading a body, innermost last
+		flowDepth int
+	)
+
+	// hold gives tk to the innermost body still open, or to the output where
+	// none is.
+	hold := func(tk *tapeToken) {
+		if n := len(open); n > 0 {
+			open[n-1].body = append(open[n-1].body, tk)
+
+			return
+		}
+
+		out = append(out, tk)
+	}
+
+	// close builds the innermost key and gives it to whatever holds it.
+	closeKey := func() bool {
+		n := len(open)
+		g.explicit = open[n-1]
+		open = open[:n-1]
+
+		grouped, ok := g.buildExplicitKey()
+		if !ok {
+			return false
+		}
+		hold(grouped)
+
+		return true
+	}
+
+	for _, tk := range in {
+		for n := len(open); n > 0; n = len(open) {
+			k := &open[n-1]
+			if !endsExplicitKeyBody(tk, k.keyColumn, k.keyInFlow, k.body, &k.bodyDepth) {
+				break
+			}
+			if !closeKey() {
+				return out
+			}
+		}
+
+		// A group reports the type of the token it opens with, so a key already
+		// grouped reads as one more '?' and a flow collection as one more '{'.
+		// It is balanced within itself and holds its own body: nothing here has
+		// anything left to do with it.
+		//
+		// buildExplicitKey runs this pass again over the body it is about to
+		// group, and by then the keys inside that body are groups. Without this
+		// the innermost key was pushed a second time and took its own ':' into
+		// a body of its own: "?" over "  ?" over "    ? a" over "    : 1" lost
+		// the a and read as {{null: 1}: ...}.
+		if tk.GroupType() != TokenGroupNone {
+			hold(tk)
+
+			continue
+		}
+
+		switch tk.Type() {
+		case token.MappingStartType, token.SequenceStartType:
+			flowDepth++
+		case token.MappingEndType, token.SequenceEndType:
+			if flowDepth > 0 {
+				flowDepth--
+			}
+		case token.MappingKeyType:
+			if inFlowMapping(open, saved, flowDepth) {
+				// A '?' standing directly inside the flow mapping whose key
+				// this body is. 7.4.2 gives a flow mapping's explicit key an
+				// ns-flow-node, and a '?' does not start one, so "{? ? a: 1}"
+				// is not a document -- where "{? {? a: 1}: v}" is, the inner
+				// '?' opening a flow mapping of its own. Left ungrouped, so the
+				// parser refuses it as it always has.
+				break
+			}
+
+			open = append(open, explicitKey{
+				key:       tk,
+				keyColumn: tk.Column(),
+				keyInFlow: flowDepth > 0,
+				flowDepth: flowDepth,
+			})
+
+			continue
+		}
+
+		hold(tk)
+	}
+
+	for len(open) > 0 {
+		if !closeKey() {
+			return out
+		}
+	}
+
+	return out
+}
+
+// inFlowMapping reports that a '?' met here stands directly inside a flow
+// mapping rather than inside a collection of its own.
+//
+// The key it would belong to is the innermost one still open, or the key whose
+// body this whole run is where none is. explicitKey.flowDepth records how many
+// flow collections stood open when that key began, so a '?' at the same depth
+// has opened none since.
+func inFlowMapping(open []explicitKey, run explicitKey, flowDepth int) bool {
+	if n := len(open); n > 0 {
+		return open[n-1].keyInFlow && flowDepth == open[n-1].flowDepth
+	}
+
+	return run.keyInFlow && flowDepth == 0
 }
 
 // flushExplicitKeys groups a '?' whose body ran to the end of the stream.

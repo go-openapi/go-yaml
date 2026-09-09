@@ -225,21 +225,6 @@ var Ledger = []Divergence{
 		Match:    writesACollectionKeyUnderAHeadComment,
 	},
 	{
-		Name: "parse/an-explicit-key-inside-an-explicit-key-is-refused",
-		Pin:  "TestDefectAnExplicitKeyInsideAnExplicitKeyIsRefused",
-		Reason: "`?` over `  ? a` over `  : 0` over `: v` is refused with `unexpected scalar value " +
-			"type`. The key of an explicit entry is s-l+block-indented(n, block-out), which is any " +
-			"block node -- a mapping written the long way included.\n\n" +
-			"The same key written any other way reads: `?` over `  a: 0` over `: v` gives " +
-			"{\"map[a:0]\": \"v\"}, and so do `? {a: 0}` and a sequence below the indicator. So it is " +
-			"the nesting of the two `?` and nothing else.\n\n" +
-			"Reached on 2026-09-07, when Keys began drawing a collection. Before that no generated " +
-			"document held a collection key at all, and yamlcorpus's census reports the YAML Test " +
-			"Suite holds no nested explicit key either -- so nothing on either side had provoked it.",
-		Property: Parses | Decode | Render | Settle | CommentsKept | RenderValid | DecodeTyped,
-		Match:    writesAnExplicitKeyInsideAnExplicitKey,
-	},
-	{
 		Name: "parse/a-propertied-key-refuses-a-block-scalar-value",
 		Pin:  "TestDefectAPropertiedKeyRefusesABlockScalarValue",
 		Reason: "An entry whose key carries an anchor or a tag and whose value is a block scalar is " +

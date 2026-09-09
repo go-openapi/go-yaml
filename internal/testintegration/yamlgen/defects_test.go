@@ -728,43 +728,6 @@ func TestDefectMergingNullIsReadByTheWalkAndRefusedByTheTree(t *testing.T) {
 	}
 }
 
-// TestDefectAnExplicitKeyInsideAnExplicitKeyIsRefused pins the nesting.
-//
-// 8.2.2 puts an explicit entry's key at s-l+block-indented(n, block-out), which
-// is any block node -- a mapping written the long way included. Nesting the two
-// "?" is refused.
-//
-// The same key written any other way reads, which is what makes this the nesting
-// and not the collection key.
-//
-// Reached on 2026-09-07, when Keys began drawing a collection. No generated
-// document held a collection key before that, and the census reports the YAML
-// Test Suite holds no nested explicit key either, so nothing on either side had
-// provoked it.
-func TestDefectAnExplicitKeyInsideAnExplicitKeyIsRefused(t *testing.T) {
-	t.Run("today the nesting is refused", func(t *testing.T) {
-		var got any
-		err := codec.Unmarshal([]byte("?\n  ? a\n  : 0\n: v\n"), &got)
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), "unexpected scalar value type")
-	})
-
-	t.Run("the same key written any other way reads", func(t *testing.T) {
-		for _, tc := range []struct{ src, key string }{
-			{"?\n  a: 0\n: v\n", "map[a:0]"},
-			{"? {a: 0}\n: v\n", "map[a:0]"},
-			{"?\n  - a\n  - b\n: v\n", "[a b]"},
-		} {
-			// Into an `any`, which names the key by walking it. A typed map
-			// cannot hold one: `cannot use map[string]interface {} as a map
-			// key: it is not comparable`.
-			var got any
-			require.NoErrorf(t, codec.Unmarshal([]byte(tc.src), &got), "%q", tc.src)
-			assert.Equalf(t, map[string]any{tc.key: "v"}, got, "%q", tc.src)
-		}
-	})
-}
-
 // TestDefectAKeyBelowItsIndicatorLosesItsIndentation pins the render.
 //
 // A collection key cannot go on its "?"s own line -- 8.2.2 puts it at

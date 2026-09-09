@@ -138,3 +138,46 @@ func TestAnExplicitEntrysColonStandsAtItsQuestionMarksColumn(t *testing.T) {
 		}
 	})
 }
+
+// TestANestedExplicitKeyRendersBack: a '?' inside a '?'s body reads, and the
+// document written back holds the same shape.
+//
+// groupExplicitKeyBody ran the mapping passes over the body and not the
+// explicit-key one, so a nested '?' stayed a bare indicator and the parser met
+// it where a node belongs -- "unexpected scalar value type" in block, "could
+// not find flow map content" in flow. yamlgen's
+// TestFixedAnExplicitKeyInsideAnExplicitKeyReads pins the values; this pins the
+// text, since a key written below its indicator is where the renderer has lost
+// documents before.
+func TestANestedExplicitKeyRendersBack(t *testing.T) {
+	for _, tc := range []struct{ src, want string }{
+		{"? ? a\n  : 1\n: 2\n", "? ? a\n  : 1\n: 2\n"},
+		{"?\n  ? a\n  : 0\n: v\n", "? ? a\n  : 0\n: v\n"},
+		{"? ? ? a\n", "? ? ? a\n    :\n  :\n:\n"},
+		{"? {? a: 1}\n: v\n", "? {? a : 1}\n: v\n"},
+		{"{? {? a: 1}: v}\n", "{? {? a : 1} : v}\n"},
+	} {
+		f, err := parser.ParseBytes([]byte(tc.src))
+		require.NoErrorf(t, err, "%q", tc.src)
+		assert.Equalf(t, tc.want, f.String(), "%q", tc.src)
+
+		// What it renders to has to read back the same way, or the text is not
+		// the document.
+		again, err := parser.ParseBytes([]byte(f.String()))
+		require.NoErrorf(t, err, "re-reading %q", f.String())
+		assert.Equalf(t, tc.want, again.String(), "rendering %q does not settle", tc.src)
+	}
+}
+
+// TestABareQuestionMarkInsideAFlowMappingIsRefused: 7.4.2 gives a flow
+// mapping's explicit key an ns-flow-node, and a '?' does not start one.
+//
+// "{? {? a: 1}: v}" is a document -- the inner '?' opens a flow mapping of its
+// own -- and "{? ? a: 1}" is not. Grouping the nested key without this
+// distinction accepted the second and rendered it as "{? ? a   : : 1}".
+func TestABareQuestionMarkInsideAFlowMappingIsRefused(t *testing.T) {
+	for _, src := range []string{"{? ? a: 1}\n", "{? ? a}\n", "{a: 1, ? ? b: 2}\n"} {
+		_, err := parser.ParseBytes([]byte(src))
+		assert.Errorf(t, err, "%q", src)
+	}
+}
