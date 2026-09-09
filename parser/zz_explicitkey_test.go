@@ -64,3 +64,30 @@ func TestAZeroIndentedSequenceIsAnExplicitKeysBody(t *testing.T) {
 		}
 	})
 }
+
+// TestAnExplicitKeyNamesOneNode: a '?' whose body holds a second node is
+// refused rather than read short.
+//
+// 8.2.2 gives the body s-l+block-indented(n, block-out), which is one node, and
+// everything indented past the '?' is read into it. parseMapKey built the key
+// from the first node in the group and never looked at the rest, so a body
+// holding two came back as the first alone: "? a" over " : b" read as
+// {a: null} with the b gone -- a document silently losing a value.
+//
+// The four shapes below are the ones the grammar oracle refuses and we read.
+// Over the generated corpus this refuses 47 documents and grammar.NewRecognizer
+// refuses every one of them.
+func TestAnExplicitKeyNamesOneNode(t *testing.T) {
+	for _, src := range []string{
+		"? l\n :\n",
+		"? a\n : b\n",
+		" ? a\n  : b\n",
+		"? l\n  :\n",
+	} {
+		t.Run(src, func(t *testing.T) {
+			_, err := parser.ParseBytes([]byte(src))
+			require.Errorf(t, err, "%q", src)
+			assert.Containsf(t, err.Error(), "an explicit key names one node", "%q", src)
+		})
+	}
+}

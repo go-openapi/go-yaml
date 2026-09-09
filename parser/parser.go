@@ -1321,6 +1321,20 @@ func (p *Parser) parseMapKeyValueNode(ctx context, g *tokenGroup) (ast.Node, err
 	return p.parseToken(ctx, g.First())
 }
 
+// unreadInGroup returns the first token the group at ctx still holds that is
+// not a comment, or nil where the group is spent. A comment carries no node and
+// is written wherever the author liked.
+func unreadInGroup(ctx context) *tapeToken {
+	for !ctx.isTokenNotFound() {
+		if tk := ctx.currentToken(); tk.Type() != token.CommentType {
+			return tk
+		}
+		ctx.goNext()
+	}
+
+	return nil
+}
+
 func (p *Parser) parseMapKey(ctx context, g *tokenGroup) (ast.MapKeyNode, error) {
 	if g.Type != TokenGroupMapKey {
 		return nil, yamlerrors.NewSyntax("unexpected map key", g.RawToken())
@@ -1353,6 +1367,14 @@ func (p *Parser) parseMapKey(ctx context, g *tokenGroup) (ast.MapKeyNode, error)
 		p.readingKey--
 		if err != nil {
 			return nil, err
+		}
+		// 8.2.2 gives the body one node -- s-l+block-indented(n, block-out) --
+		// and everything indented past the '?' was read into it, so a token
+		// left over is a second node the key cannot hold. Nothing read it: the
+		// key was built from the first node and the rest of the group was
+		// dropped, so "? a" over " : b" came back as {a: null} with the b gone.
+		if left := unreadInGroup(ctx); left != nil {
+			return nil, yamlerrors.NewSyntax("an explicit key names one node, and this stands past it", left.RawToken())
 		}
 		scalar, ok := value.(ast.MapKeyNode)
 		if !ok {
