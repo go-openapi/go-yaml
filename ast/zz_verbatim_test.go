@@ -5,6 +5,9 @@ package ast_test
 
 import (
 	"bytes"
+	"io"
+	"slices"
+	"strings"
 	"testing"
 
 	"github.com/go-openapi/testify/v2/require"
@@ -84,7 +87,7 @@ func TestTheVerbatimDescentFollowsTheDocument(t *testing.T) {
 // insertion case does.
 const descentCeiling = 18
 
-// TestVerbatimWritesTheDocumentBack renders// TestVerbatimWritesANodeBack checks the per-node half: a node writes the
+// TestVerbatimWritesANodeBack checks the per-node half: a node writes the
 // stretch of source it covers, and nothing of its neighbors.
 func TestVerbatimWritesANodeBack(t *testing.T) {
 	t.Parallel()
@@ -109,4 +112,156 @@ func TestVerbatimWritesANodeBack(t *testing.T) {
 		})
 	}
 	require.Positive(t, checked)
+}
+
+// unlabeledSuiteCeiling is how many Test Suite documents may hold a token the
+// verbatim descent never labels. It is not allowed to rise.
+//
+// The ten are comments and trailing whitespace: spec-example-6-9-separated-comment,
+// various-trailing-comments, trailing-whitespace-in-streams/00 and their kind.
+// The token is behind the cursor by the time the descent asks for it, because
+// the filler around it went out with an earlier one, so upToToken writes
+// nothing and nothing says who wrote those bytes.
+//
+// A count over the Test Suite, which is fixed. The fuzz corpus is regenerated
+// as yamlgen learns shapes, so its number is logged and not gated.
+const unlabeledSuiteCeiling = 10
+
+// TestVerbatimRebuildsEveryDocument is the verbatim census: for every document
+// the parser accepts, src == VerbatimFile(ParseBytes(src)).
+//
+// The equality is weak evidence on this path. VerbatimFile copies the source
+// forward and ends on upTo(len(r.src)), so with Renderer.write deleted outright
+// every document still comes back byte for byte. transform.Walk has no such
+// tail -- it joins the document out of token tiles -- which is why
+// TestIdentityRebuildsTheCorpus can test the same invariant by byte equality
+// alone.
+//
+// So the census also checks that every token the tree holds reaches the
+// transform labeled with the token it came from. walkSourceTokens finds them
+// through a switch of its own, so the two traversals have to agree about what
+// the document contains. Containment and not equality: the descent also labels
+// comment tokens, which walkSourceTokens does not hand over.
+//
+// No document is exempt from the equality. Escaping, a leading byte order mark
+// and surrogate pairs distort a document rebuilt from token values, since a
+// token holds the unescaped text and records nothing about how it was spelled
+// -- but this path copies the source between two offsets and never reads the
+// value. Invalid UTF-8 does not reach the renderer: the parser refuses it.
+func TestVerbatimRebuildsEveryDocument(t *testing.T) {
+	t.Parallel()
+
+	var accepted, rebuilt, suiteN, suiteUnlabeled, seedUnlabeled int
+	var differing, unlabeled []string
+
+	for _, src := range renderSources(t) {
+		file, err := parser.ParseBytes([]byte(src.text), parser.WithComments())
+		if err != nil {
+			continue
+		}
+		accepted++
+
+		var joined bytes.Buffer
+		var written []int32
+		record := func(_ io.Writer, s ast.Written) error {
+			joined.Write(s.Text)
+			if s.Token != nil {
+				written = append(written, s.Token.EndOffset())
+			}
+
+			return nil
+		}
+
+		renderer := ast.NewRenderer(ast.WithSource([]byte(src.text)), ast.WithTransform(record))
+		require.NoErrorf(t, renderer.VerbatimFile(io.Discard, file), "%s: verbatim failed", src.name)
+
+		if joined.String() == src.text {
+			rebuilt++
+		} else if len(differing) < 10 {
+			differing = append(differing, src.name)
+		}
+
+		var held []int32
+		for _, doc := range file.Docs {
+			held = append(held, ast.SourceTokenEnds(doc)...)
+		}
+		missing := slices.ContainsFunc(held, func(end int32) bool {
+			return !slices.Contains(written, end)
+		})
+
+		switch {
+		case !strings.HasPrefix(src.name, "suite/"):
+			if missing {
+				seedUnlabeled++
+			}
+		default:
+			suiteN++
+			if missing {
+				suiteUnlabeled++
+				if len(unlabeled) < 12 {
+					unlabeled = append(unlabeled, src.name)
+				}
+			}
+		}
+	}
+
+	require.Positive(t, accepted)
+	t.Logf("verbatim: %d accepted documents, %d rebuilt byte for byte", accepted, rebuilt)
+	t.Logf("descent: a token the tree holds arrives unlabeled in %d of %d suite documents and %d seeds",
+		suiteUnlabeled, suiteN, seedUnlabeled)
+
+	require.Equalf(t, accepted, rebuilt,
+		"%d documents do not come back as they were written, starting with %v", accepted-rebuilt, differing)
+	require.LessOrEqualf(t, suiteUnlabeled, unlabeledSuiteCeiling,
+		"a token arrives unlabeled in %d suite documents, ceiling is %d: %v",
+		suiteUnlabeled, unlabeledSuiteCeiling, unlabeled)
+}
+
+// TestVerbatimKeepsWhatARebuildFromValuesWouldLose pins the four distortions
+// that make "verbatim" a claim worth testing, and that a renderer working from
+// token values cannot avoid.
+//
+// A token holds the unescaped text. Nothing on it records whether "é" was
+// written as a literal, as "\u00e9" or as "\xC3\xA9", so a document rebuilt
+// from values has to pick a spelling and will pick the wrong one. The verbatim
+// path never reads the value: it copies the source between two offsets, so the
+// spelling survives because it is never decoded.
+func TestVerbatimKeepsWhatARebuildFromValuesWouldLose(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name string
+		src  string
+	}{
+		{"byte order mark", "\uFEFFa: 1\n"},
+		{"byte order mark before a document", "a: 1\n\uFEFF---\nb: 2\n"},
+		{"escaped line break", "a: \"x\\ny\"\n"},
+		{"escaped code point", "a: \"\\u00e9\"\n"},
+		{"escaped byte", "a: \"\\x41\"\n"},
+		{"surrogate pair", "a: \"\\uD83D\\uDE00\"\n"},
+		{"the same character written out", "a: \"\U0001F600\"\n"},
+		{"doubled quote in a single-quoted scalar", "a: 'it''s'\n"},
+		{"carriage returns", "a: 1\r\nb: 2\r\n"},
+		{"no trailing line break", "a: 1"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			file, err := parser.ParseBytes([]byte(tc.src), parser.WithComments())
+			require.NoError(t, err)
+
+			var out bytes.Buffer
+			require.NoError(t, ast.NewRenderer(ast.WithSource([]byte(tc.src))).VerbatimFile(&out, file))
+			require.Equal(t, tc.src, out.String())
+		})
+	}
+}
+
+// TestInvalidUTF8NeverReachesTheRenderer is the fourth distortion, and the
+// parser settles it before rendering is reached.
+func TestInvalidUTF8NeverReachesTheRenderer(t *testing.T) {
+	t.Parallel()
+
+	_, err := parser.ParseBytes([]byte("a: \"\xff\xfe\"\n"), parser.WithComments())
+	require.ErrorContains(t, err, "found a byte that is part of no character")
 }
