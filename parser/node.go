@@ -35,10 +35,14 @@ func newMappingValueNode(ctx context, colonTk, entryTk *tapeToken, key ast.MapKe
 		// is the value's rather than the key's. Returning here dropped it:
 		// "? a" over ": # c3" over "  v" rendered as "? a" over ": v".
 		//
-		// It goes on the value, which is where the short form puts the same
-		// comment -- "a: # c3" over "  v" renders as "a: v # c3" -- so the two
-		// spellings normalize the same way.
-		if err := setLineComment(ctx, value, colonTk); err != nil {
+		// It goes on the entry. Put on the value it collided with a head
+		// comment written under it: the value starts on a later line, so the
+		// line comment degrades to a head comment and takes that slot -- "? a"
+		// over ": # c4" over "  # c5" over "  - 1" kept c4 and lost c5. On the
+		// entry it stays a line comment, and CommentToMap gives $.a a line
+		// comment and $.a[0] a head one, which is what the short form
+		// "a: # c4" over "  # c5" over "  - 1" already gives.
+		if err := setLineComment(ctx, node, colonTk); err != nil {
 			return nil, err
 		}
 

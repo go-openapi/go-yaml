@@ -130,35 +130,6 @@ func TestDefectABlankLineBeforeASequenceEntryDoesNotSettle(t *testing.T) {
 	})
 }
 
-// TestDefectASecondCommentOnAnExplicitKeysColonLineIsDropped: a comment on the
-// ":" line of the long form and a head comment under it, and only the first
-// survives.
-//
-// What is left of the entry closed on 2026-09-12. The ":" line comment goes on
-// the value now, and a head comment written under it has nowhere left to go:
-// "? a" over ": # c4" over "  # c5" over "  - 1" keeps c4 and loses c5. A
-// nested mapping keeps both, which is the shape that says the head comment can
-// be carried at all.
-func TestDefectASecondCommentOnAnExplicitKeysColonLineIsDropped(t *testing.T) {
-	for src, renders := range map[string]string{
-		"? a\n: # c4\n  # c5\n  - 1\n": "? a\n:\n# c4\n- 1\n",
-		"? a\n: # c4\n  # c5\n  v\n":   "? a\n: v # c4\n",
-	} {
-		wellFormed(t, src)
-		assert.Equal(t, renders, renderOnce(t, src), "today: %q loses the second comment", src)
-	}
-
-	t.Run("a nested mapping keeps both", func(t *testing.T) {
-		const src = "? a\n: # c4\n  # c5\n  b: 1\n"
-		wellFormed(t, src)
-		assert.Equal(t, "? a\n:\n  # c4\n  # c5\n  b: 1\n", renderOnce(t, src))
-	})
-
-	t.Run("one comment on the ':' line is kept", func(t *testing.T) {
-		assert.Equal(t, "? a\n: v # c3\n", renderOnce(t, "? a\n: # c3\n  v\n"))
-	})
-}
-
 // TestDefectADocumentSuffixMishandlesAPropertiedBlockScalar: a "..." suffix
 // followed by a bare document whose root is a block scalar carrying an anchor
 // or a tag reads differently from the same stream spelled with "---".

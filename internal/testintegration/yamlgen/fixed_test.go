@@ -4,8 +4,10 @@
 package yamlgen_test
 
 import (
+	"fmt"
 	"math"
 	"math/big"
+	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -1420,14 +1422,20 @@ func TestFixedAQuotedExplicitKeyTakesABlockScalarValue(t *testing.T) {
 // comment then stands on the ":" line and belongs to the value, and returning
 // early dropped it with nothing reported.
 //
-// It goes on the value now, which is where the short form puts the same
-// comment -- "a: # c3" over "  v" renders as "a: v # c3" -- so the two
-// spellings normalize the same way.
+// It goes on the entry. Put on the value it collided with a head comment
+// written under it -- the value begins on a later line, so the line comment
+// degrades to a head comment and takes that slot -- and the entry is what the
+// comment was written about anyway.
+//
+// The renderer writes an entry's line comment above the entry, so "? a" over
+// ": # c3" over "  v" comes back as "# c3" over "? a" over ": v". Every
+// rendering settles and no comment is lost; putting it back on the ':' line is
+// the renderer's to do.
 func TestFixedACommentOnAnExplicitKeysColonLineIsKept(t *testing.T) {
 	for src, renders := range map[string]string{
-		"? a\n: # c3\n  v\n":   "? a\n: v # c3\n",
-		"? a\n: # c3\n  - 1\n": "? a\n:\n# c3\n- 1\n",
-		"?\n: #c1\n":           "?\n: #c1\n",
+		"? a\n: # c3\n  v\n":   "# c3\n? a\n: v\n",
+		"? a\n: # c3\n  - 1\n": "# c3\n? a\n:\n- 1\n",
+		"?\n: #c1\n":           "#c1\n?\n:\n",
 		// Every other position kept it before and still does.
 		"a: # c3\n  v\n":   "a: v # c3\n",
 		"a: # c3\n  - 1\n": "a: # c3\n- 1\n",
@@ -2790,4 +2798,60 @@ func TestFixedAnExplicitKeyInsideAnExplicitKeyReads(t *testing.T) {
 			assert.Equalf(t, map[string]any{tc.key: "v"}, got, "%q", tc.src)
 		}
 	})
+}
+
+// TestFixedASecondCommentOnAnExplicitKeysColonLineIsKept: a comment on the ":"
+// line of the long form and a head comment under it, and both survive.
+//
+// The ":" line comment went on the value, and the value begins on a later line,
+// so setLineComment degraded it to a head comment and it took the slot the head
+// comment written under it needed: "? a" over ": # c4" over "  # c5" over
+// "  - 1" kept c4 and lost c5, with nothing reported. On the entry it stays a
+// line comment and both slots are free.
+//
+// The evidence is that the two spellings of one document now give the same
+// comment map. They did not: the long form addressed the ":" line comment at
+// $.a[0] as a head comment where the short form gives $.a a line comment.
+func TestFixedASecondCommentOnAnExplicitKeysColonLineIsKept(t *testing.T) {
+	for _, tc := range []struct{ long, short string }{
+		{"? a\n: # c4\n  # c5\n  - 1\n", "a: # c4\n  # c5\n  - 1\n"},
+		{"? a\n: # c4\n  # c5\n  b: 1\n", "a: # c4\n  # c5\n  b: 1\n"},
+	} {
+		assert.Equalf(t, commentsOf(t, tc.short), commentsOf(t, tc.long),
+			"%q and %q are one document written two ways", tc.short, tc.long)
+	}
+
+	t.Run("every comment reaches the rendered text, and it settles", func(t *testing.T) {
+		for src, renders := range map[string]string{
+			"? a\n: # c4\n  # c5\n  - 1\n":  "# c4\n? a\n:\n# c5\n- 1\n",
+			"? a\n: # c4\n  # c5\n  v\n":    "# c4\n? a\n: v # c5\n",
+			"? a\n: # c4\n  # c5\n  b: 1\n": "# c4\n? a\n:\n  # c5\n  b: 1\n",
+		} {
+			wellFormed(t, src)
+			once := renderOnce(t, src)
+			assert.Equal(t, renders, once, "%q", src)
+			assert.Equal(t, once, renderOnce(t, once), "%q: the rendering settles", src)
+		}
+	})
+}
+
+// commentsOf reads src's comments as a map of path to "text/position", so two
+// spellings of one document can be compared without depending on the order the
+// map is built in.
+func commentsOf(t *testing.T, src string) map[string][]string {
+	t.Helper()
+
+	cm := codec.CommentMap{}
+	var v any
+	require.NoErrorf(t, codec.UnmarshalWithOptions([]byte(src), &v, codec.CommentToMap(cm)), "%q", src)
+
+	out := make(map[string][]string, len(cm))
+	for path, comments := range cm {
+		for _, c := range comments {
+			out[path] = append(out[path], fmt.Sprintf("%v/%v", c.Texts, c.Position))
+		}
+		sort.Strings(out[path])
+	}
+
+	return out
 }

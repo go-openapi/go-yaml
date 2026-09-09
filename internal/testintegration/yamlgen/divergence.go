@@ -348,32 +348,6 @@ var Ledger = []Divergence{
 		Property: Settle,
 		Match:    writesABlankLineBeforeAComment,
 	},
-	{
-		Name: "parse/a-comment-on-an-explicit-keys-colon-line-is-dropped",
-		Pin:  "TestDefectASecondCommentOnAnExplicitKeysColonLineIsDropped",
-		Reason: "A comment written on the `:` line of an entry written the long way, with the value " +
-			"below it, is lost.\n\n" +
-			"Nothing reaches the tree: codec.CommentToMap comes back empty for `? a` over `: # c3` over " +
-			"`  v`, where every shape that keeps the comment fills one -- `a: # c3` gives $.a, " +
-			"`? a # c3` gives $, `: v # c3` gives $.a. So this is the parse and not the renderer, which " +
-			"is why the name says parse.\n\n" +
-			"⚠️ **Narrower since 2026-09-12, and the entry is kept for what is left.** " +
-			"newMappingValueNode returned early for every explicit key, on the reading that a comment " +
-			"on the token it was handed was the key's own. That holds where parseMapKeyValue hands the " +
-			"key's own last token over; it does not where the `:` is a token of its own. `? a` over " +
-			"`: # c3` over `  v` now renders `? a` over `: v # c3`, which is where the short form puts " +
-			"the same comment, and TestFixedACommentOnAnExplicitKeysColonLineIsKept holds it.\n\n" +
-			"What still diverges is a *second* comment: one on the `:` line and a head comment under " +
-			"it. `? a` over `: # c4` over `  # c5` over `  - 1` keeps c4 and loses c5, and so does the " +
-			"same document with a scalar value. A nested mapping keeps both. The `:` line comment goes " +
-			"on the value now and the head comment has nowhere left to go, so this is what the fix " +
-			"leaves rather than what it missed.\n\n" +
-			"TestRenderKeepsEveryComment draws it 19 times in 327, so the predicate stays as it was: " +
-			"it matched the family and one member of it is closed.\n\n" +
-			"The value reads correctly in every case, so this claims CommentsKept alone.",
-		Property: CommentsKept,
-		Match:    writesACommentOnAnExplicitColonLine,
-	},
 }
 
 // writesAPropertiedRootBlockScalarAfterASuffix reports whether the style
