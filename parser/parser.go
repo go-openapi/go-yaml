@@ -1119,7 +1119,7 @@ func (p *Parser) parseMapEntry(ctx context, keyTk *tapeToken) (*ast.MappingValue
 		return nil, yamlerrors.NewSyntax("block sequence entries are not allowed in this context", valueTk.RawToken())
 	}
 	childCtx := p.valueContext(ctx, key)
-	value, err := p.parseMapValue(childCtx, key, keyTk.Group.Last())
+	value, err := p.explicitKeyValue(childCtx, keyTk, key)
 	if err != nil {
 		return nil, err
 	}
@@ -1135,6 +1135,34 @@ func (p *Parser) parseMapEntry(ctx context, keyTk *tapeToken) (*ast.MappingValue
 	}
 
 	return p.mappingValue(childCtx, keyTk.Group.Last(), nil, key, value)
+}
+
+// explicitKeyValue reads the value of the entry keyTk opens.
+//
+// An explicit key whose group holds no ':' of its own has no value written, and
+// 8.2.2 gives the entry e-node for one. Reading forward instead took whatever
+// stood at the '?'s column: "? a" over "1" came back as {a: 1} and "? a" over
+// "&x b" as {a: b}, documents with no ':' in them at all, and "? a" over "- b"
+// as {a: [b]} -- a zero-indented sequence is a value where a ':' was written,
+// which is why "a:" over "- b" is right and this is not. All three are refused
+// by grammar.NewRecognizer and by yaml/v3.
+//
+// The token then stands where the mapping around the entry reads it, and is
+// refused there if it opens nothing -- the same answer "a:" over "b" already
+// gave.
+func (p *Parser) explicitKeyValue(ctx context, keyTk *tapeToken, key ast.MapKeyNode) (ast.Node, error) {
+	g := keyTk.Group
+	if tk := ctx.currentToken(); tk != nil &&
+		g.First().Type() == token.MappingKeyType && g.Last().Type() != token.MappingValueType {
+		// The same null parseMapValue supplies for a key at this column whose
+		// value is absent, so the two shapes give the entry the same node.
+		// Nothing follows at all is left to parseMapValue: it ends the run as
+		// well as supplying the null, and the null it builds stands one column
+		// further on.
+		return p.handNull(ctx, ctx.insertNullToken(g.Last()))
+	}
+
+	return p.parseMapValue(ctx, key, g.Last())
 }
 
 func (p *Parser) parseMap(ctx context) (*ast.MappingNode, error) {

@@ -42,10 +42,17 @@ func TestAZeroIndentedSequenceIsAnExplicitKeysBody(t *testing.T) {
 	})
 
 	// Only that one sequence continues the body. A "-" back at the "?"s column
-	// after content of another shape belongs to the collection around the
-	// entry, so the key stays what was written on the "?"s own line.
-	t.Run("a dash after other content is not the key's", func(t *testing.T) {
-		f, err := parser.ParseBytes([]byte("? a\n- x\n"))
+	// after content of another shape does not join the key, and it is not the
+	// entry's value either: no ':' was written, so the entry has none and the
+	// '-' opens nothing. grammar.NewRecognizer refuses the document.
+	//
+	// Write the ':' and the same sequence is the value, the way "a:" over
+	// "- x" is.
+	t.Run("a dash after other content is neither the key nor the value", func(t *testing.T) {
+		_, err := parser.ParseBytes([]byte("? a\n- x\n"))
+		require.Error(t, err)
+
+		f, err := parser.ParseBytes([]byte("? a\n:\n- x\n"))
 		require.NoError(t, err)
 		assert.Equal(t, "? a\n:\n- x\n", f.String())
 	})
@@ -180,4 +187,56 @@ func TestABareQuestionMarkInsideAFlowMappingIsRefused(t *testing.T) {
 		_, err := parser.ParseBytes([]byte(src))
 		assert.Errorf(t, err, "%q", src)
 	}
+}
+
+// TestAnExplicitKeyWithNoColonHasNoValue: an entry whose "?" has no ":" of its
+// own takes the empty node, and does not read forward for one.
+//
+// 8.2.2 gives l-block-map-explicit-value(n) the shape s-indent(n) ":"
+// s-l+block-indented(n, block-out), so an explicit entry takes a value only
+// from a line that opens with ':'. Reading forward instead took whatever stood
+// at the "?"s column: " ?" over " 1" came back as {null: 1} and "? a" over
+// "&x b" as {a: "b"}, documents holding no ':' at all.
+//
+// A zero-indented block sequence is a value where a ':' was written, which is
+// why "a:" over "- b" is {a: [b]} and "? a" over "- b" is not a document. The
+// implicit-key path already answered this -- "a:" over "b" is refused as "value
+// is not indented past its key" -- and only the explicit one read on.
+//
+// This was yamlgen.Lax's "an explicit key's value in the key's own column", the
+// last of its four explicit-key entries. libfyaml 1.0.0b1 reads " ?\n 1\n" as
+// {"1": null} where we read {null: 1}: two lax readers giving opposite answers,
+// which is the argument for refusing rather than guessing.
+func TestAnExplicitKeyWithNoColonHasNoValue(t *testing.T) {
+	t.Run("a token at the '?'s column is not the value", func(t *testing.T) {
+		for _, src := range []string{
+			" ?\n 1\n",
+			"?\n1\n",
+			"? a\n1\n",
+			"? a\n- b\n",
+			"? a\n&x b\n",
+		} {
+			_, err := parser.ParseBytes([]byte(src))
+			require.Errorf(t, err, "%q", src)
+			assert.Containsf(t, err.Error(), "non-map value is specified", "%q", src)
+		}
+	})
+
+	// What the same documents look like written correctly, and the shapes where
+	// a token at the '?'s column is legitimate: it opens the next entry.
+	t.Run("the shapes at that column that do read", func(t *testing.T) {
+		for _, tc := range []struct{ src, want string }{
+			{"?\n  1\n", "? 1\n:\n"},
+			{"? a\n:\n- b\n", "? a\n:\n- b\n"},
+			{"? a\nb: c\n", "? a\n:\nb: c\n"},
+			{"? a\n?\n", "? a\n:\n?\n:\n"},
+			{"a: 1\n?\nb: 2\n", "a: 1\n?\n:\nb: 2\n"},
+			{"? a\n", "? a\n:\n"},
+			{"?\n", "?\n:\n"},
+		} {
+			f, err := parser.ParseBytes([]byte(tc.src))
+			require.NoErrorf(t, err, "%q", tc.src)
+			assert.Equalf(t, tc.want, f.String(), "%q", tc.src)
+		}
+	})
 }

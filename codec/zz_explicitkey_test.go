@@ -15,18 +15,21 @@ import (
 // The explicit-key documents that are YAML 1.2, pinned so that closing the ones
 // that are not cannot take these with it.
 //
-// yamlgen.Lax holds four documents where a "?" entry's ":" stands in a column
-// 8.2.2 does not put it in and the library reads them anyway. Three parser paths
-// are involved, so the fix is three fixes, and the tempting shortcut for all of
-// them is a column test: refuse the ":" unless it is at the mapping's own
+// yamlgen.Lax held four documents where a "?" entry's ":" stands in a column
+// 8.2.2 does not put it in and the library read them anyway. Three parser paths
+// were involved, so it took three fixes, and the tempting shortcut for all of
+// them was a column test: refuse the ":" unless it is at the mapping's own
 // indent.
 //
 // That shortcut is wrong, and these are why. A ":" indented past the "?" is
 // legal where the key's first line opened a mapping for it to continue: in
 // "? a: b" the key is a mapping at column 3 and "  : d" is its second entry, so
-// the ":" belongs to the key rather than to the entry. What makes the invalid
+// the ":" belongs to the key rather than to the entry. What made the invalid
 // four invalid is that their key is a *scalar*, after which nothing may follow
 // but the entry's own ":" at the mapping's indent.
+//
+// All four closed on 2026-09-09 and Lax is empty. These stay: they are what a
+// fourth attempt at a column test would break.
 //
 // Each of these was checked against grammar.NewRecognizer and read back through
 // the reference parser before being written down.

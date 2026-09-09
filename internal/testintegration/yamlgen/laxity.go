@@ -76,83 +76,40 @@ func KnownlyAccepted(src string) *Laxity {
 // explicit key indicator wherever separation follows it, and an entry's value
 // was measured against the ':' of a key that was never written. Each left a
 // test in parser/ or scanner/ behind it.
-// # The four explicit-key entries are four faults, not one
 //
-// They look like one -- every one of them is a "?" entry whose ":" is in a
+// # The four explicit-key entries were four faults, not one, and all four are closed
+//
+// They looked like one -- every one of them is a "?" entry whose ":" is in a
 // column the grammar does not put it in -- and reading them that way was wrong.
-// Rendering each back through parser.ParseBytes says what actually happens:
+// Rendering each back through parser.ParseBytes said what actually happened:
 //
 //	" ?\n 1\n"    -> "?\n: 1"     a ':' is invented; the source holds none
 //	"? l\n :\n"   -> "? l\n:"     a real ':' past the '?' becomes the indicator
 //	"? a\n : b\n" -> "? a\n:"     the same, and the "b" is dropped
 //	" ? a\n: b\n" -> "? a\n: b"   a ':' left of the '?' is accepted
 //
-// Three paths, so three fixes. The middle two share one.
+// Three paths, so three fixes, and the middle two shared one. They closed on
+// 2026-09-09:
+//
+//   - parseMapKey reads the key's group to its end and refuses what is left,
+//     which is the two middle entries. See parser's TestAnExplicitKeyNamesOneNode.
+//   - keyWindow.hasNoKey holds an explicit entry's ':' to the '?'s own column,
+//     which is the fourth. See TestAnExplicitEntrysColonStandsAtItsQuestionMarksColumn.
+//   - An explicit key whose group holds no ':' takes e-node for its value
+//     rather than reading forward, which is the first. See
+//     TestAnExplicitKeyWithNoColonHasNoValue.
 //
 // And the rule is not a column test. A ':' indented past the '?' is legal where
 // the key's first line opened a mapping for it to continue -- "?\n  : b\n" and
-// "? a: b\n  : d\n: v\n" are both YAML 1.2 and both read correctly. What makes
-// the entries below invalid is that the key is a scalar, after which nothing may
+// "? a: b\n  : d\n: v\n" are both YAML 1.2 and both read correctly. What made
+// the entries invalid is that the key is a scalar, after which nothing may
 // follow but the entry's own ':' at the mapping's indent. So a Match keyed on
-// the ':' being deeper than the '?' would swallow two valid documents, which is
-// the reason every entry here carries an exact Src and no Match at all.
+// the ':' being deeper than the '?' would have swallowed two valid documents,
+// which is why every entry carried an exact Src and no Match at all.
 // A sixth entry left on 2026-09-12: the grouping refuses a block sequence on
 // a tag's own line where it had always refused one on an anchor's, so
 // "!foo - 1" and "!!int - 8" now draw one message between them.
-var Lax = []Laxity{
-	{
-		Name: "an explicit key's value in the key's own column",
-		Src:  " ?\n 1\n",
-		Rule: "8.2.2: l-block-map-explicit-value(n) is `s-indent(n) \":\" s-l+block-indented(n,block-out)`, " +
-			"so an explicit entry takes a value only from a line that opens with ':'. Line 2 opens with " +
-			"`1`, which makes it a fresh ns-l-block-map-entry needing a ':' of its own -- go.yaml.in/yaml/v3 " +
-			"refuses it in those words, `could not find expected ':'`. Nor is the `1` the key's own content: " +
-			"c-l-block-map-explicit-key(n) puts that at s-l+block-indented(n), further in than the '?', and " +
-			"both sit in column 2.",
-		// We read the "1" as the explicit entry's value; libfyaml 1.0.0b1 reads
-		// it as the next entry's key and gives {"1": null}. Two lax readers,
-		// opposite answers, which is the argument for refusing rather than
-		// guessing: there is no obvious thing to read this as. libfyaml's is
-		// the more defensible of the two, since a line at the mapping's own
-		// indent starts an entry rather than continuing one.
-		Reads: map[string]any{"null": uint64(1)},
-	},
-	{
-		Name: "an explicit key's ':' indented past the mapping",
-		Src:  "? l\n :\n",
-		Rule: "8.2.2: l-block-map-explicit-value(n) opens with s-indent(n), and n here is 0 -- the '?' " +
-			"stands in column 1. The ':' is in column 2, so it is not the entry's value line. Nor is it " +
-			"content of the key `l`, which sits in column 3, further in than the ':'. libfyaml 1.0.0b1 " +
-			"names it exactly: `invalid indentation in mapping` at 2:2, and go.yaml.in/yaml/v3 refuses " +
-			"it too.",
-		// A real ':' promoted to the entry's indicator from a column it may
-		// not stand in. That is not what the entry above does, and thinking it
-		// was cost a wrong guess -- see the note over these four.
-		Reads: map[string]any{"l": nil},
-	},
-	{
-		Name: "an explicit key's ':' left of the '?'",
-		Src:  " ? a\n: b\n",
-		Rule: "8.2.2: l-block-map-explicit-value(n) opens with s-indent(n), and the '?' in column 2 puts " +
-			"n at 1. The ':' is in column 1, one short, so it closes nothing and opens nothing. " +
-			"libfyaml 1.0.0b1 refuses it as `invalid mapping in plain multiline` at 2:1.",
-		// The third path, and the only entry where go.yaml.in/yaml/v3 is lax
-		// with us rather than against us: it reads {a: null}, losing the "b".
-		// We read {a: "b"}, which keeps everything the document wrote -- so of
-		// the two lax answers ours is the better one, for once.
-		Reads: map[string]any{"a": "b"},
-	},
-	{
-		Name: "an explicit key's ':' past the '?', with a value to lose",
-		Src:  "? a\n : b\n",
-		Rule: "8.2.2, as for `? l` over ` :`: the ':' stands in column 2 where n is 0. libfyaml 1.0.0b1 " +
-			"refuses it as `invalid indentation in mapping` at 2:2 and go.yaml.in/yaml/v3 as `did not " +
-			"find expected key`.",
-		// Kept beside `? l` over ` :` although the fault is the same, because
-		// the severity is not: there the entry had no value to lose and here
-		// the "b" is dropped without a word. It is the only entry left that
-		// loses what the document wrote; the byte order mark behind a tab was
-		// the other, and it is refused now.
-		Reads: map[string]any{"a": nil},
-	},
-}
+//
+// The list is empty. That says nothing on its own -- the mutation hunt in
+// TestEveryDocumentTheGrammarRefusesIsRefused is what fills it.
+var Lax = []Laxity{}
