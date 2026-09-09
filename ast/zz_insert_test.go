@@ -143,3 +143,252 @@ func TestRenderNormalisesWhereVerbatimDoesNot(t *testing.T) {
 	require.NoError(t, ast.NewRenderer(ast.WithSource([]byte(src))).VerbatimFile(&out, file))
 	require.Equal(t, src, out.String())
 }
+
+// TestVerbatimPlacesAnInsertedEntry is the insertion matrix: an entry put at the
+// front of a collection, between two entries, and after the last one.
+//
+// Byte for byte, because the placement is the whole point -- the break in front
+// of the entry, the indentation it opens with, the "-" a sequence element needs
+// back, the ", " a flow collection separates with. A comparison that trimmed
+// either end would have missed the blank line an append used to leave behind.
+func TestVerbatimPlacesAnInsertedEntry(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name   string
+		src    string
+		nested bool
+		at     int
+		want   string
+	}{
+		{"a mapping, at the front", "a: 1\nb: 2\n", false, 0, "x: 9\na: 1\nb: 2\n"},
+		{"a mapping, in between", "a: 1\nb: 2\n", false, 1, "a: 1\nx: 9\nb: 2\n"},
+		{"a mapping, after the last", "a: 1\nb: 2\n", false, 2, "a: 1\nb: 2\nx: 9\n"},
+
+		{"a sequence, at the front", "- 1\n- 2\n", false, 0, "- 9\n- 1\n- 2\n"},
+		{"a sequence, in between", "- 1\n- 2\n", false, 1, "- 1\n- 9\n- 2\n"},
+		{"a sequence, after the last", "- 1\n- 2\n", false, 2, "- 1\n- 2\n- 9\n"},
+
+		{"a nested mapping, at the front", "root:\n  a: 1\n  b: 2\n", true, 0, "root:\n  x: 9\n  a: 1\n  b: 2\n"},
+		{"a nested mapping, in between", "root:\n  a: 1\n  b: 2\n", true, 1, "root:\n  a: 1\n  x: 9\n  b: 2\n"},
+		{"a nested mapping, after the last", "root:\n  a: 1\n  b: 2\n", true, 2, "root:\n  a: 1\n  b: 2\n  x: 9\n"},
+		{"a nested sequence, after the last", "root:\n  - 1\n  - 2\n", true, 2, "root:\n  - 1\n  - 2\n  - 9\n"},
+
+		{"four-space indentation", "root:\n    a: 1\n", true, 1, "root:\n    a: 1\n    x: 9\n"},
+		{"a comment beside the last entry", "a: 1\nb: 2  # note\n", false, 2, "a: 1\nb: 2  # note\nx: 9\n"},
+		{"a blank line between entries", "a: 1\n\nb: 2\n", false, 2, "a: 1\n\nb: 2\nx: 9\n"},
+		{"no trailing line break", "a: 1", false, 1, "a: 1\nx: 9\n"},
+		{"carriage returns", "a: 1\r\nb: 2\r\n", false, 2, "a: 1\r\nb: 2\r\nx: 9\n"},
+		{"outside a nested mapping", "root:\n  a: 1\n", false, 1, "root:\n  a: 1\nx: 9\n"},
+
+		{"a flow mapping, at the front", "{a: 1, b: 2}\n", false, 0, "{x: 9, a: 1, b: 2}\n"},
+		{"a flow mapping, in between", "{a: 1, b: 2}\n", false, 1, "{a: 1, x: 9, b: 2}\n"},
+		{"a flow mapping, after the last", "{a: 1, b: 2}\n", false, 2, "{a: 1, b: 2, x: 9}\n"},
+		{"a flow sequence, after the last", "[1, 2]\n", false, 2, "[1, 2, 9]\n"},
+		{"a flow mapping with nothing in it", "{}\n", false, 0, "{x: 9}\n"},
+		{"a flow sequence with nothing in it", "[]\n", false, 0, "[9]\n"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			file, err := parser.ParseBytes([]byte(tc.src), parser.WithComments())
+			require.NoError(t, err)
+
+			body := file.Docs[0].Body
+			if tc.nested {
+				body = onlyValueOf(t, body)
+			}
+			insertInto(t, body, tc.at)
+
+			var out bytes.Buffer
+			require.NoError(t, ast.NewRenderer(ast.WithSource([]byte(tc.src))).VerbatimFile(&out, file))
+			require.Equal(t, tc.want, out.String())
+		})
+	}
+}
+
+// insertInto puts an entry into a collection at index at.
+func insertInto(t *testing.T, body ast.Node, at int) {
+	t.Helper()
+
+	switch c := body.(type) {
+	case *ast.MappingNode:
+		built, err := codec.ValueToNode(map[string]any{"x": 9})
+		require.NoError(t, err)
+		added := built.(*ast.MappingNode).Values[0]
+		c.Values = append(c.Values[:at], append([]*ast.MappingValueNode{added}, c.Values[at:]...)...)
+	case *ast.SequenceNode:
+		added, err := codec.ValueToNode(9)
+		require.NoError(t, err)
+		c.Values = append(c.Values[:at], append([]ast.Node{added}, c.Values[at:]...)...)
+	default:
+		t.Fatalf("%T is not a collection", body)
+	}
+}
+
+// onlyValueOf is the collection held by a mapping with one entry.
+func onlyValueOf(t *testing.T, body ast.Node) ast.Node {
+	t.Helper()
+
+	mapping, isMapping := body.(*ast.MappingNode)
+	require.True(t, isMapping)
+	require.Len(t, mapping.Values, 1)
+
+	return mapping.Values[0].Value
+}
+
+// Ceilings on inserting an entry into every corpus document that holds a block
+// mapping whose entries open lines of their own. None of them may rise.
+//
+// unreadableCeiling counts documents the insertion leaves unparseable, and
+// disturbedCeiling counts those where a line the caller never touched came back
+// changed. What is left are shapes the placement does not reach: a mapping
+// standing as the key of an explicit "?" pair, one written compactly after a
+// "-", and comments around a block scalar, where the line one entry ends on is
+// not the line the next one begins.
+//
+// Appending was 86 unreadable and 1293 disturbed until writeEntry took the rest
+// of the previous entry's line from the cursor instead of from its extent --
+// a token's extent runs to the end of its tile, which can be a line further on.
+// The front and middle numbers did not move.
+const (
+	frontUnreadableCeiling  = 60
+	middleUnreadableCeiling = 60
+	backUnreadableCeiling   = 13
+
+	frontDisturbedCeiling  = 0
+	middleDisturbedCeiling = 17
+	backDisturbedCeiling   = 187
+)
+
+// TestInsertingIntoTheCorpus puts one entry into every document the corpus holds
+// and asks for it back.
+//
+// Three things are counted: the rendered document still parses, it holds the
+// entry that was put in, and every line the caller did not touch is unchanged.
+// The third is the one the design exists for, and the one a trimmed comparison
+// cannot see.
+func TestInsertingIntoTheCorpus(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		where      string
+		unreadable int
+		disturbed  int
+	}{
+		{"front", frontUnreadableCeiling, frontDisturbedCeiling},
+		{"middle", middleUnreadableCeiling, middleDisturbedCeiling},
+		{"back", backUnreadableCeiling, backDisturbedCeiling},
+	} {
+		t.Run("inserted at the "+tc.where, func(t *testing.T) {
+			t.Parallel()
+
+			var tried, unreadable, lost, disturbed int
+			for _, src := range renderSources(t) {
+				file, err := parser.ParseBytes([]byte(src.text), parser.WithComments())
+				if err != nil || len(file.Docs) == 0 {
+					continue
+				}
+				mapping := firstPlainMapping(file.Docs[0].Body, src.text)
+				if mapping == nil {
+					continue
+				}
+
+				at := 0
+				switch tc.where {
+				case "middle":
+					at = len(mapping.Values) / 2
+				case "back":
+					at = len(mapping.Values)
+				}
+				insertMarkerAt(t, mapping, at)
+				tried++
+
+				var out bytes.Buffer
+				require.NoError(t, ast.NewRenderer(ast.WithSource([]byte(src.text))).VerbatimFile(&out, file))
+
+				if _, err := parser.ParseBytes(out.Bytes(), parser.WithComments()); err != nil {
+					unreadable++
+
+					continue
+				}
+				if !strings.Contains(out.String(), corpusMarker) {
+					lost++
+
+					continue
+				}
+				if withoutMarkerLines(out.String()) != src.text {
+					disturbed++
+				}
+			}
+
+			require.Positive(t, tried)
+			t.Logf("inserted at the %s: %d documents, %d no longer parse, %d lost the entry, %d changed a line the caller did not touch",
+				tc.where, tried, unreadable, lost, disturbed)
+
+			require.Zerof(t, lost, "%d documents dropped the entry that was put in", lost)
+			require.LessOrEqualf(t, unreadable, tc.unreadable,
+				"%d documents no longer parse, ceiling is %d", unreadable, tc.unreadable)
+			require.LessOrEqualf(t, disturbed, tc.disturbed,
+				"%d documents changed a line the caller did not touch, ceiling is %d", disturbed, tc.disturbed)
+		})
+	}
+}
+
+const corpusMarker = "x-mark-9"
+
+// firstPlainMapping is the first block mapping of a document whose entries open
+// lines of their own, which is where an inserted entry has somewhere to go.
+func firstPlainMapping(n ast.Node, src string) *ast.MappingNode {
+	var found *ast.MappingNode
+	walkEveryNode(n, func(n ast.Node) {
+		if found != nil {
+			return
+		}
+		mapping, isMapping := n.(*ast.MappingNode)
+		if !isMapping || mapping.IsFlowStyle || len(mapping.Values) == 0 {
+			return
+		}
+		key := mapping.Values[0].Key.GetToken()
+		if key == nil || int(key.Position.Column) != len(indentBefore(src, key.Position.Offset()))+1 {
+			return
+		}
+		found = mapping
+	})
+
+	return found
+}
+
+// indentBefore is what stands between the last line break and at.
+func indentBefore(src string, at int32) string {
+	end := min(int(at), len(src))
+	for i := end - 1; i >= 0; i-- {
+		if src[i] == '\n' {
+			return src[i+1 : end]
+		}
+	}
+
+	return src[:end]
+}
+
+func insertMarkerAt(t *testing.T, mapping *ast.MappingNode, at int) {
+	t.Helper()
+
+	built, err := codec.ValueToNode(map[string]any{corpusMarker: 1})
+	require.NoError(t, err)
+	added := built.(*ast.MappingNode).Values[0]
+	mapping.Values = append(mapping.Values[:at], append([]*ast.MappingValueNode{added}, mapping.Values[at:]...)...)
+}
+
+// withoutMarkerLines drops every line the marker was written on.
+func withoutMarkerLines(rendered string) string {
+	lines := strings.Split(rendered, "\n")
+	kept := lines[:0]
+	for _, line := range lines {
+		if !strings.Contains(line, corpusMarker) {
+			kept = append(kept, line)
+		}
+	}
+
+	return strings.Join(kept, "\n")
+}

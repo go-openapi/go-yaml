@@ -5,6 +5,7 @@ package ast
 
 import (
 	"io"
+	"strings"
 
 	"github.com/go-openapi/go-yaml/token"
 )
@@ -315,6 +316,53 @@ func (vw *verbatimWriter) raw(text string) {
 	vw.hand(Written{Text: []byte(text)})
 }
 
+// asIndent turns what stands in front of an entry into indentation of the same
+// width.
+//
+// An entry written as "- a: 1" opens after a sequence indicator, so the text in
+// front of it is "- " and copying that would make the new entry an element of
+// the sequence rather than a key beside "a". The column is what matters, so
+// anything that is not a space becomes one.
+func asIndent(lead string) string {
+	return strings.Map(func(r rune) rune {
+		if r == ' ' || r == '\t' {
+			return r
+		}
+
+		return ' '
+	}, lead)
+}
+
+// restOfLine is the offset just past the break that ends the line the copy
+// stands on, where nothing but spacing and a comment stands in between, and the
+// cursor itself where anything else does.
+//
+// An entry appended to a collection goes on a line of its own, and the line the
+// entry before it ends on is still open: the spaces after it, a comment beside
+// it, the break itself. Those belong to that entry and go out first. Anything
+// else on the way is another entry's, and the copy stays where it is.
+func (vw *verbatimWriter) restOfLine() int {
+	for i := vw.cursor; i < len(vw.src); i++ {
+		switch c := vw.src[i]; c {
+		case '\n':
+			return i + 1
+		case ' ', '\t', '\r':
+		case '#':
+			for ; i < len(vw.src); i++ {
+				if vw.src[i] == '\n' {
+					return i + 1
+				}
+			}
+
+			return len(vw.src)
+		default:
+			return vw.cursor
+		}
+	}
+
+	return len(vw.src)
+}
+
 // indentAt is the indentation the line holding from opens with, taken from the
 // document rather than counted from the tree's depth.
 //
@@ -363,7 +411,10 @@ func (r *Renderer) write(vw *verbatimWriter, n Node) {
 			r.writeTokenOf(vw, v.Start, v)
 		}
 		for i, entry := range v.Values {
-			r.writeEntry(vw, entry, mappingSiblings(v.Values), i)
+			r.writeEntry(vw, entry, collection{
+				siblings: mappingSiblings(v.Values),
+				flow:     v.IsFlowStyle,
+			}, i)
 		}
 		if v.IsFlowStyle {
 			r.writeTokenOf(vw, v.End, v)
@@ -386,7 +437,11 @@ func (r *Renderer) write(vw *verbatimWriter, n Node) {
 			if !v.IsFlowStyle && i < len(v.Entries) && v.Entries[i] != nil {
 				r.writeTokenOf(vw, v.Entries[i].Start, v)
 			}
-			r.writeEntry(vw, value, sliceSiblings(v.Values), i)
+			r.writeEntry(vw, value, collection{
+				siblings: sliceSiblings(v.Values),
+				flow:     v.IsFlowStyle,
+				seq:      !v.IsFlowStyle,
+			}, i)
 		}
 		if v.IsFlowStyle {
 			r.writeTokenOf(vw, v.End, v)
@@ -494,7 +549,7 @@ func (r *Renderer) writeTokenOf(vw *verbatimWriter, tk *token.Token, n Node) {
 //
 // Inserted after the last entry the source reaches there is nothing to take the
 // indentation from ahead of it, so it comes from the entry before.
-func (r *Renderer) writeEntry(vw *verbatimWriter, entry Node, siblings func(int) Node, i int) {
+func (r *Renderer) writeEntry(vw *verbatimWriter, entry Node, coll collection, i int) {
 	if sourceExtent(entry).found() {
 		r.write(vw, entry)
 
@@ -506,27 +561,114 @@ func (r *Renderer) writeEntry(vw *verbatimWriter, entry Node, siblings func(int)
 		return
 	}
 
-	if next, found := nextFromSource(siblings, i); found {
-		vw.upTo(int(next.from))
+	if coll.flow {
+		r.writeFlowEntry(vw, text, coll, i)
+
+		return
+	}
+
+	if next, found := nextFromSource(coll.siblings, i); found {
 		indent := vw.indentAt(next.from)
+
+		// The copy stops on the following entry, which has written the break and
+		// the indentation in front of it, so the new entry lands where that one
+		// would have and puts it back on a line of its own.
+		vw.upTo(int(next.from))
 		vw.raw(text)
 		vw.raw("\n" + indent)
 
 		return
 	}
 
-	// Nothing after it stands in the document. The copy has already reached the
-	// end of the entry before, so the break it ends on is the one to write on.
-	previous, found := lastFromSource(siblings, i)
+	// Nothing after it stands in the document. The copy has stopped at the last
+	// token of the entry before, so the rest of that entry's line -- a comment
+	// beside it, the break that ends it -- is still waiting and would otherwise
+	// go out after the inserted entry. Take it first, then open a line.
+	previous, found := lastFromSource(coll.siblings, i)
 	if !found {
 		return
 	}
+	vw.upTo(vw.restOfLine())
 	if !vw.atLineStart {
 		vw.raw("\n")
 	}
-	vw.raw(vw.indentAt(previous.from))
+	// What stands in front of the entry before is the indentation to repeat --
+	// but only its width where it holds an indicator. A block sequence needs its
+	// "-" back; a mapping written as "- a: 1" would gain a second element from
+	// it.
+	lead := vw.indentAt(previous.from)
+	if !coll.seq {
+		lead = asIndent(lead)
+	}
+	vw.raw(lead)
 	vw.raw(text)
 	vw.raw("\n")
+}
+
+// collection is what an inserted entry needs to know about the collection it
+// was put into: how to reach its siblings, and whether they are separated by a
+// line break or by a comma.
+type collection struct {
+	siblings func(int) Node
+	flow     bool
+	// seq says the entries are elements of a block sequence, where what stands
+	// in front of an element is the "-" the next one has to repeat.
+	seq bool
+}
+
+// writeFlowEntry puts an inserted entry inside "{...}" or "[...]", where
+// entries are separated by ", " and a line break would change the document.
+//
+// Before an entry the document holds, the text goes in with a separator after
+// it. After the last one -- and in a collection the caller filled from empty --
+// it goes in where the copy stands, which is in front of the closing bracket
+// the collection writes once its entries are done.
+func (r *Renderer) writeFlowEntry(vw *verbatimWriter, text string, coll collection, i int) {
+	if next, found := nextFlowFromSource(coll.siblings, i); found {
+		vw.upTo(int(next.from))
+		vw.raw(text + ", ")
+
+		return
+	}
+
+	if _, found := lastFromSource(coll.siblings, i); found {
+		vw.raw(", " + text)
+
+		return
+	}
+
+	vw.raw(text)
+}
+
+// nextFlowFromSource is where the first entry after i that the document holds
+// begins, not counting the comma in front of it.
+//
+// A flow entry carries the separator that precedes it: MappingValueNode.CollectEntry
+// is the "," between it and the entry before, so its extent opens on a comma
+// that already separates two other entries. Inserting there puts the new entry
+// in front of that comma and leaves it stranded. The key is where the entry
+// itself starts.
+func nextFlowFromSource(siblings func(int) Node, i int) (extent, bool) {
+	for j := i + 1; ; j++ {
+		sibling := siblings(j)
+		if sibling == nil {
+			return noExtent, false
+		}
+		span := sourceExtent(sibling)
+		if !span.found() {
+			continue
+		}
+
+		entry, isEntry := sibling.(*MappingValueNode)
+		if !isEntry || entry.CollectEntry == nil || !entry.CollectEntry.FromSource() {
+			return span, true
+		}
+		if key := sourceExtent(entry.Key); key.found() {
+			return key, true
+		}
+
+		return span, true
+	}
 }
 
 // nextFromSource is the extent of the first sibling after i that the document
