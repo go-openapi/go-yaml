@@ -757,7 +757,7 @@ func TestDefectAnExplicitKeyInsideAnExplicitKeyIsRefused(t *testing.T) {
 		} {
 			// Into an `any`, which names the key by walking it. A typed map
 			// cannot hold one: `cannot use map[string]interface {} as a map
-			// key: Go cannot hash it`.
+			// key: it is not comparable`.
 			var got any
 			require.NoErrorf(t, codec.Unmarshal([]byte(tc.src), &got), "%q", tc.src)
 			assert.Equalf(t, map[string]any{tc.key: "v"}, got, "%q", tc.src)

@@ -2866,9 +2866,9 @@ func (d *Decoder) decodeMap(ctx context.Context, dst reflect.Value, src ast.Node
 		if k.IsValid() {
 			if !k.Comparable() {
 				// A sequence or a mapping used as a mapping key, into a map
-				// whose key type admits one. Go cannot hash it, and
-				// SetMapIndex panicked with "hash of unhashable type" rather
-				// than reporting the document.
+				// whose key type admits one. A map key must be comparable,
+				// and SetMapIndex panicked with "hash of unhashable type"
+				// rather than reporting the document.
 				return yamlerrors.NewUnhashableKey(dynamicTypeOf(k), key.GetToken())
 			}
 			if folded {

@@ -34,7 +34,7 @@ limits:
 `Unmarshal` into `map[string]any` refuses it outright:
 
 ```
-[6:1] cannot use []interface {} as a map key: Go cannot hash it
+[6:1] cannot use []interface {} as a map key: it is not comparable
    3 | version: 1.2.3
    4 | limits:
    5 |   max: 18446744073709551615

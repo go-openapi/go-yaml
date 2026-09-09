@@ -28,7 +28,7 @@ func TestACollectionKeyIsRefusedNotPanicked(t *testing.T) {
 			err := codec.Unmarshal([]byte(src), &into)
 			require.Error(t, err)
 			assert.ErrorIs(t, err, yamlerrors.ErrUnhashableKey)
-			assert.Contains(t, err.Error(), "as a map key: Go cannot hash it")
+			assert.Contains(t, err.Error(), "as a map key: it is not comparable")
 
 			// UseStringKeys does not make one usable either -- it reads keys as
 			// text, and a collection has no text.

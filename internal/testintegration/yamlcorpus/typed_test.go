@@ -152,7 +152,7 @@ var typedPathDefects = map[string]typedDefect{}
 var yardstickDefects = map[string]typedDefect{
 	// A collection key has no Go map key to be. `map[any]any` and
 	// `map[string]any` both refuse the document with `cannot use
-	// map[string]interface {} as a map key: Go cannot hash it`, and codec.ToJSON
+	// map[string]interface {} as a map key: it is not comparable`, and codec.ToJSON
 	// refuses it with `a mapping cannot be a JSON key`. Those are the right
 	// answers: Go cannot hash a map and JSON has no mapping key.
 	//

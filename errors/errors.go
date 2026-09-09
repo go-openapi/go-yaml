@@ -61,8 +61,9 @@ var (
 	ErrUnexpectedNodeType = stderrors.New("unexpected node type")
 	// ErrUnhashableKey reports a mapping key Go cannot use as a map key -- a
 	// sequence or a mapping, decoded into a map whose key type admits one,
-	// such as a map[any]any. Setting it panicked with "hash of unhashable
-	// type" until it was reported here.
+	// such as a map[any]any. A map key must be comparable, and setting one
+	// that is not panicked with "hash of unhashable type" until it was
+	// reported here.
 	ErrUnhashableKey = stderrors.New("unhashable map key")
 	// ErrNotJSON reports a well-formed YAML document that JSON has no spelling
 	// for, found with
@@ -128,11 +129,11 @@ func NewSyntax(msg string, tk *token.Token) *Error {
 	return &Error{kind: ErrSyntax, msg: msg, token: tk}
 }
 
-// NewUnhashableKey reports src as a mapping key Go cannot hash, at tk.
+// NewUnhashableKey reports src as a mapping key Go cannot compare, at tk.
 func NewUnhashableKey(src reflect.Type, tk *token.Token) *Error {
 	return &Error{
 		kind:  ErrUnhashableKey,
-		msg:   fmt.Sprintf("cannot use %s as a map key: Go cannot hash it", src),
+		msg:   fmt.Sprintf("cannot use %s as a map key: it is not comparable", src),
 		token: tk,
 	}
 }
