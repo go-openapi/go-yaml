@@ -214,6 +214,13 @@ func setKey(t *testing.T, f *ast.File, i int, v any) {
 // pointing at it, which is the caller's doing and says nothing about placement.
 // So are values carrying a tag or an anchor, since replacing one takes the
 // property with it.
+//
+// replacedDocuments is how many that leaves, and it is checked with the three.
+// It follows the corpus and the acceptance line; the three follow the renderer.
+// Zero failures over a set that quietly shrank is not the same result, and only
+// the denominator says which happened.
+const replacedDocuments = 1005
+
 func TestReplacingAValueAcrossTheCorpus(t *testing.T) {
 	t.Parallel()
 
@@ -262,9 +269,12 @@ func TestReplacingAValueAcrossTheCorpus(t *testing.T) {
 	}
 
 	require.Positive(t, tried)
-	t.Logf("replaced one value in %d documents: %d no longer parse, %d lost it, %d changed something else",
-		tried, unreadable, lost, disturbed)
+	t.Logf("replaced one value in %d documents (recorded %d): %d no longer parse, %d lost it, %d changed something else",
+		tried, replacedDocuments, unreadable, lost, disturbed)
 
+	require.GreaterOrEqualf(t, tried, replacedDocuments,
+		"%d documents were measured where %d were: fewer reach the replacement than did, so zero failures below says less than it did",
+		tried, replacedDocuments)
 	require.Zerof(t, unreadable, "%d documents no longer parse", unreadable)
 	require.Zerof(t, lost, "%d documents lost the value that was put in", lost)
 	require.Zerof(t, disturbed, "%d documents changed somewhere else as well: %v", disturbed, wrong)

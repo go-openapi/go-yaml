@@ -33,9 +33,15 @@ import (
 // A ceiling rather than a ledger, and it is not allowed to rise. Refused
 // documents are not counted: a comment staged where the parse gave up means
 // nothing, and counting them said 685 where the answer is 11.
+//
+// commentedDocuments is recorded with them. It follows the corpus and the
+// acceptance line, and the two losses follow the parse; a loss count on its own
+// cannot say which of the two moved. It may not fall while the ceilings hold.
 const (
 	staleCommentCeiling  = 11
 	overwroteHeadCeiling = 7
+
+	commentedDocuments = 6691
 )
 
 // TestNoCommentIsReadAndThenDropped counts, for every document the parse
@@ -85,8 +91,13 @@ func TestNoCommentIsReadAndThenDropped(t *testing.T) {
 		accepted, stale, staleDocs, overwrote)
 
 	require.Positive(t, accepted)
+	require.GreaterOrEqualf(t, accepted, commentedDocuments,
+		"%d accepted documents hold a comment where %d did: fewer are being measured, so re-measure before reading the counts below as the parse losing less",
+		accepted, commentedDocuments)
 	require.LessOrEqualf(t, stale, int64(staleCommentCeiling),
-		"comments staged and never taken rose to %d, ceiling is %d", stale, staleCommentCeiling)
+		"comments staged and never taken rose to %d over %d documents, recorded %d over %d",
+		stale, accepted, staleCommentCeiling, commentedDocuments)
 	require.LessOrEqualf(t, overwrote, int64(overwroteHeadCeiling),
-		"head comments written over rose to %d, ceiling is %d", overwrote, overwroteHeadCeiling)
+		"head comments written over rose to %d over %d documents, recorded %d over %d",
+		overwrote, accepted, overwroteHeadCeiling, commentedDocuments)
 }

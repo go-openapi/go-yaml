@@ -237,33 +237,41 @@ func onlyValueOf(t *testing.T, body ast.Node) ast.Node {
 	return mapping.Values[0].Value
 }
 
-// Ceilings on inserting an entry into every corpus document that holds a block
-// mapping whose entries open lines of their own. None of them may rise.
+// placement records how an entry inserted at one position fared over the corpus:
+// how many documents were measured, and how many came out wrong.
 //
-// unreadableCeiling counts documents the insertion leaves unparseable, and
-// disturbedCeiling counts those where a line the caller never touched came back
-// changed. What is left are shapes the placement does not reach: a mapping
-// standing as the key of an explicit "?" pair, one written compactly after a
-// "-", and comments around a block scalar, where the line one entry ends on is
-// not the line the next one begins.
+// The denominator is recorded with the failures because the two answer different
+// questions, and a failure count on its own answers neither. tested follows the
+// corpus -- it counts documents holding a block mapping whose entries open lines
+// of their own, so a parser fix that accepts one more adds it here with the
+// renderer standing still. unreadable and disturbed follow the placement. On
+// 2026-09-10 a rebase took front and middle from 60 to 59 with nothing changed
+// in writeEntry, and reading which of the two had moved needed the diff.
+//
+// With both on the page: unreadable up and tested flat is the placement; both up
+// together is the parser; unreadable up and tested down is the harness.
+type placement struct {
+	tested     int
+	unreadable int
+	disturbed  int
+}
+
+// insertionCensus holds what each position measures. tested may not fall, and
+// unreadable and disturbed may not rise.
+//
+// What still fails are shapes the placement does not reach: a mapping standing
+// as the key of an explicit "?" pair, one written compactly after a "-", and
+// comments around a block scalar, where the line one entry ends on is not the
+// line the next one begins.
 //
 // Appending was 86 unreadable and 1293 disturbed until writeEntry took the rest
-// of the previous entry's line from the cursor instead of from its extent --
-// a token's extent runs to the end of its tile, which can be a line further on.
-// The front and middle numbers did not move.
-//
-// They move with the parser as well: a fix that accepts a document adds it to
-// what is measured here, so a number that changes with nothing changed in
-// writeEntry is the corpus and not the placement.
-const (
-	frontUnreadableCeiling  = 59
-	middleUnreadableCeiling = 59
-	backUnreadableCeiling   = 13
-
-	frontDisturbedCeiling  = 0
-	middleDisturbedCeiling = 17
-	backDisturbedCeiling   = 187
-)
+// of the previous entry's line from the cursor instead of from its extent -- a
+// token's extent runs to the end of its tile, which can be a line further on.
+var insertionCensus = map[string]placement{
+	"front":  {tested: 1747, unreadable: 59, disturbed: 0},
+	"middle": {tested: 1747, unreadable: 59, disturbed: 17},
+	"back":   {tested: 1747, unreadable: 13, disturbed: 187},
+}
 
 // TestInsertingIntoTheCorpus puts one entry into every document the corpus holds
 // and asks for it back.
@@ -275,16 +283,10 @@ const (
 func TestInsertingIntoTheCorpus(t *testing.T) {
 	t.Parallel()
 
-	for _, tc := range []struct {
-		where      string
-		unreadable int
-		disturbed  int
-	}{
-		{"front", frontUnreadableCeiling, frontDisturbedCeiling},
-		{"middle", middleUnreadableCeiling, middleDisturbedCeiling},
-		{"back", backUnreadableCeiling, backDisturbedCeiling},
-	} {
-		t.Run("inserted at the "+tc.where, func(t *testing.T) {
+	for _, where := range []string{"front", "middle", "back"} {
+		recorded := insertionCensus[where]
+
+		t.Run("inserted at the "+where, func(t *testing.T) {
 			t.Parallel()
 
 			var tried, unreadable, lost, disturbed int
@@ -299,7 +301,7 @@ func TestInsertingIntoTheCorpus(t *testing.T) {
 				}
 
 				at := 0
-				switch tc.where {
+				switch where {
 				case "middle":
 					at = len(mapping.Values) / 2
 				case "back":
@@ -327,16 +329,31 @@ func TestInsertingIntoTheCorpus(t *testing.T) {
 			}
 
 			require.Positive(t, tried)
-			t.Logf("inserted at the %s: %d documents, %d no longer parse, %d lost the entry, %d changed a line the caller did not touch",
-				tc.where, tried, unreadable, lost, disturbed)
+			t.Logf("inserted at the %s: %d documents measured (recorded %d), %d no longer parse, %d lost the entry, %d changed a line the caller did not touch",
+				where, tried, recorded.tested, unreadable, lost, disturbed)
 
 			require.Zerof(t, lost, "%d documents dropped the entry that was put in", lost)
-			require.LessOrEqualf(t, unreadable, tc.unreadable,
-				"%d documents no longer parse, ceiling is %d", unreadable, tc.unreadable)
-			require.LessOrEqualf(t, disturbed, tc.disturbed,
-				"%d documents changed a line the caller did not touch, ceiling is %d", disturbed, tc.disturbed)
+			require.GreaterOrEqualf(t, tried, recorded.tested,
+				"%d documents reach the insertion where %d did: fewer documents are being measured, which is the harness or the parser and not the placement",
+				tried, recorded.tested)
+			require.LessOrEqualf(t, unreadable, recorded.unreadable,
+				"%d of %d documents no longer parse, recorded %d of %d -- %s",
+				unreadable, tried, recorded.unreadable, recorded.tested, whatMoved(tried, recorded.tested))
+			require.LessOrEqualf(t, disturbed, recorded.disturbed,
+				"%d of %d documents changed a line the caller did not touch, recorded %d of %d -- %s",
+				disturbed, tried, recorded.disturbed, recorded.tested, whatMoved(tried, recorded.tested))
 		})
 	}
+}
+
+// whatMoved says whether the corpus moved under a count that failed, so the
+// failure reads as a verdict rather than as a number to go and look up.
+func whatMoved(tested, recorded int) string {
+	if tested != recorded {
+		return "the corpus moved as well, so re-measure before reading this as a regression"
+	}
+
+	return "the same documents were measured, so this is the placement"
 }
 
 const corpusMarker = "x-mark-9"

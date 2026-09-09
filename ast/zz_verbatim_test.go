@@ -114,18 +114,23 @@ func TestVerbatimWritesANodeBack(t *testing.T) {
 	require.Positive(t, checked)
 }
 
-// unlabeledSuiteCeiling is how many Test Suite documents may hold a token the
-// verbatim descent never labels. It is not allowed to rise.
+// unlabeledSuite records how many Test Suite documents hold a token the verbatim
+// descent never labels, and how many were measured to find them.
+//
+// The denominator is recorded with the count because a count on its own cannot
+// say whether the descent changed or the set of accepted documents did. tested
+// follows the parser: a fix that accepts one more suite document adds it here
+// with the renderer standing still. unlabeled follows the descent, and may not
+// rise while tested holds.
 //
 // The ten are comments and trailing whitespace: spec-example-6-9-separated-comment,
 // various-trailing-comments, trailing-whitespace-in-streams/00 and their kind.
-// The token is behind the cursor by the time the descent asks for it, because
-// the filler around it went out with an earlier one, so upToToken writes
-// nothing and nothing says who wrote those bytes.
+// The token is behind the cursor by the time the descent asks for it, so
+// upToToken writes nothing and no node claims those bytes.
 //
-// A count over the Test Suite, which is fixed. The fuzz corpus is regenerated
-// as yamlgen learns shapes, so its number is logged and not gated.
-const unlabeledSuiteCeiling = 10
+// The fuzz corpus is regenerated as yamlgen learns shapes, so its number is
+// logged and not gated.
+var unlabeledSuite = struct{ unlabeled, tested int }{unlabeled: 10, tested: 308}
 
 // TestVerbatimRebuildsEveryDocument is the verbatim census: for every document
 // the parser accepts, src == VerbatimFile(ParseBytes(src)).
@@ -206,15 +211,19 @@ func TestVerbatimRebuildsEveryDocument(t *testing.T) {
 	}
 
 	require.Positive(t, accepted)
-	t.Logf("verbatim: %d accepted documents, %d rebuilt byte for byte", accepted, rebuilt)
-	t.Logf("descent: a token the tree holds arrives unlabeled in %d of %d suite documents and %d seeds",
-		suiteUnlabeled, suiteN, seedUnlabeled)
+	t.Logf("verbatim: %d of %d accepted documents rebuilt byte for byte -- which a run with Renderer.write deleted also manages, so read the next line",
+		rebuilt, accepted)
+	t.Logf("descent: a token the tree holds arrives unlabeled in %d of %d suite documents (recorded %d of %d) and %d seeds",
+		suiteUnlabeled, suiteN, unlabeledSuite.unlabeled, unlabeledSuite.tested, seedUnlabeled)
 
 	require.Equalf(t, accepted, rebuilt,
 		"%d documents do not come back as they were written, starting with %v", accepted-rebuilt, differing)
-	require.LessOrEqualf(t, suiteUnlabeled, unlabeledSuiteCeiling,
-		"a token arrives unlabeled in %d suite documents, ceiling is %d: %v",
-		suiteUnlabeled, unlabeledSuiteCeiling, unlabeled)
+	require.GreaterOrEqualf(t, suiteN, unlabeledSuite.tested,
+		"%d suite documents are measured where %d were: fewer are accepted than were, so re-measure before reading the count below",
+		suiteN, unlabeledSuite.tested)
+	require.LessOrEqualf(t, suiteUnlabeled, unlabeledSuite.unlabeled,
+		"a token arrives unlabeled in %d of %d suite documents, recorded %d of %d: %v",
+		suiteUnlabeled, suiteN, unlabeledSuite.unlabeled, unlabeledSuite.tested, unlabeled)
 }
 
 // TestVerbatimKeepsWhatARebuildFromValuesWouldLose pins the four distortions
