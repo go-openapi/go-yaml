@@ -35,7 +35,7 @@ import (
 // is excused from the property and never compared.
 //
 // Both were live on 2026-09-13 and both had been logging their zero for days.
-// decode/one-non-string-key-zeroes-a-whole-struct was fixed by 7dc4075 on
+// decode/one-non-string-key-zeroes-a-whole-struct was fixed by 114e426 on
 // 2026-09-07 and its entry stayed, excusing 1,256 documents a run;
 // decode/a-key-after-a-long-tag-on-an-empty-value-is-not-resolved matched any
 // tagged null anywhere in a tree and excused 1,077, where the defect needs a

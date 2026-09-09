@@ -948,7 +948,7 @@ func TestFixedFoldedScalarGainsNoBreakWhenRendered(t *testing.T) {
 // TestFixedANonStringKeyNoLongerZeroesAWholeStruct: a key no field can be named
 // after is skipped, and the entries around it read.
 //
-// ✅ Closed 2026-09-07 in two steps. 7dc4075 inverted decodeStruct, so the
+// ✅ Closed 2026-09-07 in two steps. 114e426 inverted decodeStruct, so the
 // decode walks the document's entries and looks each field up rather than
 // walking the fields and reading the mapping into a map first -- the map came
 // back nil at the first key that was not a string, with no error, and every

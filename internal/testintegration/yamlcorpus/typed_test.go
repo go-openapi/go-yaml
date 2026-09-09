@@ -109,12 +109,12 @@ func TestTheEnumeratedShapesReadIntoAGoType(t *testing.T) {
 // leaves by being fixed -- the test says so rather than passing quietly.
 //
 // Eleven left that way on 2026-09-07, when the decoder branch landed. Eight
-// were the struct zeroing, closed in two steps: 7dc4075 inverted decodeStruct,
+// were the struct zeroing, closed in two steps: 114e426 inverted decodeStruct,
 // so a key no field can be named after is a key no field claims rather than one
 // that abandons the whole mapping, and entryName then named a key by the
 // type's own canonical spelling, so "true: x" reaches a field tagged "true" and
 // "1.0: x" one tagged "1.0" -- which is how the same document reads into a
-// map[string]any. Three were the merge path, closed by 6c10f40: a mapping's own
+// map[string]any. Three were the merge path, closed by c8efd48: a mapping's own
 // key was refused as a duplicate of the one it overrides, and a merge given a
 // sequence was refused with "sequence was used where mapping is expected".
 //

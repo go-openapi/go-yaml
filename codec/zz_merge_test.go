@@ -120,7 +120,7 @@ func TestMergeWrittenInPlaceConvertsToJSON(t *testing.T) {
 //
 // Decoder.decodeMap is the reflection path and was a **fourth** place a merge
 // is resolved, beside decode.go's nodeToValue setters, walkstruct.go and
-// tojson.go. 2fbfc95 fixed the two setters, so the precedence rule held for an
+// tojson.go. 825fb62 fixed the two setters, so the precedence rule held for an
 // `any` and a MapSlice and not for a map[string]any -- and only at the root,
 // since a nested mapping reaches the setters instead. Both faults lived here:
 //
