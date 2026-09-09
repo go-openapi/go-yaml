@@ -48,9 +48,14 @@ const (
 	// marker. There is nothing to agree or disagree with.
 	//
 	// The parser harness excludes these by name, through
-	// yamltestsuite.HasExpectation. This one counts them, because two of the
-	// eight are documents the decoder refuses and dropping them silently would
-	// hide that.
+	// yamltestsuite.HasExpectation. This one counts them, because one of the
+	// nine is a document the decoder refuses -- ": a\n: b\n", which holds one
+	// empty key twice -- and dropping them silently would hide that.
+	//
+	// noExpectationPins in zz_noexpectation_test.go states what each of the
+	// nine composes to, decoded into codec.MapSlice, and
+	// TestEveryFixtureStatingNoExpectationHasAPin holds the two lists to the
+	// same names.
 	reasonNoExpectation = "the fixture states no expectation"
 	// The document decodes, to a value other than the expected JSON.
 	reasonWrongValue = "decodes to a value other than the expected JSON"
@@ -109,15 +114,18 @@ var decodeLedger = map[string]string{
 	"various-trailing-comments":                        reasonStatedAsOutYAML,
 	"various-trailing-comments-1-3":                    reasonStatedAsOutYAML,
 
-	// in.yaml and nothing else. The decoder refuses the first and the last of
-	// these -- ": a\n: b\n" holds one null key twice, which the load reports,
-	// and the zero-indented sequence gives "[5:1] value is not allowed in this
-	// context" -- and reads the other seven.
+	// in.yaml and nothing else. The decoder refuses the first of these --
+	// ": a\n: b\n" holds one null key twice, which the load reports -- and
+	// reads the other eight. It refused the zero-indented sequence too, with
+	// "[5:1] value is not allowed in this context", until 8.2.2's seq-space was
+	// admitted as an explicit key's body.
 	//
 	// syntax-character-edge-cases/02 is "!", the non-specific tag on the empty
 	// node. It denotes null and was read as no document at all until the
 	// decoder stopped folding every document into a value to decide whether it
 	// held one; go.yaml.in/yaml/v3 hands back one document holding nil.
+	//
+	// What each of the nine composes to is pinned in zz_noexpectation_test.go.
 	"block-mapping-with-missing-keys":                  reasonNoExpectation,
 	"empty-keys-in-block-and-flow-mapping":             reasonNoExpectation,
 	"empty-lines-at-end-of-document":                   reasonNoExpectation,
