@@ -10,7 +10,8 @@ import (
 
 	"github.com/go-openapi/testify/v2/require"
 
-	"github.com/go-openapi/go-yaml/transform"
+	"github.com/go-openapi/go-yaml/ast"
+	"github.com/go-openapi/go-yaml/parser"
 	"github.com/go-openapi/go-yaml/transform/colorize"
 )
 
@@ -44,18 +45,15 @@ paths:
 // It is the property that says the colorizer is a decoration rather than a
 // renderer: it never re-spells a scalar, moves an indent or drops a comment.
 func TestColoringChangesNothingButTheEscapes(t *testing.T) {
-	var out bytes.Buffer
-	require.NoError(t, transform.Walk(&out, []byte(sample), colorize.New(colorize.Default())))
-	require.Equal(t, sample, escapes.ReplaceAllString(out.String(), ""))
-	require.NotEqual(t, sample, out.String())
+	out := draw(t, sample, colorize.Default())
+	require.Equal(t, sample, escapes.ReplaceAllString(out, ""))
+	require.NotEqual(t, sample, out)
 }
 
 // TestZeroThemeWritesTheSource checks that a theme naming no style is the
 // identity transform.
 func TestZeroThemeWritesTheSource(t *testing.T) {
-	var out bytes.Buffer
-	require.NoError(t, transform.Walk(&out, []byte(sample), colorize.New(colorize.Theme{})))
-	require.Equal(t, sample, out.String())
+	require.Equal(t, sample, draw(t, sample, colorize.Theme{}))
 }
 
 // TestAScalarIsDrawnByWhatTheParseResolved checks the whole reason a colorizer
@@ -69,9 +67,23 @@ func TestAScalarIsDrawnByWhatTheParseResolved(t *testing.T) {
 		Key:     colorize.Style{Prefix: "<key>", Suffix: "</key>"},
 	}
 
-	var out bytes.Buffer
-	require.NoError(t, transform.Walk(&out, []byte("a: 1\nb: \"1\"\nc: yes\n"), colorize.New(theme)))
 	require.Equal(t,
 		"<key>a</key>: <int>1</int>\n<key>b</key>: <str>\"1\"</str>\n<key>c</key>: <str>yes</str>\n",
-		out.String())
+		draw(t, "a: 1\nb: \"1\"\nc: yes\n", theme))
+}
+
+// draw renders src through the theme, the way a caller would.
+func draw(t *testing.T, src string, theme colorize.Theme) string {
+	t.Helper()
+
+	file, err := parser.ParseBytes([]byte(src), parser.WithComments())
+	require.NoError(t, err)
+
+	var out bytes.Buffer
+	require.NoError(t, ast.NewRenderer(
+		ast.WithSource([]byte(src)),
+		ast.WithTransform(colorize.New(theme)),
+	).VerbatimFile(&out, file))
+
+	return out.String()
 }

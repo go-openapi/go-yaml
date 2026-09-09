@@ -27,6 +27,10 @@ type Written struct {
 	// FromSource says Text is the document's own bytes. It is false for a node
 	// a caller inserted, which the renderer lays out.
 	FromSource bool
+	// Key says the stretch stands inside a mapping's key rather than its value.
+	// A key and its value are two halves of one entry and nothing about the
+	// node says which is which, so the renderer says.
+	Key bool
 }
 
 // Trimmed returns Text without the run of spaces and line breaks at its end.
@@ -227,7 +231,10 @@ type verbatimWriter struct {
 	// inserted entry needs to know: it opens a line of its own, and the entry
 	// before it may already have ended one.
 	atLineStart bool
-	err         error
+	// keys counts the mapping keys being written, since a key may hold a
+	// collection whose entries have keys of their own.
+	keys int
+	err  error
 }
 
 // upTo writes the source from where the last write stopped to end.
@@ -281,6 +288,7 @@ func (vw *verbatimWriter) hand(s Written) {
 		return
 	}
 	vw.note(string(s.Text))
+	s.Key = s.Key || vw.keys > 0
 
 	if vw.fn == nil {
 		_, vw.err = vw.w.Write(s.Text)
@@ -362,7 +370,9 @@ func (r *Renderer) write(vw *verbatimWriter, n Node) {
 		}
 	case *MappingValueNode:
 		r.writeTokenOf(vw, v.CollectEntry, v)
+		vw.keys++
 		r.write(vw, v.Key)
+		vw.keys--
 		r.writeTokenOf(vw, v.Start, v)
 		r.write(vw, v.Value)
 	case *MappingKeyNode:
@@ -383,11 +393,11 @@ func (r *Renderer) write(vw *verbatimWriter, n Node) {
 		}
 	case *AnchorNode:
 		r.writeTokenOf(vw, v.Start, v)
-		r.write(vw, v.Name)
+		r.writeNameOf(vw, v.Name, v)
 		r.write(vw, v.Value)
 	case *AliasNode:
 		r.writeTokenOf(vw, v.Start, v)
-		r.write(vw, v.Value)
+		r.writeNameOf(vw, v.Value, v)
 	case *TagNode:
 		r.writeTokenOf(vw, v.Start, v)
 		r.write(vw, v.Value)
@@ -439,6 +449,24 @@ func (r *Renderer) writeComments(vw *verbatimWriter, n Node, span extent, above 
 		}
 		vw.upToToken(tk, comment)
 	}
+}
+
+// writeNameOf writes the name an anchor or an alias is written with, and says
+// the property owns it rather than the scalar node holding the text.
+//
+// "&name" is one thing to a reader and two nodes to the tree: the marker and a
+// string. Handing the string over as a string would have a colorizer draw the
+// "&" as a property and the name after it as a value.
+func (r *Renderer) writeNameOf(vw *verbatimWriter, name Node, owner Node) {
+	if name == nil {
+		return
+	}
+	if tk := name.GetToken(); tk != nil && tk.FromSource() {
+		r.writeTokenOf(vw, tk, owner)
+
+		return
+	}
+	r.write(vw, name)
 }
 
 // writeTokenOf writes a token and says which node it belongs to.

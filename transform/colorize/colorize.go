@@ -3,27 +3,32 @@
 
 // Package colorize writes a YAML document back out with ANSI colors.
 //
-// It is a [github.com/go-openapi/go-yaml/transform.Transformer] and nothing
-// else: it wraps the text of each piece in the escapes its [Style] names and
-// writes everything else through. Take the source out again by writing with the
-// zero [Theme].
+// It is a [github.com/go-openapi/go-yaml/ast.TransformFunc] and nothing else:
+// it wraps the text of each stretch in the escapes its [Style] names and writes
+// everything else through. Take the source out again by rendering with the zero
+// [Theme].
 //
-// ⚠️ Provisional. It is the trial use case the transform package was designed
-// against, and both are free to change together.
+//	src, _ := os.ReadFile(name)
+//	file, err := parser.ParseBytes(src, parser.WithComments())
+//	r := ast.NewRenderer(ast.WithSource(src), ast.WithTransform(colorize.New(colorize.Default())))
+//	err = r.VerbatimFile(os.Stdout, file)
+//
+// ⚠️ Provisional. It is the trial the rendering hook was designed against, and
+// both are free to change together.
 package colorize
 
 import (
 	"io"
 
 	"github.com/go-openapi/go-yaml/ast"
-	"github.com/go-openapi/go-yaml/transform"
+	"github.com/go-openapi/go-yaml/token"
 )
 
-// Style is the pair of escapes written round a piece's text.
+// Style is the pair of escapes written round a stretch's text.
 //
-// The escapes go round the text alone. The indentation before it and the space
-// after it are written unchanged, so a color never runs to the end of a line
-// and a document written with the zero Style is the document that went in.
+// The escapes go round the text alone. The space before it and the space after
+// it are written unchanged, so a color never runs to the end of a line and a
+// document written with the zero Style is the document that went in.
 type Style struct {
 	Prefix string
 	Suffix string
@@ -34,8 +39,7 @@ type Style struct {
 // A field left at its zero value draws that part uncolored, so a theme naming
 // two fields colors two things.
 type Theme struct {
-	// Key is a mapping key, and the "?" and the brackets of a collection
-	// standing as one.
+	// Key is a mapping key, whatever it is written as.
 	Key Style
 	// String, Integer, Float, Bool and Null are values, by what the parse
 	// resolved the text to rather than by how it was written: a quoted "1" is a
@@ -58,9 +62,6 @@ type Theme struct {
 	Indicator Style
 	Marker    Style
 	Directive Style
-	// Text draws source the parse read and opened no node on: the body of a
-	// block scalar, and a directive's arguments.
-	Text Style
 }
 
 const (
@@ -95,76 +96,103 @@ func Default() Theme {
 		Indicator: styled(fgWhiteDim),
 		Marker:    styled(fgWhiteDim),
 		Directive: styled(fgBlue),
-		Text:      styled(fgGreen),
 	}
 }
 
-// New returns a transformer drawing a document with t.
-//
-// Pass it to [github.com/go-openapi/go-yaml/transform.Walk]:
-//
-//	err := transform.Walk(os.Stdout, src, colorize.New(colorize.Default()))
-func New(t Theme) transform.Transformer {
-	return transform.Func(func(w io.Writer, p transform.Piece) error {
-		return write(w, p, t.styleOf(p))
-	})
-}
+// New returns a rendering hook that draws a document with t.
+func New(t Theme) ast.TransformFunc {
+	return func(w io.Writer, s ast.Written) error {
+		text := s.Trimmed()
+		style := t.styleOf(s)
+		if len(text) == 0 || style == (Style{}) {
+			_, err := w.Write(s.Text)
 
-// write puts the escapes round the token's text and leaves the rest alone.
-//
-// Three writes rather than one: the indentation in front of the text, the text
-// wrapped, and the space after it. Wrapping the whole piece would color the
-// indentation of the next line, which shows the moment a style sets a
-// background.
-func write(w io.Writer, p transform.Piece, s Style) error {
-	text := p.Trimmed()
-	if len(text) == 0 || s == (Style{}) {
-		return transform.Copy(w, p)
-	}
-
-	for _, part := range [][]byte{p.Lead, []byte(s.Prefix), text, []byte(s.Suffix), p.Filler()} {
-		if _, err := w.Write(part); err != nil {
 			return err
 		}
-	}
 
-	return nil
+		// Three writes rather than one. Wrapping the whole stretch would color
+		// the space after the token and the line break past it, which shows the
+		// moment a style sets a background.
+		for _, part := range []string{"", style.Prefix, string(text), style.Suffix, string(s.Filler())} {
+			if part == "" {
+				continue
+			}
+			if _, err := io.WriteString(w, part); err != nil {
+				return err
+			}
+		}
+
+		return nil
+	}
 }
 
-// styleOf picks a style for a piece: from the node the parse opened on it where
-// there is one, and from the piece's role otherwise.
-func (t Theme) styleOf(p transform.Piece) Style {
-	switch p.Role {
-	case transform.RoleKey:
-		return t.Key
-	case transform.RoleValue:
-		return t.value(p.Node)
-	case transform.RoleAnchor:
-		return t.Anchor
-	case transform.RoleAlias:
-		return t.Alias
-	case transform.RoleTag:
-		return t.Tag
-	case transform.RoleComment:
+// styleOf picks a style for a stretch, from the node the renderer is writing
+// and the token it was cut from.
+//
+// The node is what the parse resolved, which is more than the characters say: a
+// quoted "1" is a String where a plain 1 is an Integer. The token says what the
+// document wrote where no node stands on it -- a "-", a "---", a ",".
+func (t Theme) styleOf(s ast.Written) Style {
+	switch node := s.Node.(type) {
+	case *ast.CommentNode:
 		return t.Comment
-	case transform.RoleIndicator:
-		return t.Indicator
-	case transform.RoleMarker:
-		return t.Marker
-	case transform.RoleDirective:
+	case *ast.AnchorNode:
+		return t.Anchor
+	case *ast.AliasNode:
+		return t.Alias
+	case *ast.TagNode:
+		return t.Tag
+	case *ast.DirectiveNode:
 		return t.Directive
-	case transform.RoleText:
-		return t.Text
+	case nil:
+		return t.byToken(s.Token)
 	default:
-		return Style{}
+		_ = node
+	}
+
+	// A structural token carries the node it closes rather than a value: the
+	// ":" of an entry, the "-" of a sequence, a document's own markers.
+	if style, structural := t.structural(s.Token); structural {
+		return style
+	}
+	if s.Key {
+		return t.Key
+	}
+
+	return t.value(s.Node)
+}
+
+// byToken draws a stretch no node stands on.
+func (t Theme) byToken(tk *token.Token) Style {
+	if style, structural := t.structural(tk); structural {
+		return style
+	}
+
+	return Style{}
+}
+
+// structural reports the style of a token the document's shape is written with,
+// and false for one carrying a value.
+func (t Theme) structural(tk *token.Token) (Style, bool) {
+	if tk == nil {
+		return Style{}, false
+	}
+
+	switch tk.Type {
+	case token.DocumentHeaderType, token.DocumentEndType:
+		return t.Marker, true
+	case token.SequenceEntryType, token.MappingKeyType, token.MappingValueType,
+		token.CollectEntryType, token.SequenceStartType, token.SequenceEndType,
+		token.MappingStartType, token.MappingEndType:
+		return t.Indicator, true
+	case token.DirectiveType:
+		return t.Directive, true
+	default:
+		return Style{}, false
 	}
 }
 
 // value draws a scalar by what the parse resolved it to.
-//
-// A tagged or anchored value arrives wrapped, so the wrapper is stepped through
-// to the scalar under it: "!!str 1" is a String and the plain 1 beside it an
-// Integer.
 func (t Theme) value(n ast.Node) Style {
 	switch n.(type) {
 	case *ast.StringNode, *ast.LiteralNode:
@@ -178,6 +206,6 @@ func (t Theme) value(n ast.Node) Style {
 	case *ast.NullNode:
 		return t.Null
 	default:
-		return t.Text
+		return t.String
 	}
 }
