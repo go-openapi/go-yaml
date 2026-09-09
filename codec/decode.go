@@ -2837,10 +2837,21 @@ func (d *Decoder) decodeMap(ctx context.Context, dst reflect.Value, src ast.Node
 			if err != nil {
 				return err
 			}
-			if keyValue != nil && !reflect.TypeOf(keyValue).Comparable() {
+			if _, named := ast.KeyName(key); named == token.KeyOther &&
+				keyValue != nil && !reflect.TypeOf(keyValue).Comparable() {
 				// A sequence or a mapping used as a key. mapKeyString would
 				// give it the spelling Go prints, "[a b]", which no reader
 				// takes apart again.
+				//
+				// The destination is keyed by a string, so what matters is
+				// whether the key can be named, not whether the value it
+				// resolves to is comparable. ast.KeyName names every scalar,
+				// and returns token.KeyOther for a collection alone -- which
+				// is where mapKeyString falls back to Go's printing. Asking
+				// comparability instead refused "!!binary aGVsbG8=: x", whose
+				// name is the base64 the document wrote: the same document
+				// read into an any gives {"aGVsbG8=": "x"}, and the two
+				// destinations disagreed over a []byte neither had to hash.
 				return yamlerrors.NewUnhashableKey(reflect.TypeOf(keyValue), key.GetToken())
 			}
 			k = reflect.ValueOf(d.strs.clone(mapKeyString(key, keyValue))).Convert(decodeKeyAs)

@@ -67,8 +67,8 @@ func TestTheEnumeratedShapesReadIntoAGoType(t *testing.T) {
 				got := yamlgen.Normalize(into.Elem())
 				failed := err != nil || !sameNumerically(want, got)
 
-				if why, loose := yardstickDefects[s.Name]; loose {
-					t.Logf("yardstick unusable -- %s into %s: %s", s.Name, shape, why)
+				if yard, unusable := yardstickDefects[s.Name]; unusable && yard.failsFor(shape) {
+					t.Logf("yardstick unusable -- %s into %s: %s", s.Name, shape, yard.why)
 
 					continue
 				}
@@ -149,7 +149,7 @@ var typedPathDefects = map[string]typedDefect{}
 //
 // The inverse of typedPathDefects and worth keeping apart from it: an entry
 // here is not a reason to look at the reflection path.
-var yardstickDefects = map[string]string{
+var yardstickDefects = map[string]typedDefect{
 	// A collection key has no Go map key to be. `map[any]any` and
 	// `map[string]any` both refuse the document with `cannot use
 	// map[string]interface {} as a map key: Go cannot hash it`, and codec.ToJSON
@@ -160,7 +160,7 @@ var yardstickDefects = map[string]string{
 	// KeyText's own comment records as a divergence rather than a meaning. So
 	// the two reads differ, the typed one is right, and there is nothing here to
 	// fix in the reflection path.
-	"two collection keys in one mapping": "a collection key is not a Go map key",
+	"two collection keys in one mapping": {why: "a collection key is not a Go map key"},
 	// A timestamp and a byte string have no canonical YAML spelling of their
 	// own, so ast.KeyName names such a key by the text the document wrote --
 	// "2001-12-14" and "aGVsbG8=". A map[any]any does not name a key at all: it
@@ -172,8 +172,17 @@ var yardstickDefects = map[string]string{
 	// "2001-12-14 00:00:00 +0000 UTC", which is Go's printing of the very
 	// time.Time the typed read holds, so the two rendered alike. Naming by the
 	// document's own text ended the coincidence.
-	"a key tagged !!timestamp": "a map[any]any keeps the time.Time rather than naming it",
-	"a key tagged !!binary":    "a []byte cannot be a Go map key",
+	"a key tagged !!timestamp": {
+		why:   "a map[any]any keeps the time.Time rather than naming it",
+		fails: []yamlgen.TargetShape{yamlgen.ShapeAnyKeyedMap},
+	},
+	// A map[any]any is keyed on the []byte itself, which Go cannot use as a
+	// map key. A string-keyed destination is named rather than keyed and now
+	// agrees with the `any` read: both give "aGVsbG8=".
+	"a key tagged !!binary": {
+		why:   "a []byte cannot key a map[any]any",
+		fails: []yamlgen.TargetShape{yamlgen.ShapeAnyKeyedMap},
+	},
 	// A duplicate that only collides once an alias is resolved. "k: &a n" over
 	// "*a : 1" over "n: 2" reads into an `any` as {"k": "n", "n": 2}, one
 	// entry short and nothing reported, and every typed map refuses it with
@@ -186,7 +195,7 @@ var yardstickDefects = map[string]string{
 	// same way ("a: 1" over "a: 2") and misses one that only collides after
 	// resolution. See yamlcorpus.Departures, "two keys alike in text and
 	// different once resolved", which records the `any` half.
-	"a key colliding with one an alias resolves to": "the `any` read loses an entry the typed read refuses",
+	"a key colliding with one an alias resolves to": {why: "the `any` read loses an entry the typed read refuses"},
 	// The same fault without an alias, and the clearest evidence for it. "1: x"
 	// over "\"1\": y" reads into a map[any]any as both keys -- uint64(1) => "x"
 	// and "1" => "y", which is what 3.2.1.1 asks for, since an integer and a
@@ -198,7 +207,7 @@ var yardstickDefects = map[string]string{
 	// a map[any]any by KeyText to compare it, which collapses the pair again
 	// and makes the comparison order-dependent -- another reason this document
 	// cannot be scored against the `any` read.
-	"two keys alike in text and different once resolved": "the `any` read merges two keys the typed read keeps apart",
+	"two keys alike in text and different once resolved": {why: "the `any` read merges two keys the typed read keeps apart"},
 	// The merge key escaping the duplicate check on one path.
 	// "{<<: {x: 1}, <<}" reads into an `any` as {"<<": null}, with the first
 	// entry's mapping gone and nothing reported, and every typed map refuses it
@@ -209,7 +218,7 @@ var yardstickDefects = map[string]string{
 	// written as a key alone rather than by resolution. `{a: 1, a}` is refused
 	// on both paths, so it is the merge key that escapes and not the spelling.
 	// Departures records both readings.
-	"two merge keys, the second written as a key alone": "the `any` read loses an entry the typed read refuses",
+	"two merge keys, the second written as a key alone": {why: "the `any` read loses an entry the typed read refuses"},
 }
 
 // sameNumerically compares two decodes of one document, with numbers compared

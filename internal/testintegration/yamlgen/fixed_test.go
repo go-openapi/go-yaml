@@ -2638,24 +2638,30 @@ func TestFixedATagOnAKeyReachesAStructFieldAndKeepsItsType(t *testing.T) {
 			// A tag naming a kind leaves the node to speak for itself, so the
 			// key is the text the document wrote.
 			{"!!timestamp 2001-12-14: x\n", "2001-12-14"},
+			{"!!binary aGVsbG8=: x\n", "aGVsbG8="},
 		} {
 			var got map[string]any
 			require.NoErrorf(t, codec.Unmarshal([]byte(tc.src), &got), "%q", tc.src)
 			assert.Equalf(t, map[string]any{tc.key: "x"}, got, "%q", tc.src)
 		}
 
-		// A byte string is named by the base64 the document wrote, and reaches
-		// a map only where the map is named rather than keyed: the reflection
-		// path keys a map[string]any on the resolved value and a []byte cannot
-		// be hashed. That refusal is older than the naming and is not this.
+		// The two destinations name a byte string alike. They did not: a
+		// map[string]any was keyed on the resolved value, and a []byte is not
+		// comparable, so the document was refused where the same bytes read
+		// into an any gave {"aGVsbG8=": "x"}. Neither destination has to hold
+		// the []byte -- both are keyed by a string.
 		var walked any
 		require.NoError(t, codec.Unmarshal([]byte("!!binary aGVsbG8=: x\n"), &walked))
 		assert.Equal(t, map[string]any{"aGVsbG8=": "x"}, walked)
 
-		var typed map[string]any
-		err := codec.Unmarshal([]byte("!!binary aGVsbG8=: x\n"), &typed)
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), "cannot use []uint8 as a map key")
+		// A collection key is still refused into a string-keyed map, and
+		// should be: its only name is the spelling Go prints.
+		for _, src := range []string{"? [a, b]\n: v\n", "? {x: 1}\n: v\n"} {
+			var typed map[string]any
+			err := codec.Unmarshal([]byte(src), &typed)
+			require.Errorf(t, err, "%q", src)
+			assert.Containsf(t, err.Error(), "as a map key", "%q", src)
+		}
 	})
 
 	// The three consumers agree on one document, which is what the shared walk
