@@ -69,6 +69,22 @@ func TestResolveClassifiesEveryTaggedNode(t *testing.T) {
 		{src: "k: !!bool 7\n", tag: token.BooleanTag, verdict: ast.TagValueMismatch, text: "7"},
 		{src: "k: !!int abc\n", tag: token.IntegerTag, verdict: ast.TagValueMismatch, text: "abc"},
 		{src: "k: !!float xyz\n", tag: token.FloatTag, verdict: ast.TagValueMismatch, text: "xyz"},
+
+		// A float under "!!int". tag:yaml.org,2002:int names the whole numbers
+		// and none of these is one. "!!int 1.9" used to resolve and truncate to
+		// 1, which took ".inf" and ".nan" with it -- neither has an integer to
+		// truncate to, and codec.castToInteger read all three through Go's
+		// int(v), whose result outside the integer range the Go specification
+		// leaves to the implementation. On amd64 the three came back as one
+		// value, -9223372036854775808.
+		{src: "k: !!int 1.9\n", tag: token.IntegerTag, verdict: ast.TagValueMismatch, text: "1.9"},
+		{src: "k: !!int -1.9\n", tag: token.IntegerTag, verdict: ast.TagValueMismatch, text: "-1.9"},
+		{src: "k: !!int 1e3\n", tag: token.IntegerTag, verdict: ast.TagValueMismatch, text: "1e3"},
+		{src: "k: !!int 1e400\n", tag: token.IntegerTag, verdict: ast.TagValueMismatch, text: "1e400"},
+		{src: "k: !!int .inf\n", tag: token.IntegerTag, verdict: ast.TagValueMismatch, text: ".inf"},
+		{src: "k: !!int -.inf\n", tag: token.IntegerTag, verdict: ast.TagValueMismatch, text: "-.inf"},
+		{src: "k: !!int .nan\n", tag: token.IntegerTag, verdict: ast.TagValueMismatch, text: ".nan"},
+		{src: "k: !!int .NAN\n", tag: token.IntegerTag, verdict: ast.TagValueMismatch, text: ".NAN"},
 		{src: "k: !!null 5\n", tag: token.NullTag, verdict: ast.TagValueMismatch, text: "5"},
 		{src: "k: !!binary not base64!\n", tag: token.BinaryTag, verdict: ast.TagValueMismatch, text: "not base64!"},
 		{src: "k: !!timestamp not-a-date\n", tag: token.TimestampTag, verdict: ast.TagValueMismatch, text: "not-a-date"},

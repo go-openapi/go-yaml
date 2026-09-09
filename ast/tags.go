@@ -220,8 +220,18 @@ func readsAsBool(text string) bool {
 }
 
 // readsAsInteger takes any base Go reads, and a number too wide for a machine
-// word. A float counts: "!!int 1.9" has a number to truncate, where "!!int abc"
-// has nothing at all.
+// word.
+//
+// A float does not count. "!!int 1.9" used to resolve and truncate to 1, which
+// carried "!!int .inf" and "!!int .nan" in with it: neither has an integer to
+// truncate to, and codec.castToInteger converted them with Go's int(v), whose
+// result for a value outside the integer range the Go specification leaves to
+// the implementation. On amd64 that made "!!int .inf", "!!int -.inf" and
+// "!!int .nan" one value, -9223372036854775808, and "!!int 1e400" zero.
+//
+// tag:yaml.org,2002:int names the whole numbers, and 1.9 is not one of them, so
+// this reports the mismatch and the decoder refuses the document. Read such a
+// document with parser.WithLaxTags to take the text as a string instead.
 func readsAsInteger(text string) bool {
 	if _, err := strconv.ParseInt(text, 0, 64); err == nil {
 		return true
@@ -229,11 +239,9 @@ func readsAsInteger(text string) bool {
 	if _, err := strconv.ParseUint(text, 0, 64); err == nil {
 		return true
 	}
-	if _, ok := new(big.Int).SetString(text, 0); ok {
-		return true
-	}
+	_, ok := new(big.Int).SetString(text, 0)
 
-	return readsAsFloat(text)
+	return ok
 }
 
 // readsAsFloat takes what Go reads plus YAML's own spellings of the infinities
