@@ -151,12 +151,7 @@ const maxKeyNameDepth = 64
 // resolution: `0x10: v` named the key "16" and `!!int 0x10: v` named it
 // "0x10", so the tag put the key in the strings' namespace.
 func integerKeyType(n Node, text string) token.Type {
-	if typ := taggedScalarType(n); typ.IsInteger() {
-		return typ
-	}
-	if typ := token.ScalarType(text, token.Schema12); typ.IsInteger() {
-		return typ
-	}
+	typ, _ := integerBase(taggedScalarType(n), text)
 
-	return token.IntegerType
+	return typ
 }

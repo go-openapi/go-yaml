@@ -191,3 +191,49 @@ func TestFixedAnExplicitIntTagOnAKeyKeepsItsBase(t *testing.T) {
 		}
 	})
 }
+
+// TestAnIntegerTagReadsTheBaseTheSchemaTyped: "!!int" names the type and the
+// document's schema says what base the digits are written in, so the same
+// characters are one integer under 1.1 and no integer at all under 1.2.
+//
+// ast.readsAsInteger sniffed the base with strconv.ParseInt(text, 0, 64) --
+// Go's rule, not YAML's. It takes a sign on a hex number, a capital "X", a "0b"
+// prefix and "_" separators, so every one of these resolved whatever the
+// document declared, and then decoded to 0 while the key walk named it after
+// the text. The base comes from the type the scanner gave the scalar now, and
+// the scanner typed it under the schema the document declared.
+//
+// The two paths are checked together on purpose: the value a document decodes
+// to and the name its key is addressed by come from one reading, and 81 is what
+// happens when they part.
+func TestAnIntegerTagReadsTheBaseTheSchemaTyped(t *testing.T) {
+	const under11 = "%YAML 1.1\n---\n"
+
+	for _, tc := range []struct{ body, key11 string }{
+		// 1.1 puts a sign on a hex integer, 1.2 does not.
+		{body: "!!int -0x10: v", key11: "-16"},
+		{body: "!!int +0x10: v", key11: "16"},
+		// 1.1 has binary and "_" separators, 1.2 has neither.
+		{body: "!!int 0b101: v", key11: "5"},
+		{body: "!!int 1_000: v", key11: "1000"},
+		// 1.1 has base 60, written between colons.
+		{body: "!!int 190:20:30: v", key11: "685230"},
+	} {
+		assert.Containsf(t, refuses(t, tc.body+"\n"), "as !!int",
+			"%q is no integer under the 1.2 core schema", tc.body)
+		assert.Containsf(t, read(t, under11+tc.body+"\n"), tc.key11,
+			"%q should be keyed %q under 1.1", tc.body, tc.key11)
+	}
+
+	t.Run("and a spelling neither schema writes is refused under both", func(t *testing.T) {
+		// YAML writes the hexadecimal prefix in lower case at every version.
+		for _, src := range []string{"!!int 0X10: v\n", under11 + "!!int 0X10: v\n"} {
+			assert.Containsf(t, refuses(t, src), "as !!int", "%q", src)
+		}
+	})
+
+	t.Run("and a leading zero follows the schema rather than the tag", func(t *testing.T) {
+		assert.Contains(t, read(t, "!!int 017: v\n"), "17", "1.2 reads a leading zero as decimal")
+		assert.Contains(t, read(t, under11+"!!int 017: v\n"), "15", "1.1 reads it as octal")
+	})
+}

@@ -6,7 +6,6 @@ package ast
 import (
 	"encoding/base64"
 	"errors"
-	"math/big"
 	"strconv"
 	"strings"
 	"time"
@@ -99,6 +98,7 @@ type Resolution struct {
 func (n *TagNode) Resolve() Resolution {
 	tag, reserved := token.ReservedTagOf(n.URI)
 	text, scalar, empty := taggedScalarText(n.Value)
+	typ := taggedScalarType(n.Value)
 	_, isNull := unwrapAnchor(n.Value).(*NullNode)
 
 	if !reserved {
@@ -137,7 +137,7 @@ func (n *TagNode) Resolve() Resolution {
 
 		return res
 	}
-	if !readsAs(tag, text) {
+	if !readsAs(tag, text, typ) {
 		res.Verdict = TagValueMismatch
 	}
 
@@ -169,7 +169,7 @@ func collectionTag(tag token.ReservedTagKeyword) bool {
 // The question is only whether a value is there to be had, not what it is: a
 // consumer that wants the value reads it from [Resolution.Text] in whatever
 // shape it needs.
-func readsAs(tag token.ReservedTagKeyword, text string) bool {
+func readsAs(tag token.ReservedTagKeyword, text string, typ token.Type) bool {
 	switch tag {
 	case token.StringTag:
 		// Every scalar is a string.
@@ -179,7 +179,7 @@ func readsAs(tag token.ReservedTagKeyword, text string) bool {
 	case token.BooleanTag:
 		return readsAsBool(text)
 	case token.IntegerTag:
-		return readsAsInteger(text)
+		return readsAsInteger(text, typ)
 	case token.FloatTag:
 		return readsAsFloat(text)
 	case token.BinaryTag:
@@ -232,16 +232,43 @@ func readsAsBool(text string) bool {
 // tag:yaml.org,2002:int names the whole numbers, and 1.9 is not one of them, so
 // this reports the mismatch and the decoder refuses the document. Read such a
 // document with parser.WithLaxTags to take the text as a string instead.
-func readsAsInteger(text string) bool {
-	if _, err := strconv.ParseInt(text, 0, 64); err == nil {
+func readsAsInteger(text string, typ token.Type) bool {
+	base, ok := integerBase(typ, text)
+	if !ok {
+		return false
+	}
+	if _, _, whole := token.ParseWholeNumber(text, base); whole {
 		return true
 	}
-	if _, err := strconv.ParseUint(text, 0, 64); err == nil {
-		return true
-	}
-	_, ok := new(big.Int).SetString(text, 0)
+	_, big := token.ParseBigInteger(text, base)
 
-	return ok
+	return big
+}
+
+// integerBase is the type whose base an integer scalar's digits are written in,
+// and false where no schema reads them as a whole number.
+//
+// The scanner typed the scalar under the schema the document declared, so the
+// token carries the answer: "017" is OctetIntegerType in a 1.1 document and
+// IntegerType in a 1.2 one, and "0b101" is BinaryIntegerType in the first and
+// StringType in the second. A scalar the tag alone makes an integer carries no
+// base -- the quoted "!!int \"0x10\"" is a DoubleQuoteType -- so its text goes
+// through the same sniffer under 1.2, which is what codec.castToInteger does
+// with the same characters.
+//
+// strconv.ParseInt with base 0 stood here and sniffs the base by Go's rules,
+// not YAML's. It reads "-0x10", "0X10", "0b101" and "1_000", none of which the
+// 1.2 core schema resolves as an integer, and every one of those came back 0
+// from the decoder while the key walk named it after the text.
+func integerBase(typ token.Type, text string) (token.Type, bool) {
+	if typ.IsInteger() {
+		return typ, true
+	}
+	if sniffed := token.ScalarType(text, token.Schema12); sniffed.IsInteger() {
+		return sniffed, true
+	}
+
+	return token.IntegerType, false
 }
 
 // readsAsFloat takes what Go reads plus YAML's own spellings of the infinities

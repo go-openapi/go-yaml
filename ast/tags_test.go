@@ -85,6 +85,19 @@ func TestResolveClassifiesEveryTaggedNode(t *testing.T) {
 		{src: "k: !!int -.inf\n", tag: token.IntegerTag, verdict: ast.TagValueMismatch, text: "-.inf"},
 		{src: "k: !!int .nan\n", tag: token.IntegerTag, verdict: ast.TagValueMismatch, text: ".nan"},
 		{src: "k: !!int .NAN\n", tag: token.IntegerTag, verdict: ast.TagValueMismatch, text: ".NAN"},
+
+		// A spelling Go reads as an integer and the 1.2 core schema does not.
+		// readsAsInteger sniffed the base with strconv.ParseInt(text, 0, 64),
+		// which is Go's rule: it takes a sign on a hex number, a capital "X", a
+		// "0b" prefix and "_" separators, and 1.2 writes none of them. Each one
+		// resolved and then decoded to 0. The base comes from the type the
+		// scanner gave the scalar now, so the same documents read under
+		// "%YAML 1.1" resolve -- see TestAnIntegerTagReadsTheBaseTheSchemaTyped.
+		{src: "k: !!int -0x10\n", tag: token.IntegerTag, verdict: ast.TagValueMismatch, text: "-0x10"},
+		{src: "k: !!int +0x10\n", tag: token.IntegerTag, verdict: ast.TagValueMismatch, text: "+0x10"},
+		{src: "k: !!int 0X10\n", tag: token.IntegerTag, verdict: ast.TagValueMismatch, text: "0X10"},
+		{src: "k: !!int 0b101\n", tag: token.IntegerTag, verdict: ast.TagValueMismatch, text: "0b101"},
+		{src: "k: !!int 1_000\n", tag: token.IntegerTag, verdict: ast.TagValueMismatch, text: "1_000"},
 		{src: "k: !!null 5\n", tag: token.NullTag, verdict: ast.TagValueMismatch, text: "5"},
 		{src: "k: !!binary not base64!\n", tag: token.BinaryTag, verdict: ast.TagValueMismatch, text: "not base64!"},
 		{src: "k: !!timestamp not-a-date\n", tag: token.TimestampTag, verdict: ast.TagValueMismatch, text: "not-a-date"},
