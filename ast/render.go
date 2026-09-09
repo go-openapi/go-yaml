@@ -77,6 +77,9 @@ type Renderer struct {
 	// the copy, which is what lets the recursion below see its own progress.
 	aliasTargets map[string]Node
 	resolving    map[string]bool
+	// src is the document a tree was parsed from, for [Renderer.Verbatim]. It
+	// is nil unless [WithSource] was passed.
+	src []byte
 }
 
 // defaultRenderer and bareRenderer back the String methods of the composite
