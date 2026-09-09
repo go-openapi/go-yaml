@@ -392,3 +392,78 @@ func withoutMarkerLines(rendered string) string {
 
 	return strings.Join(kept, "\n")
 }
+
+// TestVerbatimWritesAnInsertedCollectionInFlow puts a collection into a flow
+// collection, where the block layout it asks for would end the collection at
+// its first line break.
+//
+// The node is written in flow style however its own IsFlowStyle fields are set,
+// and the caller's tree is left as it was: a renderer copy carries the decision,
+// not a walk marking nodes on the way past.
+func TestVerbatimWritesAnInsertedCollectionInFlow(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name  string
+		src   string
+		value any
+		want  string
+	}{
+		{"a mapping", "{a: 1}\n", map[string]any{"x": map[string]any{"p": 1, "q": 2}}, "{a: 1, x: {p: 1, q: 2}}\n"},
+		{"a sequence", "{a: 1}\n", map[string]any{"x": []any{1, 2}}, "{a: 1, x: [1, 2]}\n"},
+		{"nested two deep", "{a: 1}\n", map[string]any{"x": map[string]any{"p": map[string]any{"r": []any{1, 2}}}}, "{a: 1, x: {p: {r: [1, 2]}}}\n"},
+		{"a scalar", "{a: 1}\n", map[string]any{"x": 9}, "{a: 1, x: 9}\n"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			file, err := parser.ParseBytes([]byte(tc.src), parser.WithComments())
+			require.NoError(t, err)
+			built, err := codec.ValueToNode(tc.value)
+			require.NoError(t, err)
+
+			added := built.(*ast.MappingNode).Values[0]
+			mapping := file.Docs[0].Body.(*ast.MappingNode)
+			mapping.Values = append(mapping.Values, added)
+
+			var out bytes.Buffer
+			require.NoError(t, ast.NewRenderer(ast.WithSource([]byte(tc.src))).VerbatimFile(&out, file))
+			require.Equal(t, tc.want, out.String())
+
+			// The caller's node still says what it said: nothing marked it flow.
+			if collection, isCollection := added.Value.(*ast.MappingNode); isCollection {
+				require.False(t, collection.IsFlowStyle, "the inserted node was marked flow style")
+			}
+
+			// And the document means what the tree means.
+			var read map[string]any
+			require.NoError(t, codec.Unmarshal(out.Bytes(), &read))
+			require.Contains(t, read, "x")
+		})
+	}
+}
+
+// TestVerbatimRefusesAMultilineNodeInAFlowCollection is the one shape flow
+// rendering cannot reach: a scalar written over several lines keeps its block
+// header wherever it is put, and the first break would close the collection.
+//
+// Refused rather than written, because the alternative is a document that no
+// longer parses and an error that never came.
+func TestVerbatimRefusesAMultilineNodeInAFlowCollection(t *testing.T) {
+	t.Parallel()
+
+	const src = "{a: 1}\n"
+
+	file, err := parser.ParseBytes([]byte(src), parser.WithComments())
+	require.NoError(t, err)
+	built, err := codec.ValueToNode(map[string]any{"x": "one\ntwo"})
+	require.NoError(t, err)
+
+	mapping := file.Docs[0].Body.(*ast.MappingNode)
+	mapping.Values = append(mapping.Values, built.(*ast.MappingNode).Values[0])
+
+	var out bytes.Buffer
+	err = ast.NewRenderer(ast.WithSource([]byte(src))).VerbatimFile(&out, file)
+	require.ErrorIs(t, err, ast.ErrInsert)
+	require.ErrorContains(t, err, "spans lines")
+}

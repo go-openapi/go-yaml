@@ -83,6 +83,10 @@ type Renderer struct {
 	// transform is handed each stretch of a verbatim rendering, and is nil
 	// unless [WithTransform] was passed.
 	transform TransformFunc
+	// forceFlow lays every collection out as "{a: 1}" and "[1, 2]" whatever
+	// the node says, for a node being written into a flow collection where a
+	// line break would end the collection. See [Renderer.flowing].
+	forceFlow bool
 }
 
 // defaultRenderer and bareRenderer back the String methods of the composite
@@ -113,6 +117,28 @@ func (r *Renderer) bare() *Renderer {
 	bare.comments = false
 
 	return &bare
+}
+
+// flowing is a Renderer that lays every collection out in flow style.
+//
+// A node inserted into "{...}" or "[...]" has to be written on one line: the
+// block layout its own fields ask for would close the collection at the first
+// break. The copy leaves the caller's tree alone, which a walk marking
+// IsFlowStyle on the way past would not.
+func (r *Renderer) flowing() *Renderer {
+	if r.forceFlow {
+		return r
+	}
+
+	flowing := *r
+	flowing.forceFlow = true
+
+	return &flowing
+}
+
+// flowsInline reports whether a collection is written on one line.
+func (r *Renderer) flowsInline(flowStyle bool) bool {
+	return r.forceFlow || flowStyle
 }
 
 // Render writes n to w.
@@ -219,7 +245,7 @@ func (r *Renderer) mapping(n *MappingNode) rendered {
 	if len(n.Values) == 0 {
 		return r.withComment(leaf("{}"), n.Comment)
 	}
-	if n.IsFlowStyle {
+	if r.flowsInline(n.IsFlowStyle) {
 		values := make([]Node, 0, len(n.Values))
 		for _, value := range n.Values {
 			values = append(values, value)
@@ -367,12 +393,12 @@ func (r *Renderer) hoistBlockComment(key, n Node, value rendered) (string, rende
 	var comment *CommentGroupNode
 	switch node := n.(type) {
 	case *MappingNode:
-		if node.IsFlowStyle || len(node.Values) == 0 {
+		if r.flowsInline(node.IsFlowStyle) || len(node.Values) == 0 {
 			return "", value
 		}
 		comment = node.Comment
 	case *SequenceNode:
-		if node.IsFlowStyle || len(node.Values) == 0 {
+		if r.flowsInline(node.IsFlowStyle) || len(node.Values) == 0 {
 			return "", value
 		}
 		comment = node.Comment
@@ -518,7 +544,7 @@ func (r *Renderer) value(n Node, keyCommented bool) rendered {
 		(!keyCommented || (!collection && !spansLines)) {
 		return join(sepNone, leaf(" "), text)
 	}
-	if sequence, ok := shape.(*SequenceNode); ok && !sequence.IsFlowStyle && !r.indentSequence {
+	if sequence, ok := shape.(*SequenceNode); ok && !r.flowsInline(sequence.IsFlowStyle) && !r.indentSequence {
 		// A block sequence under a mapping key sits at the key's own
 		// indentation unless asked otherwise: "key:" then "- item" in column
 		// one of the key's level. Both layouts are legal; this is the one YAML
@@ -537,7 +563,7 @@ func (r *Renderer) value(n Node, keyCommented bool) rendered {
 // which is the one shape that does not take the extra level.
 func (r *Renderer) below(n Node) rendered {
 	text := r.render(n)
-	if sequence, ok := r.deref(n).(*SequenceNode); ok && !sequence.IsFlowStyle && !r.indentSequence {
+	if sequence, ok := r.deref(n).(*SequenceNode); ok && !r.flowsInline(sequence.IsFlowStyle) && !r.indentSequence {
 		return join(sepNone, leaf("\n"), text)
 	}
 
@@ -549,9 +575,9 @@ func (r *Renderer) below(n Node) rendered {
 func (r *Renderer) fitsOnKeyLine(n Node) bool {
 	switch node := n.(type) {
 	case *MappingNode:
-		return node.IsFlowStyle || len(node.Values) == 0
+		return r.flowsInline(node.IsFlowStyle) || len(node.Values) == 0
 	case *SequenceNode:
-		return node.IsFlowStyle || len(node.Values) == 0
+		return r.flowsInline(node.IsFlowStyle) || len(node.Values) == 0
 	case *AnchorNode, *TagNode, *LiteralNode:
 		// These carry their own value, which may itself be a block; they decide
 		// their own shape, and start on the key's line either way.
@@ -608,7 +634,7 @@ func (r *Renderer) sequence(n *SequenceNode) rendered {
 	if len(n.Values) == 0 {
 		return r.withComment(leaf("[]"), n.Comment)
 	}
-	if n.IsFlowStyle {
+	if r.flowsInline(n.IsFlowStyle) {
 		if r.flowCarriesComments(n.Values, n.ValueHeadComments, n.FootComment) {
 			return r.withComment(
 				leaf(r.flowBlock("[", "]", n.Values, n.ValueHeadComments, n.FootComment)), n.Comment)
@@ -785,9 +811,9 @@ func isCollection(n Node) bool {
 func (r *Renderer) startsBlock(n Node) bool {
 	switch node := n.(type) {
 	case *MappingNode:
-		return !node.IsFlowStyle && len(node.Values) > 0
+		return !r.flowsInline(node.IsFlowStyle) && len(node.Values) > 0
 	case *SequenceNode:
-		return !node.IsFlowStyle && len(node.Values) > 0
+		return !r.flowsInline(node.IsFlowStyle) && len(node.Values) > 0
 	default:
 		return false
 	}

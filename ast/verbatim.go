@@ -4,6 +4,8 @@
 package ast
 
 import (
+	"errors"
+	"fmt"
 	"io"
 	"strings"
 
@@ -562,7 +564,7 @@ func (r *Renderer) writeEntry(vw *verbatimWriter, entry Node, coll collection, i
 	}
 
 	if coll.flow {
-		r.writeFlowEntry(vw, text, coll, i)
+		r.writeFlowEntry(vw, r.flowing().render(entry).string(), coll, i)
 
 		return
 	}
@@ -605,6 +607,10 @@ func (r *Renderer) writeEntry(vw *verbatimWriter, entry Node, coll collection, i
 	vw.raw("\n")
 }
 
+// ErrInsert is returned by [Renderer.Verbatim] and [Renderer.VerbatimFile] when
+// a node a caller put into a parsed tree cannot be written where it was put.
+var ErrInsert = errors.New("cannot write an inserted node")
+
 // collection is what an inserted entry needs to know about the collection it
 // was put into: how to reach its siblings, and whether they are separated by a
 // line break or by a comma.
@@ -624,6 +630,17 @@ type collection struct {
 // it goes in where the copy stands, which is in front of the closing bracket
 // the collection writes once its entries are done.
 func (r *Renderer) writeFlowEntry(vw *verbatimWriter, text string, coll collection, i int) {
+	// A break would close the collection at the point it appears, so a node that
+	// cannot be written on one line -- a scalar the document wrote over several,
+	// which keeps its block header wherever it is put -- is refused rather than
+	// written into a document it would break.
+	if strings.ContainsAny(text, "\n\r") {
+		vw.err = fmt.Errorf("%w: %q cannot go inside a flow collection, it spans lines",
+			ErrInsert, strings.SplitN(text, "\n", 2)[0])
+
+		return
+	}
+
 	if next, found := nextFlowFromSource(coll.siblings, i); found {
 		vw.upTo(int(next.from))
 		vw.raw(text + ", ")
