@@ -111,9 +111,10 @@ func (r *Renderer) bare() *Renderer {
 
 // Render writes n to w.
 func (r *Renderer) Render(w io.Writer, n Node) error {
-	_, err := io.WriteString(w, r.String(n))
+	lw := lineWriter{w: w}
+	r.render(n).writeTo(&lw, 0)
 
-	return err
+	return lw.err
 }
 
 // String renders n and returns the text.
@@ -122,12 +123,22 @@ func (r *Renderer) Render(w io.Writer, n Node) error {
 // indentation, and everything nested under it is indented from there. A caller
 // placing the result somewhere indented adds that indentation itself.
 func (r *Renderer) String(n Node) string {
+	return r.render(n).string()
+}
+
+// render builds what n writes, without writing it.
+//
+// It is String's dispatch, returning the pieces rather than the text so that a
+// parent can indent a child by a number and ask whether it spans lines without
+// building it twice. A node type still composing strings arrives here as one
+// leaf, which is correct and costs what it always did.
+func (r *Renderer) render(n Node) rendered {
 	if n == nil {
-		return ""
+		return rendered{}
 	}
 
 	if alias, ok := n.(*AliasNode); ok && r.aliasTargets != nil {
-		return r.alias(alias)
+		return leaf(r.alias(alias))
 	}
 
 	switch node := n.(type) {
@@ -142,36 +153,36 @@ func (r *Renderer) String(n Node) string {
 	case *SequenceNode:
 		return r.sequence(node)
 	case *AnchorNode:
-		return r.anchor(node)
+		return leaf(r.anchor(node))
 	case *TagNode:
-		return r.tag(node)
+		return leaf(r.tag(node))
 	case *LiteralNode:
-		return r.literal(node)
+		return leaf(r.literal(node))
 	case *StringNode:
-		return r.stringNode(node)
+		return leaf(r.stringNode(node))
 	case *DirectiveNode:
-		return r.directive(node)
+		return leaf(r.directive(node))
 	case *CommentGroupNode:
-		return r.commentGroup(node)
+		return leaf(r.commentGroup(node))
 	default:
 		// Scalars, aliases and everything else that occupies one line and
 		// contains no nested node: their own rendering is already relative.
 		if key, ok := n.(MapKeyNode); ok && !r.comments {
-			return key.stringWithoutComment()
+			return leaf(key.stringWithoutComment())
 		}
 
-		return n.String()
+		return leaf(n.String())
 	}
 }
 
 // File renders a whole file. It is separate from String because *File is not a
 // Node -- it holds documents rather than being one.
 func (r *Renderer) File(n *File) string {
-	docs := make([]string, 0, len(n.Docs))
+	docs := make([]rendered, 0, len(n.Docs))
 	for _, doc := range n.Docs {
 		// A document with nothing in it contributes nothing, not a blank line.
-		if text := r.String(doc); text != "" {
-			docs = append(docs, text)
+		if piece := r.render(doc); !piece.empty() {
+			docs = append(docs, piece)
 		}
 	}
 	if len(docs) == 0 {
@@ -180,27 +191,27 @@ func (r *Renderer) File(n *File) string {
 
 	// The final line break belongs to the file: a node's rendering never ends
 	// in one, so that it can be placed anywhere.
-	return strings.Join(docs, "\n") + "\n"
+	return join(sepNone, join(sepBreak, docs...), leaf("\n")).string()
 }
 
-func (r *Renderer) document(n *DocumentNode) string {
-	parts := make([]string, 0, 3)
+func (r *Renderer) document(n *DocumentNode) rendered {
+	parts := make([]rendered, 0, 3)
 	if n.Start != nil {
-		parts = append(parts, n.Start.Value)
+		parts = append(parts, leaf(n.Start.Value))
 	}
 	if n.Body != nil {
 		parts = append(parts, r.documentBody(n.Body))
 	}
 	if n.End != nil {
-		parts = append(parts, n.End.Value)
+		parts = append(parts, leaf(n.End.Value))
 	}
 
-	return strings.Join(parts, "\n")
+	return join(sepBreak, parts...)
 }
 
-func (r *Renderer) mapping(n *MappingNode) string {
+func (r *Renderer) mapping(n *MappingNode) rendered {
 	if len(n.Values) == 0 {
-		return r.withComment("{}", n.Comment)
+		return r.withComment(leaf("{}"), n.Comment)
 	}
 	if n.IsFlowStyle {
 		values := make([]Node, 0, len(n.Values))
@@ -208,7 +219,7 @@ func (r *Renderer) mapping(n *MappingNode) string {
 			values = append(values, value)
 		}
 		if r.flowCarriesComments(values, nil, n.FootComment) {
-			return r.withComment(r.flowBlock("{", "}", values, nil, n.FootComment), n.Comment)
+			return r.withComment(leaf(r.flowBlock("{", "}", values, nil, n.FootComment)), n.Comment)
 		}
 
 		entries := make([]string, 0, len(n.Values))
@@ -216,46 +227,46 @@ func (r *Renderer) mapping(n *MappingNode) string {
 			entries = append(entries, r.inline(value))
 		}
 
-		return r.withComment("{"+strings.Join(entries, ", ")+"}", n.Comment)
+		return r.withComment(leaf("{"+strings.Join(entries, ", ")+"}"), n.Comment)
 	}
 
-	lines := make([]string, 0, len(n.Values)+1)
+	lines := make([]rendered, 0, len(n.Values)+1)
 	if r.comments && n.Comment != nil {
-		lines = append(lines, r.String(n.Comment))
+		lines = append(lines, r.render(n.Comment))
 	}
 	for _, value := range n.Values {
-		lines = append(lines, r.String(value))
+		lines = append(lines, r.render(value))
 	}
 	if r.comments && n.FootComment != nil {
-		lines = append(lines, r.String(n.FootComment))
+		lines = append(lines, r.render(n.FootComment))
 	}
 
-	return strings.Join(lines, "\n")
+	return join(sepBreak, lines...)
 }
 
-func (r *Renderer) mappingValue(n *MappingValueNode) string {
-	key := r.bare().inline(n.Key)
+func (r *Renderer) mappingValue(n *MappingValueNode) rendered {
+	key := leaf(r.bare().inline(n.Key))
 
 	// A blank line before an entry is the author's, not the layout's: it groups
 	// entries, and no amount of re-rendering should lose it. Unlike a column, it
 	// does not compound when a document is read and written repeatedly.
-	var head string
+	var head rendered
 	if r.comments && n.Comment != nil {
 		// The gap is above the comment, which is what now leads the entry.
-		head = blankLineBefore(n.Comment) + r.String(n.Comment) + "\n"
+		head = join(sepNone, leaf(blankLineBefore(n.Comment)), r.render(n.Comment), leaf("\n"))
 	} else {
-		head = blankLineBefore(n.Key)
+		head = leaf(blankLineBefore(n.Key))
 	}
 
 	if _, explicit := n.Key.(*MappingKeyNode); explicit {
 		// The ':' goes on its own line. Written inline as "? a: b", YAML reads
 		// the whole of "a: b" as the key.
-		body := r.String(n.Key) + "\n:"
-		if value := r.value(n.Value, false); value != "" {
-			body += value
+		body := join(sepNone, r.render(n.Key), leaf("\n:"))
+		if value := r.value(n.Value, false); !value.empty() {
+			body = join(sepNone, body, value)
 		}
 
-		return head + body + r.footComment(n.FootComment)
+		return join(sepNone, head, body, r.footComment(n.FootComment))
 	}
 
 	// A comment on the key belongs after the ':', not before it: written where
@@ -268,16 +279,17 @@ func (r *Renderer) mappingValue(n *MappingValueNode) string {
 		comment, value = r.hoistBlockComment(n.Key, n.Value, value)
 	}
 
-	var inline, trailing string
+	var inline, trailing rendered
 	switch {
 	case comment == "":
-	case strings.HasPrefix(value, "\n"):
-		inline = " " + comment
+	case value.leads:
+		inline = leaf(" " + comment)
 	default:
-		trailing = " " + comment
+		trailing = leaf(" " + comment)
 	}
 
-	return head + key + r.colonAfter(n.Key) + inline + value + trailing + r.footComment(n.FootComment)
+	return join(sepNone, head, key, leaf(r.colonAfter(n.Key)), inline, value, trailing,
+		r.footComment(n.FootComment))
 }
 
 // colonAfter returns the ':' that closes a key, with the separating space the
@@ -323,8 +335,8 @@ func (r *Renderer) endsOnProperty(n Node) bool {
 // hoistBlockComment takes a block collection's own leading comment off the
 // front of its rendered value, so that the caller can put it back on the key's
 // line. It returns the comment and what is left of the value.
-func (r *Renderer) hoistBlockComment(key, n Node, value string) (string, string) {
-	if !r.comments || !strings.HasPrefix(value, "\n") {
+func (r *Renderer) hoistBlockComment(key, n Node, value rendered) (string, rendered) {
+	if !r.comments || !value.leads {
 		return "", value
 	}
 
@@ -348,12 +360,15 @@ func (r *Renderer) hoistBlockComment(key, n Node, value string) (string, string)
 	}
 
 	// The comment is the block's first line, wherever value() indented it to.
-	_, rest, found := strings.Cut(value[1:], "\n")
+	// Dropping a line means reading the text, which is the one place the pieces
+	// have to be flattened early. It costs the subtree, and only for a block
+	// whose own comment was written on the key's line.
+	_, rest, found := strings.Cut(value.string()[1:], "\n")
 	if !found {
 		return "", value
 	}
 
-	return r.String(comment), "\n" + rest
+	return r.String(comment), leaf("\n" + rest)
 }
 
 // sameLine reports whether two nodes were written on the same source line.
@@ -446,18 +461,18 @@ func (r *Renderer) aliasTarget(n *AliasNode, name string) Node {
 	return n.Target
 }
 
-func (r *Renderer) value(n Node, keyCommented bool) string {
+func (r *Renderer) value(n Node, keyCommented bool) rendered {
 	if n == nil {
-		return ""
+		return rendered{}
 	}
 
-	text := r.String(n)
-	if text == "" {
-		return ""
+	text := r.render(n)
+	if text.empty() {
+		return rendered{}
 	}
 
 	shape := r.deref(n)
-	spansLines := strings.Contains(text, "\n")
+	spansLines := text.spans
 	collection := isCollection(shape)
 
 	// A flow collection fits on the key's line only while it stays on one line.
@@ -477,7 +492,7 @@ func (r *Renderer) value(n Node, keyCommented bool) string {
 	// value.
 	if r.fitsOnKeyLine(shape) && (!collection || !spansLines) &&
 		(!keyCommented || (!collection && !spansLines)) {
-		return " " + text
+		return join(sepNone, leaf(" "), text)
 	}
 	if sequence, ok := shape.(*SequenceNode); ok && !sequence.IsFlowStyle && !r.indentSequence {
 		// A block sequence under a mapping key sits at the key's own
@@ -485,10 +500,10 @@ func (r *Renderer) value(n Node, keyCommented bool) string {
 		// one of the key's level. Both layouts are legal; this is the one YAML
 		// is usually written in. A flow sequence is not laid out this way: it
 		// is a value like any other and indents under its key.
-		return "\n" + text
+		return join(sepNone, leaf("\n"), text)
 	}
 
-	return "\n" + r.indented(text)
+	return join(sepNone, leaf("\n"), text.indentedBy(r.indent))
 }
 
 // fitsOnKeyLine reports whether a value belongs after its key on the same line.
@@ -508,34 +523,43 @@ func (r *Renderer) fitsOnKeyLine(n Node) bool {
 	}
 }
 
-func (r *Renderer) mappingKey(n *MappingKeyNode) string {
+func (r *Renderer) mappingKey(n *MappingKeyNode) rendered {
 	value := r.entry(n.Value)
-	if value == "" {
-		return n.Start.Value
+	if value.empty() {
+		return leaf(n.Start.Value)
 	}
 
-	return n.Start.Value + " " + value
+	return join(sepNone, leaf(n.Start.Value+" "), value)
 }
 
 // entry renders a node placed after a marker that occupies the start of its
 // line -- "- " or "? " -- indenting its continuation lines to sit under it.
-func (r *Renderer) entry(n Node) string {
-	blank, text := splitLeadingBlank(r.String(n))
+func (r *Renderer) entry(n Node) rendered {
+	piece := r.render(n)
 	if carriesOwnIndent(r.deref(n)) {
-		return blank + text
+		return piece
 	}
 
-	return blank + r.hangingIndent(text)
+	// The marker already holds the first line, so the piece is written where it
+	// left off and only the lines under it take the indentation. That is what
+	// hangingIndent did by cutting the first line off; the writer does it by
+	// putting the padding in at each line break instead.
+	var blank rendered
+	if piece.leads {
+		blank, piece = leaf("\n"), piece.withoutLead()
+	}
+
+	return join(sepNone, blank, piece.hangingBy(r.indent))
 }
 
-func (r *Renderer) sequence(n *SequenceNode) string {
+func (r *Renderer) sequence(n *SequenceNode) rendered {
 	if len(n.Values) == 0 {
-		return r.withComment("[]", n.Comment)
+		return r.withComment(leaf("[]"), n.Comment)
 	}
 	if n.IsFlowStyle {
 		if r.flowCarriesComments(n.Values, n.ValueHeadComments, n.FootComment) {
 			return r.withComment(
-				r.flowBlock("[", "]", n.Values, n.ValueHeadComments, n.FootComment), n.Comment)
+				leaf(r.flowBlock("[", "]", n.Values, n.ValueHeadComments, n.FootComment)), n.Comment)
 		}
 
 		entries := make([]string, 0, len(n.Values))
@@ -543,17 +567,21 @@ func (r *Renderer) sequence(n *SequenceNode) string {
 			entries = append(entries, r.inline(value))
 		}
 
-		return r.withComment("["+strings.Join(entries, ", ")+"]", n.Comment)
+		return r.withComment(leaf("["+strings.Join(entries, ", ")+"]"), n.Comment)
 	}
 
-	lines := make([]string, 0, len(n.Values)+1)
+	lines := make([]rendered, 0, len(n.Values)+1)
 	if r.comments && n.Comment != nil {
-		lines = append(lines, r.String(n.Comment))
+		lines = append(lines, r.render(n.Comment))
 	}
 	for i, value := range n.Values {
 		// A blank line inside an entry surfaces as a leading break on the
 		// entry's own text. It belongs above the "- ", not after it.
-		blank, text := splitLeadingBlank(r.entry(value))
+		entry := r.entry(value)
+		var blank string
+		if entry.leads {
+			blank, entry = "\n", entry.withoutLead()
+		}
 		if r.comments && i < len(n.ValueHeadComments) && n.ValueHeadComments[i] != nil {
 			comment := n.ValueHeadComments[i]
 			if blank == "" {
@@ -561,7 +589,7 @@ func (r *Renderer) sequence(n *SequenceNode) string {
 				// author left shows up above the comment instead.
 				blank = blankLineBefore(comment)
 			}
-			lines = append(lines, blank+r.String(comment))
+			lines = append(lines, join(sepNone, leaf(blank), r.render(comment)))
 			blank = ""
 		} else if blank == "" {
 			// Only a block collection reports a gap of its own. For anything
@@ -570,7 +598,7 @@ func (r *Renderer) sequence(n *SequenceNode) string {
 		}
 		comment := r.entryLineComment(n, i)
 		if comment != "" && !carriesOwnIndent(value) &&
-			(!r.fitsOnKeyLine(value) || strings.Contains(text, "\n")) {
+			(!r.fitsOnKeyLine(value) || entry.spans) {
 			// Everything after the '#' is commented out, so a value that would
 			// share the dash's line goes below it instead. A block scalar is
 			// exempt: its header is all that shares the line, and a comment
@@ -583,17 +611,19 @@ func (r *Renderer) sequence(n *SequenceNode) string {
 			// mapping holding a folded scalar came back with the comment inside
 			// the scalar's content. The same shape under a mapping key is
 			// Renderer.value's to place.
-			lines = append(lines, blank+"-"+comment, r.indented(r.String(value)))
+			lines = append(lines,
+				leaf(blank+"-"+comment),
+				r.render(value).indentedBy(r.indent))
 
 			continue
 		}
-		lines = append(lines, blank+"- "+text+comment)
+		lines = append(lines, join(sepNone, leaf(blank+"- "), entry, leaf(comment)))
 	}
 	if r.comments && n.FootComment != nil {
-		lines = append(lines, r.String(n.FootComment))
+		lines = append(lines, r.render(n.FootComment))
 	}
 
-	return strings.Join(lines, "\n")
+	return join(sepBreak, lines...)
 }
 
 // entryLineComment returns the comment written on the entry's own line.
@@ -674,7 +704,7 @@ func (r *Renderer) prefixedAt(marker string, value Node, atDocumentRoot bool) st
 		// A marker does not enclose what it names: "&a |2" is still the
 		// document's own node, and the width its header states is counted from
 		// the same place.
-		text = r.documentBody(value)
+		text = r.documentBody(value).string()
 	}
 	if text == "" {
 		return marker
@@ -723,16 +753,16 @@ func (r *Renderer) startsBlock(n Node) bool {
 // A property may stand between the document and the scalar -- "&a |2" is a
 // document whose node is an anchored block scalar -- so those are unwrapped
 // rather than handed to String.
-func (r *Renderer) documentBody(n Node) string {
+func (r *Renderer) documentBody(n Node) rendered {
 	switch node := n.(type) {
 	case *LiteralNode:
-		return r.literalAt(node, true)
+		return leaf(r.literalAt(node, true))
 	case *AnchorNode:
-		return r.withOwnComment(node.Comment, r.prefixedAt("&"+r.String(node.Name), node.Value, true))
+		return leaf(r.withOwnComment(node.Comment, r.prefixedAt("&"+r.String(node.Name), node.Value, true)))
 	case *TagNode:
-		return r.withOwnComment(node.Comment, r.prefixedAt(node.Start.Value, node.Value, true))
+		return leaf(r.withOwnComment(node.Comment, r.prefixedAt(node.Start.Value, node.Value, true)))
 	default:
-		return r.String(n)
+		return r.render(n)
 	}
 }
 
@@ -1057,12 +1087,12 @@ func (r *Renderer) commentGroup(n *CommentGroupNode) string {
 	return n.String()
 }
 
-func (r *Renderer) footComment(c *CommentGroupNode) string {
+func (r *Renderer) footComment(c *CommentGroupNode) rendered {
 	if !r.comments || c == nil {
-		return ""
+		return rendered{}
 	}
 
-	return "\n" + r.String(c)
+	return join(sepNone, leaf("\n"), r.render(c))
 }
 
 // blankLineBefore returns the blank line an author left above n, or "".
@@ -1176,12 +1206,12 @@ func (r *Renderer) inline(n Node) string {
 	return strings.TrimLeft(strings.ReplaceAll(r.String(n), "\n", " "), " ")
 }
 
-func (r *Renderer) withComment(text string, c *CommentGroupNode) string {
+func (r *Renderer) withComment(text rendered, c *CommentGroupNode) rendered {
 	if !r.comments || c == nil {
 		return text
 	}
 
-	return addCommentString(text, c)
+	return join(sepSpace, text, leaf(c.String()))
 }
 
 // indented shifts every line of text one level deeper.
