@@ -251,9 +251,13 @@ func onlyValueOf(t *testing.T, body ast.Node) ast.Node {
 // of the previous entry's line from the cursor instead of from its extent --
 // a token's extent runs to the end of its tile, which can be a line further on.
 // The front and middle numbers did not move.
+//
+// They move with the parser as well: a fix that accepts a document adds it to
+// what is measured here, so a number that changes with nothing changed in
+// writeEntry is the corpus and not the placement.
 const (
-	frontUnreadableCeiling  = 60
-	middleUnreadableCeiling = 60
+	frontUnreadableCeiling  = 59
+	middleUnreadableCeiling = 59
 	backUnreadableCeiling   = 13
 
 	frontDisturbedCeiling  = 0
