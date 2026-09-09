@@ -5,8 +5,6 @@ package ast
 
 import (
 	"encoding/base64"
-	"errors"
-	"strconv"
 	"strings"
 	"time"
 
@@ -67,6 +65,18 @@ type Resolution struct {
 	// read anything into it: "!!str 0x10" carries "0x10" and not "16". It is ""
 	// where the node is not a scalar.
 	Text string
+	// Type is the type the scanner gave that scalar, which carries the schema
+	// the document declared: "017" is OctetIntegerType under %YAML 1.1 and
+	// IntegerType without it. A consumer converting Text reads it so that the
+	// digits are taken in the base the document wrote them in -- pass it to
+	// [github.com/go-openapi/go-yaml/token.IntegerBase] or
+	// [github.com/go-openapi/go-yaml/token.FloatBase]. It is
+	// token.UnknownType where the node is not a scalar.
+	//
+	// Sniffing Text again instead reads it under one fixed schema, and the
+	// converters that did so disagreed with the decoder about nine spellings:
+	// "!!int 0b101" decoded to 5 under 1.1 and ToJSON wrote 0.
+	Type token.Type
 	// Lax says the document was read with
 	// [github.com/go-openapi/go-yaml/parser.WithLaxTags]. A consumer that finds
 	// TagValueMismatch and can fall back reads Text as a string instead of
@@ -102,10 +112,10 @@ func (n *TagNode) Resolve() Resolution {
 	_, isNull := unwrapAnchor(n.Value).(*NullNode)
 
 	if !reserved {
-		return Resolution{Verdict: TagUnresolved, Text: text, Empty: empty, Lax: n.LaxTags}
+		return Resolution{Verdict: TagUnresolved, Text: text, Type: typ, Empty: empty, Lax: n.LaxTags}
 	}
 
-	res := Resolution{Tag: tag, Text: text, Empty: empty, Lax: n.LaxTags}
+	res := Resolution{Tag: tag, Text: text, Type: typ, Empty: empty, Lax: n.LaxTags}
 
 	if collectionTag(tag) {
 		// A collection tag on a scalar, and the other way about. n.Value is nil
@@ -181,7 +191,7 @@ func readsAs(tag token.ReservedTagKeyword, text string, typ token.Type) bool {
 	case token.IntegerTag:
 		return readsAsInteger(text, typ)
 	case token.FloatTag:
-		return readsAsFloat(text)
+		return readsAsFloat(text, typ)
 	case token.BinaryTag:
 		_, err := base64.StdEncoding.DecodeString(text)
 
@@ -233,7 +243,7 @@ func readsAsBool(text string) bool {
 // this reports the mismatch and the decoder refuses the document. Read such a
 // document with parser.WithLaxTags to take the text as a string instead.
 func readsAsInteger(text string, typ token.Type) bool {
-	base, ok := integerBase(typ, text)
+	base, ok := token.IntegerBase(typ, text)
 	if !ok {
 		return false
 	}
@@ -245,50 +255,44 @@ func readsAsInteger(text string, typ token.Type) bool {
 	return big
 }
 
-// integerBase is the type whose base an integer scalar's digits are written in,
-// and false where no schema reads them as a whole number.
+// readsAsFloat reports whether the schema that typed the scalar reads its text
+// as a real number, an infinity or a NaN.
 //
-// The scanner typed the scalar under the schema the document declared, so the
-// token carries the answer: "017" is OctetIntegerType in a 1.1 document and
-// IntegerType in a 1.2 one, and "0b101" is BinaryIntegerType in the first and
-// StringType in the second. A scalar the tag alone makes an integer carries no
-// base -- the quoted "!!int \"0x10\"" is a DoubleQuoteType -- so its text goes
-// through the same sniffer under 1.2, which is what codec.castToInteger does
-// with the same characters.
+// strconv.ParseFloat stood here, and it reads Go's floating-point literals:
+// "0x1p-2" is a hexadecimal float in Go and in no YAML schema, and "1_0.5"
+// carries digit separators that 1.1 allows and 1.2 does not. Both resolved at
+// either version and decoded to 0.25 and 10.5, where the same scalars untagged
+// read as the strings they are.
 //
-// strconv.ParseInt with base 0 stood here and sniffs the base by Go's rules,
-// not YAML's. It reads "-0x10", "0X10", "0b101" and "1_000", none of which the
-// 1.2 core schema resolves as an integer, and every one of those came back 0
-// from the decoder while the key walk named it after the text.
-func integerBase(typ token.Type, text string) (token.Type, bool) {
-	if typ.IsInteger() {
-		return typ, true
-	}
-	if sniffed := token.ScalarType(text, token.Schema12); sniffed.IsInteger() {
-		return sniffed, true
-	}
-
-	return token.IntegerType, false
-}
-
-// readsAsFloat takes what Go reads plus YAML's own spellings of the infinities
-// and of a value that is not a number.
-func readsAsFloat(text string) bool {
-	if _, err := strconv.ParseFloat(text, 64); err == nil {
-		return true
-	} else if errors.Is(err, strconv.ErrRange) {
-		// The digits are a float and no float64 holds them: "1e+310" and
-		// "1e-400" are read into a *big.Float, which is what the same numbers
-		// come back as untagged. strconv reports the magnitude and not the
-		// spelling here, so the text is still a float.
-		return true
-	}
-	switch strings.ToLower(strings.TrimPrefix(strings.TrimPrefix(text, "-"), "+")) {
-	case ".inf", ".nan":
-		return true
-	default:
+// The base and the separators come from the type instead, as they do for an
+// integer -- see [integerBase]. token.ParseFloat then reads the digits: it
+// turns 1.1's sexagesimal into decimal before strconv sees it, so
+// "!!float 190:20:30.5" is 685230.5, and token.ParseBigFloat takes a number no
+// float64 holds, so "!!float 1e400" keeps its magnitude rather than becoming an
+// infinity.
+//
+// A whole number is a real number, so an integer type reads here too:
+// "!!float 1" is 1.0, and "!!float 017" is 15.0 under 1.1 and 17.0 under 1.2,
+// each following the base its own schema gave the digits.
+func readsAsFloat(text string, typ token.Type) bool {
+	base, ok := token.FloatBase(typ, text)
+	if !ok {
 		return false
 	}
+
+	switch {
+	case base == token.InfinityType || base == token.NanType:
+		return true
+	case base.IsInteger():
+		return readsAsInteger(text, base)
+	}
+
+	if _, parsed := token.ParseFloat(text, base); parsed {
+		return true
+	}
+	_, big := token.ParseBigFloat(text, base)
+
+	return big
 }
 
 // TimestampFormats are the layouts a "!!timestamp" scalar is read with.

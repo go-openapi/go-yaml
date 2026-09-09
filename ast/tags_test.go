@@ -98,6 +98,21 @@ func TestResolveClassifiesEveryTaggedNode(t *testing.T) {
 		{src: "k: !!int 0X10\n", tag: token.IntegerTag, verdict: ast.TagValueMismatch, text: "0X10"},
 		{src: "k: !!int 0b101\n", tag: token.IntegerTag, verdict: ast.TagValueMismatch, text: "0b101"},
 		{src: "k: !!int 1_000\n", tag: token.IntegerTag, verdict: ast.TagValueMismatch, text: "1_000"},
+
+		// A spelling Go reads as a float and the 1.2 core schema does not.
+		// readsAsFloat called strconv.ParseFloat, which reads Go's
+		// floating-point literals: "0x1p-2" is a hexadecimal float in Go and in
+		// no YAML schema, and "1_0.5" carries separators 1.1 allows and 1.2
+		// does not. Both resolved at either version, and decoded to 0.25 and
+		// 10.5 where the same scalars untagged read as the strings they are.
+		{src: "k: !!float 0x1p-2\n", tag: token.FloatTag, verdict: ast.TagValueMismatch, text: "0x1p-2"},
+		{src: "k: !!float 1_0.5\n", tag: token.FloatTag, verdict: ast.TagValueMismatch, text: "1_0.5"},
+		{src: "k: !!float 190:20:30.5\n", tag: token.FloatTag, verdict: ast.TagValueMismatch, text: "190:20:30.5"},
+
+		// A whole number is a real number, so an integer reads under "!!float"
+		// in whatever base its schema gave it.
+		{src: "k: !!float 1\n", tag: token.FloatTag, text: "1"},
+		{src: "k: !!float 0x10\n", tag: token.FloatTag, text: "0x10"},
 		{src: "k: !!null 5\n", tag: token.NullTag, verdict: ast.TagValueMismatch, text: "5"},
 		{src: "k: !!binary not base64!\n", tag: token.BinaryTag, verdict: ast.TagValueMismatch, text: "not base64!"},
 		{src: "k: !!timestamp not-a-date\n", tag: token.TimestampTag, verdict: ast.TagValueMismatch, text: "not-a-date"},

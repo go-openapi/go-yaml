@@ -555,9 +555,9 @@ func (w *jsonWriter) taggedValue(t *ast.TagNode) ([]byte, bool) {
 	case token.StringTag:
 		written = appendJSONString(nil, res.Text)
 	case token.IntegerTag:
-		written = appendJSONScalar(nil, taggedInteger(res.Text))
+		written = appendJSONScalar(nil, taggedInteger(res.Text, res.Type))
 	case token.FloatTag:
-		written = appendJSONFloat(nil, taggedFloat(res.Text))
+		written = appendJSONFloat(nil, taggedFloat(res.Text, res.Type))
 	case token.BooleanTag:
 		b, _ := token.ParseBool(strings.ToLower(res.Text))
 		written = strconv.AppendBool(nil, b)
@@ -931,20 +931,21 @@ func jsonValueEnd(text []byte, i int) int {
 // taggedInteger reads the whole number a "!!int" stands on. A text that is not
 // a number at all counts as zero, and one written as a float keeps its whole
 // part: "!!int 3.7" is 3.
-func taggedInteger(text string) any {
-	typ := token.ScalarType(text, token.Schema12)
-	if n, ok := token.ParseInteger(text, typ); ok {
+func taggedInteger(text string, typ token.Type) any {
+	base, ok := token.IntegerBase(typ, text)
+	if !ok {
+		// ast.Resolve reported a mismatch and the document was refused before
+		// this, so nothing reaches here with digits it cannot read.
+		return int64(0)
+	}
+	if n, parsed := token.ParseInteger(text, base); parsed {
 		return n
 	}
-	if b, ok := token.ParseBigInteger(text, typ); ok {
+	if b, big := token.ParseBigInteger(text, base); big {
 		// A number wider than a machine word keeps its digits, as the same
 		// number untagged already does. strconv.AppendInt on an int64 wrote
 		// "!!int 123456789012345678901" out as math.MinInt64.
 		return b
-	}
-	if f, err := strconv.ParseFloat(text, 64); err == nil && !math.IsInf(f, 0) && !math.IsNaN(f) {
-		// "!!int" over a float, which the decoder truncates towards zero.
-		return int64(f)
 	}
 
 	return int64(0)
@@ -957,16 +958,48 @@ func taggedInteger(text string) any {
 // back an infinity or a zero, and writing that gave "0.0" for "!!float 1e+310"
 // and for "!!float 1e-400" alike. token.ParseBigFloat reads both, which is what
 // the untagged spellings already convert through.
-func taggedFloat(text string) any {
-	typ := token.ScalarType(text, token.Schema12)
-	if f, ok := token.ParseFloat(text, typ); ok {
+func taggedFloat(text string, typ token.Type) any {
+	base, ok := token.FloatBase(typ, text)
+	if !ok {
+		return float64(0)
+	}
+	switch base {
+	case token.InfinityType, token.NanType:
+		// JSON has no spelling for either, and appendJSONFloat refuses them.
+		f, _ := token.ParseFloat(text, token.FloatType)
+
 		return f
 	}
-	if b, ok := token.ParseBigFloat(text, typ); ok {
+	if base.IsInteger() {
+		// A whole number under "!!float". The digits are read in the base the
+		// schema gave them -- "!!float 017" is 15 under 1.1 -- and widened,
+		// where sniffing the text again under 1.2 wrote 0 for every base but
+		// decimal.
+		return integerAsFloat(text, base)
+	}
+	if f, parsed := token.ParseFloat(text, base); parsed {
+		return f
+	}
+	if b, big := token.ParseBigFloat(text, base); big {
 		return b
 	}
-	if f, err := strconv.ParseFloat(text, 64); err == nil {
+
+	return float64(0)
+}
+
+// integerAsFloat widens a whole number written in any base to the real number
+// it names, keeping a *big.Float for one no float64 holds.
+func integerAsFloat(text string, base token.Type) any {
+	if u, negative, ok := token.ParseWholeNumber(text, base); ok {
+		f := float64(u)
+		if negative {
+			return -f
+		}
+
 		return f
+	}
+	if b, ok := token.ParseBigInteger(text, base); ok {
+		return new(big.Float).SetInt(b)
 	}
 
 	return float64(0)

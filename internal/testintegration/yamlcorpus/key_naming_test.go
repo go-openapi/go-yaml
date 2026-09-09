@@ -237,3 +237,57 @@ func TestAnIntegerTagReadsTheBaseTheSchemaTyped(t *testing.T) {
 		assert.Contains(t, read(t, under11+"!!int 017: v\n"), "15", "1.1 reads it as octal")
 	})
 }
+
+// TestATagIsNoLaxerThanTheBareSpelling: where the schema reads a plain scalar
+// as a number, writing the tag gives the same number; where it does not, the
+// tag is refused.
+//
+// The tag names the type, not the spelling. ast.readsAsInteger and
+// ast.readsAsFloat sniffed the text with Go's rules -- strconv.ParseInt at base
+// 0 and strconv.ParseFloat -- so a tag accepted spellings the document's own
+// schema had already read as strings, and the value that came back was 0 or
+// Go's own reading of the characters.
+func TestATagIsNoLaxerThanTheBareSpelling(t *testing.T) {
+	const under11 = "%YAML 1.1\n---\n"
+
+	t.Run("a spelling 1.1 does not have", func(t *testing.T) {
+		// 1.1's octal is a leading zero and its decimal may not open with one,
+		// so "09" is neither; "0o17" is 1.2's octal, which 1.1 has no form for.
+		// Both fell back to a decimal parse: "!!int 09" was 9 and
+		// "!!int 0o17" was 15, where the bare scalars are the strings.
+		for _, text := range []string{"09", "0o17", "08", "0o0", "0O17", "0X10", "+0o17", "0_9"} {
+			assert.Equalf(t, text, valueOf(t, under11+"k: "+text+"\n"),
+				"%q is a string under 1.1", text)
+			assert.Containsf(t, refuses(t, under11+"k: !!int "+text+"\n"), "as !!int",
+				"so !!int over %q is a tag naming a type its scalar is not", text)
+		}
+	})
+
+	t.Run("a float spelling only Go has", func(t *testing.T) {
+		// A hexadecimal float is Go's, and no YAML schema writes one.
+		for _, src := range []string{"k: !!float 0x1p-2\n", under11 + "k: !!float 0x1p-2\n"} {
+			assert.Containsf(t, refuses(t, src), "as !!float", "%q", src)
+		}
+		// 1.1 makes the decimal point mandatory in a float, so an exponent with
+		// no point is a string there and a float under the core schema.
+		assert.Equal(t, float64(1000), valueOf(t, "k: !!float 1e3\n"), "1.2 reads an exponent with no point")
+		assert.Contains(t, refuses(t, under11+"k: !!float 1e3\n"), "as !!float", "1.1 wants the point")
+	})
+
+	t.Run("and 1.1's sexagesimal reaches both tags", func(t *testing.T) {
+		assert.Equal(t, 685230, valueOf(t, under11+"k: !!int 190:20:30\n"))
+		assert.Equal(t, 685230.5, valueOf(t, under11+"k: !!float 190:20:30.5\n"))
+		// Neither is a number under the core schema.
+		assert.Contains(t, refuses(t, "k: !!int 190:20:30\n"), "as !!int")
+	})
+}
+
+// valueOf reads src and returns what it holds under the key "k".
+func valueOf(t *testing.T, src string) any {
+	t.Helper()
+
+	m, ok := read(t, src).(map[string]any)
+	require.Truef(t, ok, "%q should read as a mapping", src)
+
+	return m["k"]
+}

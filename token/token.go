@@ -411,6 +411,81 @@ func (t Type) IsInteger() bool {
 	}
 }
 
+// sniffed reports whether a schema judged what this scalar's text spells.
+//
+// A plain scalar reaches the scanner's resolver and comes back typed: a number
+// type where the schema reads one, StringType where it does not. A quoted or
+// block scalar never reaches it -- the quotes make it a string whatever it
+// spells -- so nothing has judged its characters and a tag naming a type is the
+// first thing to ask.
+func (t Type) sniffed() bool {
+	switch t {
+	case UnknownType, SingleQuoteType, DoubleQuoteType, LiteralType, FoldedType:
+		return false
+	default:
+		return true
+	}
+}
+
+// IntegerBase returns the type whose base an integer scalar's digits are
+// written in, and false where no schema reads them as a whole number.
+//
+// typ is the type the scanner gave the scalar, which carries the schema the
+// document declared: "017" is OctetIntegerType under 1.1 and IntegerType under
+// 1.2, and "0b101" is BinaryIntegerType under the first and StringType under
+// the second. Pass it and the answer follows the document's version.
+//
+// A scalar no schema judged -- the quoted key of `!!int "0x10"`, or a block
+// scalar -- has its text read by [ScalarType] under 1.2, since a tag naming a
+// type is then the first thing to ask about the characters. Such a scalar in a
+// 1.1 document is read under the wrong schema, which is the one corner this
+// does not reach.
+//
+// Use it with [ParseWholeNumber] or [ParseBigInteger], which read the digits
+// with the base the type names. Sniffing the base from the text alone --
+// strconv.ParseInt with base 0 -- reads Go's rules for an integer literal and
+// not YAML's: Go takes a sign on a hex number, a capital "X", a "0b" prefix and
+// "_" separators, and the 1.2 core schema writes none of them.
+func IntegerBase(typ Type, text string) (Type, bool) {
+	if typ.IsInteger() {
+		return typ, true
+	}
+	if typ.sniffed() {
+		// The schema read these characters and did not make a number of them.
+		return IntegerType, false
+	}
+	if sniffed := ScalarType(text, Schema12); sniffed.IsInteger() {
+		return sniffed, true
+	}
+
+	return IntegerType, false
+}
+
+// FloatBase returns the type whose spelling rules a float scalar's text
+// follows, and false where no schema reads it as a number at all.
+//
+// It answers as [IntegerBase] does, and takes the same three number families a
+// float tag may stand over: FloatType, the InfinityType and NanType spellings,
+// and an integer type, since a whole number is a real number. "!!float 017" is
+// 15.0 under 1.1 and 17.0 under 1.2, each following the base its own schema
+// gave the digits.
+func FloatBase(typ Type, text string) (Type, bool) {
+	switch {
+	case typ == FloatType, typ == InfinityType, typ == NanType, typ.IsInteger():
+		return typ, true
+	case typ.sniffed():
+		return FloatType, false
+	}
+
+	sniffed := ScalarType(text, Schema12)
+	switch {
+	case sniffed == FloatType, sniffed == InfinityType, sniffed == NanType, sniffed.IsInteger():
+		return sniffed, true
+	}
+
+	return FloatType, false
+}
+
 // CharacterType returns the class of character a token of type t is written
 // with. It follows from the type, as [Type.Indicator] does.
 func (t Type) CharacterType() CharacterType {
