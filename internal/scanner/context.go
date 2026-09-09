@@ -253,6 +253,7 @@ func (c *Context) removeRightSpaceFromBuf() {
 		if trimmed == len(c.originCopy) {
 			return
 		}
+		c.originTrimmed += int32(len(c.originCopy) - trimmed)
 		c.originCopy = c.originCopy[:trimmed]
 		c.buf = c.bufferedSrc()
 
@@ -267,9 +268,26 @@ func (c *Context) removeRightSpaceFromBuf() {
 		return
 	}
 
+	c.originTrimmed = min(c.originEnd, int32(len(c.src))) - end
 	c.originCopy = append(c.originCopy[:0], c.src[c.originStart:end]...)
 	c.originCut = true
 	c.buf = c.bufferedSrc()
+}
+
+// trailingBlankColumns counts the columns the blanks a line ends with have advanced, from the cursor
+// back to the last character that is not one.
+//
+// A space advances the column and a tab does not -- the scan loop's tab branch calls progress, which
+// moves the cursor and leaves the column alone -- so a run holding both advances by its spaces only.
+func (c *Context) trailingBlankColumns() int {
+	var columns int
+	for at := min(c.idx, int32(len(c.src))); at > 0 && isOriginSpace(c.src[at-1]); at-- {
+		if c.src[at-1] == ' ' {
+			columns++
+		}
+	}
+
+	return columns
 }
 
 // isOriginSpace reports whether c is whitespace a line may end with.
@@ -446,10 +464,6 @@ func (c *Context) bufferedToken(pos token.Position, endLine int32) (token.Token,
 	// No searching for it: it is the window at originStart unless a cut took bytes out of the middle, and then it stands
 	// nowhere as a run.
 	origin := c.origin()
-	originAt := c.originStart
-	if c.originCut {
-		originAt = -1
-	}
 	// pos.Offset() gives where the value starts in the source; the cursor does not.
 	// The scan cuts a plain scalar only once it has established the scalar did not run on to the next line, and by then
 	// the cursor stands well past it.
@@ -465,9 +479,7 @@ func (c *Context) bufferedToken(pos token.Position, endLine int32) (token.Token,
 		// Folding rewrote the value, so it is nowhere in the source to be found.
 		// The origin still holds the source's own bytes and records where it began, so the value starts that far in,
 		// past the whitespace indenting the line.
-		if originAt == c.originStart {
-			pos.SetOffset(c.originStart + leadingSpace(origin))
-		}
+		pos.SetOffset(c.originStart + leadingSpace(origin))
 	}
 
 	// How far the token reaches.
@@ -489,13 +501,14 @@ func (c *Context) bufferedToken(pos token.Position, endLine int32) (token.Token,
 		ext.Trailing = token.TrailingBreaksIn(origin)
 		ext.EndLine = endLine
 	}
-	if originAt >= 0 {
-		// The origin holds the source's own bytes, so where it was found plus how long it is closes the token exactly,
-		// whatever the offset points at inside it.
-		// Counting forward from the offset instead comes up short wherever a block scalar's indentation indicator leaves some
-		// of the leading spaces in the content.
-		ext.End = originAt + int32(len(origin))
-	}
+	// The origin holds the source's own bytes, so where it was found plus how long it is closes the token exactly,
+	// whatever the offset points at inside it.
+	// Counting forward from the offset instead comes up short wherever a block scalar's indentation indicator leaves some
+	// of the leading spaces in the content.
+	//
+	// originTrimmed puts back the blanks the cuts took off the end: they were read, so the next token
+	// begins after them, and leaving them out opened a hole between the two extents.
+	ext.End = c.originStart + int32(len(origin)) + c.originTrimmed
 
 	// A quoted or folded scalar is a string whatever it spells.
 	// Only text written plainly is read for a keyword or a number.
@@ -509,9 +522,7 @@ func (c *Context) bufferedToken(pos token.Position, endLine int32) (token.Token,
 	if probe.Enabled {
 		// The extent the scanner worked out, against the one read back from the origin, which token.Make would have used.
 		want := token.MeasureOrigin(origin, pos)
-		if originAt >= 0 {
-			want.End = originAt + int32(len(origin))
-		}
+		want.End = c.originStart + int32(len(origin)) + c.originTrimmed
 		probe.Check("token.extentMatchesTheOrigin", ext == want, func() string {
 			return fmt.Sprintf("%s %q: scanner gives %+v, the origin gives %+v", typ, value, ext, want)
 		})

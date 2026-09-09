@@ -60,3 +60,60 @@ func blockContentToken(t *testing.T, src string) token.Token {
 
 	return token.Token{}
 }
+
+// TestTrailingBlanksDoNotMovePosition pins a plain scalar's position on lines that end with blanks.
+//
+// The blanks between a value and the line break belong to no token: the scan reads them, and
+// Context.removeRightSpaceFromBuf cuts them off the buffer before the token is cut. Both halves of the
+// position counted them anyway, so "a: 1   \n" put the 1 at offset 6 and column 7 -- inside the run --
+// where it stands at offset 3, column 4.
+//
+// A tab moves the two by different amounts, since the scan's tab branch calls Scanner.progress and
+// advances the cursor without the column, so both spellings are pinned here.
+//
+// A ledger over the corpus would not find this: the documents that end a line with blanks nearly all end
+// it with a tab, and the tab cases hide the column half.
+func TestTrailingBlanksDoNotMovePosition(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		src    string
+		value  string
+		offset int
+		column int32
+	}{
+		{"three spaces", "a: 1   \n", "1", 3, 4},
+		{"one space", "a: 1 \n", "1", 3, 4},
+		{"a tab", "a: 1\t\n", "1", 3, 4},
+		{"spaces around a tab", "a: 1 \t \n", "1", 3, 4},
+		{"no blanks", "a: 1\n", "1", 3, 4},
+		{"no line break", "a: 1   ", "1", 3, 4},
+		{"a longer value, another line following", "a: hello  \nb: 2\n", "hello", 3, 4},
+		{"indented", "m:\n  k: v   \n", "v", 8, 6},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			tk := valueToken(t, tc.src, tc.value)
+
+			assert.Equalf(t, int(tc.offset), int(tk.Position.Offset()),
+				"%q: %q begins at offset %d", tc.src, tc.value, tc.offset)
+			assert.Equalf(t, tc.column, tk.Position.Column,
+				"%q: %q stands at column %d", tc.src, tc.value, tc.column)
+
+			assertColumnsAddressTheToken(t, tc.src)
+			assertOriginsTile(t, tc.src)
+		})
+	}
+}
+
+// valueToken returns the token whose value is want.
+func valueToken(t *testing.T, src, want string) token.Token {
+	t.Helper()
+
+	for _, tk := range tokenize(t, src) {
+		if tk.Value == want {
+			return tk
+		}
+	}
+	t.Fatalf("%q: holds no token with value %q", src, want)
+
+	return token.Token{}
+}

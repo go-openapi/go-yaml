@@ -70,8 +70,15 @@ func (s *Scanner) endsProperty(ctx *Context) {
 func (s *Scanner) scanNewLine(ctx *Context, c rune) {
 	if len(ctx.buf) > 0 && !s.hasSavedPos {
 		buffered := ctx.bufferedSrc()
+		// The cursor stands on the line break, past any blanks the line ends with, and those are not
+		// in the buffer. Counting back over the buffer alone left the column inside the run:
+		// "a: 1   \n" put the 1 at column 7 where it stands at column 4.
+		//
+		// The offset is corrected further on -- Context.bufferedToken finds the value in the source --
+		// but nothing re-reads the column, so it is taken here.
+		blanks := ctx.trailingBlankColumns()
 		s.savedPos = s.pos()
-		s.savedPos.Column -= posInt(utf8.RuneCount(buffered))
+		s.savedPos.Column -= posInt(utf8.RuneCount(buffered) + blanks)
 		s.savedPos.SetOffset(s.savedPos.Offset() - posInt(len(buffered)))
 		s.hasSavedPos = true
 	}

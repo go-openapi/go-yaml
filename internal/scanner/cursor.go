@@ -29,7 +29,11 @@ type cursor struct {
 	// notSpaceCharPos marks how much of buf belongs to the value, leaving out the whitespace it ends with.
 	notSpaceCharPos int32
 	originStart     int32
-	// originCut records that originCopy is in use, a cut having taken bytes out of the middle of the text.
+	// originTrimmed counts the bytes the cuts have taken off the end of originCopy. The token reaches
+	// originStart + len(originCopy) + originTrimmed, which is where the scan stands.
+	originTrimmed int32
+	// originCut records that originCopy is in use, the blanks a line ended with having been cut off the
+	// end of the text. The start is unaffected: nothing cuts from the middle.
 	originCut bool
 
 	// Below the line the scan reads for every character.
@@ -273,6 +277,7 @@ func (c *cursor) resetBuffer() {
 	c.originStart, c.originEnd = c.idx, c.idx
 	c.originCopy = c.originCopy[:0]
 	c.originCut = false
+	c.originTrimmed = 0
 }
 
 func (c *cursor) isMergeKey() bool {

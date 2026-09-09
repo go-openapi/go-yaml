@@ -1723,20 +1723,14 @@ e: f
 					Origin: ":",
 				},
 				{
-					Type:  token.StringType,
-					Value: "b\nc d",
-					// Short of the "d \n" that closes the scalar, and the next token starts that much early to make up for it.
-					// Context.removeRightSpaceFromBuf trims the spaces a line ends with from the origin buffer as well as from the
-					// value, so the buffer is shorter than the source it was read from and the extent taken from its length falls
-					// behind.
-					//
-					// It is the same defect offsetMissLedger counts under String.
-					Origin: "   \n b   \n\n  \n c\n ",
+					Type:   token.StringType,
+					Value:  "b\nc d",
+					Origin: "   \n b   \n\n  \n c\n d \n",
 				},
 				{
 					Type:   token.StringType,
 					Value:  "e",
-					Origin: "d \ne",
+					Origin: "e",
 				},
 				{
 					Type:   token.MappingValueType,

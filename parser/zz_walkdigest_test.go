@@ -128,7 +128,13 @@ func TestTheWalkHandsOverTheSameTree(t *testing.T) {
 // fixedWalkDigest is what the walk hands over today, over the 417 documents of
 // the YAML Test Suite and the synthetic corpus -- 323 walked and 94 refused.
 //
-// Re-baselined 2026-09-09 with the commit that admitted a zero-indented block
+// Re-baselined 2026-09-09 with the commit that kept the blanks a line ends with
+// out of a plain scalar's position and back in its extent. The counts held at
+// 323 and 94, and no position moved: all 18 entries that shifted are span ends
+// growing by the length of the blank run, which cursor.originTrimmed counts
+// back into the token after removeRightSpaceFromBuf cuts it.
+//
+// Re-baselined 2026-09-09 before that, with the commit that admitted a zero-indented block
 // sequence as an explicit key's body. The counts held at 323 and 94, so no
 // document moved between walked and refused; what moved is the tree for a "?"
 // whose content is such a sequence -- it used to end at the first "-", so the
@@ -158,7 +164,7 @@ func TestTheWalkHandsOverTheSameTree(t *testing.T) {
 // scanner's two tab checks: the counts held there too, and what moved was the
 // message on a document refused either way, since digestVisitor writes
 // "refused: %v" and one of the two messages was retired.
-const fixedWalkDigest = "b51c16adee06966969034ef0f3d948398c390c53dc3459d106bd09d97d854b60"
+const fixedWalkDigest = "cbc3e1fec5d9852e7a5b1520f80e08e5357fc2ab052b40a69c5d4ac42011eb23"
 
 // digestVisitor writes what it is handed, so that anything the walk reads out
 // of a reclaimed cell shows up as a different document.

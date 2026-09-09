@@ -35,7 +35,7 @@ func at(src string, offset int) string {
 // offsetMissLedger records how many tokens of each type carry an Offset that does not address their own text, over the
 // whole YAML Test Suite.
 //
-// 101 of 3,489, which is 97.1% correct.
+// 16 of 3,430, which is 99.5% correct.
 // It was 1,031 until three places in the scanner stopped stepping over a character without counting its byte: scanTag
 // over the '!', scanComment over the '#', and scanMultiLineHeaderOption over the '|' or '>'.
 //
@@ -43,11 +43,15 @@ func at(src string, offset int) string {
 // or block scalar was reported that many bytes early.
 // Twenty-one of the twenty-five types now miss nothing at all.
 //
-// What is left is 18 of 3,489, and none of it is the counter drifting.
+// What is left is 16 of 3,430, and none of it is the counter drifting.
 // 13 are Invalid, the tokens an error carries, built from the whole origin buffer and not from one token's worth of
 // it.
-// 5 are String values spanning a line break: block scalar content in spec-example-8-1-block-scalar-header and the two
-// spec-example-8-2-block-indentation-indicator cases, and two plain scalars ending in a tab in various-trailing-tabs.
+// 3 are block scalar content: spec-example-8-1-block-scalar-header and the two
+// spec-example-8-2-block-indentation-indicator cases.
+//
+// It was 5 while a plain scalar ending in a tab was reported past its own text, which various-trailing-tabs holds
+// twice. Context.trailingBlankColumns and cursor.originTrimmed now keep the blanks a line ends with out of both
+// halves of the position and back in the extent.
 //
 // This measurement cannot see a token whose extent does not tile. originsOf reads a token's text back from the
 // extents and returns "" where they break, and the loop below skips an empty want. Six of the 402 documents break
@@ -73,7 +77,7 @@ func at(src string, offset int) string {
 // recorded by lowering the count.
 var offsetMissLedger = map[string]int{ //nolint:gochecknoglobals // ok to store and immutable map as a global
 	"Invalid": 13,
-	"String":  5,
+	"String":  3,
 }
 
 // TestTokenOffsetsAddressTheSource measures, over the YAML Test Suite, how often a token's Offset addresses that token
