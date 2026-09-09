@@ -237,7 +237,10 @@ type verbatimWriter struct {
 	// keys counts the mapping keys being written, since a key may hold a
 	// collection whose entries have keys of their own.
 	keys int
-	err  error
+	// dropping says a node the caller replaced has been written and the text it
+	// replaced is still ahead of the copy. See take.
+	dropping bool
+	err      error
 }
 
 // upTo writes the source from where the last write stopped to end.
@@ -256,9 +259,50 @@ func (vw *verbatimWriter) upTo(end int) {
 		vw.cursor = 0
 	}
 
-	written := vw.src[vw.cursor:end]
-	vw.cursor = end
+	written := vw.take(end)
 	vw.hand(Written{Text: written, FromSource: true})
+}
+
+// take is the source from where the copy stands to end, less the text a node
+// the caller replaced left behind.
+//
+// A replaced node's text is still in the document and still in front of the
+// copy, and nothing in the tree says where it ended -- the node that knew is
+// gone. What is known is that it ran to the last thing before the next token
+// the descent hands over, so the copy drops everything up to the spacing that
+// closes it: the line break before the next entry, the spaces before a comment
+// beside it.
+func (vw *verbatimWriter) take(end int) []byte {
+	text := vw.src[vw.cursor:end]
+	vw.cursor = end
+	if !vw.dropping {
+		return text
+	}
+	vw.dropping = false
+
+	return text[endOfReplaced(text):]
+}
+
+// endOfReplaced is where the text a replaced node left behind stops, inside the
+// stretch standing between the copy and the next token the descent hands over.
+//
+// Everything up to the spacing that closes the stretch: the node's text, and the
+// lines under it where it was a block. What stays is the break before the next
+// entry, or the spaces before a comment beside it -- the comment itself is a
+// token the descent hands over, so the stretch stops in front of it.
+func endOfReplaced(text []byte) int {
+	end := len(text)
+	for end > 0 && isSpacing(text[end-1]) {
+		end--
+	}
+
+	return end
+}
+
+// isSpacing reports whether c separates two things in a document without being
+// either of them.
+func isSpacing(c byte) bool {
+	return c == ' ' || c == '\t' || c == '\n' || c == '\r'
 }
 
 // upToToken writes the source as far as tk, handing the space in front of it
@@ -274,9 +318,7 @@ func (vw *verbatimWriter) upToToken(tk *token.Token, n Node) {
 	at := min(max(int(tk.Position.Offset()), vw.cursor), len(vw.src))
 	end := min(max(int(tk.EndOffset()), at), len(vw.src))
 	if at > vw.cursor {
-		lead := vw.src[vw.cursor:at]
-		vw.cursor = at
-		vw.hand(Written{Text: lead, FromSource: true})
+		vw.hand(Written{Text: vw.take(at), FromSource: true})
 	}
 	if end > vw.cursor {
 		text := vw.src[vw.cursor:end]
@@ -333,6 +375,35 @@ func asIndent(lead string) string {
 
 		return ' '
 	}, lead)
+}
+
+// lineIndent is the spacing the line the copy stands on opens with.
+func (vw *verbatimWriter) lineIndent() string {
+	start := 0
+	for i := min(vw.cursor, len(vw.src)) - 1; i >= 0; i-- {
+		if vw.src[i] == '\n' {
+			start = i + 1
+
+			break
+		}
+	}
+
+	end := start
+	for end < len(vw.src) && (vw.src[end] == ' ' || vw.src[end] == '\t') {
+		end++
+	}
+
+	return string(vw.src[start:end])
+}
+
+// spacingAfter is the offset the run of spaces and tabs at from ends on.
+func (vw *verbatimWriter) spacingAfter(from int) int {
+	i := from
+	for i < len(vw.src) && (vw.src[i] == ' ' || vw.src[i] == '\t') {
+		i++
+	}
+
+	return i
 }
 
 // restOfLine is the offset just past the break that ends the line the copy
@@ -406,7 +477,7 @@ func (r *Renderer) write(vw *verbatimWriter, n Node) {
 	switch v := n.(type) {
 	case *DocumentNode:
 		r.writeTokenOf(vw, v.Start, v)
-		r.write(vw, v.Body)
+		r.writeInPlaceOf(vw, v.Body, false)
 		r.writeTokenOf(vw, v.End, v)
 	case *MappingNode:
 		if v.IsFlowStyle {
@@ -424,10 +495,10 @@ func (r *Renderer) write(vw *verbatimWriter, n Node) {
 	case *MappingValueNode:
 		r.writeTokenOf(vw, v.CollectEntry, v)
 		vw.keys++
-		r.write(vw, v.Key)
+		r.writeInPlaceOf(vw, v.Key, false)
 		vw.keys--
 		r.writeTokenOf(vw, v.Start, v)
-		r.write(vw, v.Value)
+		r.writeInPlaceOf(vw, v.Value, true)
 	case *MappingKeyNode:
 		r.writeTokenOf(vw, v.Start, v)
 		r.write(vw, v.Value)
@@ -485,7 +556,11 @@ func (r *Renderer) writeToken(vw *verbatimWriter, tk *token.Token) {
 // know it is a comment: a colorizer that could not would leave every comment in
 // a document uncolored, and comments are the first thing anyone looks at.
 func (r *Renderer) writeComments(vw *verbatimWriter, n Node, span extent, above bool) {
-	if vw.fn == nil || vw.err != nil {
+	// With no transform a comment is copied as the filler in front of the token
+	// after it and needs no handing over of its own -- unless a replaced node is
+	// being dropped, where that filler is what goes and the comment would go
+	// with it.
+	if (vw.fn == nil && !vw.dropping) || vw.err != nil {
 		return
 	}
 	group := n.GetComment()
@@ -506,6 +581,94 @@ func (r *Renderer) writeComments(vw *verbatimWriter, n Node, span extent, above 
 		}
 		vw.upToToken(tk, comment)
 	}
+}
+
+// writeInPlaceOf writes a node the caller put where the document held another,
+// and takes the text that other node stood on out of the copy.
+//
+// The tree no longer says what was there: assigning to MappingValueNode.Value
+// leaves nothing of the node it replaced, and the extent around it shrank with
+// it. So the copy is told to drop what it meets next instead of being given a
+// bound -- see [verbatimWriter.take].
+//
+// The spacing in front of the old node is written first, since it belongs to
+// the document and not to what stood after it: "a:" keeps its space when the
+// value beside it changes.
+//
+// underKey says the node hangs under a mapping key, where a collection written
+// as a block goes on the lines below rather than beside it.
+func (r *Renderer) writeInPlaceOf(vw *verbatimWriter, n Node, underKey bool) {
+	if n == nil || vw.err != nil {
+		return
+	}
+	if sourceExtent(n).found() {
+		r.write(vw, n)
+
+		return
+	}
+
+	// A null the document did not write stands for nothing and is written as
+	// nothing: "!!null : a" holds a tag, a ":" and no scalar at all, and the
+	// parser fills the value slot with a node carrying no token of its own.
+	// Rendering it would put a "null" into a document that never held one.
+	if _, isNull := n.(*NullNode); isNull {
+		return
+	}
+
+	text := r.render(n).string()
+	if text == "" {
+		return
+	}
+
+	// A collection written as a block does not fit beside the key it belongs to.
+	// It goes on the lines below, indented from the line the copy is on rather
+	// than from the tree's depth, so it lines up with the document around it.
+	if underKey && r.startsBlock(n) {
+		vw.raw("\n" + indentBlockWith(text, vw.lineIndent()+r.blockStep(n)))
+		vw.dropping = true
+
+		return
+	}
+
+	// The spacing after the ":" is the document's, so it is copied where it is
+	// there. A value the document wrote on the line below has none, and a scalar
+	// put in its place needs one: "a:" and "a:x" are not the same entry.
+	if spacing := vw.spacingAfter(vw.cursor); spacing > vw.cursor {
+		vw.upTo(spacing)
+	} else if underKey {
+		vw.raw(" ")
+	}
+	vw.raw(text)
+	vw.dropping = true
+}
+
+// blockStep is what one level of nesting adds in front of a block that hangs
+// under a mapping key. A block sequence takes none unless asked: "key:" then
+// "- item" in the key's own column.
+func (r *Renderer) blockStep(n Node) string {
+	if sequence, isSequence := n.(*SequenceNode); isSequence && !sequence.IsFlowStyle && !r.indentSequence {
+		return ""
+	}
+
+	return strings.Repeat(" ", r.indent)
+}
+
+// indentBlockWith puts indent in front of every line of text that holds
+// anything. It takes the indentation as text and not as a count, since the
+// document may be written with tabs or with a width of its own.
+func indentBlockWith(text, indent string) string {
+	if indent == "" {
+		return text
+	}
+
+	lines := strings.Split(text, "\n")
+	for i, line := range lines {
+		if line != "" {
+			lines[i] = indent + line
+		}
+	}
+
+	return strings.Join(lines, "\n")
 }
 
 // writeNameOf writes the name an anchor or an alias is written with, and says
@@ -531,7 +694,10 @@ func (r *Renderer) writeTokenOf(vw *verbatimWriter, tk *token.Token, n Node) {
 	if tk == nil || !tk.FromSource() {
 		return
 	}
-	if vw.fn == nil {
+	// With no transform the two halves go to the same writer, so one copy up to
+	// the token's end serves for both -- unless a replaced node is being dropped,
+	// where the lead is what goes and the token is what stays.
+	if vw.fn == nil && !vw.dropping {
 		vw.upTo(int(tk.EndOffset()))
 
 		return
@@ -740,6 +906,18 @@ func sliceSiblings(values []Node) func(int) Node {
 // It needs [WithSource]. A node a caller inserted into a parsed tree is written
 // by [Renderer.Render]'s rules and placed with its neighbours' indentation, so a
 // document keeps its own layout everywhere it was not touched.
+//
+// A caller may also assign over a node the document holds: MappingValueNode.Key,
+// MappingValueNode.Value and DocumentNode.Body are written in place of what was
+// there. Two limits go with that:
+//
+//   - Assigning to MappingNode.Values[i] or SequenceNode.Values[i] inserts
+//     rather than replaces. The result cannot be told from a tree where an entry
+//     was inserted at i, so the entry that was there stays. Assign to that
+//     entry's Key or Value instead.
+//   - A comment the parser attached to the node being replaced goes with it.
+//     "a: 1 # note" holds the note on the value, so replacing the value drops
+//     it; set it on the node being put in to keep it.
 //
 // ⚠️ Provisional, and not what [Renderer.Render] does on its own: that lays a
 // whole tree out by its depth, which is what an encoder wants and what a tree
