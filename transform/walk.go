@@ -350,13 +350,13 @@ func implicitNull(n ast.Node, tk *token.Token) bool {
 // extent is the stretch of the source a token covers, held inside the document
 // and ahead of what is already written.
 //
-// The scanner's extents tile the source and seven documents the parse accepts
+// The scanner's extents tile the source and six documents the parse accepts
 // break that: "- single multiline\n - sequence entry\n" is 37 bytes and its
 // second token claims to end at 56. Clamping keeps the output byte for byte
 // what the document was -- the bytes past the end are not there to write -- and
 // stops a broken extent from indexing off the slice.
 //
-// extentLedger in internal/ledgers/scanner/extent_test.go records the seven.
+// extentLedger in internal/ledgers/scanner/extent_test.go records the six.
 // Delete this and read the extents plainly when it is empty: a fix there also
 // raises offsetMissLedger's String count, since clamping the extent makes an
 // Offset visible that does not address its own text, so the two ledgers move in
