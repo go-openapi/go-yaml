@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	yamlerrors "github.com/go-openapi/go-yaml/errors"
+	"github.com/go-openapi/go-yaml/internal/probe"
 	"github.com/go-openapi/go-yaml/token"
 )
 
@@ -423,6 +424,14 @@ type grouper struct {
 
 // setLineComment records that comment closes the line tk stands on.
 func (g *grouper) setLineComment(tk *tapeToken, comment *token.Token) {
+	if probe.Enabled {
+		probe.Count("comment.staged", 1)
+		if _, already := g.lineComments[tk]; already {
+			// The same token staged twice: the second write drops the first,
+			// so a count of calls is not a count of comments held.
+			probe.Count("comment.staged.overwrote", 1)
+		}
+	}
 	if g.lineComments == nil {
 		g.lineComments = make(map[*tapeToken]*token.Token)
 	}

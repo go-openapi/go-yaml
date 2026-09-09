@@ -3252,6 +3252,10 @@ func (p *Parser) parseHeadComment(ctx context) *ast.CommentGroupNode {
 	if len(tks) == 0 {
 		return nil
 	}
+	if probe.Enabled {
+		probe.Count("comment.head.parsed", int64(len(tks)))
+	}
+
 	return ast.CommentGroup(tks)
 }
 
@@ -3264,6 +3268,10 @@ func (p *Parser) parseFootComment(ctx context, col int) *ast.CommentGroupNode {
 	if len(tks) == 0 {
 		return nil
 	}
+	if probe.Enabled {
+		probe.Count("comment.foot.parsed", int64(len(tks)))
+	}
+
 	return ast.CommentGroup(tks)
 }
 

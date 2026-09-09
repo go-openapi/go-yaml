@@ -5,6 +5,7 @@ package parser
 
 import (
 	"github.com/go-openapi/go-yaml/ast"
+	"github.com/go-openapi/go-yaml/internal/probe"
 	"github.com/go-openapi/go-yaml/token"
 )
 
@@ -301,6 +302,12 @@ func newTagDefaultScalarValueNode(ctx context, uri string, tag *token.Token) (as
 }
 
 func setLineComment(ctx context, node ast.Node, tk *tapeToken) error {
+	if probe.Enabled {
+		if c := ctx.lineComment(tk); c != nil {
+			probe.Count("comment.line.attached", 1)
+		}
+	}
+
 	lineComment := ctx.takeLineComment(tk)
 	if lineComment == nil {
 		return nil
@@ -337,6 +344,13 @@ func setHeadComment(cm *ast.CommentGroupNode, value ast.Node) error {
 	if cm == nil {
 		return nil
 	}
+	if probe.Enabled {
+		probe.Count("comment.head.attached", 1)
+		if target := headCommentTarget(value); target != nil && target.GetComment() != nil {
+			// SetComment assigns, so the one already there goes.
+			probe.Count("comment.head.overwrote", 1)
+		}
+	}
 	switch n := value.(type) {
 	case *ast.MappingNode:
 		if len(n.Values) != 0 && value.GetComment() == nil {
@@ -349,4 +363,16 @@ func setHeadComment(cm *ast.CommentGroupNode, value ast.Node) error {
 	}
 	cm.SetPathNode(value.GetPathNode())
 	return value.SetComment(cm)
+}
+
+// headCommentTarget is the node setHeadComment writes to, for the probe that
+// counts how often it writes over a comment already there.
+func headCommentTarget(value ast.Node) ast.Node {
+	if mapping, ok := value.(*ast.MappingNode); ok {
+		if len(mapping.Values) != 0 && value.GetComment() == nil {
+			return mapping.Values[0]
+		}
+	}
+
+	return value
 }

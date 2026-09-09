@@ -5,6 +5,7 @@ package parser
 
 import (
 	"github.com/go-openapi/go-yaml/ast"
+	"github.com/go-openapi/go-yaml/internal/probe"
 	"github.com/go-openapi/go-yaml/token"
 )
 
@@ -302,6 +303,9 @@ func (c context) takeLineComment(tk *tapeToken) *token.Token {
 	comment := c.lineComments[tk]
 	if comment != nil {
 		delete(c.lineComments, tk)
+		if probe.Enabled {
+			probe.Count("comment.taken", 1)
+		}
 	}
 
 	return comment

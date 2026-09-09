@@ -5,6 +5,7 @@ package parser
 
 import (
 	yamlerrors "github.com/go-openapi/go-yaml/errors"
+	"github.com/go-openapi/go-yaml/internal/probe"
 	"github.com/go-openapi/go-yaml/internal/scanner"
 	"github.com/go-openapi/go-yaml/internal/tokenarena"
 	"github.com/go-openapi/go-yaml/token"
@@ -305,6 +306,12 @@ func (r *reader) fill() error {
 			r.out = r.g.finish(r.out)
 
 			break
+		}
+		if tk.Type == token.CommentType && probe.Enabled {
+			probe.Count("comment.scanned", 1)
+			if !r.keepComments {
+				probe.Count("comment.droppedBeforeGrouping", 1)
+			}
 		}
 		if !r.keepComments && tk.Type == token.CommentType {
 			continue
