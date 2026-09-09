@@ -9,6 +9,7 @@ import (
 	"github.com/go-openapi/testify/v2/assert"
 	"github.com/go-openapi/testify/v2/require"
 
+	"github.com/go-openapi/go-yaml/ast"
 	"github.com/go-openapi/go-yaml/parser"
 )
 
@@ -160,5 +161,92 @@ func TestParseExplicitKeyComments(t *testing.T) {
 			require.NoErrorf(t, err, "cannot read back %q", test.want)
 			assert.Equal(t, test.want, reread.String())
 		})
+	}
+}
+
+// TestAnExplicitEntryKeepsBothComments: a comment on the ":" line and a head
+// comment above the "?" both reach the tree.
+//
+// They were one slot and two comments. The ":" line comment had two places and
+// each is occupied by something else in a document that writes one: on the
+// value it becomes a head comment, since the value begins on a later line, and
+// collides with a head comment written under the ":"; on BaseNode.Comment it
+// collides with a head comment written above the "?". A fix on either side lost
+// the other's comment, which is why the entry has a slot of its own now.
+//
+// ⚠️ This asserts the tree and not the rendered text. ast.Renderer writes an
+// entry's Comment above the entry and reads nothing from LineComment, so the
+// ":" line comment reaches the page only while it is also in Comment -- see
+// setEntryLineComment's bridge. The renderer change that writes LineComment
+// after the ":" is what puts it back on the line it was written on, and this
+// test is what says the parse has it to write.
+func TestAnExplicitEntryKeepsBothComments(t *testing.T) {
+	for name, tc := range map[string]struct {
+		source string
+		head   string
+		line   string
+	}{
+		"a head comment above the '?' and one on the ':' line": {
+			source: "# h\n? k\n: # c\n",
+			head:   "# h",
+			line:   "# c",
+		},
+		"both written empty": {
+			source: "#\n?\n: #c4\n",
+			head:   "#",
+			line:   "#c4",
+		},
+		"the ':' line alone, so the head slot is free": {
+			source: "? k\n: # c\n",
+			head:   "# c", // the bridge, until the renderer reads LineComment
+			line:   "# c",
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			entry := firstMappingEntry(t, tc.source)
+
+			require.NotNil(t, entry.LineComment, "the ':' line comment is not in the tree")
+			assert.Equal(t, tc.line, entry.LineComment.String())
+
+			require.NotNil(t, entry.Comment, "the head comment is not in the tree")
+			assert.Equal(t, tc.head, entry.Comment.String())
+		})
+	}
+
+	// An entry written the short way has nowhere to lose one: its line comment
+	// goes on the value node, whose own slot is free. Kept so that a change to
+	// the long form cannot quietly move the short one.
+	t.Run("the short spelling is untouched", func(t *testing.T) {
+		entry := firstMappingEntry(t, "# h\na: v # c\n")
+
+		require.NotNil(t, entry.Comment)
+		assert.Equal(t, "# h", entry.Comment.String())
+		assert.Nil(t, entry.LineComment, "a short entry writes no ':' line of its own")
+
+		require.NotNil(t, entry.Value.GetComment())
+		assert.Equal(t, "# c", entry.Value.GetComment().String())
+	})
+}
+
+// firstMappingEntry parses src with comments and returns the first entry of the
+// mapping at its root.
+func firstMappingEntry(t *testing.T, src string) *ast.MappingValueNode {
+	t.Helper()
+
+	f, err := parser.ParseBytes([]byte(src), parser.WithComments())
+	require.NoErrorf(t, err, "%q", src)
+	require.Lenf(t, f.Docs, 1, "%q", src)
+
+	switch body := f.Docs[0].Body.(type) {
+	case *ast.MappingValueNode:
+		return body
+	case *ast.MappingNode:
+		require.NotEmptyf(t, body.Values, "%q", src)
+
+		return body.Values[0]
+	default:
+		t.Fatalf("%q: the document is a %T, not a mapping", src, body)
+
+		return nil
 	}
 }

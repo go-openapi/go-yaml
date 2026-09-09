@@ -1329,8 +1329,26 @@ type MappingValueNode struct {
 	CollectEntry *token.Token // collect entry token ','.
 	Key          MapKeyNode
 	Value        Node
-	FootComment  *CommentGroupNode
-	IsFlowStyle  bool
+	// LineComment is the comment written on the entry's own ':' line, where
+	// that line carries nothing else: "? k" over ": # c".
+	//
+	// An entry written the short way has nowhere to put such a comment but the
+	// value, since "a: # c" over "  v" writes the comment on the key's line --
+	// and that works, because the value node's own slot is free. An entry
+	// written the long way has a ':' on a line of its own, and the comment
+	// there is neither the key's nor the value's: on the value it becomes a
+	// head comment and collides with one written under the ':', and on
+	// BaseNode.Comment it collides with one written above the '?'.
+	//
+	// ⚠️ [SequenceEntryNode] names HeadComment and reads its *line* comment
+	// through the inherited accessor; this type does the reverse, naming the
+	// line comment and reading its head one through BaseNode.Comment. The two
+	// are consistent in having two slots and inconsistent in which one is
+	// named. Renaming BaseNode.Comment reaches every node type, so the
+	// asymmetry stands rather than being worth that.
+	LineComment *CommentGroupNode
+	FootComment *CommentGroupNode
+	IsFlowStyle bool
 }
 
 // Replace replace value node.

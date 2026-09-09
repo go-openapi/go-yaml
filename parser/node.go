@@ -32,17 +32,19 @@ func newMappingValueNode(ctx context, colonTk, entryTk *tapeToken, key ast.MapKe
 		}
 
 		// A ':' of its own, so a comment on it was written on the ':' line and
-		// is the value's rather than the key's. Returning here dropped it:
+		// is neither the key's nor the value's. Returning here dropped it:
 		// "? a" over ": # c3" over "  v" rendered as "? a" over ": v".
 		//
-		// It goes on the entry. Put on the value it collided with a head
-		// comment written under it: the value starts on a later line, so the
-		// line comment degrades to a head comment and takes that slot -- "? a"
-		// over ": # c4" over "  # c5" over "  - 1" kept c4 and lost c5. On the
-		// entry it stays a line comment, and CommentToMap gives $.a a line
-		// comment and $.a[0] a head one, which is what the short form
-		// "a: # c4" over "  # c5" over "  - 1" already gives.
-		if err := setLineComment(ctx, node, colonTk); err != nil {
+		// It goes in the entry's own slot. The two places it had before are
+		// each occupied by something else in a document that writes one. On the
+		// value it becomes a head comment, since the value begins on a later
+		// line, and collides with a head comment written under the ':': "? a"
+		// over ": # c4" over "  # c5" over "  - 1" kept c4 and lost c5. On
+		// BaseNode.Comment it collides with a head comment written above the
+		// '?': "# h" over "? k" over ": # c" kept the first and lost the
+		// second. Those are one defect from two sides, and a comment was lost
+		// whichever side was chosen.
+		if err := setEntryLineComment(ctx, node, colonTk); err != nil {
 			return nil, err
 		}
 
@@ -281,6 +283,32 @@ func setLineComment(ctx context, node ast.Node, tk *tapeToken) error {
 	}
 	comment := ast.CommentGroup([]*token.Token{lineComment})
 	comment.SetPathNode(ctx.path)
+
+	return node.SetComment(comment)
+}
+
+// setEntryLineComment records the comment written on an explicit entry's ':'
+// line, in the entry's own slot.
+//
+// ⚠️ BaseNode.Comment is filled as well while it is free, which is a bridge and
+// not the design: ast.Renderer writes an entry's Comment above the entry and
+// reads nothing from LineComment yet, so filling only the new slot would stop
+// the comment reaching the rendered text at all. Take this out with the
+// renderer change that writes LineComment after the ':' -- the two together are
+// what put the comment back on the line it was written on.
+func setEntryLineComment(ctx context, node *ast.MappingValueNode, tk *tapeToken) error {
+	lineComment := ctx.takeLineComment(tk)
+	if lineComment == nil {
+		return nil
+	}
+
+	comment := ast.CommentGroup([]*token.Token{lineComment})
+	comment.SetPathNode(ctx.path)
+	node.LineComment = comment
+
+	if node.Comment != nil {
+		return nil
+	}
 
 	return node.SetComment(comment)
 }
