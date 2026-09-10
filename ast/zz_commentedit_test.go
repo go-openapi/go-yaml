@@ -260,6 +260,22 @@ func TestFixedAnAddedCommentDoesNotBreakTheLineItLandsOn(t *testing.T) {
 		})
 	}
 
+	t.Run("and a document written with \\r keeps its own line break", func(t *testing.T) {
+		// Line scanning that knows only "\n" runs off the end of a document
+		// written with "\r", and the anchor then lands wherever the document
+		// ends -- inside a block scalar, for the 803 corpus placements this
+		// was measured on.
+		const src = "a: 1\rb: 2\r"
+
+		file, err := parser.ParseBytes([]byte(src), parser.WithComments())
+		require.NoError(t, err)
+		require.NoError(t, file.Docs[0].Body.(*ast.MappingNode).Values[0].Value.SetComment(comment(" c")))
+
+		var out bytes.Buffer
+		require.NoError(t, ast.NewRenderer(ast.WithSource([]byte(src))).VerbatimFile(&out, file))
+		assert.Equal(t, "a: 1 # c\rb: 2\r", out.String())
+	})
+
 	t.Run("and a comment with nowhere to go fails the rendering", func(t *testing.T) {
 		// The scalar begins partway along its line and runs over the next, so
 		// there is no end of line to close and no start of one to stand above.

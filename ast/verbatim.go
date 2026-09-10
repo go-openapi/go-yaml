@@ -348,6 +348,14 @@ func endOfReplaced(text []byte) int {
 	return end
 }
 
+// isBreak reports whether c ends a line. YAML 1.1 counts a lone "\r" as a line
+// break and the scanner reads one, so anything walking the source by lines has
+// to as well: reading only "\n" ran off the end of a document written with
+// "\r", and a comment anchored there landed inside a block scalar.
+func isBreak(c byte) bool {
+	return c == '\n' || c == '\r'
+}
+
 // isSpacing reports whether c separates two things in a document without being
 // either of them.
 func isSpacing(c byte) bool {
@@ -421,7 +429,7 @@ func (vw *verbatimWriter) skipComment(tk *token.Token, whole bool) {
 // startOfLine is the offset the line holding at opens on.
 func (vw *verbatimWriter) startOfLine(at int) int {
 	for i := at - 1; i >= 0; i-- {
-		if vw.src[i] == '\n' {
+		if isBreak(vw.src[i]) {
 			return i + 1
 		}
 	}
@@ -459,7 +467,7 @@ func lineOf(src []byte, at int) int {
 	at = min(max(at, 0), len(src))
 	var lines int
 	for i := range at {
-		if src[i] == '\n' {
+		if src[i] == '\n' || (src[i] == '\r' && (i+1 >= len(src) || src[i+1] != '\n')) {
 			lines++
 		}
 	}
@@ -503,14 +511,38 @@ func (vw *verbatimWriter) writeAddedComment(comment *CommentNode, span extent, n
 
 	// The gap in front of the node: its line break and its indentation.
 	vw.upTo(int(span.from))
-	vw.raw(comment.String() + "\n" + vw.lineIndent())
+	vw.raw(comment.String() + vw.breakBefore(int(span.from)) + vw.lineIndent())
+}
+
+// breakBefore is the line break the document uses, read off the one that opens
+// the line at stands on. A document written with "\r" gets a "\r" back, where a
+// "\n" put into it would leave the comment and the node on one line.
+func (vw *verbatimWriter) breakBefore(at int) string {
+	at = min(max(at, 0), len(vw.src))
+	for i := at - 1; i >= 0; i-- {
+		switch vw.src[i] {
+		case '\n':
+			if i > 0 && vw.src[i-1] == '\r' {
+				return "\r\n"
+			}
+
+			return "\n"
+		case '\r':
+			return "\r"
+		case ' ', '\t':
+		default:
+			return "\n"
+		}
+	}
+
+	return "\n"
 }
 
 // opensItsLine reports whether nothing but spacing stands before at on its line.
 func opensItsLine(src []byte, at int) bool {
 	at = min(max(at, 0), len(src))
 	for i := at - 1; i >= 0; i-- {
-		if src[i] == '\n' {
+		if isBreak(src[i]) {
 			return true
 		}
 		if src[i] != ' ' && src[i] != '\t' {
@@ -615,7 +647,7 @@ func asIndent(lead string) string {
 func (vw *verbatimWriter) lineIndent() string {
 	start := 0
 	for i := min(vw.cursor, len(vw.src)) - 1; i >= 0; i-- {
-		if vw.src[i] == '\n' {
+		if isBreak(vw.src[i]) {
 			start = i + 1
 
 			break
@@ -988,7 +1020,7 @@ func besideAnchor(n Node, src []byte) (int32, bool) {
 		at--
 	}
 	start := at
-	for at < len(src) && src[at] != '\n' {
+	for at < len(src) && !isBreak(src[at]) {
 		if src[at] == '#' && (at == 0 || isSpacing(src[at-1])) {
 			return 0, false
 		}
