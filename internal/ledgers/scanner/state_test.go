@@ -42,7 +42,7 @@ type disagreement struct {
 // TestStateLedger checks this before it compares anything, so a regenerated corpus fails saying to re-baseline
 // instead of accusing the scanner. It earned that on 2026-09-10: 014db89 regenerated the corpus for two 1.1
 // number spellings, seven counts moved at once, and the check named the corpus instead of the scanner.
-const corpusFingerprint = "5fe5ec9674b1c75d"
+const corpusFingerprint = "0e37598a5b9d1f8e"
 
 // stateLedger records how often two pieces of the scanner's state that look like the same number disagree, over the
 // fuzz corpus.
@@ -69,12 +69,12 @@ var stateLedger = map[string]disagreement{ //nolint:gochecknoglobals // ok to st
 	// folds a line and dropping the tab that ends one, and no scan of the bytes tells those apart from content.
 	// 2 of 2,738 re-baselined 2026-09-10 after 16dd5be, from 2 of 2,744 the same day, 2 of 2,743 and 2 of 2,742 on
 	// 2026-09-09 and 3 of 1,348 on 2026-09-07. The ratio has held at 0.07% across all four.
-	"buf.notSpaceCharPos==trimmed/plain": {0, 317551},
+	"buf.notSpaceCharPos==trimmed/plain": {0, 317633},
 	"buf.notSpaceCharPos==trimmed/block": {2, 2767},
 
 	// A mark past the end of the buffer made bufferedSrc slice a byte the last token wrote.
 	// Fixed; nothing may raise this.
-	"buf.notSpaceCharPos<=len(buf)": {0, 320318},
+	"buf.notSpaceCharPos<=len(buf)": {0, 320400},
 
 	// Both entries count a space opening a line where indentNum has stopped tracking the column. They have different
 	// causes, and only the second is a surprise.
@@ -119,6 +119,10 @@ var stateLedger = map[string]disagreement{ //nolint:gochecknoglobals // ok to st
 	// scanner did not, which is the reading the fingerprint check exists to make available: it failed saying
 	// the corpus had moved rather than reporting seven regressions.
 	//
+	// Re-baselined again on 2026-09-11, fingerprint moved, and the cause is eleven documents rather than a
+	// generator change: the kind-mismatch census went into yamlcorpus as written-out shapes. Four denominators
+	// rose by about 0.03% and every count held, which is what adding a handful of short documents looks like.
+	//
 	// Re-baselined on 2026-09-11 with the fingerprint HOLDING, which is the reading that says the scanner moved.
 	// be17078 ends a block scalar on a last line holding only spaces, where the source ends there; a document
 	// that used to be refused now completes. Three counts moved and they are exactly the buffer family the fix
@@ -144,13 +148,13 @@ var stateLedger = map[string]disagreement{ //nolint:gochecknoglobals // ok to st
 	//
 	// A count re-baselined without the ratio beside it says nothing about whether the scanner changed, which is why
 	// the ledger records the denominator.
-	"indent.lastIndentLevel==indentLevel": {5385, 158353},
+	"indent.lastIndentLevel==indentLevel": {5385, 158394},
 
 	// bufferedToken assembles a token's extent from what the scanner already holds: where the origin began, how long
 	// it is, and the line the text ends on. It does not read the origin back to work the extent out.
 	// This compares that extent against token.MeasureOrigin's, which token.Make used.
 	// Nothing may raise it: a disagreement is a token pointing at the wrong stretch of source.
-	"token.extentMatchesTheOrigin": {0, 48488},
+	"token.extentMatchesTheOrigin": {0, 48513},
 }
 
 // TestStateLedger holds the scanner's state pairs to what they were measured at.

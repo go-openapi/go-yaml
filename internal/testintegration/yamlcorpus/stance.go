@@ -150,6 +150,18 @@ var GoYAML = stance.Table{
 		// parser-side evidence behind it: each mapping of an omap holds one
 		// key, so the parser records no repeat and the check is the loader's.
 		TagOMapNotASequenceOfPairs: stance.Refuses,
+
+		// And a tag over the wrong kind of node, from 878bc41: "!!seq does not
+		// support this kind of node", for a collection tag on a scalar or on the
+		// other collection, and for a scalar tag on either collection. Fred
+		// ruled the four collection tags together -- "!!seq" and "!!omap" want a
+		// sequence, "!!map" and "!!set" want a mapping.
+		//
+		// A tag standing on nothing is not a mismatch and takes the tag's own
+		// default, so "k: !!map" reads. A written null is a scalar and is
+		// refused, which is the boundary the two shapes at the end of the family
+		// hold.
+		TagKindMismatch: stance.Refuses,
 	},
 }
 

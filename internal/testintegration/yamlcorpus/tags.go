@@ -95,6 +95,20 @@ const (
 	// a codec.MapSliceSeq on all four readers -- the walk, the tree, ToJSON and
 	// ToJSONTokens -- and refuse every other shape.
 	TagOMapNotASequenceOfPairs stance.Tag = "tag/omap-not-a-sequence-of-pairs"
+	// TagKindMismatch is a tag over a node of the wrong kind: a collection tag
+	// on a scalar or on the other collection, or a scalar tag on a collection.
+	//
+	// A different question from the six above, which ask whether a scalar's
+	// text reads as the type its tag names. This asks whether the node is a
+	// scalar, a sequence or a mapping at all, and it is settled before any text
+	// is read. 10.3 gives each of the ten tags a kind, and a tag naming one the
+	// node is not is an assertion that cannot hold whatever the content says.
+	//
+	// A tag standing on nothing is not a mismatch: `k: !!map` writes no node, so
+	// the tag takes its own default. A written null is a scalar and mismatches
+	// as one -- `k: !!map null` is refused where `k: !!map` is not, which is the
+	// boundary worth having on the page.
+	TagKindMismatch stance.Tag = "tag/kind-mismatch"
 )
 
 // TagRules is what the specification settles about the above.
@@ -176,6 +190,12 @@ func TagVocabulary() stance.Vocabulary {
 		// parses and composes, and the element that is not a mapping is only a
 		// problem once something has to hold the ordered map.
 		TagOMapNotASequenceOfPairs: stance.Construct,
+
+		// A kind mismatch is settled at the same stage and for the same reason:
+		// the parse and the compose are both happy with "!!seq {x: 1}", and only
+		// building a native value has to decide what a sequence tag over a
+		// mapping means.
+		TagKindMismatch: stance.Construct,
 	}
 }
 
@@ -351,9 +371,96 @@ func TagShapes() []stance.Shape {
 			Intent: []stance.Tag{TagSecondary, TagOMapNotASequenceOfPairs},
 		},
 		{
+			// The mapping form is a kind mismatch and not an inner-shape one, so
+			// it reports the resolver's message rather than the codec's since
+			// 878bc41. The three shapes above it keep "!!omap names a sequence
+			// of one-entry mappings"; this one reads "!!omap does not support
+			// this kind of node".
 			Name:   "an omap tag over a mapping",
 			Src:    []byte("!!omap {x: 1}\n"),
-			Intent: []stance.Tag{TagSecondary, TagOMapNotASequenceOfPairs},
+			Intent: []stance.Tag{TagSecondary, TagKindMismatch},
+		},
+
+		// Every kind a tag can name, over every kind it can stand on. 10.3
+		// gives each tag a kind and this is the census of the rule: eight
+		// mismatches, the scalar-tag direction beside them, and the boundary
+		// where a tag stands on nothing.
+		//
+		// 📌 Written out because nothing else exercises it. [yamlgen.TagFor]
+		// offers each tag on its own kind -- `!!seq` on a Seq, `!!map` on a Map
+		// -- so the generator has never drawn a kind mismatch and never will.
+		// Measured on 2026-09-11 over the 21,826 stored cases: five refusals
+		// name a kind, and four of the five are byte MUTANTS, documents a
+		// substitution corrupted into the shape by accident. A regeneration can
+		// lose all four. These cannot be lost.
+		{
+			Name:   "a sequence tag over a mapping",
+			Src:    []byte("a: !!seq {x: 1}\n"),
+			Intent: []stance.Tag{TagSecondary, TagKindMismatch},
+		},
+		{
+			Name:   "a sequence tag over a scalar",
+			Src:    []byte("a: !!seq 1\n"),
+			Intent: []stance.Tag{TagSecondary, TagKindMismatch},
+		},
+		{
+			Name:   "a mapping tag over a sequence",
+			Src:    []byte("a: !!map [1, 2]\n"),
+			Intent: []stance.Tag{TagSecondary, TagKindMismatch},
+		},
+		{
+			Name:   "a mapping tag over a scalar",
+			Src:    []byte("a: !!map 1\n"),
+			Intent: []stance.Tag{TagSecondary, TagKindMismatch},
+		},
+		{
+			Name:   "a set tag over a sequence",
+			Src:    []byte("a: !!set [1, 2]\n"),
+			Intent: []stance.Tag{TagSecondary, TagKindMismatch},
+		},
+		{
+			Name:   "a set tag over a scalar",
+			Src:    []byte("a: !!set 1\n"),
+			Intent: []stance.Tag{TagSecondary, TagKindMismatch},
+		},
+		{
+			Name:   "an omap tag over a scalar",
+			Src:    []byte("a: !!omap 1\n"),
+			Intent: []stance.Tag{TagSecondary, TagKindMismatch},
+		},
+		{
+			// The other direction, and it shares the message since 878bc41.
+			// Keeping it in this family means a change that breaks one of the
+			// two is read next to the other.
+			Name:   "a scalar tag over a sequence",
+			Src:    []byte("a: !!str [1]\n"),
+			Intent: []stance.Tag{TagSecondary, TagKindMismatch},
+		},
+		{
+			Name:   "a scalar tag over a mapping",
+			Src:    []byte("a: !!int {x: 1}\n"),
+			Intent: []stance.Tag{TagSecondary, TagKindMismatch},
+		},
+
+		// The boundary, both halves. A tag standing on nothing is not a
+		// mismatch: the document wrote no node, so the tag takes its own
+		// default and "k: !!map" reads as null. Write the null out and it is a
+		// scalar, which "!!map" does not name.
+		//
+		// The accepting half is here on purpose. A rule that starts refusing
+		// too much is the direction nothing else reports -- a wrongly refused
+		// document fails no property, it just stops being counted -- so the
+		// shape that must READ is the one that catches it.
+		{
+			Name:   "a mapping tag standing on nothing",
+			Src:    []byte("k: !!map\n"),
+			Intent: []stance.Tag{TagSecondary},
+			Means:  map[string]any{"k": nil},
+		},
+		{
+			Name:   "a mapping tag over a written null",
+			Src:    []byte("k: !!map null\n"),
+			Intent: []stance.Tag{TagSecondary, TagKindMismatch},
 		},
 		{
 			// The one refusal with no parser-side evidence behind it. Each
