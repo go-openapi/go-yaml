@@ -1657,14 +1657,18 @@ func sliceSiblings(values []Node) func(int) Node {
 // Setting a comment where the document wrote none adds one, written above the
 // node or at the end of its line by the slot it was put in.
 //
-// An added comment is never dropped without a word, so expect two errors.
-// [Node.SetComment] refuses a slot that can hold nothing: a null standing for a
-// node the document does not hold, and a [CommentGroupNode], which holds
-// comments and carries none of its own. Where the source leaves no room -- the
-// node shares its line with a comment already, or begins partway along a line --
-// this returns an error naming the node. A tree that parsed cleanly can fail to
-// render once a caller has added a comment to it; [Renderer.Render] lays the
-// same tree out by depth and places the comment.
+// An added comment is never dropped without a word. [Node.SetComment] refuses a
+// slot that can hold nothing: a null standing for a node the document does not
+// hold, and a [CommentGroupNode], which holds comments and carries none of its
+// own.
+//
+// Where the node's line has no room for one -- it ends on a comment already, or
+// a scalar written across two lines runs through the end of it -- the comment
+// goes above the node instead: "a: 1 # old" with a comment set on the key comes
+// back as "# c" over "a: 1 # old". Only where it can go neither place, the node
+// beginning partway along a line, does this return an error naming it. So a tree
+// that parsed cleanly can fail to render once a caller has added a comment to
+// it; [Renderer.Render] lays the same tree out by depth and places the comment.
 //
 // A node the tree no longer holds is a different matter, and this does not see
 // it: the copy runs forward once and writes the nodes in the document's order,

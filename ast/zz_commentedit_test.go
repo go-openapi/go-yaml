@@ -229,7 +229,7 @@ func TestFixedAnAddedCommentDoesNotBreakTheLineItLandsOn(t *testing.T) {
 		want: "a: 1 # c\nb: 2\n",
 		at:   func(f *ast.File) ast.Node { return f.Docs[0].Body.(*ast.MappingNode).Values[0].Value },
 	}, {
-		name: "a line that already ends on a comment",
+		name: "a line that already ends on a comment: above, not refused",
 		src:  "a: 1 # old\nb: 2\n",
 		want: "# c\na: 1 # old\nb: 2\n",
 		at:   func(f *ast.File) ast.Node { return f.Docs[0].Body.(*ast.MappingNode).Values[0].Key },
