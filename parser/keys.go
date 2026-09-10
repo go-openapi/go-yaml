@@ -189,7 +189,7 @@ func (l *keyLedger) open(node *ast.MappingNode) func() {
 // Duplicates, the load has nothing to refuse, and the last entry written wins
 // because that is what filling a map does.
 func (p *Parser) recordKeyOnce(ctx context, tk *token.Token, name string, kind token.KeyKind) {
-	if p.allowDuplicateMapKey {
+	if p.opts.allowDuplicateMapKey {
 		return
 	}
 
@@ -231,7 +231,7 @@ func unnamedKey(name string, kind token.KeyKind) bool {
 // The refusal names the repeat's own token and the token of the entry that
 // first wrote the key, which is what a reader gets for a scalar key.
 func (p *Parser) recordBuiltKeyOnce(key ast.MapKeyNode) {
-	if p.allowDuplicateMapKey || !p.keys.inMapping() {
+	if p.opts.allowDuplicateMapKey || !p.keys.inMapping() {
 		return
 	}
 

@@ -8,11 +8,39 @@ import "github.com/go-openapi/go-yaml/ast"
 // Option represents parser's option.
 type Option func(p *Parser)
 
+// options is what the [Option] arguments to [New] wrote.
+//
+// They are settings and not state: [Parser.Parse] and [Parser.Walk] read them
+// and never write them, so one parser may read document after document with the
+// same answers. What a document says about itself -- its %YAML version, its TAG
+// handles -- is held on the Parser instead.
+type options struct {
+	// onComplete is told about each node as it is finished. EXPERIMENT.
+	onComplete func(ast.Node)
+
+	// chunkSize is how many tokens one chunk of the token arena holds.
+	chunkSize int
+
+	// version is the version to fall back on where a document names none.
+	version YAMLVersion
+
+	// mergeKeys resolves a bare "<<" as a merge key whatever version is in
+	// force. See [WithMergeKeys].
+	mergeKeys bool
+	// keepComments says [WithComments] was passed, so the comments a document
+	// holds reach the tree rather than being dropped as they are read.
+	keepComments         bool
+	allowDuplicateMapKey bool
+	omitNodePaths        bool
+	jsonCompatible       bool
+	laxTags              bool
+}
+
 // WithComments keeps the comments a document holds. They are dropped by default,
 // before the grouping ever sees them.
 func WithComments() Option {
 	return func(p *Parser) {
-		p.keepComments = true
+		p.opts.keepComments = true
 	}
 }
 
@@ -20,7 +48,7 @@ func WithComments() Option {
 // but by default, this is not permitted.
 func WithAllowDuplicateMapKey() Option {
 	return func(p *Parser) {
-		p.allowDuplicateMapKey = true
+		p.opts.allowDuplicateMapKey = true
 	}
 }
 
@@ -37,7 +65,7 @@ func WithAllowDuplicateMapKey() Option {
 // accessor going quiet.
 func WithOmitNodePaths() Option {
 	return func(p *Parser) {
-		p.omitNodePaths = true
+		p.opts.omitNodePaths = true
 	}
 }
 
@@ -46,7 +74,7 @@ func WithOmitNodePaths() Option {
 // (2026-08-27) -- the hook a decoder folding nodes into Go values needs.
 func WithOnComplete(fn func(ast.Node)) Option {
 	return func(p *Parser) {
-		p.onComplete = fn
+		p.opts.onComplete = fn
 	}
 }
 
@@ -56,7 +84,7 @@ func WithOnComplete(fn func(ast.Node)) Option {
 // of the document instead, with [tokenarena.SizeFor].
 func WithChunkSize(size int) Option {
 	return func(p *Parser) {
-		p.chunkSize = size
+		p.opts.chunkSize = size
 	}
 }
 
@@ -71,7 +99,7 @@ func WithChunkSize(size int) Option {
 // goes back to what was asked for here when that document ends.
 func WithYAMLVersion(v YAMLVersion) Option {
 	return func(p *Parser) {
-		p.version = v
+		p.opts.version = v
 	}
 }
 
@@ -89,7 +117,7 @@ func WithYAMLVersion(v YAMLVersion) Option {
 // way the version in force says.
 func WithMergeKeys() Option {
 	return func(p *Parser) {
-		p.mergeKeys = true
+		p.opts.mergeKeys = true
 	}
 }
 
@@ -131,7 +159,7 @@ func WithMergeKeys() Option {
 // it.
 func WithJSONCompatible() Option {
 	return func(p *Parser) {
-		p.jsonCompatible = true
+		p.opts.jsonCompatible = true
 	}
 }
 
@@ -184,6 +212,6 @@ func WithAnchors(anchors map[string]ast.Node) Option {
 // about a document without being told twice.
 func WithLaxTags() Option {
 	return func(p *Parser) {
-		p.laxTags = true
+		p.opts.laxTags = true
 	}
 }

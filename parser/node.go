@@ -533,7 +533,7 @@ const pathSlabSize = 512
 // newPathNode returns the next unused step of the path trie, or nil when
 // [WithOmitNodePaths] has turned path recording off.
 func (p *Parser) newPathNode() *ast.PathNode {
-	if p.omitNodePaths {
+	if p.opts.omitNodePaths {
 		return nil
 	}
 	if len(p.pathSlab) == 0 {

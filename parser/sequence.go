@@ -239,7 +239,7 @@ func (p *Parser) parseSequenceValue(ctx context, seqTk *group.TapeToken) (ast.No
 // codec.sequenceEntryNode reads it for the position of a missing-field error,
 // falling back to the mapping's first key where the sequence kept none.
 func (p *Parser) sequenceEntry(ctx context, entryTk *group.TapeToken, value ast.Node, headComment *ast.CommentGroupNode) (*ast.SequenceEntryNode, error) {
-	if !p.keepComments {
+	if !p.opts.keepComments {
 		return nil, nil
 	}
 

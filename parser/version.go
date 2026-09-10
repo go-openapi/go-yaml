@@ -39,14 +39,14 @@ var yamlVersionMap = map[string]YAMLVersion{
 //
 // The directive wins over the option, and its scope is one document --
 // endVersionScope clears yamlVersion at each document's end, which is defect
-// 43's fix. Reading schemaFor(p.version) instead asks for the option alone and
+// 43's fix. Reading schemaFor(p.opts.version) instead asks for the option alone and
 // misses every directive, which is what a first cut of the merge rule did.
 func (p *Parser) schemaInForce() token.Schema {
 	if p.yamlVersion != "" {
 		return schemaFor(p.yamlVersion)
 	}
 
-	return schemaFor(p.version)
+	return schemaFor(p.opts.version)
 }
 
 func schemaFor(v YAMLVersion) token.Schema {
@@ -78,7 +78,7 @@ func (p *Parser) endVersionScope() {
 		return
 	}
 	p.yamlVersion = ""
-	schema := schemaFor(p.version)
+	schema := schemaFor(p.opts.version)
 	p.scan.SetSchema(schema)
 
 	from := int32(p.reader.seq) - 1

@@ -187,7 +187,7 @@ type anchorIdentity struct {
 //
 // Two strings per anchor, and nothing is retained: the node itself goes.
 func (p *Parser) keepAnchorIdentity(name string, value ast.Node) {
-	if p.allowDuplicateMapKey {
+	if p.opts.allowDuplicateMapKey {
 		return
 	}
 
@@ -223,7 +223,7 @@ func (t *anchorTable) openNode(name string) (*ast.AnchorNode, bool) {
 // resolveAlias points the alias at the node its name stands for.
 func (p *Parser) resolveAlias(alias *ast.AliasNode, name string, tk *token.Token) error {
 	if anchor, open := p.anchors.openNode(name); open {
-		if p.jsonCompatible {
+		if p.opts.jsonCompatible {
 			// JSON is a tree written out in full, so it has no spelling for a
 			// node that reaches back into itself, wherever the cycle closes.
 			// Caught here rather than at the conversion, which read the alias

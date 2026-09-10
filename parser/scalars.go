@@ -132,7 +132,7 @@ func (p *Parser) parseScalarValue(ctx context, tk *group.TapeToken) (ast.ScalarN
 	}
 	switch tk.Type() {
 	case token.MergeKeyType:
-		if !p.mergeKeys && p.schemaInForce() != token.Schema11 {
+		if !p.opts.mergeKeys && p.schemaInForce() != token.Schema11 {
 			// The merge key is tag:yaml.org,2002:merge, a YAML 1.1 type. 1.2
 			// leaves it a tag like any other an application defines, so a bare
 			// "<<" is an ordinary key spelled "<<" and the document reads the
@@ -156,7 +156,7 @@ func (p *Parser) parseScalarValue(ctx context, tk *group.TapeToken) (ast.ScalarN
 	case token.FloatType:
 		return newFloatNode(ctx, tk)
 	case token.InfinityType, token.NanType:
-		if p.jsonCompatible {
+		if p.opts.jsonCompatible {
 			return nil, yamlerrors.NewNotJSON(
 				fmt.Sprintf("JSON has no number for %s", tk.RawToken().Value), tk.RawToken())
 		}

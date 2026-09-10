@@ -20,13 +20,13 @@ import (
 // for a document, the reader scans and groups just enough to hand one over, and
 // the tape may be filled again behind what the descent has passed.
 func (p *Parser) begin(src []byte) {
-	if p.chunkSize == 0 {
+	if p.opts.chunkSize == 0 {
 		// Sized from the document, so a short one does not pay for a chunk it
 		// will use a tenth of. A caller passing ChunkSize wins.
-		p.chunkSize = tokenarena.SizeFor(len(src))
+		p.opts.chunkSize = tokenarena.SizeFor(len(src))
 	}
-	p.tokens = tokenarena.New[group.TapeToken](p.chunkSize)
-	p.keys.useJSONNames(p.jsonCompatible)
+	p.tokens = tokenarena.New[group.TapeToken](p.opts.chunkSize)
+	p.keys.useJSONNames(p.opts.jsonCompatible)
 
 	// A full scan holds every token it reads. The pin says so once, here, and
 	// [Parser.Walk] is what gives it back.
@@ -34,13 +34,13 @@ func (p *Parser) begin(src []byte) {
 
 	p.src = nocopy.String(src)
 	p.scan.Init(src)
-	p.scan.SetSchema(schemaFor(p.version))
+	p.scan.SetSchema(schemaFor(p.opts.version))
 
 	// Guessed from the source rather than counted, since counting would mean
 	// reading the document through before parsing any of it. It sizes buffers
 	// and nothing else.
 	estimate := max(len(src)/8, 16)
-	p.reader = newReader(&p.scan, p.tokens, estimate, p.keepComments)
+	p.reader = newReader(&p.scan, p.tokens, estimate, p.opts.keepComments)
 	p.lineComments = p.reader.g.LineComments
 }
 
@@ -169,11 +169,11 @@ func (p *Parser) parseDocument(ctx context) (*ast.DocumentNode, bool, error) {
 		node.End = end
 		node.EndComment = markerComment(ctx, endTk)
 	}
-	if p.onComplete != nil {
+	if p.opts.onComplete != nil {
 		// The document closes after its body, so a consumer folding nodes hears
 		// about it last and knows where one document of a stream ends and the
 		// next begins. An anchor's scope is exactly that.
-		p.onComplete(node)
+		p.opts.onComplete(node)
 	}
 
 	return node, true, nil
@@ -208,8 +208,8 @@ func (p *Parser) parseToken(ctx context, tk *group.TapeToken) (ast.Node, error) 
 	if err != nil || n == nil {
 		return n, err
 	}
-	if p.onComplete != nil {
-		p.onComplete(n)
+	if p.opts.onComplete != nil {
+		p.opts.onComplete(n)
 	}
 
 	// A collection hands itself over as it opens and closes, and so do an anchor

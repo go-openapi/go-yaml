@@ -30,22 +30,17 @@ type Parser struct {
 	// src is the document being read, kept so that a node can be given the
 	// text it was written as. A folded block scalar is the one that needs it.
 	src string
-	// onComplete is told about each node as it is finished. EXPERIMENT.
-	onComplete func(ast.Node)
 	// lineComments holds the comment closing a token's line, against that
 	// token. It is nil where the parse was not asked for comments.
 	lineComments map[*group.TapeToken]*token.Token
-	// yamlVersion is the version the document being read named, and version the
-	// one to fall back on where it names none.
+	// opts is what the [Option] arguments to [New] wrote. Nothing changes it
+	// after that: a parse reads its settings, and what a document says about
+	// itself is held apart, in yamlVersion and tagHandles.
+	opts options
+
+	// yamlVersion is the version the document being read named. Where it names
+	// none, opts.version stands.
 	yamlVersion YAMLVersion
-	version     YAMLVersion
-	// mergeKeys resolves a bare "<<" as a merge key whatever version is in
-	// force. See [WithMergeKeys].
-	mergeKeys            bool
-	allowDuplicateMapKey bool
-	omitNodePaths        bool
-	jsonCompatible       bool
-	laxTags              bool
 	// tagHandles maps a handle a TAG directive declared to the prefix it
 	// expands to.
 	tagHandles map[string]string
@@ -79,13 +74,6 @@ type Parser struct {
 	// outermost of the descent. The tail follows it: every level below holds
 	// tokens at or behind where it stands.
 	body *tokenRef
-
-	// keepComments says [WithComments] was passed, so the comments a document
-	// holds reach the tree rather than being dropped as they are read.
-	keepComments bool
-
-	// chunkSize is how many tokens one chunk of the token arena holds.
-	chunkSize int
 
 	// arena is where the nodes of the parse in hand come from. It is kept so
 	// that what a tree cost can be read after the parse rather than guessed at

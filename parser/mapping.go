@@ -14,7 +14,7 @@ import (
 // the parser makes goes through here, block and flow alike, which is what lets
 // a consumer fold entries without walking the tree. EXPERIMENT (2026-08-27).
 func (p *Parser) mappingValue(ctx context, colon, entry *group.TapeToken, key ast.MapKeyNode, value ast.Node) (*ast.MappingValueNode, error) {
-	if p.jsonCompatible {
+	if p.opts.jsonCompatible {
 		if err := refuseCollectionKey(key); err != nil {
 			return nil, err
 		}
@@ -22,8 +22,8 @@ func (p *Parser) mappingValue(ctx context, colon, entry *group.TapeToken, key as
 	n, err := newMappingValueNode(ctx, colon, entry, key, value)
 	if err == nil {
 		p.recordBuiltKeyOnce(key)
-		if p.onComplete != nil {
-			p.onComplete(n)
+		if p.opts.onComplete != nil {
+			p.opts.onComplete(n)
 		}
 	}
 
@@ -49,7 +49,7 @@ func (p *Parser) mappingValue(ctx context, colon, entry *group.TapeToken, key as
 // Under the core schema nothing merges and a bare "<<" is an ordinary key, so
 // this stands aside and the duplicate check answers instead.
 func (p *Parser) refuseMergeKeyAlone(key ast.MapKeyNode) error {
-	if !p.mergeKeys && p.schemaInForce() != token.Schema11 {
+	if !p.opts.mergeKeys && p.schemaInForce() != token.Schema11 {
 		return nil
 	}
 	tk := key.GetToken()

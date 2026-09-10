@@ -41,7 +41,7 @@ func (p *Parser) parseTag(ctx context) (*ast.TagNode, error) {
 		return nil, err
 	}
 	node.URI = p.resolveTag(tagRawTk.Value)
-	node.LaxTags = p.laxTags
+	node.LaxTags = p.opts.laxTags
 	node.Schema = p.schemaInForce()
 
 	// The tag stands around the node it types, so it goes over before that node
