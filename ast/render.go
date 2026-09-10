@@ -229,13 +229,13 @@ func (r *Renderer) File(n *File) string {
 func (r *Renderer) document(n *DocumentNode) rendered {
 	parts := make([]rendered, 0, 3)
 	if n.Start != nil {
-		parts = append(parts, leaf(n.Start.Value))
+		parts = append(parts, r.withComment(leaf(n.Start.Value), n.StartComment))
 	}
 	if n.Body != nil {
 		parts = append(parts, r.documentBody(n.Body))
 	}
 	if n.End != nil {
-		parts = append(parts, leaf(n.End.Value))
+		parts = append(parts, r.withComment(leaf(n.End.Value), n.EndComment))
 	}
 
 	return join(sepBreak, parts...)

@@ -330,3 +330,47 @@ func TestACommentAfterTheExplicitKeyIndicatorIsKept(t *testing.T) {
 		assert.Equal(t, 3, strings.Count(f.String(), "#"), "%q", f.String())
 	})
 }
+
+// TestFixedAMarkerKeepsTheCommentClosingItsLine.
+//
+// A "---" and a "..." are not nodes, so nothing asked for the comment staged
+// against them and it stayed in the index: "--- # c1" rendered as "---", and
+// "%YAML 1.2" over "---" over "Document" over "... # Suffix" lost the suffix.
+// ast.DocumentNode.StartComment and EndComment claim them.
+//
+// Two slots and not the inherited BaseNode.Comment, because one document may
+// carry both at once. A comment written *above* a "---" is a different thing
+// again -- it introduces the document and reaches its body -- and already
+// rendered correctly.
+func TestFixedAMarkerKeepsTheCommentClosingItsLine(t *testing.T) {
+	const bom = "\ufeff"
+
+	for _, tc := range []struct{ src, want string }{
+		{src: "--- # c1\n", want: "--- # c1\n"},
+		{src: "--- # c1\nk: v\n", want: "--- # c1\nk: v\n"},
+		{src: "---\nk: v\n... # c2\n", want: "---\nk: v\n... # c2\n"},
+		// Both markers of one document, which is why there are two slots.
+		{src: "--- # c1\nk: v\n... # c2\n", want: "--- # c1\nk: v\n... # c2\n"},
+		// Each document of a stream keeps its own.
+		{src: "--- # c1\n--- # c2\n", want: "--- # c1\n--- # c2\n"},
+		{
+			src:  "%YAML 1.2\n---\nDocument\n... # Suffix\n",
+			want: "%YAML 1.2\n---\nDocument\n... # Suffix\n",
+		},
+		// A comment above the marker introduces the document and is not this.
+		{src: "# c1\n---\nk: v\n", want: "# c1\n---\nk: v\n"},
+		// The line ends how it likes, and a byte order mark stands outside it.
+		{src: bom + "--- # c1\r", want: "--- # c1\n"},
+		{src: bom + "---\t# c1\r", want: "--- # c1\n"},
+	} {
+		f, err := parser.ParseBytes([]byte(tc.src), parser.WithComments())
+		require.NoErrorf(t, err, "%q", tc.src)
+		assert.Equalf(t, tc.want, f.String(), "%q", tc.src)
+	}
+
+	t.Run("and without WithComments nothing is kept", func(t *testing.T) {
+		f, err := parser.ParseBytes([]byte("--- # c1\nk: v\n"))
+		require.NoError(t, err)
+		assert.Equal(t, "---\nk: v\n", f.String())
+	})
+}

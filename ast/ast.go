@@ -486,6 +486,18 @@ type DocumentNode struct {
 	Start *token.Token // position of DocumentHeader ( `---` )
 	End   *token.Token // position of DocumentEnd ( `...` )
 	Body  Node
+	// StartComment is the comment closing the "---" line, and EndComment the
+	// one closing the "..." line. Both are the marker's own: a comment written
+	// *above* a "---" introduces the document and reaches its body, and a
+	// comment on the body's last line is the body's.
+	//
+	// They are named rather than taken from the inherited BaseNode.Comment
+	// because a document may carry both at once -- "--- # a" over a body over
+	// "... # b" -- and one slot holds one of them. Nothing claimed either
+	// before, so "--- # c1" rendered as "---" and the comment was read and
+	// dropped.
+	StartComment *CommentGroupNode
+	EndComment   *CommentGroupNode
 	// Anchors holds the node each anchor of this document names, under the
 	// anchor's name. The parser fills it as it reads, so a caller walking the
 	// tree as it is built sees the anchors that stand before it; it is nil for

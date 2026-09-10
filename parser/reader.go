@@ -111,7 +111,7 @@ func (r *reader) take() (*tapeToken, error) {
 
 // openDocument begins the next document and returns the "---" that opened it,
 // where there is one. ok is false at the end of the stream.
-func (r *reader) openDocument() (*token.Token, bool, error) {
+func (r *reader) openDocument() (*tapeToken, bool, error) {
 	// A "..." standing where nothing is open closes nothing: l-yaml-stream
 	// admits a run of suffixes and only the first closes anything.
 	for {
@@ -158,7 +158,10 @@ func (r *reader) openDocument() (*token.Token, bool, error) {
 	}
 	r.afterHeader = head
 
-	return head.RawToken(), true, r.judgeNext()
+	// The tape token and not its raw one: the "---" carries the comment closing
+	// its line, staged against this token, and judgeNext below clears
+	// afterHeader before the caller could look it up again.
+	return head, true, r.judgeNext()
 }
 
 // bodyToken draws the next token of the document being read, and reports false
@@ -230,7 +233,7 @@ func isDirectiveToken(tk *tapeToken) bool {
 
 // closeDocument finishes the document being read and returns the "..." that
 // ended it, where there is one.
-func (r *reader) closeDocument() (*token.Token, error) {
+func (r *reader) closeDocument() (*tapeToken, error) {
 	if r.err != nil {
 		return nil, r.err
 	}
@@ -246,7 +249,8 @@ func (r *reader) closeDocument() (*token.Token, error) {
 	}
 	r.afterEnd = end
 
-	return end.RawToken(), r.judgeNext()
+	// The tape token, for the reason openDocument gives.
+	return end, r.judgeNext()
 }
 
 // judgeNext holds the token after a marker against the line the marker stands

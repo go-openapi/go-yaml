@@ -500,10 +500,11 @@ func (p *Parser) parse(ctx context) (*ast.File, error) {
 // once the body has run out, which is where the group could not be built until
 // the document had been read through.
 func (p *Parser) parseDocument(ctx context) (*ast.DocumentNode, bool, error) {
-	start, ok, err := p.reader.openDocument()
+	startTk, ok, err := p.reader.openDocument()
 	if err != nil || !ok {
 		return nil, false, err
 	}
+	start := startTk.RawToken()
 
 	// A document holding nothing between its markers has no body. Asking for
 	// the first token is what says so, and it draws no more than that one.
@@ -520,10 +521,11 @@ func (p *Parser) parseDocument(ctx context) (*ast.DocumentNode, bool, error) {
 		return nil, false, p.reader.err
 	}
 
-	end, err := p.reader.closeDocument()
+	endTk, err := p.reader.closeDocument()
 	if err != nil {
 		return nil, false, err
 	}
+	end := endTk.RawToken()
 	// A TAG directive defines a handle for the one document that follows it,
 	// and a document holding only the directives themselves does not end their
 	// scope -- it opens it. A "%YAML" directive is scoped the same way: a
@@ -537,6 +539,10 @@ func (p *Parser) parseDocument(ctx context) (*ast.DocumentNode, bool, error) {
 	}
 
 	node := ast.Document(start, body)
+	// The marker's own line comment. Nothing else asks for it -- a "---" and a
+	// "..." are not nodes -- so it was staged and left there, and "--- # c1"
+	// rendered as "---".
+	node.StartComment = markerComment(ctx, startTk)
 	// An anchor belongs to the document it was written in, so the table goes
 	// with it here and the next document starts on an empty one.
 	node.Anchors = p.takeAnchors()
@@ -545,6 +551,7 @@ func (p *Parser) parseDocument(ctx context) (*ast.DocumentNode, bool, error) {
 		// read the marker, then returned on the empty body before it hung the
 		// marker on the node. "--- ..." renders as "---".
 		node.End = end
+		node.EndComment = markerComment(ctx, endTk)
 	}
 	if p.onComplete != nil {
 		// The document closes after its body, so a consumer folding nodes hears

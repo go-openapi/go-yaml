@@ -24,9 +24,11 @@ import (
 //
 //   - staged and never taken. A comment closing a line is staged against the
 //     token whose line it closes, and the parse takes it when it reaches the
-//     node that token belongs to. Nothing takes a comment written on a "---",
-//     on a "..." or before a flow mapping's ":", so it sits in the index.
-//     "--- # c1\n" renders as "---\n".
+//     node that token belongs to. One shape is left where nothing does: a
+//     comment written before a flow mapping's ":", as in
+//     `{ "foo" # comment` over `  :bar }`, which renders as `{"foo": bar}`.
+//     The markers used to be here too -- "--- # c1\n" rendered as "---\n" --
+//     and DocumentNode.StartComment and EndComment now claim those.
 //   - written over. setHeadComment assigns, so a head comment landing where one
 //     already stands drops it.
 //
@@ -38,7 +40,7 @@ import (
 // acceptance line, and the two losses follow the parse; a loss count on its own
 // cannot say which of the two moved. It may not fall while the ceilings hold.
 const (
-	staleCommentCeiling  = 11
+	staleCommentCeiling  = 2
 	overwroteHeadCeiling = 7
 
 	commentedDocuments = 6691

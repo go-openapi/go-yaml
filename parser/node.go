@@ -376,3 +376,19 @@ func headCommentTarget(value ast.Node) ast.Node {
 
 	return value
 }
+
+// markerComment is the comment closing a "---" or "..." line, as a group.
+//
+// A marker is not a node, so nothing takes the comment staged against it and
+// the document has to ask.
+func markerComment(ctx context, tk *tapeToken) *ast.CommentGroupNode {
+	if tk == nil {
+		return nil
+	}
+	cm := ctx.takeLineComment(tk)
+	if cm == nil {
+		return nil
+	}
+
+	return ast.CommentGroup([]*token.Token{cm})
+}

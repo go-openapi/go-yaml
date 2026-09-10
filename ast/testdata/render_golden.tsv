@@ -256,7 +256,7 @@ default	suite/spec-example-6-18-primary-tag-handle-1-3	7a4603f8fb560de0
 default	suite/spec-example-6-19-secondary-tag-handle	b9cb381e23756cc0
 default	suite/spec-example-6-2-indentation-indicators	05182060f3e6c4db
 default	suite/spec-example-6-20-tag-handles	34d95340e7112f40
-default	suite/spec-example-6-21-local-tag-prefix	d2b519f4f5504027
+default	suite/spec-example-6-21-local-tag-prefix	22a1bdbba6bf6cd1
 default	suite/spec-example-6-22-global-tag-prefix	23bae94fc4688454
 default	suite/spec-example-6-23-node-properties	291f7248b3403cee
 default	suite/spec-example-6-24-verbatim-tags	643ee68344759f3b
@@ -321,7 +321,7 @@ default	suite/spec-example-8-8-literal-content	79ffa8f4968aac3c
 default	suite/spec-example-8-8-literal-content-1-3	3bb02015f1979d2d
 default	suite/spec-example-8-9-folded-scalar	490f5b2adc386932
 default	suite/spec-example-8-9-folded-scalar-1-3	aa726bf9647735d9
-default	suite/spec-example-9-2-document-markers	fb594582d25341db
+default	suite/spec-example-9-2-document-markers	36730db0769e54c1
 default	suite/spec-example-9-3-bare-documents	4888b2477e987c7b
 default	suite/spec-example-9-4-explicit-documents	2453edf28f81e77c
 default	suite/spec-example-9-5-directives-documents	85ac59d846cbdcfd
@@ -400,7 +400,7 @@ default	suite/yaml-directive-without-document-end-marker	refused
 default	suite/zero-indented-block-scalar	96d20ea23ff3d888
 default	suite/zero-indented-block-scalar-with-line-that-looks-like-a-comment	5cb40cfbe3ac00e8
 default	suite/zero-indented-sequences-in-explicit-mapping-keys	892393d883c8f837
-default	seeds-aggregate	634ac83a6baeae7637f05cc10c927f5e046223078c68c6670108c37dc1bb20f0
+default	seeds-aggregate	1ec250f16ea8b9eb6c9ba2442a6961d62fce5d47a7e2c8e44b40ccfe161eb20b
 nocomments	suite/aliases-in-block-sequence	c3257c52c7ceaed0
 nocomments	suite/aliases-in-explicit-block-mapping	fb58d00e3fefa58e
 nocomments	suite/aliases-in-flow-objects	3ea0a458126c1608
@@ -1062,7 +1062,7 @@ indent4	suite/spec-example-6-18-primary-tag-handle-1-3	7a4603f8fb560de0
 indent4	suite/spec-example-6-19-secondary-tag-handle	b9cb381e23756cc0
 indent4	suite/spec-example-6-2-indentation-indicators	61c74699323c4079
 indent4	suite/spec-example-6-20-tag-handles	34d95340e7112f40
-indent4	suite/spec-example-6-21-local-tag-prefix	d2b519f4f5504027
+indent4	suite/spec-example-6-21-local-tag-prefix	22a1bdbba6bf6cd1
 indent4	suite/spec-example-6-22-global-tag-prefix	23bae94fc4688454
 indent4	suite/spec-example-6-23-node-properties	291f7248b3403cee
 indent4	suite/spec-example-6-24-verbatim-tags	643ee68344759f3b
@@ -1127,7 +1127,7 @@ indent4	suite/spec-example-8-8-literal-content	2025194ed04339b9
 indent4	suite/spec-example-8-8-literal-content-1-3	f366ec0f1a8e6977
 indent4	suite/spec-example-8-9-folded-scalar	b72efd6a45a71f97
 indent4	suite/spec-example-8-9-folded-scalar-1-3	949ff35743d41fc9
-indent4	suite/spec-example-9-2-document-markers	fb594582d25341db
+indent4	suite/spec-example-9-2-document-markers	36730db0769e54c1
 indent4	suite/spec-example-9-3-bare-documents	692a827d6b619ca7
 indent4	suite/spec-example-9-4-explicit-documents	2453edf28f81e77c
 indent4	suite/spec-example-9-5-directives-documents	9f7db43ab01904b9
@@ -1206,7 +1206,7 @@ indent4	suite/yaml-directive-without-document-end-marker	refused
 indent4	suite/zero-indented-block-scalar	b5b8de23ec2cc27e
 indent4	suite/zero-indented-block-scalar-with-line-that-looks-like-a-comment	62e85933f841e569
 indent4	suite/zero-indented-sequences-in-explicit-mapping-keys	185788c3e20ba49d
-indent4	seeds-aggregate	4c439fa0dc1b23bcacff73231e44c74968d76d6d2365a8721b2ba9944fa02fca
+indent4	seeds-aggregate	110860af7da918ecdf867b0cc6a772645f1fec58cbf0a07f1d6a17f5751b00c7
 indentseq	suite/aliases-in-block-sequence	c3257c52c7ceaed0
 indentseq	suite/aliases-in-explicit-block-mapping	fb58d00e3fefa58e
 indentseq	suite/aliases-in-flow-objects	3ea0a458126c1608
@@ -1465,7 +1465,7 @@ indentseq	suite/spec-example-6-18-primary-tag-handle-1-3	7a4603f8fb560de0
 indentseq	suite/spec-example-6-19-secondary-tag-handle	b9cb381e23756cc0
 indentseq	suite/spec-example-6-2-indentation-indicators	37fa8b2e9de085d3
 indentseq	suite/spec-example-6-20-tag-handles	34d95340e7112f40
-indentseq	suite/spec-example-6-21-local-tag-prefix	d2b519f4f5504027
+indentseq	suite/spec-example-6-21-local-tag-prefix	22a1bdbba6bf6cd1
 indentseq	suite/spec-example-6-22-global-tag-prefix	23bae94fc4688454
 indentseq	suite/spec-example-6-23-node-properties	291f7248b3403cee
 indentseq	suite/spec-example-6-24-verbatim-tags	643ee68344759f3b
@@ -1530,7 +1530,7 @@ indentseq	suite/spec-example-8-8-literal-content	79ffa8f4968aac3c
 indentseq	suite/spec-example-8-8-literal-content-1-3	3bb02015f1979d2d
 indentseq	suite/spec-example-8-9-folded-scalar	490f5b2adc386932
 indentseq	suite/spec-example-8-9-folded-scalar-1-3	aa726bf9647735d9
-indentseq	suite/spec-example-9-2-document-markers	fb594582d25341db
+indentseq	suite/spec-example-9-2-document-markers	36730db0769e54c1
 indentseq	suite/spec-example-9-3-bare-documents	4888b2477e987c7b
 indentseq	suite/spec-example-9-4-explicit-documents	2453edf28f81e77c
 indentseq	suite/spec-example-9-5-directives-documents	85ac59d846cbdcfd
@@ -1609,4 +1609,4 @@ indentseq	suite/yaml-directive-without-document-end-marker	refused
 indentseq	suite/zero-indented-block-scalar	96d20ea23ff3d888
 indentseq	suite/zero-indented-block-scalar-with-line-that-looks-like-a-comment	5cb40cfbe3ac00e8
 indentseq	suite/zero-indented-sequences-in-explicit-mapping-keys	932337a2ed55ff89
-indentseq	seeds-aggregate	0149868036784b6ccbea72ca98b74d9dc5a10ba62b611834d5d1a46d0b38e131
+indentseq	seeds-aggregate	6ce74e168498b915317e1a42fd0dcd911c7e9f8ef2dec8ab02c6daad555a6ebb
