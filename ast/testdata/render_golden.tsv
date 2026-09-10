@@ -400,7 +400,7 @@ default	suite/yaml-directive-without-document-end-marker	refused
 default	suite/zero-indented-block-scalar	96d20ea23ff3d888
 default	suite/zero-indented-block-scalar-with-line-that-looks-like-a-comment	5cb40cfbe3ac00e8
 default	suite/zero-indented-sequences-in-explicit-mapping-keys	892393d883c8f837
-default	seeds-aggregate	2d5663640448987e2c35f004c1fb283f6f6a9f10eff39fd363922d419c5b74ef
+default	seeds-aggregate	0b578be85c2d6328995b347798486e2fd1dc9894004add7eda57f60776711db3
 nocomments	suite/aliases-in-block-sequence	c3257c52c7ceaed0
 nocomments	suite/aliases-in-explicit-block-mapping	fb58d00e3fefa58e
 nocomments	suite/aliases-in-flow-objects	3ea0a458126c1608
@@ -803,7 +803,7 @@ nocomments	suite/yaml-directive-without-document-end-marker	refused
 nocomments	suite/zero-indented-block-scalar	96d20ea23ff3d888
 nocomments	suite/zero-indented-block-scalar-with-line-that-looks-like-a-comment	5cb40cfbe3ac00e8
 nocomments	suite/zero-indented-sequences-in-explicit-mapping-keys	892393d883c8f837
-nocomments	seeds-aggregate	dafd4f7a223ad01248d4aa24d7589d27afbcc9e43e00a485e4aa253ef2cd9c0a
+nocomments	seeds-aggregate	3cb1a3e9046b76197412da8b11200ad8bb1f60fe13ec5c4b3bbae557d3ddc24e
 indent4	suite/aliases-in-block-sequence	c3257c52c7ceaed0
 indent4	suite/aliases-in-explicit-block-mapping	fb58d00e3fefa58e
 indent4	suite/aliases-in-flow-objects	3ea0a458126c1608
@@ -1206,7 +1206,7 @@ indent4	suite/yaml-directive-without-document-end-marker	refused
 indent4	suite/zero-indented-block-scalar	b5b8de23ec2cc27e
 indent4	suite/zero-indented-block-scalar-with-line-that-looks-like-a-comment	62e85933f841e569
 indent4	suite/zero-indented-sequences-in-explicit-mapping-keys	185788c3e20ba49d
-indent4	seeds-aggregate	2804cbdf74fabfd63401a2ab52746521a9d0b15cf920427f1b8ef456666f1b04
+indent4	seeds-aggregate	cf52174916f65b1dc16c00e14a6f0497014e07ce1e493c5d64eed947bba94cb6
 indentseq	suite/aliases-in-block-sequence	c3257c52c7ceaed0
 indentseq	suite/aliases-in-explicit-block-mapping	fb58d00e3fefa58e
 indentseq	suite/aliases-in-flow-objects	3ea0a458126c1608
@@ -1609,4 +1609,4 @@ indentseq	suite/yaml-directive-without-document-end-marker	refused
 indentseq	suite/zero-indented-block-scalar	96d20ea23ff3d888
 indentseq	suite/zero-indented-block-scalar-with-line-that-looks-like-a-comment	5cb40cfbe3ac00e8
 indentseq	suite/zero-indented-sequences-in-explicit-mapping-keys	932337a2ed55ff89
-indentseq	seeds-aggregate	e7e905e812cb4cc031d3c7aa0a7524880f97169d483023c4e38deb7331f7b877
+indentseq	seeds-aggregate	9274e47b9bae364ed5c81770ecfb1e81878bde01253f73cf0f2465701c2be288

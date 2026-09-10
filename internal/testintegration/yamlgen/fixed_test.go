@@ -2800,6 +2800,56 @@ func TestFixedAnExplicitKeyInsideAnExplicitKeyReads(t *testing.T) {
 	})
 }
 
+// TestFixedABlankLineBeforeASequenceEntrySettles is the same wobble with no
+// comment in it, which is what widens the entry above.
+//
+// ": &1" over a blank line over "-" over "? \"\"" rendered to ": &1" over "- "
+// over a blank over "? \"\"" over ":", moving the blank line past the "-", and
+// rendered again without it. Two faults met there:
+//
+//   - token.Lookback.blankLineAbove steps back past a "-" so that the entry's
+//     content reports the gap written above the dash. It stepped back for the
+//     token after *any* dash, and an empty entry is followed by a token
+//     belonging to whatever encloses it, so the "?" of the next mapping entry
+//     was handed a blank line it did not have. standsInsideEntry asks whether
+//     the token shares the dash's line or is indented past it.
+//   - Renderer.sequence reads the gap off the entry's first token, and an empty
+//     entry has none. It falls back to the "-" through entryBlankLine.
+//
+// Found on 2026-09-11 at 30,000 draws; 200,000 draws of
+// TestRenderReachesAFixedPoint alone did not draw it again.
+func TestFixedABlankLineBeforeASequenceEntrySettles(t *testing.T) {
+	const src = ": &1\n\n-\n? \"\"\n"
+	wellFormed(t, src)
+
+	once := renderOnce(t, src)
+	assert.Equal(t, ": &1\n\n- \n? \"\"\n:\n", once, "the first rendering keeps the blank line above the \"-\"")
+	assert.Equal(t, once, renderOnce(t, once), "and so does the second")
+
+	t.Run("a blank line between two entries survives", func(t *testing.T) {
+		// The plainest shape of it, and the one the corpus holds: a flow
+		// mapping reports no gap of its own, so the entry's "-" is the only
+		// place left to read one.
+		const src = "- null\n- null\n\n- {\"1e3\": true}\n- 0.0\n"
+
+		once := renderOnce(t, src)
+		assert.Equal(t, src, once)
+		assert.Equal(t, once, renderOnce(t, once), "the rendering settles")
+	})
+
+	t.Run("the value survives every rendering", func(t *testing.T) {
+		want := map[string]any{"": nil, "null": []any{nil}}
+
+		text := src
+		for range 3 {
+			var got any
+			require.NoError(t, yaml.Unmarshal([]byte(text), &got))
+			assert.Equal(t, want, got)
+			text = renderOnce(t, text)
+		}
+	})
+}
+
 // TestFixedABlankLineBeforeACommentSettles: the first rendering keeps a blank
 // line written before a comment and so does the second.
 //

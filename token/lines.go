@@ -84,7 +84,13 @@ func (l *Lookback) blankLineAbove(t *Token) bool {
 	// -
 	//   b: c
 	// -- and not part of that gap.
-	if prev.Type == SequenceEntryType {
+	//
+	// Only where t stands inside the entry. An empty entry is followed by a
+	// token belonging to whatever encloses it, and stepping back handed that
+	// token the gap written above the '-': ": &1" over a blank over "-" over
+	// "? \"\"" reported a blank line above the '?', which has none, and none
+	// above the second '-' of "-" over a blank over "- a", which has one.
+	if prev.Type == SequenceEntryType && standsInsideEntry(prev, t) {
 		adjustment = t.Position.Line - prev.Position.Line
 		if l.hasPrev2 {
 			prev = &l.prev2
@@ -120,6 +126,13 @@ func (l *Lookback) blankLineAbove(t *Token) bool {
 	}
 
 	return lineDiff-adjustment > 0
+}
+
+// standsInsideEntry reports whether t belongs to the sequence entry dash opens.
+// An entry's content shares the dash's line or is indented past it; anything at
+// the dash's own column or to the left of it closes the entry.
+func standsInsideEntry(dash, t *Token) bool {
+	return t.Position.Line == dash.Position.Line || t.Position.Column > dash.Position.Column
 }
 
 // commentBreaksAbove counts the line breaks the comments written immediately

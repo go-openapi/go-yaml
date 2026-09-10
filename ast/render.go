@@ -777,8 +777,14 @@ func (r *Renderer) sequence(n *SequenceNode) rendered {
 			blank = ""
 		} else if blank == "" {
 			// Only a block collection reports a gap of its own. For anything
-			// else the sequence reads it off the entry's first token.
+			// else the sequence reads it off the entry's first token, falling
+			// back to the '-'. An empty entry has no token of its own to read:
+			// ": &1" over a blank over "-" over "? \"\"" wrote the '-' with
+			// nothing above it and lost the author's blank line.
 			blank = blankLineBefore(value)
+			if blank == "" {
+				blank = entryBlankLine(n, i)
+			}
 		}
 		comment := r.entryLineComment(n, i)
 		if comment != "" && !carriesOwnIndent(value) &&
@@ -815,6 +821,19 @@ func (r *Renderer) sequence(n *SequenceNode) rendered {
 	}
 
 	return join(sepBreak, lines...)
+}
+
+// entryBlankLine returns the blank line an author left above the '-' of the
+// entry at index i, or "".
+func entryBlankLine(n *SequenceNode, i int) string {
+	if i >= len(n.Entries) || n.Entries[i] == nil || n.Entries[i].Start == nil {
+		return ""
+	}
+	if n.Entries[i].Start.BlankLineAbove() {
+		return "\n"
+	}
+
+	return ""
 }
 
 // entryLineComment returns the comment written on the entry's own line.

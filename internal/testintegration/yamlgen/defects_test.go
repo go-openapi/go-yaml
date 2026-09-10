@@ -13,7 +13,6 @@ import (
 	"github.com/go-openapi/testify/v2/assert"
 	"github.com/go-openapi/testify/v2/require"
 
-	yaml "github.com/go-openapi/go-yaml"
 	"github.com/go-openapi/go-yaml/codec"
 	"github.com/go-openapi/go-yaml/internal/testintegration/grammar"
 	"github.com/go-openapi/go-yaml/parser"
@@ -57,37 +56,6 @@ func renderOnce(t *testing.T, src string) string {
 // of these are the long form and nothing else: the same document written short
 // reads, libfyaml 1.0.0b1 reads every one, the reference parser passes them,
 // and grammar.NewRecognizer accepts them.
-
-// TestDefectABlankLineBeforeASequenceEntryDoesNotSettle is the same wobble with
-// no comment in it, which is what widens the entry above.
-//
-// ": &1" over a blank line over "-" over "? \"\"" renders to ": &1" over "- "
-// over a blank over "? \"\"" over ":", moving the blank line past the "-", and
-// renders again without it. yamlgen.Ledger's predicate for this asks for
-// Style.Chomping's padding and a comment, and reaches neither shape here, so
-// the property test met it as a plain failure. Found on 2026-09-11 at 30,000
-// draws; 200,000 draws of TestRenderReachesAFixedPoint alone did not draw it
-// again.
-func TestDefectABlankLineBeforeASequenceEntryDoesNotSettle(t *testing.T) {
-	const src = ": &1\n\n-\n? \"\"\n"
-	wellFormed(t, src)
-
-	once := renderOnce(t, src)
-	assert.Equal(t, ": &1\n- \n\n? \"\"\n:\n", once, "the first rendering moves the blank line past the \"-\"")
-	assert.Equal(t, ": &1\n- \n? \"\"\n:\n", renderOnce(t, once), "and the second drops it")
-
-	t.Run("the value survives every rendering", func(t *testing.T) {
-		want := map[string]any{"": nil, "null": []any{nil}}
-
-		text := src
-		for range 3 {
-			var got any
-			require.NoError(t, yaml.Unmarshal([]byte(text), &got))
-			assert.Equal(t, want, got)
-			text = renderOnce(t, text)
-		}
-	})
-}
 
 // secondDocument reads a two-document stream and returns what the second one
 // holds, which is where this defect shows.

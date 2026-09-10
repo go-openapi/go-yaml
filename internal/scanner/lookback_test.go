@@ -230,3 +230,57 @@ func blankAboveTestCases() iter.Seq[blankAboveTestCase] {
 		{name: "a stripped blank line is a gap", src: "- >-\n  x\n\n  y\n\n- 1\n", want: true},
 	})
 }
+
+// TestFixedAnEmptyEntryDoesNotHandOnItsGap checks which token carries the blank
+// line an author left around a sequence entry's "-".
+//
+// token.Lookback.blankLineAbove steps back past a "-" so that the entry's own
+// content reports the gap written above the dash -- Renderer.sequence reads it
+// off the entry's first token, not off the dash. It stepped back for the token
+// after any dash, and an empty entry is followed by a token belonging to
+// whatever encloses it: ": &1" over a blank over "-" over "? \"\"" gave the "?"
+// a blank line it does not have, and the second "-" of "-" over a blank over
+// "- a" lost the one it does.
+//
+// standsInsideEntry asks whether the token shares the dash's line or is
+// indented past it.
+func TestFixedAnEmptyEntryDoesNotHandOnItsGap(t *testing.T) {
+	for name, test := range map[string]struct {
+		src  string
+		want map[string]bool // token value -> BlankLineAbove
+	}{
+		"an empty entry before the next mapping entry": {
+			src:  ": &1\n\n-\n? \"\"\n",
+			want: map[string]bool{"-": true, "?": false},
+		},
+		"an empty entry before the next entry": {
+			src:  "-\n\n- a\n",
+			want: map[string]bool{"-": true, "a": true},
+		},
+		"the dash and its content both report it": {
+			src:  "- a\n\n- b\n",
+			want: map[string]bool{"b": true},
+		},
+		"no gap at all": {
+			src:  "- a\n- b\n",
+			want: map[string]bool{"b": false},
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			var s scanner.Scanner
+			s.Init([]byte(test.src))
+
+			blanks := make(map[string][]bool)
+			for tk := range s.Tokens() {
+				blanks[tk.Value] = append(blanks[tk.Value], tk.BlankLineAbove())
+			}
+			require.NoError(t, s.Err())
+
+			for value, want := range test.want {
+				got, seen := blanks[value]
+				require.Truef(t, seen, "%q holds no token %q", test.src, value)
+				assert.Equalf(t, want, got[len(got)-1], "the last %q of %q", value, test.src)
+			}
+		})
+	}
+}
