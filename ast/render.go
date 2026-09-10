@@ -758,7 +758,27 @@ func (r *Renderer) entryLineComment(n *SequenceNode, i int) string {
 }
 
 func (r *Renderer) anchor(n *AnchorNode) string {
-	return r.withOwnComment(n.Comment, r.prefixed("&"+r.String(n.Name), n.Value))
+	// The name is rendered without its comment, and the comment is put back at
+	// the end of the line with the anchor's own.
+	//
+	// A comment written beside an anchor is hung on the name, and rendering the
+	// name with it wrote the comment into the marker: "&a # beside" over "  q"
+	// became "&a # beside q", so the value stood inside the comment and the
+	// document read back as null. The tag below never had this, its comment
+	// reaching it through the value rather than through a name.
+	return r.withOwnComment(firstComment(n.Comment, n.Name.GetComment()),
+		r.prefixed("&"+r.bare().String(n.Name), n.Value))
+}
+
+// firstComment returns whichever of two comment groups is present, preferring
+// the first. Two comments cannot share the end of one line: written there they
+// come back as a single comment, "#" inside one being ordinary text.
+func firstComment(own, borrowed *CommentGroupNode) *CommentGroupNode {
+	if own != nil {
+		return own
+	}
+
+	return borrowed
 }
 
 func (r *Renderer) tag(n *TagNode) string {
@@ -870,8 +890,11 @@ func (r *Renderer) documentBody(n Node) rendered {
 	case *LiteralNode:
 		return r.withHeadComment(n, leaf(r.literalAt(node, true)))
 	case *AnchorNode:
+		// The name without its comment, as Renderer.anchor does and for the
+		// same reason.
 		return r.withHeadComment(n,
-			leaf(r.withOwnComment(node.Comment, r.prefixedAt("&"+r.String(node.Name), node.Value, true))))
+			leaf(r.withOwnComment(firstComment(node.Comment, node.Name.GetComment()),
+				r.prefixedAt("&"+r.bare().String(node.Name), node.Value, true))))
 	case *TagNode:
 		return r.withHeadComment(n,
 			leaf(r.withOwnComment(node.Comment, r.prefixedAt(node.Start.Value, node.Value, true))))
