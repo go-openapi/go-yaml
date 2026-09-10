@@ -199,7 +199,12 @@ func KeyText(v Value) string {
 	case BigInt:
 		return n.V.String()
 	case BigFloat:
-		return n.V.Text('g', -1)
+		// bigFloatText and not Text('g', -1): the emitter puts a decimal point
+		// in a mantissa that has none, so that "1e+330" goes out as
+		// "1.0e+330" and is a float under 1.1 as well as under 1.2. The
+		// library names the key by the characters the document wrote, so this
+		// has to name it by the same ones.
+		return bigFloatText(n.V)
 	case Anchored:
 		return KeyText(n.V)
 	case Alias:
