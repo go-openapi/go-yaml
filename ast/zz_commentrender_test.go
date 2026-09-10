@@ -26,10 +26,12 @@ import (
 //     attached, so a census counting attachment sees nothing either.
 //   - More. Rendering a block onto one line can turn what followed a "#" into
 //     comment text and leave a "#" elsewhere opening a comment that did not.
-//     Three of the thirty also change the document's value.
+//     Three of them also change the document's value, and all three are
+//     documents grammar.NewRecognizer refuses -- see the explicit-key row in
+//     the ledger. The renderer is the symptom there and not the fault.
 //
 // tested follows the parser and the corpus; changed follows the renderer.
-var renderedComments = struct{ changed, tested int }{changed: 30, tested: 6293}
+var renderedComments = struct{ changed, tested int }{changed: 25, tested: 6293}
 
 // TestRenderingKeepsTheCommentsItWasGiven counts the comment tokens a document
 // holds, renders it, and counts them again.

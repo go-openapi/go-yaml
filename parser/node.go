@@ -378,11 +378,29 @@ func setHeadComment(cm *ast.CommentGroupNode, value ast.Node) error {
 	// such as the anchor of "# c1" over "&a q # c2": that one keeps both texts
 	// and renders them onto one line, which is the renderer's half of this and
 	// not the model's.
-	if head, ok := value.(headCommented); ok && value.GetComment() != nil {
+	if head, ok := value.(headCommented); ok && (value.GetComment() != nil || meansBeside(value)) {
 		return head.SetHeadComment(cm)
 	}
 
 	return value.SetComment(cm)
+}
+
+// meansBeside reports whether the node's Comment field holds the comment
+// written beside it rather than the one written above it.
+//
+// An anchor and a tag are properties standing in front of a node, and
+// ast.Renderer.withOwnComment puts their Comment back at the end of the line
+// they end -- right for "&a # beside" and wrong for a comment written on the
+// line above. Writing a head comment there rendered the two onto one line,
+// "&a q # c2 # c1", and a comment runs to the end of its line, so the next read
+// takes both for one comment.
+func meansBeside(n ast.Node) bool {
+	switch n.(type) {
+	case *ast.AnchorNode, *ast.TagNode:
+		return true
+	default:
+		return false
+	}
 }
 
 // headCommented is a node with somewhere to record what stands above it.

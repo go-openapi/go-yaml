@@ -4,6 +4,7 @@
 package ast_test
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/go-openapi/testify/v2/assert"
@@ -51,4 +52,46 @@ func TestFixedAnAnchorsCommentDoesNotSwallowItsValue(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, "&a q # beside\n", f.String())
 	})
+}
+
+// TestFixedTwoCommentsAreNotWrittenOntoOneLine.
+//
+// A "#" inside a comment is ordinary text and a comment runs to the end of its
+// line, so two comments written onto one line come back as a single comment.
+// The value survives and the text settles, which is why nothing caught this:
+// a fixed-point check compares text and finds it stable, and a census counting
+// attachment sees both comments attached.
+//
+// Three places wrote them together, and each now opens a line for the second.
+// A property's Comment means the comment beside it, so a head comment above an
+// anchor or a tag goes to ast.BaseNode.HeadComment and is written above.
+// A sequence entry whose value ends on a comment puts the value below the dash.
+// A commented key whose value ends on a comment does the same under the ":".
+func TestFixedTwoCommentsAreNotWrittenOntoOneLine(t *testing.T) {
+	for _, tc := range []struct{ src, want string }{
+		// A head comment above a property, at the root and under a key.
+		{src: "# c1\n&a q # c2\n", want: "# c1\n&a q # c2\n"},
+		{src: "# c1\n!!str q # c2\n", want: "# c1\n!!str q # c2\n"},
+		{src: "k:\n  # c1\n  &a q # c2\n", want: "k:\n  # c1\n  &a q # c2\n"},
+		// A sequence entry's comment, with a value that ends on one.
+		{src: "- # c1\n  &a q # c2\n", want: "- # c1\n  &a q # c2\n"},
+		// A commented key over a value that ends on one. The layout moves --
+		// this is the normalising renderer -- and neither comment is lost.
+		{src: "key:    # Comment\n        # lines\n  value\n", want: "key: # Comment\n  value # lines\n"},
+		// A value carrying a comment above it opens its own line.
+		{src: "k:\n  # c1\n  v # c2\n", want: "k:\n  # c1\n  v # c2\n"},
+		// Untouched: one comment on the line is where one belongs.
+		{src: "a: 1 # x\nb: 2\n", want: "a: 1 # x\nb: 2\n"},
+	} {
+		f, err := parser.ParseBytes([]byte(tc.src), parser.WithComments())
+		require.NoErrorf(t, err, "%q", tc.src)
+		assert.Equalf(t, tc.want, f.String(), "%q", tc.src)
+
+		// Read the rendering back: the count is what a merge destroys.
+		again, err := parser.ParseBytes([]byte(f.String()), parser.WithComments())
+		require.NoErrorf(t, err, "%q renders as %q, which does not parse", tc.src, f.String())
+		assert.Equalf(t, f.String(), again.String(), "%q should settle", tc.src)
+		assert.Equalf(t, strings.Count(tc.src, "#"), strings.Count(f.String(), "#"),
+			"%q renders as %q, which holds a different number of comments", tc.src, f.String())
+	}
 }

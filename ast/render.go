@@ -172,6 +172,46 @@ func (r *Renderer) render(n Node) rendered {
 	return r.withHeadComment(n, r.renderNode(n))
 }
 
+// endsOnAComment reports whether n renders with a comment at the end of its
+// last line, so that anything written after it would be read as part of it.
+//
+// It looks through the properties standing in front of a node, since an anchor
+// and a tag render their value on their own line.
+func endsOnAComment(n Node) bool {
+	for range maxPropertyDepth {
+		if n == nil {
+			return false
+		}
+		if n.GetComment() != nil {
+			return true
+		}
+		switch node := n.(type) {
+		case *AnchorNode:
+			n = node.Value
+		case *TagNode:
+			n = node.Value
+		default:
+			return false
+		}
+	}
+
+	return false
+}
+
+// maxPropertyDepth bounds the walk through the properties in front of a node.
+const maxPropertyDepth = 64
+
+// standsAbove returns what [BaseNode.HeadComment] holds for n, or nil. Distinct
+// from headCommentOf, which reads a mapping entry's own Comment.
+func standsAbove(n Node) *CommentGroupNode {
+	carrier, ok := n.(headCommented)
+	if !ok {
+		return nil
+	}
+
+	return carrier.GetHeadComment()
+}
+
 // headCommented is a node carrying [BaseNode.HeadComment]. Every node type in
 // this package embeds BaseNode and so satisfies it; the assertion is here
 // rather than a method on [Node] so that the interface does not grow.
@@ -339,7 +379,10 @@ func (r *Renderer) mappingValue(n *MappingValueNode) rendered {
 		}
 
 		value := r.value(n.Value, lineComment != "")
-		if lineComment != "" && !value.empty() && !value.leads {
+		if r.comments && standsAbove(n.Value) != nil && !value.empty() {
+			// As below: a value with a comment above it opens a line of its own.
+			value = r.below(n.Value)
+		} else if lineComment != "" && !value.empty() && !value.leads {
 			// The comment claims the ':' line, so the value opens one of its
 			// own. Renderer.value lets a plain scalar share a commented key's
 			// line, which is right where the comment follows the value and
@@ -357,6 +400,22 @@ func (r *Renderer) mappingValue(n *MappingValueNode) rendered {
 	// the key sits, it would be read back as part of the key.
 	comment := r.keyComment(n.Key)
 	value := r.value(n.Value, comment != "")
+	if r.comments && !value.empty() &&
+		(standsAbove(n.Value) != nil || (comment != "" && endsOnAComment(n.Value))) {
+		// The value opens a line of its own, for one of two reasons.
+		//
+		// It carries a comment above it, which cannot be written after the ':':
+		// the value would then stand below the comment in column one, outside
+		// the mapping, and the document would not read back. "k:" over "  # c1"
+		// over "  v # c2" rendered "k: # c1" over "v # c2".
+		//
+		// Or the key carries a comment and the value already ends its line with
+		// one. Written after that, the key's comment met the value's, and two
+		// comments on one line come back as a single comment: "key: # Comment"
+		// over "        # lines" over "  value" rendered
+		// "key: value # lines # Comment".
+		value = r.below(n.Value)
+	}
 	if comment == "" {
 		// A comment written on the key's line, above a block, is recorded on the
 		// block rather than on the key. It goes back where it was written.
@@ -710,7 +769,7 @@ func (r *Renderer) sequence(n *SequenceNode) rendered {
 		}
 		comment := r.entryLineComment(n, i)
 		if comment != "" && !carriesOwnIndent(value) &&
-			(!r.fitsOnKeyLine(value) || entry.spans) {
+			(!r.fitsOnKeyLine(value) || entry.spans || endsOnAComment(value)) {
 			// Everything after the '#' is commented out, so a value that would
 			// share the dash's line goes below it instead. A block scalar is
 			// exempt: its header is all that shares the line, and a comment
@@ -723,6 +782,13 @@ func (r *Renderer) sequence(n *SequenceNode) rendered {
 			// mapping holding a folded scalar came back with the comment inside
 			// the scalar's content. The same shape under a mapping key is
 			// Renderer.value's to place.
+			//
+			// endsOnAComment is the other way it goes wrong: a value carrying a
+			// comment of its own ends its line with one, and the entry's
+			// comment written after that met it. Two comments on one line come
+			// back as a single comment, "#" inside one being ordinary text, so
+			// "- # c1" over "  &a q # c2" lost one to
+			// "- &a q # c2 # c1".
 			lines = append(lines,
 				leaf(blank+"-"+comment),
 				r.render(value).indentedBy(r.indent))
