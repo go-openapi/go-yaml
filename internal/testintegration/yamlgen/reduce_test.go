@@ -11,6 +11,7 @@ import (
 	"github.com/go-openapi/testify/v2/assert"
 	"github.com/go-openapi/testify/v2/require"
 
+	"github.com/go-openapi/go-yaml/codec"
 	"github.com/go-openapi/go-yaml/internal/testintegration/yamlgen"
 )
 
@@ -96,6 +97,36 @@ func TestReducedReportIsUseful(t *testing.T) {
 	assert.Contains(t, report, "reads as:")
 	assert.Contains(t, report, "func TestDefect(t *testing.T) {")
 	t.Log(report)
+}
+
+// TestAValueChangedBeforeRenderingIsNotReportedAsRendering holds the document
+// apart from the message that reports it.
+//
+// TestRenderPreservesValue compares Written.Means against a reading of the
+// rendered text, so it fails when either the writing or the rendering moved the
+// value. It reported both through reduced("RenderChangedTheValue", ...), whose
+// predicate reads the document and reads the rendering of it -- a different
+// comparison, and one that holds only for the rendering half.
+//
+// On the document below the predicate is false: the rendering preserves it
+// exactly, and the value moved when the document was written. So the report named the
+// renderer, printed "reads as" and "then as" byte-identical because both come
+// after the step that moved the value, and emitted a reproducer asserting the
+// value its own "// today:" line gave. yaml-transform read it on 2026-09-10 and
+// could not tell what differed, which is the whole complaint.
+//
+// The document is the one the failfile held, kept verbatim. Reduction cannot
+// shrink it -- Reduce keeps its predicate true, and this predicate is false at
+// every step.
+func TestAValueChangedBeforeRenderingIsNotReportedAsRendering(t *testing.T) {
+	const src = "\ufeff&a3\n- &a2\n ?\tnull\n : &a1 !!binary\t\"AA==\"\n ?\t*a1\n :\t\"aliased\"\n"
+
+	assert.False(t, renderChangesValue([]byte(src)),
+		"rendering preserves this document, so a message naming the renderer names the wrong stage")
+
+	var got any
+	require.NoError(t, codec.Unmarshal([]byte(src), &got))
+	assert.Equal(t, []any{map[string]any{"null": []byte{0}, "AA==": "aliased"}}, got)
 }
 
 // TestReduceKeepsTheDocumentEndingInABreak: the byte pass will not remove the

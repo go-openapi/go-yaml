@@ -144,10 +144,28 @@ func TestRenderPreservesValue(t *testing.T) {
 			return
 		}
 
-		if diverged {
+		if !diverged {
+			return
+		}
+
+		// Which stage moved the value. renderChangesValue reads the document
+		// and reads the rendering of it, so it holds only when rendering is
+		// the stage that moved it, and reduced() may then shrink against it
+		// and print those two readings.
+		//
+		// When it does not hold, the document already did not read as what
+		// was written and rendering carried that through unchanged. Reporting
+		// that through reduced() named the wrong stage and printed two
+		// readings that agreed, because both of them came after the step that
+		// moved the value.
+		if renderChangesValue([]byte(src)) {
 			rt.Fatalf("style %s: rendering changed the value.\n%s",
 				style, reduced("RenderChangedTheValue", src, renderChangesValue))
 		}
+
+		rt.Fatalf("style %s: the document does not read as what was written, and rendering preserved that.\n%s\nwrote:    %#v\nreads as: %#v\nerror:    %v\n\nreproducer:\n%s",
+			style, indent(src), w.Means, got, err,
+			indent(yamlgen.Reproducer("WrittenValueDoesNotReadBack", src, w.Means, got)))
 	})
 
 	tally.report(t, yamlgen.Render)
