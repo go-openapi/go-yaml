@@ -4,7 +4,6 @@
 package parser
 
 import (
-	"path/filepath"
 	"testing"
 
 	"github.com/go-openapi/testify/v2/require"
@@ -66,46 +65,46 @@ func (v *counting) Leave(ast.Node, Step) {}
 // working set is what the walk needed at once: the chunks live plus the chunks
 // saved.
 func TestWalkLetsTheTapeGo(t *testing.T) {
-	ordinary := readCorpus(t, corpusDir)
-	stress := readCorpus(t, filepath.Join(corpusDir, "stress"))
+	ordinary := readCorpus(t, corpusDir())
+	stress := readCorpus(t, stressDir())
 
 	t.Logf("%-19s %8s %10s %9s %6s %9s %8s %7s %10s",
 		"document", "tokens", "allocated", "recycled", "hit", "free high", "live", "saved high", "working set")
 
 	for _, set := range [][]corpusDoc{ordinary, stress} {
 		for _, w := range set {
-			p := New(WithChunkSize(tokenarena.SizeFor(len(w.data))))
+			p := New(WithChunkSize(tokenarena.SizeFor(len(w.Data))))
 
 			keep := &counting{}
-			_, err := p.Walk(w.data, keep)
-			require.NoError(t, err, w.name)
+			_, err := p.Walk(w.Data, keep)
+			require.NoError(t, err, w.Name)
 
 			stats := p.tapeStats()
 
-			if anchored[w.name] {
+			if anchored[w.Name] {
 				// Saved is zero by now: the document ended and what its anchors
 				// saved went back with it. SavedHigh is what they held while it
 				// ran.
 				require.Positive(t, stats.SavedHigh,
-					"%s holds anchors and the walk saved no chunk for them", w.name)
+					"%s holds anchors and the walk saved no chunk for them", w.Name)
 				require.Zero(t, stats.Saved,
-					"%s: the document ended and its saves did not go back", w.name)
+					"%s: the document ended and its saves did not go back", w.Name)
 
 				// What Save promises. It holds trivially while nothing refills
 				// the free list, and becomes a real check the moment tokens
 				// arrive during a walk.
 				require.NotNil(t, keep.anchor)
 				require.Equal(t, keep.anchorName, keep.anchor.GetToken().Value,
-					"%s: the anchor's token was filled again under it", w.name)
+					"%s: the anchor's token was filled again under it", w.Name)
 			}
 
 			require.False(t, stats.Frozen, "the walk kept its pin")
 			require.Equal(t, stats.Allocated, stats.Live+stats.Free+stats.Saved,
-				"%s: chunks went missing", w.name)
+				"%s: chunks went missing", w.Name)
 
 			require.LessOrEqual(t, stats.Live, 3,
 				"%s: a walk left %d chunks live, so something is holding what it was handed",
-				w.name, stats.Live)
+				w.Name, stats.Live)
 
 			// held is the memory the arena has taken and not given back --
 			// every chunk it allocated, free list included. working set is
@@ -115,7 +114,7 @@ func TestWalkLetsTheTapeGo(t *testing.T) {
 			hit := 100 * float64(stats.Recycled) / float64(max(stats.Recycled+stats.Allocated, 1))
 
 			t.Logf("%-19s %8d %10d %9d %5.0f%% %9d %8d %7d %9dK",
-				w.name, stats.Tokens, stats.Allocated, stats.Recycled, hit,
+				w.Name, stats.Tokens, stats.Allocated, stats.Recycled, hit,
 				stats.FreeHigh, stats.Live, stats.SavedHigh,
 				(stats.Live+stats.SavedHigh)*stats.ChunkSize*56/1024)
 		}

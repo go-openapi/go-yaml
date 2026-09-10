@@ -4,7 +4,6 @@
 package parser
 
 import (
-	"path/filepath"
 	"testing"
 
 	"github.com/go-openapi/testify/v2/require"
@@ -26,8 +25,8 @@ import (
 // allocates one block per 512 tokens and holds every one of them; this holds
 // what the lag needs and fills the rest again. Run with -v for the table.
 func TestTokenArenaOnTheCorpus(t *testing.T) {
-	ordinary := readCorpus(t, corpusDir)
-	stress := readCorpus(t, filepath.Join(corpusDir, "stress"))
+	ordinary := readCorpus(t, corpusDir())
+	stress := readCorpus(t, stressDir())
 
 	for _, g := range []struct {
 		name string
@@ -41,8 +40,8 @@ func TestTokenArenaOnTheCorpus(t *testing.T) {
 			"document", "tokens", "chunk", "lag", "allocated", "recycled", "live high", "held")
 
 		for _, w := range g.set {
-			tokens := tokenize(t, string(w.data))
-			size := tokenarena.SizeFor(len(w.data))
+			tokens := tokenize(t, string(w.Data))
+			size := tokenarena.SizeFor(len(w.Data))
 
 			for _, lag := range []int{64, 1024, 16384} {
 				arena := tokenarena.New[group.TapeToken](size)
@@ -54,7 +53,7 @@ func TestTokenArenaOnTheCorpus(t *testing.T) {
 
 				stats := arena.Stats()
 				t.Logf("%-19s %8d %6d %8d %10d %10d %9d %7dK",
-					w.name, stats.Tokens, stats.ChunkSize, lag,
+					w.Name, stats.Tokens, stats.ChunkSize, lag,
 					stats.Allocated, stats.Recycled, stats.LiveHigh, stats.Bytes/1024)
 			}
 		}
@@ -66,7 +65,7 @@ func TestTokenArenaOnTheCorpus(t *testing.T) {
 func TestTokenArenaHoldsTheLagAndNoMore(t *testing.T) {
 	w := corpusByName(t, "golang_source")
 
-	tokens := tokenize(t, string(w.data))
+	tokens := tokenize(t, string(w.Data))
 	require.Greater(t, len(tokens), 250_000)
 
 	const lag, size = 1024, 128
@@ -102,14 +101,14 @@ func TestTokenArenaHoldsTheLagAndNoMore(t *testing.T) {
 // stays live, which is what makes the trees identical to the parser that held a
 // slice of every token before the tape replaced it.
 func TestAFullScanRecyclesNothing(t *testing.T) {
-	all := readCorpus(t, corpusDir)
+	all := readCorpus(t, corpusDir())
 
 	t.Logf("%-19s %8s %6s %8s %9s %8s %8s", "workload", "tokens", "chunk", "chunks", "recycled", "live", "held")
 
 	for _, w := range all {
-		p := New(WithChunkSize(tokenarena.SizeFor(len(w.data))))
+		p := New(WithChunkSize(tokenarena.SizeFor(len(w.Data))))
 
-		_, err := p.Parse(w.data)
+		_, err := p.Parse(w.Data)
 		require.NoError(t, err)
 
 		stats := p.tapeStats()
@@ -120,7 +119,7 @@ func TestAFullScanRecyclesNothing(t *testing.T) {
 		require.Zero(t, stats.Free)
 
 		t.Logf("%-19s %8d %6d %8d %9d %8d %7dK",
-			w.name, stats.Tokens, stats.ChunkSize, stats.Allocated,
+			w.Name, stats.Tokens, stats.ChunkSize, stats.Allocated,
 			stats.Recycled, stats.Live, stats.Bytes/1024)
 	}
 }
@@ -149,8 +148,8 @@ func tokenize(tb testing.TB, src string) token.Tokens {
 func corpusByName(t *testing.T, name string) corpusDoc {
 	t.Helper()
 
-	for _, w := range readCorpus(t, corpusDir) {
-		if w.name == name {
+	for _, w := range readCorpus(t, corpusDir()) {
+		if w.Name == name {
 			return w
 		}
 	}

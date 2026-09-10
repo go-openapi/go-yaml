@@ -4,7 +4,6 @@
 package parser
 
 import (
-	"path/filepath"
 	"testing"
 
 	"github.com/go-openapi/testify/v2/require"
@@ -25,22 +24,22 @@ import (
 //
 // Run with -v for the table.
 func TestGroupingHolds(t *testing.T) {
-	ordinary := readCorpus(t, corpusDir)
-	stress := readCorpus(t, filepath.Join(corpusDir, "stress"))
+	ordinary := readCorpus(t, corpusDir())
+	stress := readCorpus(t, stressDir())
 
 	t.Logf("%-19s %8s %7s %10s %12s", "document", "tokens", "chunk", "held", "chunks held")
 
 	for _, set := range [][]corpusDoc{ordinary, stress} {
 		for _, w := range set {
-			chunk := tokenarena.SizeFor(len(w.data))
+			chunk := tokenarena.SizeFor(len(w.Data))
 
 			p := New(WithChunkSize(chunk))
-			_, err := p.Parse(w.data)
-			require.NoError(t, err, w.name)
+			_, err := p.Parse(w.Data)
+			require.NoError(t, err, w.Name)
 
 			held := p.groupingHeld()
 			t.Logf("%-19s %8d %7d %10d %12d",
-				w.name, p.tapeStats().Tokens, chunk, held, held/chunk+1)
+				w.Name, p.tapeStats().Tokens, chunk, held, held/chunk+1)
 		}
 	}
 }
@@ -52,22 +51,22 @@ func TestGroupingHolds(t *testing.T) {
 // keys, leaves the grouping holding a handful of tokens. Width costs nothing:
 // the pass settles each key as its ':' arrives and hands the rest on.
 func TestGroupingHoldsLittleInBlockStyle(t *testing.T) {
-	all := readCorpus(t, corpusDir)
-	wide := readCorpus(t, filepath.Join(corpusDir, "stress"))
+	all := readCorpus(t, corpusDir())
+	wide := readCorpus(t, stressDir())
 
 	for _, set := range [][]corpusDoc{all, wide} {
 		for _, w := range set {
-			if w.name == "flow_wide" || w.name == "flow_long_scalars" || w.name == "flow_nested" {
+			if w.Name == "flow_wide" || w.Name == "flow_long_scalars" || w.Name == "flow_nested" {
 				continue
 			}
 
 			p := New()
-			_, err := p.Parse(w.data)
-			require.NoError(t, err, w.name)
+			_, err := p.Parse(w.Data)
+			require.NoError(t, err, w.Name)
 
 			require.LessOrEqual(t, p.groupingHeld(), 16,
 				"%s: the grouping held %d tokens, so a flow collection is open somewhere it was not before",
-				w.name, p.groupingHeld())
+				w.Name, p.groupingHeld())
 		}
 	}
 }
@@ -82,13 +81,13 @@ func TestGroupingHoldsLittleInBlockStyle(t *testing.T) {
 // be a key, and a window that knew as much could hand its tokens on. Nothing
 // reads that yet.
 func TestAFlowCollectionHoldsToItsClose(t *testing.T) {
-	for _, w := range readCorpus(t, filepath.Join(corpusDir, "stress")) {
-		if w.name != "flow_wide" {
+	for _, w := range readCorpus(t, stressDir()) {
+		if w.Name != "flow_wide" {
 			continue
 		}
 
 		p := New()
-		_, err := p.Parse(w.data)
+		_, err := p.Parse(w.Data)
 		require.NoError(t, err)
 
 		require.Greater(t, p.groupingHeld(), 50_000,

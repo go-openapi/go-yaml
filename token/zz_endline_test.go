@@ -4,16 +4,13 @@
 package token_test
 
 import (
-	"compress/gzip"
-	"io"
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/go-openapi/testify/v2/require"
 
 	"github.com/go-openapi/go-yaml/internal/scanner"
+	"github.com/go-openapi/go-yaml/internal/testcorpus"
 	"github.com/go-openapi/go-yaml/token"
 )
 
@@ -80,28 +77,16 @@ func handwritten() []string {
 	}
 }
 
+// workloads returns the workload documents, which carry the line endings and
+// the long plain scalars a handwritten case does not think of.
 func workloads(t *testing.T) []string {
 	t.Helper()
 
-	const dir = "../internal/analysis/workloads/testdata"
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		t.Skipf("the workloads are not readable from here: %v", err)
-	}
+	docs := testcorpus.Docs(t, testcorpus.Dir())
 
-	var out []string
-	for _, e := range entries {
-		if !strings.HasSuffix(e.Name(), ".yaml.gz") {
-			continue
-		}
-		f, err := os.Open(filepath.Join(dir, e.Name()))
-		require.NoError(t, err)
-		z, err := gzip.NewReader(f)
-		require.NoError(t, err)
-		b, err := io.ReadAll(z)
-		require.NoError(t, err)
-		require.NoError(t, f.Close())
-		out = append(out, string(b))
+	out := make([]string, 0, len(docs))
+	for _, d := range docs {
+		out = append(out, d.Text())
 	}
 
 	return out
