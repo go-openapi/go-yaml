@@ -8,9 +8,10 @@ import (
 	"testing"
 	"unicode/utf8"
 
-	"github.com/go-openapi/go-yaml/internal/scanner/internal/testscanner"
 	"github.com/go-openapi/testify/v2/assert"
 	"github.com/go-openapi/testify/v2/require"
+
+	"github.com/go-openapi/go-yaml/internal/scanner/internal/testscanner"
 )
 
 // TestFirstUnprintableMatchesTheByteLoop holds the word-at-a-time scan to the
