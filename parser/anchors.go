@@ -51,33 +51,113 @@ type cyclicAlias struct {
 	anchor *ast.AnchorNode
 	// tagged is the tag written before the anchor, where there is one. The node
 	// the alias names carries both properties, so it is the tag node and not
-	// what the anchor holds. See retagAnchor.
+	// what the anchor holds. See anchorTable.retag.
 	tagged *ast.TagNode
 }
 
-// openAnchorName records that the node name stands for is being read.
+// anchorTable holds the anchors of the document being read, and the aliases
+// that named one before its node existed.
+//
+// It is emptied at each document boundary by take, so an alias naming an
+// earlier document's anchor names nothing. Only declared outlives a document:
+// [WithAnchors] published it and every document of the stream may name it.
+type anchorTable struct {
+	// nodes holds the node each anchor of the document in hand names, under the
+	// anchor's name. It goes to the document as that one closes, and the next
+	// starts with none.
+	nodes map[string]ast.Node
+	// identities holds what each anchor's node resolves to, under the same
+	// name. An alias standing as a mapping key is named from here rather than
+	// through AliasNode.Target: a walk scrubs the anchored node once the entry
+	// holding it closes, and the string outlives it. See keepAnchorIdentity.
+	identities map[string]anchorIdentity
+	// open holds the anchors whose node is being read at this point in the
+	// descent, innermost last. An alias naming one of them stands inside what it
+	// names, and cyclic holds it until that node exists.
+	open   []openAnchor
+	cyclic []cyclicAlias
+	// declared holds what [WithAnchors] published, which an alias of any
+	// document of this stream may name. It is not what a document declares and
+	// does not reach [ast.DocumentNode.Anchors].
+	declared map[string]ast.Node
+}
+
+// openName records that the node name stands for is being read.
 //
 // It is a stack and not a set because anchors nest -- "&x [&y 1]" -- and the
 // names come off in the order they went on. Looking one up is a walk down it,
 // over as many entries as there are anchors open at once, which is the
 // document's nesting and not its length.
-func (p *Parser) openAnchorName(name string, node *ast.AnchorNode) {
-	p.openAnchors = append(p.openAnchors, openAnchor{name: name, node: node})
+func (t *anchorTable) openName(name string, node *ast.AnchorNode) {
+	t.open = append(t.open, openAnchor{name: name, node: node})
+}
+
+// reading reports whether an anchor's node is being read.
+func (t *anchorTable) reading() bool { return len(t.open) > 0 }
+
+// keep enters the node name stands for.
+func (t *anchorTable) keep(name string, value ast.Node) {
+	if t.nodes == nil {
+		t.nodes = make(map[string]ast.Node, 4)
+	}
+	t.nodes[name] = value
+}
+
+// keepIdentity records what the node an anchor names resolves to.
+func (t *anchorTable) keepIdentity(name string, at anchorIdentity) {
+	if t.identities == nil {
+		t.identities = make(map[string]anchorIdentity, 4)
+	}
+	t.identities[name] = at
+}
+
+// identityOf is what the node an anchor names resolves to, for
+// [ast.KeyIdentityWithAnchors] to answer an alias with.
+//
+// Taken when the anchor closed, so it costs a lookup rather than a walk of the
+// anchored subtree -- and an anchor still being read is not in the table, which
+// is what stops "&x [ *x ]" naming itself.
+func (t *anchorTable) identityOf(name string) (string, bool) {
+	at, known := t.identities[name]
+	if !known || at.identity == "" {
+		return "", false
+	}
+
+	return at.identity, true
+}
+
+// identity is what an anchor's node resolved to, or the zero value where the
+// name is unknown.
+func (t *anchorTable) identity(name string) anchorIdentity { return t.identities[name] }
+
+// target returns the node name stands for: what a document of this stream
+// wrote, else what [WithAnchors] published for the whole stream.
+func (t *anchorTable) target(name string) (ast.Node, bool) {
+	if node, declared := t.nodes[name]; declared {
+		return node, true
+	}
+
+	node, declared := t.declared[name]
+
+	return node, declared
+}
+
+// holdCyclic keeps an alias that named an anchor still being read, until
+// take fills its target in.
+func (t *anchorTable) holdCyclic(alias *ast.AliasNode, anchor *ast.AnchorNode) {
+	t.cyclic = append(t.cyclic, cyclicAlias{alias: alias, anchor: anchor})
 }
 
 // keepAnchor enters the node an anchor names, and closes the name.
 func (p *Parser) keepAnchor(name string, value ast.Node) {
-	p.dropAnchorName()
+	p.anchors.dropName()
 
 	if name == "" || value == nil {
 		// Nothing an alias can reach. The scanner refuses a '&' with no name
 		// after it, so this is the guard and not the path.
 		return
 	}
-	if p.anchors == nil {
-		p.anchors = make(map[string]ast.Node, 4)
-	}
-	p.anchors[name] = value
+	p.anchors.keep(name, value)
 	p.keepAnchorIdentity(name, value)
 	p.pinAnchoredNodes()
 }
@@ -112,29 +192,26 @@ func (p *Parser) keepAnchorIdentity(name string, value ast.Node) {
 	}
 
 	text, kind := p.mapKeyIdentity(value)
-	identity := ast.KeyIdentityWithAnchors(value, p.anchorIdentityOf)
+	identity := ast.KeyIdentityWithAnchors(value, p.anchors.identityOf)
 	if unnamedKey(text, kind) && ast.Unnamed(identity) {
 		return
 	}
-	if p.anchorIdentities == nil {
-		p.anchorIdentities = make(map[string]anchorIdentity, 4)
-	}
-	p.anchorIdentities[name] = anchorIdentity{text: text, kind: kind, identity: identity}
+	p.anchors.keepIdentity(name, anchorIdentity{text: text, kind: kind, identity: identity})
 }
 
-// dropAnchorName closes the innermost open name.
-func (p *Parser) dropAnchorName() {
-	if n := len(p.openAnchors); n > 0 {
-		p.openAnchors = p.openAnchors[:n-1]
+// dropName closes the innermost open name.
+func (t *anchorTable) dropName() {
+	if n := len(t.open); n > 0 {
+		t.open = t.open[:n-1]
 	}
 }
 
-// openAnchorNode returns the anchor of this name whose node is being read right
+// openNode returns the anchor of this name whose node is being read right
 // now, which is what an alias inside that node names.
-func (p *Parser) openAnchorNode(name string) (*ast.AnchorNode, bool) {
+func (t *anchorTable) openNode(name string) (*ast.AnchorNode, bool) {
 	// Innermost first: "&x [&x 1, *x]" names the inner one, which is the most
 	// recent declaration and the one §3.2.2.2 asks for.
-	for _, open := range slices.Backward(p.openAnchors) {
+	for _, open := range slices.Backward(t.open) {
 		if open.name == name {
 			return open.node, true
 		}
@@ -145,7 +222,7 @@ func (p *Parser) openAnchorNode(name string) (*ast.AnchorNode, bool) {
 
 // resolveAlias points the alias at the node its name stands for.
 func (p *Parser) resolveAlias(alias *ast.AliasNode, name string, tk *token.Token) error {
-	if anchor, open := p.openAnchorNode(name); open {
+	if anchor, open := p.anchors.openNode(name); open {
 		if p.jsonCompatible {
 			// JSON is a tree written out in full, so it has no spelling for a
 			// node that reaches back into itself, wherever the cycle closes.
@@ -158,18 +235,11 @@ func (p *Parser) resolveAlias(alias *ast.AliasNode, name string, tk *token.Token
 		// The alias stands inside what its own anchor names. The anchored node
 		// is not built yet -- a sequence is built once its entries are read --
 		// so the target is filled at the document's end, where it exists.
-		p.cyclicAliases = append(p.cyclicAliases, cyclicAlias{alias: alias, anchor: anchor})
+		p.anchors.holdCyclic(alias, anchor)
 
 		return nil
 	}
-	if node, declared := p.anchors[name]; declared {
-		alias.Target = node
-
-		return nil
-	}
-	if node, declared := p.declaredAnchors[name]; declared {
-		// An anchor [WithAnchors] published, which no document of this stream
-		// wrote and an alias may still name.
+	if node, named := p.anchors.target(name); named {
 		alias.Target = node
 
 		return nil
@@ -178,7 +248,7 @@ func (p *Parser) resolveAlias(alias *ast.AliasNode, name string, tk *token.Token
 	return yamlerrors.NewUnknownAnchor(name, tk)
 }
 
-// retagAnchor points an anchor written after a tag at the tagged node.
+// retag points an anchor written after a tag at the tagged node.
 //
 // §6.9 lets a node's tag and anchor stand in either order and means the same by
 // both. Written anchor first the tree is Anchor over Tag over the value, and the
@@ -189,7 +259,7 @@ func (p *Parser) resolveAlias(alias *ast.AliasNode, name string, tk *token.Token
 //
 // The tree keeps the order the document wrote, so it still renders as it was
 // written. Only what the name stands for changes.
-func (p *Parser) retagAnchor(tagged *ast.TagNode) {
+func (t *anchorTable) retag(tagged *ast.TagNode) {
 	anchor, anchored := tagged.Value.(*ast.AnchorNode)
 	if !anchored {
 		return
@@ -199,25 +269,25 @@ func (p *Parser) retagAnchor(tagged *ast.TagNode) {
 	if name == "" {
 		return
 	}
-	if p.anchors[name] == anchor.Value {
+	if t.nodes[name] == anchor.Value {
 		// Still the entry this anchor made. A later "&a1" on another node has
 		// replaced it, and that one is what the name means from there on.
-		p.anchors[name] = tagged
+		t.nodes[name] = tagged
 	}
 
 	// An alias inside the anchored node resolved before this tag was built, so
 	// it holds the anchor rather than the node standing around it.
-	for i := range p.cyclicAliases {
-		if p.cyclicAliases[i].anchor == anchor {
-			p.cyclicAliases[i].tagged = tagged
+	for i := range t.cyclic {
+		if t.cyclic[i].anchor == anchor {
+			t.cyclic[i].tagged = tagged
 		}
 	}
 }
 
-// takeAnchors returns what the document just read declared, and empties the
-// table for the next one.
-func (p *Parser) takeAnchors() map[string]ast.Node {
-	for _, cyclic := range p.cyclicAliases {
+// take returns what the document just read declared, and empties the table for
+// the next one.
+func (t *anchorTable) take() map[string]ast.Node {
+	for _, cyclic := range t.cyclic {
 		if cyclic.tagged != nil {
 			cyclic.alias.Target = cyclic.tagged
 
@@ -225,12 +295,12 @@ func (p *Parser) takeAnchors() map[string]ast.Node {
 		}
 		cyclic.alias.Target = cyclic.anchor.Value
 	}
-	p.cyclicAliases = p.cyclicAliases[:0]
+	t.cyclic = t.cyclic[:0]
 
-	anchors := p.anchors
-	p.anchors = nil
-	p.anchorIdentities = nil
-	p.openAnchors = p.openAnchors[:0]
+	anchors := t.nodes
+	t.nodes = nil
+	t.identities = nil
+	t.open = t.open[:0]
 
 	return anchors
 }
@@ -305,7 +375,7 @@ func (p *Parser) parseAnchorValue(ctx context, anchor *ast.AnchorNode) (ast.Node
 
 	value, err := p.readAnchorValue(ctx, anchor)
 	if err != nil {
-		p.dropAnchorName()
+		p.anchors.dropName()
 
 		return nil, err
 	}
@@ -389,7 +459,7 @@ func (p *Parser) parseAnchorName(ctx context) (*ast.AnchorNode, error) {
 	// The name is open from here and not from where the node ends, so an alias
 	// inside that node names it: "&x [ *x ]" is a document, and the tree it
 	// builds holds a cycle.
-	p.openAnchorName(anchorNameOf(anchorName), anchor)
+	p.anchors.openName(anchorNameOf(anchorName), anchor)
 
 	return anchor, nil
 }

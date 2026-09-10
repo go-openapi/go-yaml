@@ -67,25 +67,9 @@ type Parser struct {
 	// inside a block scalar or a key. See descent.go.
 	descent descentState
 
-	// anchors holds the node each anchor of the document in hand names, under
-	// the anchor's name. It goes to the document as that one closes, and the
-	// next starts with none. See anchors.go.
-	anchors map[string]ast.Node
-	// anchorIdentities holds what each anchor's node resolves to, under the
-	// same name. An alias standing as a mapping key is named from here rather
-	// than through AliasNode.Target: a walk scrubs the anchored node once the
-	// entry holding it closes, and the string outlives it. See
-	// keepAnchorIdentity.
-	anchorIdentities map[string]anchorIdentity
-	// openAnchors holds the anchors whose node is being read at this point in
-	// the descent, innermost last. An alias naming one of them stands inside
-	// what it names, and cyclicAliases holds it until that node exists.
-	openAnchors   []openAnchor
-	cyclicAliases []cyclicAlias
-	// declaredAnchors holds what [WithAnchors] published, which an alias of any
-	// document of this stream may name. It is not what a document declares and
-	// does not reach [ast.DocumentNode.Anchors].
-	declaredAnchors map[string]ast.Node
+	// anchors holds the anchors of the document being read, and the aliases
+	// that named one before its node existed. See anchors.go.
+	anchors anchorTable
 
 	// scan reads src into tokens, one at a time, as the reader asks.
 	scan scanner.Scanner

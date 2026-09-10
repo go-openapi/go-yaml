@@ -270,7 +270,7 @@ func (p *Parser) recordBuiltKeyOnce(key ast.MapKeyNode) {
 // 2 -- 1.46 MiB against 55 KiB. The nodes stand on content the tape is keeping
 // either way.
 func (p *Parser) keepsNothing() bool {
-	return !p.descent.readingAKey() && len(p.openAnchors) == 0
+	return !p.descent.readingAKey() && !p.anchors.reading()
 }
 
 // builtKeyIdentity names a key that a single token could not.
@@ -286,25 +286,10 @@ func (p *Parser) builtKeyIdentity(key ast.MapKeyNode) string {
 		n = explicit.Value
 	}
 	if alias, isAlias := n.(*ast.AliasNode); isAlias {
-		return p.anchorIdentities[anchorNameOf(alias.Value)].identity
+		return p.anchors.identity(anchorNameOf(alias.Value)).identity
 	}
 
-	return ast.KeyIdentityWithAnchors(key, p.anchorIdentityOf)
-}
-
-// anchorIdentityOf is what the node an anchor names resolves to, for
-// [ast.KeyIdentityWithAnchors] to answer an alias with.
-//
-// Taken when the anchor closed, so it costs a lookup rather than a walk of the
-// anchored subtree -- and an anchor still being read is not in the table, which
-// is what stops "&x [ *x ]" naming itself.
-func (p *Parser) anchorIdentityOf(name string) (string, bool) {
-	at, known := p.anchorIdentities[name]
-	if !known || at.identity == "" {
-		return "", false
-	}
-
-	return at.identity, true
+	return ast.KeyIdentityWithAnchors(key, p.anchors.identityOf)
 }
 
 // keyDisplayName is what a refusal calls a key a single token cannot name.
@@ -394,7 +379,7 @@ func (p *Parser) mapKeyIdentity(n ast.Node) (string, token.KeyKind) {
 		// so "{&a x: 1, *a : 2}" is one key written twice. A collection anchor
 		// hands back nothing and is checked when its entry is built, by
 		// builtKeyIdentity.
-		at := p.anchorIdentities[anchorNameOf(nn.Value)]
+		at := p.anchors.identity(anchorNameOf(nn.Value))
 
 		return at.text, at.kind
 	case *ast.StringNode:

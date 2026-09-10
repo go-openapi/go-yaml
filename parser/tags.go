@@ -66,7 +66,7 @@ func (p *Parser) parseTag(ctx context) (*ast.TagNode, error) {
 		return nil, err
 	}
 	node.Value = tagValue
-	p.retagAnchor(node)
+	p.anchors.retag(node)
 
 	return node, nil
 }

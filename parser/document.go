@@ -161,7 +161,7 @@ func (p *Parser) parseDocument(ctx context) (*ast.DocumentNode, bool, error) {
 	node.StartComment = markerComment(ctx, startTk)
 	// An anchor belongs to the document it was written in, so the table goes
 	// with it here and the next document starts on an empty one.
-	node.Anchors = p.takeAnchors()
+	node.Anchors = p.anchors.take()
 	if body != nil {
 		// A document holding nothing keeps no "...": the pass this replaced
 		// read the marker, then returned on the empty body before it hung the

@@ -150,7 +150,7 @@ func WithJSONCompatible() Option {
 // published one for that document.
 func WithAnchors(anchors map[string]ast.Node) Option {
 	return func(p *Parser) {
-		p.declaredAnchors = anchors
+		p.anchors.declared = anchors
 	}
 }
 
