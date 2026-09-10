@@ -307,6 +307,16 @@ func (t *jsonTokener) emitTree(node ast.Node, at token.Position) {
 
 			return
 		}
+		if namesOrderedMap(n.URI) {
+			// From the tree, where the streaming path folds the tokens as they
+			// arrive. An alias reaches its target through here and never opens
+			// the tag, so "a: &m !!omap [{x: 1}]" over "b: *m" handed the
+			// sequence over as itself at b and the object at a -- one document,
+			// two shapes, and ToJSON wrote the object for both.
+			t.emitOrderedMapTree(n, at)
+
+			return
+		}
 		t.emitTree(n.Value, at)
 	case *ast.SequenceNode:
 		t.open(JSONArrayStart, at)
@@ -552,6 +562,43 @@ func (t *jsonTokener) releaseOrderedMap(n *ast.TagNode) {
 	for _, tok := range folded {
 		t.emit(tok)
 	}
+}
+
+// emitOrderedMapTree hands an "!!omap" over from the tree as the object the tag
+// names, for an alias that reaches one.
+//
+// The shape and the repeated key are the rules foldOrderedMapTokens holds the
+// streaming path to, asked of the nodes instead: an alias target is a retained
+// node, so its children are there to read where a walked one's are not.
+func (t *jsonTokener) emitOrderedMapTree(n *ast.TagNode, at token.Position) {
+	seq, isSeq := t.throughWrappers(n.Value).(*ast.SequenceNode)
+	if !isSeq {
+		t.fail(notAnOrderedMap(n.Value))
+
+		return
+	}
+
+	t.open(JSONObjectStart, at)
+	var held []string
+	for _, entry := range seq.Values {
+		one, isOne := t.throughWrappers(entry).(*ast.MappingNode)
+		if !isOne || len(one.Values) != 1 {
+			t.fail(notAnOrderedMap(n.Value))
+
+			return
+		}
+		name := t.keyName(one.Values[0].Key)
+		if slices.Contains(held, name) {
+			t.fail(yamlerrors.NewDuplicateKey(
+				fmt.Sprintf("mapping key %q is written twice in an !!omap", name), n.Value.GetToken()))
+
+			return
+		}
+		held = append(held, name)
+		t.emit(JSONToken{Kind: JSONKey, Value: name, At: at})
+		t.emitTree(one.Values[0].Value, at)
+	}
+	t.close(JSONObjectEnd, at)
 }
 
 // namesOrderedMap reports the "!!omap" tag, whatever handle the document spells

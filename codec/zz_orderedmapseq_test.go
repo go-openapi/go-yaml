@@ -4,6 +4,7 @@
 package codec_test
 
 import (
+	"strconv"
 	"testing"
 
 	"github.com/go-openapi/testify/v2/assert"
@@ -152,4 +153,85 @@ func TestOrderedMapRefusesAShapeTheTagDoesNotName(t *testing.T) {
 		}
 		require.Errorf(t, tokens.Err(), "%q", src)
 	}
+}
+
+// TestFixedAnAliasToAnOrderedMapKeepsTheTag: the token converter handed the
+// sequence over as itself where an alias reached an anchored "!!omap".
+//
+// "a: &m !!omap [{x: 1}]" over "b: *m" wrote {"a":{"x":1},"b":[{"x":1}]} -- one
+// document, two shapes for one node. An alias reaches its target through
+// emitTree, which never opens the tag, so the fold that runs on the streaming
+// path was skipped. ToJSON replays the text each anchor wrote and had it right,
+// which is how the two converters disagreed.
+func TestFixedAnAliasToAnOrderedMapKeepsTheTag(t *testing.T) {
+	for _, tc := range []struct{ src, want string }{
+		{"a: &m !!omap [{x: 1}]\nb: *m\n", `{"a":{"x":1},"b":{"x":1}}`},
+		{"a: &m !!omap [{x: 1}, {b: 2}]\nb: *m\nc: *m\n",
+			`{"a":{"x":1,"b":2},"b":{"x":1,"b":2},"c":{"x":1,"b":2}}`},
+	} {
+		folded, err := codec.ToJSON([]byte(tc.src))
+		require.NoErrorf(t, err, "%q", tc.src)
+		assert.Equalf(t, tc.want, string(folded), "%q", tc.src)
+
+		assert.Equalf(t, tc.want, tokenJSON(t, tc.src), "%q: the token converter disagrees", tc.src)
+	}
+
+	t.Run("and refuses through an alias what it refuses in place", func(t *testing.T) {
+		for _, src := range []string{
+			"a: &m !!omap [{x: 1}, -2]\nb: *m\n",
+			"a: &m !!omap [{x: 1}, {x: 2}]\nb: *m\n",
+		} {
+			_, err := codec.ToJSON([]byte(src))
+			require.Errorf(t, err, "%q", src)
+
+			tokens := codec.ToJSONTokens([]byte(src))
+			for range tokens.Tokens() { //nolint:revive // the stream is drained for its error
+			}
+			require.Errorf(t, tokens.Err(), "%q", src)
+		}
+	})
+}
+
+// tokenJSON rebuilds the JSON the token converter hands over, so it can be
+// compared with what ToJSON writes.
+func tokenJSON(t *testing.T, src string) string {
+	t.Helper()
+
+	stream := codec.ToJSONTokens([]byte(src))
+	var out []byte
+	var needComma bool
+	for tk := range stream.Tokens() {
+		switch tk.Kind {
+		case codec.JSONObjectStart, codec.JSONArrayStart:
+			if needComma {
+				out = append(out, ',')
+			}
+			out = append(out, map[codec.JSONTokenKind]byte{
+				codec.JSONObjectStart: '{', codec.JSONArrayStart: '[',
+			}[tk.Kind])
+			needComma = false
+		case codec.JSONObjectEnd:
+			out = append(out, '}')
+			needComma = true
+		case codec.JSONArrayEnd:
+			out = append(out, ']')
+			needComma = true
+		case codec.JSONKey:
+			if needComma {
+				out = append(out, ',')
+			}
+			out = append(out, []byte(strconv.Quote(tk.Value))...)
+			out = append(out, ':')
+			needComma = false
+		default:
+			if needComma {
+				out = append(out, ',')
+			}
+			out = append(out, []byte(tk.Value)...)
+			needComma = true
+		}
+	}
+	require.NoError(t, stream.Err())
+
+	return string(out)
 }
