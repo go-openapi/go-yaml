@@ -1491,9 +1491,12 @@ func (p *Parser) parseMapKey(ctx context, g *tokenGroup) (ast.MapKeyNode, error)
 		// It moves onto the key's own line: "? # c" over "  k" comes back as
 		// "? k # c", which is where the short spelling puts it.
 		if cm := key.GetComment(); cm != nil && value.GetComment() == nil {
-			if err := key.SetComment(nil); err != nil {
-				return nil, err
-			}
+			// ast.TakeComment and not SetComment(nil): the comment is being put
+			// on the node it belongs to while the tree is built, and the
+			// document's own text is not changing. SetComment refuses to drop a
+			// comment the document wrote, since a caller doing that leaves the
+			// renderer nothing to take the old text out by.
+			ast.TakeComment(key)
 			if err := value.SetComment(cm); err != nil {
 				return nil, err
 			}

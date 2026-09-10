@@ -182,7 +182,7 @@ func endsOnAComment(n Node) bool {
 		if n == nil {
 			return false
 		}
-		if n.GetComment() != nil {
+		if !n.GetComment().Blank() {
 			return true
 		}
 		if _, isComment := n.(*CommentGroupNode); isComment {
@@ -196,7 +196,7 @@ func endsOnAComment(n Node) bool {
 			// Renderer.anchor writes the name's comment where the anchor's own
 			// would go, so it ends the line just the same. "- # c2" over "&a2"
 			// over "# " came back as "- &a2 #  # c2".
-			if node.Name != nil && node.Name.GetComment() != nil {
+			if node.Name != nil && !node.Name.GetComment().Blank() {
 				return true
 			}
 			n = node.Value
@@ -221,7 +221,7 @@ func standsAbove(n Node) *CommentGroupNode {
 		return nil
 	}
 
-	return carrier.GetHeadComment()
+	return present(carrier.GetHeadComment())
 }
 
 // headCommented is a node carrying [BaseNode.HeadComment]. Every node type in
@@ -247,7 +247,7 @@ func (r *Renderer) withHeadComment(n Node, body rendered) rendered {
 		return body
 	}
 	cm := carrier.GetHeadComment()
-	if cm == nil {
+	if cm.Blank() {
 		return body
 	}
 
@@ -350,13 +350,13 @@ func (r *Renderer) mapping(n *MappingNode) rendered {
 	}
 
 	lines := make([]rendered, 0, len(n.Values)+1)
-	if r.comments && n.Comment != nil {
+	if r.comments && !n.Comment.Blank() {
 		lines = append(lines, r.render(n.Comment))
 	}
 	for _, value := range n.Values {
 		lines = append(lines, r.render(value))
 	}
-	if r.comments && n.FootComment != nil {
+	if r.comments && !n.FootComment.Blank() {
 		lines = append(lines, join(sepNone, leaf(blankLineBefore(n.FootComment)), r.render(n.FootComment)))
 	}
 
@@ -370,7 +370,7 @@ func (r *Renderer) mappingValue(n *MappingValueNode) rendered {
 	// entries, and no amount of re-rendering should lose it. Unlike a column, it
 	// does not compound when a document is read and written repeatedly.
 	var head rendered
-	if r.comments && n.Comment != nil {
+	if r.comments && !n.Comment.Blank() {
 		// The gap is above the comment, which is what now leads the entry.
 		head = join(sepNone, leaf(blankLineBefore(n.Comment)), r.render(n.Comment), leaf("\n"))
 	} else {
@@ -387,7 +387,7 @@ func (r *Renderer) mappingValue(n *MappingValueNode) rendered {
 		// with one written above the '?'. The line comment claims the rest of
 		// the line, so the value goes below whatever shape it is.
 		var lineComment string
-		if r.comments && n.LineComment != nil {
+		if r.comments && !n.LineComment.Blank() {
 			lineComment = " " + r.String(n.LineComment)
 		}
 
@@ -509,7 +509,7 @@ func (r *Renderer) hoistBlockComment(key, n Node, value rendered) (string, rende
 		}
 		comment = node.Comment
 	}
-	if comment == nil || !sameLine(comment, key) {
+	if comment.Blank() || !sameLine(comment, key) {
 		// Written on its own line above the block, it is a comment on the block
 		// and stays there.
 		return "", value
@@ -755,7 +755,7 @@ func (r *Renderer) sequence(n *SequenceNode) rendered {
 	}
 
 	lines := make([]rendered, 0, len(n.Values)+1)
-	if r.comments && n.Comment != nil {
+	if r.comments && !n.Comment.Blank() {
 		lines = append(lines, r.render(n.Comment))
 	}
 	for i, value := range n.Values {
@@ -816,7 +816,7 @@ func (r *Renderer) sequence(n *SequenceNode) rendered {
 		}
 		lines = append(lines, join(sepNone, leaf(blank+"- "), entry, leaf(comment)))
 	}
-	if r.comments && n.FootComment != nil {
+	if r.comments && !n.FootComment.Blank() {
 		lines = append(lines, join(sepNone, leaf(blankLineBefore(n.FootComment)), r.render(n.FootComment)))
 	}
 
@@ -848,7 +848,7 @@ func (r *Renderer) entryLineComment(n *SequenceNode, i int) string {
 	}
 
 	comment := n.Entries[i].LineComment
-	if comment == nil {
+	if comment.Blank() {
 		return ""
 	}
 
@@ -873,11 +873,11 @@ func (r *Renderer) anchor(n *AnchorNode) string {
 // the first. Two comments cannot share the end of one line: written there they
 // come back as a single comment, "#" inside one being ordinary text.
 func firstComment(own, borrowed *CommentGroupNode) *CommentGroupNode {
-	if own != nil {
+	if !own.Blank() {
 		return own
 	}
 
-	return borrowed
+	return present(borrowed)
 }
 
 func (r *Renderer) tag(n *TagNode) string {
@@ -906,7 +906,7 @@ func (r *Renderer) tag(n *TagNode) string {
 // line has either no value or a block written underneath, and one with a value
 // beside it carries no comment of its own.
 func (r *Renderer) withOwnComment(comment *CommentGroupNode, text string) string {
-	if !r.comments || comment == nil {
+	if !r.comments || comment.Blank() {
 		return text
 	}
 
@@ -1039,7 +1039,7 @@ func (r *Renderer) literalAt(n *LiteralNode, atDocumentRoot bool) string {
 		header = restateIndent(header, stated)
 	}
 
-	if r.comments && n.Comment != nil {
+	if r.comments && !n.Comment.Blank() {
 		header += " " + r.String(n.Comment)
 	}
 
@@ -1319,7 +1319,7 @@ func carriesOwnIndent(n Node) bool {
 // written and the only place they can go: a directive is one line, so there is
 // nothing to append them to.
 func (r *Renderer) directive(n *DirectiveNode) string {
-	if !r.comments || n.Comment == nil {
+	if !r.comments || n.Comment.Blank() {
 		return n.String()
 	}
 
@@ -1342,7 +1342,7 @@ func (r *Renderer) commentGroup(n *CommentGroupNode) string {
 }
 
 func (r *Renderer) footComment(c *CommentGroupNode) rendered {
-	if !r.comments || c == nil {
+	if !r.comments || c.Blank() {
 		return rendered{}
 	}
 
@@ -1385,11 +1385,11 @@ func (r *Renderer) flowCarriesComments(values []Node, comments flowComments) boo
 	if !r.comments {
 		return false
 	}
-	if comments.start != nil || comments.foot != nil {
+	if !comments.start.Blank() || !comments.foot.Blank() {
 		return true
 	}
 	for _, head := range comments.heads {
-		if head != nil {
+		if !head.Blank() {
 			return true
 		}
 	}
@@ -1410,7 +1410,7 @@ func (r *Renderer) flowCarriesComments(values []Node, comments flowComments) boo
 // it is still a flow collection.
 func (r *Renderer) flowBlock(open, closing string, values []Node, comments flowComments) string {
 	lines := make([]string, 0, len(values)+2)
-	if comments.start != nil {
+	if !comments.start.Blank() {
 		open += " " + r.String(comments.start)
 	}
 	lines = append(lines, open)
@@ -1418,7 +1418,7 @@ func (r *Renderer) flowBlock(open, closing string, values []Node, comments flowC
 	heads := comments.heads
 	bare := r.bare()
 	for i, value := range values {
-		if i < len(heads) && heads[i] != nil {
+		if i < len(heads) && !heads[i].Blank() {
 			lines = append(lines, r.indented(r.String(heads[i])))
 		}
 		if head := headCommentOf(value); head != nil {
@@ -1436,7 +1436,7 @@ func (r *Renderer) flowBlock(open, closing string, values []Node, comments flowC
 		}
 		lines = append(lines, r.indented(entry))
 	}
-	if comments.foot != nil {
+	if !comments.foot.Blank() {
 		lines = append(lines, r.indented(r.String(comments.foot)))
 	}
 
@@ -1446,7 +1446,7 @@ func (r *Renderer) flowBlock(open, closing string, values []Node, comments flowC
 // headCommentOf returns the comment written above an entry, or nil.
 func headCommentOf(n Node) *CommentGroupNode {
 	if entry, ok := n.(*MappingValueNode); ok {
-		return entry.Comment
+		return present(entry.Comment)
 	}
 
 	return nil
@@ -1457,15 +1457,25 @@ func headCommentOf(n Node) *CommentGroupNode {
 func lineCommentOf(n Node) *CommentGroupNode {
 	entry, ok := n.(*MappingValueNode)
 	if !ok {
-		return n.GetComment()
+		return present(n.GetComment())
 	}
 	if entry.Value != nil {
-		if comment := entry.Value.GetComment(); comment != nil {
+		if comment := present(entry.Value.GetComment()); comment != nil {
 			return comment
 		}
 	}
 
-	return entry.Key.GetComment()
+	return present(entry.Key.GetComment())
+}
+
+// present returns c, or nil where it writes nothing. A caller testing a group
+// against nil sees one emptied by [CommentNode.Remove] as still there.
+func present(c *CommentGroupNode) *CommentGroupNode {
+	if c.Blank() {
+		return nil
+	}
+
+	return c
 }
 
 // inline renders a node for a context that cannot hold a line break.
@@ -1474,7 +1484,7 @@ func (r *Renderer) inline(n Node) string {
 }
 
 func (r *Renderer) withComment(text rendered, c *CommentGroupNode) rendered {
-	if !r.comments || c == nil {
+	if !r.comments || c.Blank() {
 		return text
 	}
 

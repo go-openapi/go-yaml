@@ -29,3 +29,17 @@ func SourceTokenEnds(n Node) []int32 {
 
 	return ends
 }
+
+// EveryComment returns every comment under n, in every slot of every node. It
+// is the walk the verbatim renderer collects its edits by, exported so that a
+// test can edit a whole document's comments without repeating the list of slots.
+func EveryComment(n Node) []*CommentNode {
+	var out []*CommentNode
+	eachNode(n, func(node Node) {
+		for _, placed := range commentsOn(node) {
+			out = append(out, placed.comment)
+		}
+	})
+
+	return out
+}

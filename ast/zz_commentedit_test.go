@@ -1,0 +1,202 @@
+// SPDX-FileCopyrightText: Copyright 2026 go-swagger maintainers
+// SPDX-License-Identifier: Apache-2.0
+
+package ast_test
+
+import (
+	"bytes"
+	"testing"
+
+	"github.com/go-openapi/testify/v2/assert"
+	"github.com/go-openapi/testify/v2/require"
+
+	"github.com/go-openapi/go-yaml/ast"
+	"github.com/go-openapi/go-yaml/parser"
+	"github.com/go-openapi/go-yaml/token"
+)
+
+// TestFixedACommentEditedOnAParsedNodeIsRendered.
+//
+// A comment on a node the scanner minted was edited by putting another group in
+// its place, which threw away the token saying which bytes of the source it
+// stands on. Renderer.VerbatimFile had nothing left to take the old text out by,
+// so an added comment was dropped and a changed or removed one came back as the
+// text the document wrote -- while Renderer.String showed the edit, so the two
+// renderings disagreed about what the tree said.
+//
+// CommentNode.Replace and CommentNode.Remove record what happens to the comment
+// beside the token instead of over it, and the renderers read that: verbatim
+// takes the source bytes out where it stands on them, and lays out a comment a
+// caller added.
+func TestFixedACommentEditedOnAParsedNodeIsRendered(t *testing.T) {
+	for _, tc := range []struct {
+		name, src, want string
+		edit            func(*ast.MappingNode)
+	}{{
+		name: "remove a comment beside a value",
+		src:  "a: 1 # old\nb: 2\n",
+		want: "a: 1\nb: 2\n",
+		edit: func(m *ast.MappingNode) { m.Values[0].Value.GetComment().Remove() },
+	}, {
+		name: "replace a comment beside a value",
+		src:  "a: 1 # old\nb: 2\n",
+		want: "a: 1 # new\nb: 2\n",
+		edit: func(m *ast.MappingNode) { require.NoError(t, m.Values[0].Value.GetComment().Replace(" new")) },
+	}, {
+		name: "remove a head comment, and the line it owns",
+		src:  "# head\na: 1\nb: 2\n",
+		want: "a: 1\nb: 2\n",
+		edit: func(m *ast.MappingNode) { m.Values[0].Comment.Remove() },
+	}, {
+		name: "replace a head comment",
+		src:  "# head\na: 1\nb: 2\n",
+		want: "# other\na: 1\nb: 2\n",
+		edit: func(m *ast.MappingNode) { require.NoError(t, m.Values[0].Comment.Replace(" other")) },
+	}, {
+		name: "remove one line of a head comment",
+		src:  "# one\n# two\na: 1\n",
+		want: "# two\na: 1\n",
+		edit: func(m *ast.MappingNode) { m.Values[0].Comment.Comments[0].Remove() },
+	}, {
+		name: "add a comment beside a value",
+		src:  "a: 1\nb: 2\n",
+		want: "a: 1 # added\nb: 2\n",
+		edit: func(m *ast.MappingNode) { require.NoError(t, m.Values[0].Value.SetComment(comment(" added"))) },
+	}, {
+		name: "add a head comment above an entry",
+		src:  "a: 1\nb: 2\n",
+		want: "a: 1\n# above b\nb: 2\n",
+		edit: func(m *ast.MappingNode) { require.NoError(t, m.Values[1].SetComment(comment(" above b"))) },
+	}, {
+		name: "an added head comment keeps the indentation",
+		src:  "k:\n  a: 1\n  b: 2\n",
+		want: "k:\n  a: 1\n  # above b\n  b: 2\n",
+		edit: func(m *ast.MappingNode) {
+			inner, ok := m.Values[0].Value.(*ast.MappingNode)
+			require.True(t, ok)
+			require.NoError(t, inner.Values[1].SetComment(comment(" above b")))
+		},
+	}} {
+		t.Run(tc.name, func(t *testing.T) {
+			file, err := parser.ParseBytes([]byte(tc.src), parser.WithComments())
+			require.NoErrorf(t, err, "%q", tc.src)
+			mapping, ok := file.Docs[0].Body.(*ast.MappingNode)
+			require.True(t, ok)
+			tc.edit(mapping)
+
+			var out bytes.Buffer
+			require.NoError(t, ast.NewRenderer(ast.WithSource([]byte(tc.src))).VerbatimFile(&out, file))
+
+			assert.Equalf(t, tc.want, out.String(), "verbatim: %q", tc.src)
+			assert.Equalf(t, tc.want, file.String(), "the two renderings say the same: %q", tc.src)
+
+			_, err = parser.ParseBytes(out.Bytes(), parser.WithComments())
+			assert.NoErrorf(t, err, "%q renders as %q, which does not parse", tc.src, out.String())
+		})
+	}
+}
+
+// TestACommentTheDocumentWroteIsNotAssignedOver.
+//
+// Node.SetComment rejects putting a caller's own comment, or nothing, over one
+// the document wrote: the group being dropped holds the only record of which
+// bytes it stands on. Adding one where the document wrote none is not that, and
+// is allowed.
+func TestACommentTheDocumentWroteIsNotAssignedOver(t *testing.T) {
+	const src = "a: 1 # old\nb: 2\n"
+
+	file, err := parser.ParseBytes([]byte(src), parser.WithComments())
+	require.NoError(t, err)
+	mapping, ok := file.Docs[0].Body.(*ast.MappingNode)
+	require.True(t, ok)
+
+	assert.Error(t, mapping.Values[0].Value.SetComment(nil), "assigning nothing over a written comment")
+	assert.Error(t, mapping.Values[0].Value.SetComment(comment(" new")), "assigning a group over a written comment")
+	assert.NoError(t, mapping.Values[1].Value.SetComment(comment(" fresh")), "adding one where the document wrote none")
+
+	t.Run("and a break in a replacement is rejected", func(t *testing.T) {
+		assert.Error(t, mapping.Values[0].Value.GetComment().Replace(" one\n# two"))
+	})
+}
+
+// TestEditingEveryCommentOfTheCorpus removes, and then replaces, every comment
+// of every document the parser accepts, and reads the result back.
+//
+// It is the census for the edit: a slot the walk does not reach keeps its
+// comment, so removing every comment and finding one left says which slot was
+// missed. Replacing counts instead, since a replacement stands where the comment
+// stood.
+func TestEditingEveryCommentOfTheCorpus(t *testing.T) {
+	t.Parallel()
+
+	var tested, leftBehind, lostOnReplace, unreadable int
+	var names []string
+	note := func(name string) {
+		if len(names) < 8 {
+			names = append(names, name)
+		}
+	}
+
+	for _, src := range renderSources(t) {
+		before := commentTokensIn(src.text)
+		if before == 0 {
+			continue
+		}
+		if _, err := parser.ParseBytes([]byte(src.text), parser.WithComments()); err != nil {
+			continue
+		}
+		tested++
+
+		removed, normalized := renderEdited(t, src.text, func(c *ast.CommentNode) { c.Remove() })
+		if commentTokensIn(removed) != 0 || commentTokensIn(normalized) != 0 {
+			leftBehind++
+			note(src.name)
+		}
+		if _, err := parser.ParseBytes([]byte(removed), parser.WithComments()); err != nil {
+			unreadable++
+			note(src.name)
+		}
+
+		replaced, normalized := renderEdited(t, src.text, func(c *ast.CommentNode) { _ = c.Replace(" x") })
+		if commentTokensIn(replaced) != before || commentTokensIn(normalized) != before {
+			lostOnReplace++
+			note(src.name)
+		}
+	}
+
+	require.Positive(t, tested)
+	t.Logf("edited the comments of %d documents: %d kept one through a removal, %d changed count through a replacement, %d no longer parse",
+		tested, leftBehind, lostOnReplace, unreadable)
+
+	require.Zerof(t, leftBehind, "%d documents kept a comment after every one was removed: %v", leftBehind, names)
+	require.Zerof(t, lostOnReplace, "%d documents hold a different number of comments after every one was replaced: %v", lostOnReplace, names)
+	require.Zerof(t, unreadable, "%d documents no longer parse once their comments are removed: %v", unreadable, names)
+}
+
+// renderEdited parses src, applies edit to every comment in it, and renders it
+// back both ways: verbatim, and laid out by depth. The two have to agree about
+// what the tree says, which is the half of this defect that made an edit look
+// as though it had worked.
+func renderEdited(t *testing.T, src string, edit func(*ast.CommentNode)) (verbatim, normalized string) {
+	t.Helper()
+
+	file, err := parser.ParseBytes([]byte(src), parser.WithComments())
+	require.NoError(t, err)
+
+	for _, doc := range file.Docs {
+		for _, comment := range ast.EveryComment(doc) {
+			edit(comment)
+		}
+	}
+
+	var out bytes.Buffer
+	require.NoError(t, ast.NewRenderer(ast.WithSource([]byte(src))).VerbatimFile(&out, file))
+
+	return out.String(), file.String()
+}
+
+// comment builds the group a caller would put on a node: its token carries no
+// source, which is what tells the renderer to lay it out.
+func comment(text string) *ast.CommentGroupNode {
+	return ast.CommentGroup([]*token.Token{token.New(text, "#"+text, token.Position{})})
+}

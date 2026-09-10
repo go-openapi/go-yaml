@@ -263,6 +263,14 @@ func (n *BaseNode) SetHeadComment(node *CommentGroupNode) error {
 }
 
 func addCommentString(base string, node *CommentGroupNode) string {
+	if node.Blank() {
+		// Every String method tests its comment against nil before calling
+		// here, and a group emptied by [CommentNode.Remove] is still there:
+		// without this, "a: 1 # c" with the comment removed came back "a: 1 "
+		// with the space that stood in front of it.
+		return base
+	}
+
 	return fmt.Sprintf("%s %s", base, node.String())
 }
 
@@ -307,9 +315,74 @@ func (n *BaseNode) GetComment() *CommentGroupNode {
 
 // SetComment set comment token
 func (n *BaseNode) SetComment(node *CommentGroupNode) error {
+	if err := refuseOverwritingWhatWasWritten(n.Comment, node); err != nil {
+		return err
+	}
 	n.Comment = node
+
 	return nil
 }
+
+// refuseOverwritingWhatWasWritten rejects putting a comment of a caller's own,
+// or nothing at all, over one the document wrote.
+//
+// The comment being dropped is the only record of which bytes of the source it
+// stands on, and [Renderer.VerbatimFile] needs them to take the old text out of
+// the copy. Assigned over, the tree says one thing and the document another:
+// "a: 1 # old" came back as "a: 1 # old" whatever was put in its place, and a
+// comment removed this way came back as well.
+//
+// Use [CommentNode.Replace] and [CommentNode.Remove], which keep the token and
+// say what happens to it. A parse building a tree reaches for [TakeComment],
+// which is not an edit: the comment is being put on the node it belongs to and
+// the document's own text is not changing.
+func refuseOverwritingWhatWasWritten(old, node *CommentGroupNode) error {
+	if !fromSourceGroup(old) || fromSourceGroup(node) {
+		return nil
+	}
+
+	return fmt.Errorf(
+		"%q was written by the document: edit it with CommentNode.Replace or CommentNode.Remove rather than assigning over it",
+		old.String(),
+	)
+}
+
+// fromSourceGroup reports whether every comment in g was cut from a document.
+func fromSourceGroup(g *CommentGroupNode) bool {
+	if g == nil || len(g.Comments) == 0 {
+		return false
+	}
+	for _, comment := range g.Comments {
+		if comment.Token == nil || !comment.Token.FromSource() {
+			return false
+		}
+	}
+
+	return true
+}
+
+// TakeComment hands over the comment standing on n and clears the slot, without
+// recording that the document no longer holds it.
+//
+// It is for a parse building a tree, where a comment read from the document is
+// being put on the node it belongs to. A caller editing a parsed tree wants
+// [CommentNode.Replace] or [CommentNode.Remove] instead: those keep the token
+// that says which bytes of the source the comment stands on, and this drops it.
+func TakeComment(n Node) *CommentGroupNode {
+	if n == nil {
+		return nil
+	}
+	comment := n.GetComment()
+	if carrier, ok := n.(interface{ clearComment() }); ok {
+		carrier.clearComment()
+	}
+
+	return comment
+}
+
+func (n *BaseNode) clearComment() { n.Comment = nil }
+
+func (n *SequenceEntryNode) clearComment() { n.LineComment = nil }
 
 // Null create node for null value
 func Null(tk *token.Token) *NullNode {
@@ -1986,6 +2059,83 @@ func (n *TagNode) ArrayRange() *ArrayNodeIter {
 type CommentNode struct {
 	BaseNode
 	Token *token.Token
+	// edit is what a caller asked to happen to this comment, and text the words
+	// to put in its place. The zero value leaves the document's own text alone,
+	// so a parsed tree nobody has touched carries no edit at all.
+	//
+	// It is kept beside the token rather than written over it: the token says
+	// which bytes of the source this comment stands on, and
+	// [Renderer.VerbatimFile] needs them to take the old text out of the copy.
+	// Assigning over a node's comment throws them away, which is why a comment
+	// the document wrote is edited through [CommentNode.Replace] and
+	// [CommentNode.Remove] and not by putting another group in its place.
+	edit commentEdit
+	text string
+}
+
+// commentEdit is what happens to a comment when it is rendered.
+type commentEdit uint8
+
+const (
+	// commentAsWritten writes the comment the document wrote.
+	commentAsWritten commentEdit = iota
+	// commentReplaced writes CommentNode.text in its place.
+	commentReplaced
+	// commentRemoved writes nothing, and takes the line the comment stood on
+	// with it where the comment was alone on it.
+	commentRemoved
+)
+
+// Replace records that n renders as "# " + text instead of what the document
+// wrote.
+//
+// text is the comment without its "#": [CommentNode.String] adds one, as it
+// does for a parsed comment, whose token holds the text after the "#" as well.
+// A line break in text would end the comment and put the rest of it into the
+// document as content, so it is rejected here rather than at rendering time.
+func (n *CommentNode) Replace(text string) error {
+	if n == nil {
+		return errors.New("no comment to replace")
+	}
+	if strings.ContainsAny(text, "\n\r") {
+		return fmt.Errorf("a comment holds one line, and this holds a break: %q", text)
+	}
+	n.edit, n.text = commentReplaced, text
+
+	return nil
+}
+
+// Remove records that n is not written at all.
+//
+// The comment stays in the tree so that [Renderer.VerbatimFile] knows which
+// bytes of the source to leave out. Setting the node's comment field to nil
+// instead loses that and the old text comes back.
+func (n *CommentNode) Remove() {
+	if n == nil {
+		return
+	}
+	n.edit, n.text = commentRemoved, ""
+}
+
+// Removed reports whether n has been removed by [CommentNode.Remove].
+func (n *CommentNode) Removed() bool {
+	return n != nil && n.edit == commentRemoved
+}
+
+// Text is what n renders as, without the "#": the replacement where one was
+// set, and the document's own words otherwise.
+func (n *CommentNode) Text() string {
+	if n == nil {
+		return ""
+	}
+	if n.edit == commentReplaced {
+		return n.text
+	}
+	if n.Token == nil {
+		return ""
+	}
+
+	return n.Token.Value
 }
 
 // Type returns TagType
@@ -2004,7 +2154,11 @@ func (n *CommentNode) AddColumn(col int) {
 
 // String comment to text
 func (n *CommentNode) String() string {
-	return fmt.Sprintf("#%s", n.Token.Value)
+	if n.Removed() {
+		return ""
+	}
+
+	return "#" + n.Text()
 }
 
 // MarshalYAML encodes to a YAML text
@@ -2023,10 +2177,77 @@ func (n *CommentGroupNode) Type() NodeType { return CommentType }
 
 // GetToken returns token instance
 func (n *CommentGroupNode) GetToken() *token.Token {
-	if len(n.Comments) > 0 {
-		return n.Comments[0].Token
+	for _, comment := range n.Comments {
+		if !comment.Removed() {
+			return comment.Token
+		}
 	}
+
 	return nil
+}
+
+// Visible hands over the comments of n that are still written, in the order
+// they stand. A comment [CommentNode.Remove] took out is skipped.
+func (n *CommentGroupNode) Visible() []*CommentNode {
+	if n == nil {
+		return nil
+	}
+
+	out := make([]*CommentNode, 0, len(n.Comments))
+	for _, comment := range n.Comments {
+		if !comment.Removed() {
+			out = append(out, comment)
+		}
+	}
+
+	return out
+}
+
+// Blank reports whether n writes nothing: it is absent, holds no comment, or
+// every comment in it has been removed.
+//
+// A renderer asks this rather than testing the group against nil, or a group
+// emptied by [CommentNode.Remove] leaves the space that was to stand in front
+// of it.
+func (n *CommentGroupNode) Blank() bool {
+	if n == nil {
+		return true
+	}
+	for _, comment := range n.Comments {
+		if !comment.Removed() {
+			return false
+		}
+	}
+
+	return true
+}
+
+// Replace records that the group renders as one comment reading "# " + text.
+//
+// It is [CommentNode.Replace] on a group holding one comment, which is what a
+// group holds nearly everywhere: a run of comment lines above one node is the
+// exception. It rejects a group holding several rather than guessing which one
+// the caller meant.
+func (n *CommentGroupNode) Replace(text string) error {
+	if n == nil {
+		return errors.New("no comment to replace")
+	}
+	visible := n.Visible()
+	if len(visible) != 1 {
+		return fmt.Errorf("this group holds %d comments, so replace the one you mean", len(visible))
+	}
+
+	return visible[0].Replace(text)
+}
+
+// Remove records that nothing in the group is written.
+func (n *CommentGroupNode) Remove() {
+	if n == nil {
+		return
+	}
+	for _, comment := range n.Comments {
+		comment.Remove()
+	}
 }
 
 // AddColumn add column number to child nodes recursively
@@ -2039,18 +2260,19 @@ func (n *CommentGroupNode) AddColumn(col int) {
 // String comment to text
 func (n *CommentGroupNode) String() string {
 	values := []string{}
-	for _, comment := range n.Comments {
+	for _, comment := range n.Visible() {
 		values = append(values, comment.String())
 	}
+
 	return strings.Join(values, "\n")
 }
 
 func (n *CommentGroupNode) StringWithSpace(col int) string {
 	values := []string{}
 	space := strings.Repeat(" ", col)
-	for _, comment := range n.Comments {
+	for _, comment := range n.Visible() {
 		space := space
-		if comment.Token.BlankLineAbove() {
+		if comment.Token != nil && comment.Token.BlankLineAbove() {
 			space = fmt.Sprintf("%s%s", "\n", space)
 		}
 		values = append(values, space+comment.String())
