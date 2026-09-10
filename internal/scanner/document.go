@@ -71,6 +71,16 @@ func (s *Scanner) scanDocumentStart(ctx *Context) bool {
 	return true
 }
 
+// scanDocumentEnd reads the "..." that closes a document, and returns false for dots that open a plain scalar.
+//
+// The guards match [Scanner.scanDocumentStart]: column 1, no indentation, exactly three dots, and a space, a tab, a
+// line break or the end of the source after them. Without the last one "...x" scanned as a marker and a string, and
+// "...: 1" lost the key "...", where "---x" and "---: 1" read as plain scalars.
+// foundDocumentSeparatorMarker states the same rule for both markers.
+//
+// Recognizing the marker is where the two are alike. What may follow it on the line is not: "--- x" opens a document
+// whose content is "x", and "... x" is refused, because 9.1.2 allows only comments after a suffix. The scanner reads
+// both as a marker and a string, and the parser refuses the second with "unexpected end content".
 func (s *Scanner) scanDocumentEnd(ctx *Context) bool {
 	if s.indentNum != 0 {
 		return false
@@ -80,6 +90,12 @@ func (s *Scanner) scanDocumentEnd(ctx *Context) bool {
 	}
 	if ctx.repeatNum('.') != startDocMarkerLen {
 		return false
+	}
+	if ctx.size > ctx.idx+startDocMarkerLen {
+		c := ctx.src[ctx.idx+startDocMarkerLen]
+		if c != ' ' && c != '\t' && c != '\n' && c != '\r' {
+			return false
+		}
 	}
 
 	s.addBufferedTokenIfExists(ctx)
