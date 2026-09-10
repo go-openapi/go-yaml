@@ -593,7 +593,7 @@ func (w *jsonWriter) taggedValue(t *ast.TagNode) ([]byte, bool) {
 		return nil, false
 	case ast.TagKindMismatch:
 		w.fail(yamlerrors.NewSyntax(
-			fmt.Sprintf("%s names a kind this node is not", res.Tag), t.GetToken()))
+			fmt.Sprintf("%s does not support this kind of node", res.Tag), t.GetToken()))
 
 		return nil, false
 	case ast.TagValueMismatch:

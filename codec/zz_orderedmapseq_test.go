@@ -89,13 +89,20 @@ func TestAnOrderedMapTagReadsAsTheMapItNames(t *testing.T) {
 		// 1.0.0b1 pass "!!omap" through every shape, a conforming one
 		// included, so neither builds an ordered map and neither has a position
 		// on what a reader that does should require.
-		for _, src := range []string{"!!omap [{x: 1}, -2]\n", "!!omap [{x: 1, b: 2}]\n", "!!omap {x: 1}\n"} {
-			require.NoErrorf(t, parseOnly(src), "%q parses", src)
+		// The element shape is the codec's rule; the kind is the resolver's,
+		// which reads "!!omap does not support this kind of node" and covers
+		// every collection tag standing on the wrong kind.
+		for _, tc := range []struct{ src, says string }{
+			{"!!omap [{x: 1}, -2]\n", "!!omap names a sequence of one-entry mappings"},
+			{"!!omap [{x: 1, b: 2}]\n", "!!omap names a sequence of one-entry mappings"},
+			{"!!omap {x: 1}\n", "!!omap does not support this kind of node"},
+		} {
+			require.NoErrorf(t, parseOnly(tc.src), "%q parses", tc.src)
 
 			var got any
-			err := codec.Unmarshal([]byte(src), &got)
-			require.Errorf(t, err, "%q read %v", src, got)
-			assert.Containsf(t, err.Error(), "!!omap names a sequence of one-entry mappings", "%q", src)
+			err := codec.Unmarshal([]byte(tc.src), &got)
+			require.Errorf(t, err, "%q read %v", tc.src, got)
+			assert.Containsf(t, err.Error(), tc.says, "%q", tc.src)
 		}
 	})
 }

@@ -512,7 +512,7 @@ func TestParseReadsATaggedMappingEntryOnTheTagsOwnLine(t *testing.T) {
 			var got any
 			err := yaml.Unmarshal([]byte(source), &got)
 			require.Errorf(t, err, "%q", source)
-			assert.Contains(t, err.Error(), "!!str names a kind this node is not", "%q", source)
+			assert.Contains(t, err.Error(), "!!str does not support this kind of node", "%q", source)
 		}
 	})
 

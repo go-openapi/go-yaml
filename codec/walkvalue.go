@@ -441,7 +441,7 @@ func (b *valueBuilder) taggedWalkValue(n *ast.TagNode, value any) (any, error) {
 		return value, nil
 	case ast.TagKindMismatch:
 		return nil, yamlerrors.NewSyntax(
-			fmt.Sprintf("%s names a kind this node is not", res.Tag), n.GetToken())
+			fmt.Sprintf("%s does not support this kind of node", res.Tag), n.GetToken())
 	case ast.TagValueMismatch:
 		if res.Lax {
 			return b.strs.value(res.Text), nil

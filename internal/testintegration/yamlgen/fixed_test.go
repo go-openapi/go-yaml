@@ -1664,7 +1664,7 @@ func TestFixedATagOnItsOwnLineTakesTheBlockScalarUnderIt(t *testing.T) {
 		// wrong kind entirely. Both parse; the refusal is resolution's.
 		for src, says := range map[string]string{
 			"!!null\n>-\n x\n": `cannot read "x" as !!null`,
-			"!!null\n[1]\n":    "!!null names a kind this node is not",
+			"!!null\n[1]\n":    "!!null does not support this kind of node",
 		} {
 			_, perr := parser.ParseBytes([]byte(src), parser.WithComments())
 			require.NoErrorf(t, perr, "%q parses", src)

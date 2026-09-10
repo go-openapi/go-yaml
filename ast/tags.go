@@ -119,6 +119,16 @@ func (n *TagNode) Resolve() Resolution {
 		// where the tag stands on nothing, which every tag may do.
 		if scalar && !empty && text != "" {
 			res.Verdict = TagKindMismatch
+
+			return res
+		}
+		if !standsOnItsKind(tag, unwrapAnchor(n.Value)) {
+			// A tag naming one collection kind, standing on the other: "!!map"
+			// over a sequence, "!!seq" over a mapping. The check above asks
+			// only whether the node is a scalar, so the two collection kinds
+			// were never told apart and "a: !!map [1]" read as the sequence it
+			// is written as.
+			res.Verdict = TagKindMismatch
 		}
 
 		return res
@@ -327,6 +337,30 @@ func ParseTimestamp(text string) (time.Time, bool) {
 	}
 
 	return time.Time{}, false
+}
+
+// standsOnItsKind reports whether node is the collection kind tag names.
+//
+// A tag standing on nothing takes its own default and names no kind to check,
+// which covers a node the document left out and one written empty or null.
+//
+// "!!merge" is not checked here: the parser admits it only where a merge key
+// may stand, so a node it could disagree with never reaches this.
+func standsOnItsKind(tag token.ReservedTagKeyword, node Node) bool {
+	if node == nil {
+		return true
+	}
+
+	switch node.(type) {
+	case *NullNode:
+		return true
+	case *MappingNode, *MappingValueNode:
+		return tag != token.SequenceTag && tag != token.OrderedMapTag
+	case *SequenceNode:
+		return tag != token.MappingTag && tag != token.SetTag
+	default:
+		return true
+	}
 }
 
 // unwrapAnchor steps over an anchor standing between a tag and the node it

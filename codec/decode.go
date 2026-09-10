@@ -877,7 +877,7 @@ func (d *Decoder) nodeToValue(ctx context.Context, node ast.Node) (any, error) {
 			return d.nodeToValue(ctx, n.Value)
 		case ast.TagKindMismatch:
 			return nil, yamlerrors.NewSyntax(
-				fmt.Sprintf("%s names a kind this node is not", res.Tag), n.GetToken())
+				fmt.Sprintf("%s does not support this kind of node", res.Tag), n.GetToken())
 		case ast.TagValueMismatch:
 			if res.Lax {
 				// parser.WithLaxTags: the characters the scalar was written

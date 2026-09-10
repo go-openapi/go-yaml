@@ -224,7 +224,7 @@ func TestDefectAPropertiedEmptyKeyIsMishandled(t *testing.T) {
 		var got any
 		err := codec.Unmarshal([]byte("!!null &a1 : 1\n"), &got)
 		require.Error(t, err)
-		assert.Contains(t, err.Error(), "names a kind this node is not")
+		assert.Contains(t, err.Error(), "does not support this kind of node")
 
 		require.NoError(t, codec.Unmarshal([]byte("&a1 !!null : 1\n"), &got))
 		assert.Equal(t, map[string]any{"null": uint64(1)}, got)

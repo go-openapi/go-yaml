@@ -190,6 +190,48 @@ func TestResolveReportsAKindMismatch(t *testing.T) {
 	})
 }
 
+// TestResolveTellsTheTwoCollectionKindsApart covers a tag naming one collection
+// kind and standing on the other.
+//
+// Resolve asked only whether the node was a scalar, so "!!map" over a sequence
+// and "!!seq" over a mapping both came back resolved and the document read as
+// what it was written as. The comment on the check said "A collection tag on a
+// scalar, and the other way about" over a condition testing only the scalar
+// half.
+//
+// "!!omap" is here for its kind alone. That it names a sequence of one-entry
+// mappings is the codec's rule, and it keeps its own message.
+func TestResolveTellsTheTwoCollectionKindsApart(t *testing.T) {
+	for _, tc := range []struct {
+		src  string
+		want ast.TagVerdict
+	}{
+		{"k: !!seq [1]\n", ast.TagResolved},
+		{"k: !!seq {x: 1}\n", ast.TagKindMismatch},
+		{"k: !!map {x: 1}\n", ast.TagResolved},
+		{"k: !!map [1]\n", ast.TagKindMismatch},
+		{"k: !!set {x, y}\n", ast.TagResolved},
+		{"k: !!set [1]\n", ast.TagKindMismatch},
+		{"k: !!omap [{x: 1}]\n", ast.TagResolved},
+		{"k: !!omap {x: 1}\n", ast.TagKindMismatch},
+	} {
+		assert.Equalf(t, tc.want, tagOf(t, tc.src).Resolve().Verdict, "%q", tc.src)
+	}
+
+	t.Run("through an anchor between the tag and the node", func(t *testing.T) {
+		assert.Equal(t, ast.TagKindMismatch, tagOf(t, "k: !!map &a [1]\n").Resolve().Verdict)
+	})
+
+	t.Run("a written null is a scalar, and mismatches as one", func(t *testing.T) {
+		// Unchanged by the kind check and settled by the scalar branch above
+		// it: "null" written out is four characters of scalar, where "k: !!map"
+		// with nothing after it leaves the node empty and takes the tag's
+		// default.
+		assert.Equal(t, ast.TagKindMismatch, tagOf(t, "k: !!map null\n").Resolve().Verdict)
+		assert.Equal(t, ast.TagResolved, tagOf(t, "k: !!map\n").Resolve().Verdict)
+	})
+}
+
 // taggedBy builds a tag node by hand, as a caller composing a tree does.
 func taggedBy(uri string, value ast.Node) *ast.TagNode {
 	tag := ast.Tag(token.New("!", "!", token.Position{}))

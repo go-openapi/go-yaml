@@ -138,5 +138,5 @@ func TestLaxTagsDoesNotExcuseAKindMismatch(t *testing.T) {
 	var v any
 	err = codec.NewDecoder(bytes.NewReader(nil)).DecodeFromNode(f.Docs[0].Body, &v)
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "names a kind this node is not")
+	assert.Contains(t, err.Error(), "does not support this kind of node")
 }
