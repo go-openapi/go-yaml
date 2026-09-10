@@ -17,8 +17,21 @@ import (
 	"github.com/go-openapi/go-yaml/parser"
 )
 
-// commentLossCeiling is how many comments the parse may read and then attach to
-// nothing, over the documents it accepts.
+// commentLossCeiling is how many comments the parse may stage against a token
+// and then never claim, over the documents it accepts.
+//
+// ⚠️ It counts one route out of several, and an earlier version of this comment
+// said it counted "the comments the parse read and attached to nothing", which
+// it does not. Twenty-two corpus documents come back from a rendering holding
+// fewer comments than they went in with; two of them show up here. The measure
+// of loss is TestRenderingKeepsTheCommentsItWasGiven in ast/, which counts what
+// comes back rather than how it went missing.
+//
+// Closing the gap from this side is not possible today. comment.scanned counts
+// every comment read, but a foot comment and one written on a "---" are
+// attached through routes with no counter at all, so scanned minus the attach
+// counters reports four kept comments as lost for every real one. It would take
+// a counter on those two routes, which is parser code and not test code.
 //
 // Two ways it happens, and the counters tell them apart:
 //
