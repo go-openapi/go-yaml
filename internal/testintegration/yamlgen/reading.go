@@ -394,13 +394,17 @@ func (r *readings) under(v Value) (any, bool) {
 //
 // Only a leading-zero integer gets here. The text is taken from the emitter's
 // own intText rather than re-derived, so the answer follows what was written.
+//
+// The tag passed is "" because a number reaches this as a key or as a bare
+// scalar and the tagger leaves both untagged; only a tagged integer spells
+// itself differently, and that is the case intText's tag argument exists for.
 func (r *readings) numberValue(v Value) (uint64, bool) {
 	n, isInt := v.(Int)
 	if !isInt || r == nil {
 		return 0, false
 	}
 
-	text, _ := intText(n.V, r.st)
+	text, _ := intText(n.V, r.st, "")
 
 	return valueUnder11(text)
 }
@@ -436,7 +440,7 @@ func (r *readings) numberText(v Value) (string, bool) {
 
 	switch n := v.(type) {
 	case Int:
-		text, _ = intText(n.V, r.st)
+		text, _ = intText(n.V, r.st, "")
 	case BigInt:
 		text, _ = bigIntText(n.V, r.st)
 	case Float:

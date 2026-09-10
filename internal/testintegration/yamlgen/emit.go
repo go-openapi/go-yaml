@@ -504,7 +504,7 @@ func (e *emitter) inlineWith(v Value, flow bool, tag string) (string, bool) {
 
 		return out, true
 	default:
-		return e.simpleScalar(v, flow), true
+		return e.simpleScalar(v, flow, tag), true
 	}
 }
 
@@ -578,7 +578,7 @@ func (e *emitter) block(v Value, indent, depth int) {
 		e.literal(n.V, indent+e.st.Indent, e.st.Indent+1)
 	default:
 		e.pad(indent)
-		e.buf.WriteString(e.simpleScalar(v, false))
+		e.buf.WriteString(e.simpleScalar(v, false, ""))
 		e.buf.WriteString("\n")
 	}
 }
@@ -955,7 +955,7 @@ func (e *emitter) keyIn(k Value, flow bool) string {
 		// Null, Bool, Int and Float, whose spelling has no choices beyond the
 		// ones Style names. A Null key under the empty spelling writes nothing
 		// at all, which is the ": a" shape.
-		return e.simpleScalar(k, flow)
+		return e.simpleScalar(k, flow, "")
 	}
 
 	// Deliberately not inline(): a key is written on the line that introduces
@@ -969,7 +969,11 @@ func (e *emitter) keyIn(k Value, flow bool) string {
 
 // simpleScalar writes the scalars whose spelling has no interesting choices
 // beyond the ones Style names.
-func (e *emitter) simpleScalar(v Value, flow bool) string {
+//
+// tag is the tag written in front of v, or "" where none is. Only the integer
+// spellings read it, and only to keep a tag off a spelling that names a type
+// the scalar is not.
+func (e *emitter) simpleScalar(v Value, flow bool, tag string) string {
 	switch n := v.(type) {
 	case Null:
 		// The empty spelling of null is a block-context spelling: it relies on
@@ -993,7 +997,7 @@ func (e *emitter) simpleScalar(v Value, flow bool) string {
 	case Int:
 		e.feat.add(FeaturePlain)
 
-		return e.number(intText(n.V, e.st))
+		return e.number(intText(n.V, e.st, tag))
 	case BigInt:
 		e.feat.add(FeaturePlain)
 		e.feat.add(FeatureValueBigInt)
@@ -1209,8 +1213,29 @@ func (e *emitter) number(text string, form NumberForm) string {
 // The core schema puts no sign on a hex or octal integer -- "-0x1f" and "+0x1f"
 // are both strings under §10.3.2 -- so a negative integer has only its decimal
 // spelling and falls back to it. An exponent would make a float of it.
-func intText(v int, st Style) (string, NumberForm) {
+func intText(v int, st Style, tag string) (string, NumberForm) {
 	if v < 0 {
+		return strconv.Itoa(v), NumberPlain
+	}
+
+	if st.Version == "1.1" && st.NumberForm == NumberLeadingZero && tag == TagInt && !octalDigits(v) {
+		// "!!int 08" under a "%YAML 1.1" directive: 08 is neither the octal
+		// 0[0-7]+ nor the decimal (0|[1-9][0-9]*) that 1.1's int gives, so the
+		// scalar is a string and the tag names a type it is not. Both
+		// yardsticks refuse the document -- go.yaml.in/yaml/v3 says "cannot
+		// decode !!float `08` as a !!int" and libfyaml 1.0.0b1 fails to parse
+		// it, measured 2026-09-10 -- so this library is right to, and a
+		// generator that wrote it accused the parser of the refusal.
+		//
+		// Core is not touched, because core's int is [-+]?[0-9]+ and reads
+		// "0878" as 878; gating this on the tag alone rewrote a 1.2 document
+		// in the stored corpus, which TestTheStoredCorpusIsWhatTheOracleWould
+		// SayNow caught the same hour.
+		//
+		// The untagged 1.1 spelling stays too: "09" written alone is the
+		// string "09" under 1.1 and the decimal 9 under core, a disagreement
+		// TestTheNumberFormsMeanUnder11WhatTheLibraryReads states and reads.
+		// Only a tag over non-octal digits at 1.1 has to give way.
 		return strconv.Itoa(v), NumberPlain
 	}
 
@@ -1228,6 +1253,19 @@ func intText(v int, st Style) (string, NumberForm) {
 	default:
 		return strconv.Itoa(v), NumberPlain
 	}
+}
+
+// octalDigits reports whether every digit of v's decimal spelling is an octal
+// one, which is what makes "0"+those digits an integer under YAML 1.1 as well
+// as under core -- 511 there and 0511's decimal reading here.
+func octalDigits(v int) bool {
+	for _, d := range strconv.Itoa(v) {
+		if d < '0' || d > '7' {
+			return false
+		}
+	}
+
+	return true
 }
 
 // octalText writes octal digits the way the document's version spells them.
