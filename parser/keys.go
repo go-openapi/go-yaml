@@ -12,20 +12,105 @@ import (
 	"github.com/go-openapi/go-yaml/token"
 )
 
-// recordMapKey records that the mapping starting at base uses text as a key,
-// written at pos.
+// keyLedger finds a key a mapping has already used, and notes the repeat on the
+// mapping that holds it.
+//
+// It is reused for the whole parse: a mapping pushes its keys on the way in and
+// drops them on the way out, so it grows once to the deepest, widest point of
+// the document and allocates nothing after that.
+//
+// Naming a key is the parser's, not the ledger's: [Parser.mapKeyIdentity] and
+// [Parser.builtKeyIdentity] read the anchor table, and an alias key is named
+// from what its anchor resolved to. The ledger is handed a name and answers
+// whether this mapping has used it. The two halves are edited together -- a fix
+// to the naming that never reaches the ledger drops a value silently -- so they
+// share this file.
+type keyLedger struct {
+	// keys records where a key was first written and not the node it came
+	// from: a node holds the token it was built from, and a token kept here
+	// outlives the entry that carried it, so every key of every open mapping
+	// would stay reachable until that mapping closed. A mapping of 5,000 keys
+	// held 5,000 tokens spread over the whole document; it now holds 5,000
+	// positions of 16 bytes and no token at all.
+	keys keySet
+
+	// probeBases shadows keys.entries with the base each key was recorded
+	// under, for the probe that holds mapKeyRef.base redundant. It is appended
+	// to only where probe.Enabled, which is a constant false in a normal build.
+	probeBases []int32
+
+	// openMaps holds the mapping node at each level of the descent, innermost
+	// last, so a repeated key is recorded on the mapping that holds it as it is
+	// read. One pointer per mapping open at once, which is the document's
+	// nesting and not its width.
+	openMaps []*ast.MappingNode
+	// builtKeys holds, for each mapping being read, the identity of every key a
+	// single token could not name, under the position it was first written at.
+	// It stands beside openMaps and is pushed and popped with it.
+	builtKeys []map[string]token.Position
+}
+
+// base is where the keys of the mapping opening now start.
+func (l *keyLedger) base() int { return l.keys.base() }
+
+// useJSONNames says a key is also compared under the name JSON gives it. See
+// [WithJSONCompatible].
+func (l *keyLedger) useJSONNames(on bool) { l.keys.jsonNames = on }
+
+// inMapping reports whether a mapping is being read.
+func (l *keyLedger) inMapping() bool { return len(l.builtKeys) > 0 }
+
+// record records that the mapping starting at base uses text as a key, written
+// at pos.
 //
 // It returns where text was first written, and whether the mapping had already
 // used it.
-func (p *Parser) recordMapKey(base int, text string, kind token.KeyKind, pos token.Position) (token.Position, bool, bool) {
+func (l *keyLedger) record(base int, text string, kind token.KeyKind, pos token.Position) (token.Position, bool, bool) {
 	if probe.Enabled {
-		p.checkKeyStackTail(base)
+		l.checkStackTail(base)
 	}
 
-	return p.keys.record(base, text, kind, pos)
+	return l.keys.record(base, text, kind, pos)
 }
 
-// checkKeyStackTail records whether the keys above base all belong to the
+// recordOnce records text among the keys of the mapping starting at base, and
+// notes a repeat on the mapping being read.
+func (l *keyLedger) recordOnce(base int, text string, kind token.KeyKind, pos token.Position) {
+	first, jsonOnly, defined := l.record(base, text, kind, pos)
+	if !defined {
+		return
+	}
+
+	l.noteDuplicate(ast.DuplicateKey{Name: text, At: pos, FirstAt: first, JSONNameOnly: jsonOnly})
+}
+
+// recordBuilt records identity among the built keys of the mapping being read,
+// noting a repeat under the name display gives it.
+//
+// Call it only where inMapping holds: it writes to the innermost mapping's map.
+func (l *keyLedger) recordBuilt(identity, display string, pos token.Position) {
+	top := len(l.builtKeys) - 1
+	if first, repeated := l.builtKeys[top][identity]; repeated {
+		l.noteDuplicate(ast.DuplicateKey{Name: display, At: pos, FirstAt: first})
+
+		return
+	}
+
+	if l.builtKeys[top] == nil {
+		l.builtKeys[top] = make(map[string]token.Position, 4)
+	}
+	l.builtKeys[top][identity] = pos
+}
+
+// noteDuplicate records dup on the mapping being read, which is the innermost
+// one open.
+func (l *keyLedger) noteDuplicate(dup ast.DuplicateKey) {
+	if n := len(l.openMaps); n > 0 {
+		l.openMaps[n-1].Duplicates = append(l.openMaps[n-1].Duplicates, dup)
+	}
+}
+
+// checkStackTail records whether the keys above base all belong to the
 // mapping recording now.
 //
 // Mappings nest, so a mapping records keys only while it is the innermost one
@@ -40,19 +125,19 @@ func (p *Parser) recordMapKey(base int, text string, kind token.KeyKind, pos tok
 // than reading the answer off the state it is checking.
 //
 // Nothing may raise this: a disagreement means an outer mapping recorded a key
-// over an inner one's, and closeMapping would then drop a key the outer still
+// over an inner one's, and keyLedger.close would then drop a key the outer still
 // owns. keySet.record reads the tail on that promise.
-func (p *Parser) checkKeyStackTail(base int) {
+func (l *keyLedger) checkStackTail(base int) {
 	// A repeated key records no entry, so the shadow can stand one ahead of the
 	// stack it shadows. Trim it back before reading either.
-	p.probeBases = p.probeBases[:min(len(p.probeBases), len(p.keys.entries))]
+	l.probeBases = l.probeBases[:min(len(l.probeBases), len(l.keys.entries))]
 
 	held := true
-	for i := base; i < len(p.probeBases); i++ {
-		if int(p.probeBases[i]) == base {
+	for i := base; i < len(l.probeBases); i++ {
+		if int(l.probeBases[i]) == base {
 			continue
 		}
-		at, was, text := i, p.probeBases[i], p.keys.entries[i].text
+		at, was, text := i, l.probeBases[i], l.keys.entries[i].text
 		probe.Check("mapkey.stackTailIsOneMapping", false, func() string {
 			return fmt.Sprintf("key %q at %d was recorded under mapping %d, recording now for %d",
 				text, at, was, base)
@@ -65,15 +150,26 @@ func (p *Parser) checkKeyStackTail(base int) {
 		probe.Check("mapkey.stackTailIsOneMapping", true, nil)
 	}
 
-	p.probeBases = append(p.probeBases, int32(base))
+	l.probeBases = append(l.probeBases, int32(base))
 }
 
-// closeMapping drops the keys of the mapping that started at base.
-func (p *Parser) closeMapping(base int) {
+// close drops the keys of the mapping that started at base.
+func (l *keyLedger) close(base int) {
 	if probe.Enabled {
-		p.probeBases = p.probeBases[:min(base, len(p.probeBases))]
+		l.probeBases = l.probeBases[:min(base, len(l.probeBases))]
 	}
-	p.keys.close(base)
+	l.keys.close(base)
+}
+
+// open records the mapping being read, and returns what takes it off.
+func (l *keyLedger) open(node *ast.MappingNode) func() {
+	l.openMaps = append(l.openMaps, node)
+	l.builtKeys = append(l.builtKeys, nil)
+
+	return func() {
+		l.openMaps = l.openMaps[:len(l.openMaps)-1]
+		l.builtKeys = l.builtKeys[:len(l.builtKeys)-1]
+	}
 }
 
 // recordKeyOnce records tk among the keys of the mapping being parsed, and
@@ -110,33 +206,13 @@ func (p *Parser) recordKeyOnce(ctx context, tk *token.Token, name string, kind t
 		return
 	}
 
-	pos, jsonOnly, defined := p.recordMapKey(ctx.keyBase, name, kind, tk.Position)
-	if !defined {
-		return
-	}
-
-	if n := len(p.openMaps); n > 0 {
-		open := p.openMaps[n-1]
-		open.Duplicates = append(open.Duplicates,
-			ast.DuplicateKey{Name: name, At: tk.Position, FirstAt: pos, JSONNameOnly: jsonOnly})
-	}
+	p.keys.recordOnce(ctx.keyBase, name, kind, tk.Position)
 }
 
 // unnamedKey reports whether mapKeyIdentity gave up on a key, which it says by
 // handing back no name under [token.KeyOther].
 func unnamedKey(name string, kind token.KeyKind) bool {
 	return name == "" && kind == token.KeyOther
-}
-
-// openMapping records the mapping being read, and returns what takes it off.
-func (p *Parser) openMapping(node *ast.MappingNode) func() {
-	p.openMaps = append(p.openMaps, node)
-	p.builtKeys = append(p.builtKeys, nil)
-
-	return func() {
-		p.openMaps = p.openMaps[:len(p.openMaps)-1]
-		p.builtKeys = p.builtKeys[:len(p.builtKeys)-1]
-	}
 }
 
 // recordBuiltKeyOnce records an entry whose key a single token cannot name, and
@@ -155,7 +231,7 @@ func (p *Parser) openMapping(node *ast.MappingNode) func() {
 // The refusal names the repeat's own token and the token of the entry that
 // first wrote the key, which is what a reader gets for a scalar key.
 func (p *Parser) recordBuiltKeyOnce(key ast.MapKeyNode) {
-	if p.allowDuplicateMapKey || len(p.builtKeys) == 0 {
+	if p.allowDuplicateMapKey || !p.keys.inMapping() {
 		return
 	}
 
@@ -177,20 +253,7 @@ func (p *Parser) recordBuiltKeyOnce(key ast.MapKeyNode) {
 		return
 	}
 
-	top := len(p.builtKeys) - 1
-	if first, repeated := p.builtKeys[top][identity]; repeated {
-		if n := len(p.openMaps); n > 0 {
-			open := p.openMaps[n-1]
-			open.Duplicates = append(open.Duplicates,
-				ast.DuplicateKey{Name: keyDisplayName(key), At: tk.Position, FirstAt: first})
-		}
-
-		return
-	}
-	if p.builtKeys[top] == nil {
-		p.builtKeys[top] = make(map[string]token.Position, 4)
-	}
-	p.builtKeys[top][identity] = tk.Position
+	p.keys.recordBuilt(identity, keyDisplayName(key), tk.Position)
 }
 
 // keepsNothing reports whether a walk may hand the cells of what it has just

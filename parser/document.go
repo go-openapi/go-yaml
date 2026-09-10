@@ -26,7 +26,7 @@ func (p *Parser) begin(src []byte) {
 		p.chunkSize = tokenarena.SizeFor(len(src))
 	}
 	p.tokens = tokenarena.New[group.TapeToken](p.chunkSize)
-	p.keys.jsonNames = p.jsonCompatible
+	p.keys.useJSONNames(p.jsonCompatible)
 
 	// A full scan holds every token it reads. The pin says so once, here, and
 	// [Parser.Walk] is what gives it back.

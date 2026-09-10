@@ -54,23 +54,9 @@ type Parser struct {
 	// expands to.
 	tagHandles map[string]string
 
-	// keys finds a key a mapping has already used. It is reused for the whole
-	// parse: a mapping pushes its keys on the way in and drops them on the way
-	// out, so it grows once to the deepest, widest point of the document and
-	// allocates nothing after that.
-	//
-	// It records where a key was first written and not the node it came from: a
-	// node holds the token it was built from, and a token kept here outlives
-	// the entry that carried it, so every key of every open mapping would stay
-	// reachable until that mapping closed. A mapping of 5,000 keys held 5,000
-	// tokens spread over the whole document; it now holds 5,000 positions of 16
-	// bytes and no token at all.
-	keys keySet
-
-	// probeBases shadows keys.entries with the base each key was recorded
-	// under, for the probe that holds mapKeyRef.base redundant. It is appended
-	// to only where probe.Enabled, which is a constant false in a normal build.
-	probeBases []int32
+	// keys says whether the mapping being read has already used a key, and
+	// notes the repeat on that mapping. See keys.go.
+	keys keyLedger
 
 	// seqEntries holds the entries of every sequence open at this point in the
 	// descent, innermost last. A sequence fills its slices from its own run
@@ -88,15 +74,6 @@ type Parser struct {
 	// begins, innermost last. Anchors nest, so it is a stack.
 	anchorFrom []int32
 
-	// openMaps holds the mapping node at each level of the descent, innermost
-	// last, so a repeated key is recorded on the mapping that holds it as it is
-	// read. One pointer per mapping open at once, which is the document's
-	// nesting and not its width.
-	openMaps []*ast.MappingNode
-	// builtKeys holds, for each mapping being read, the identity of every key a
-	// single token could not name, under the position it was first written at.
-	// It stands beside openMaps and is pushed and popped with it.
-	builtKeys []map[string]token.Position
 	// inLiteral counts the block scalars whose content is being read. A literal
 	// or folded scalar is a string whatever it spells -- 10.2.1.2 gives it
 	// tag:yaml.org,2002:str -- so nothing inside one resolves to another type,

@@ -31,7 +31,7 @@ var keyLedger = map[string]int64{ //nolint:gochecknoglobals // ok to store an im
 	// into a document-wide map.
 	//
 	// Nothing may raise this: a disagreement means an outer mapping recorded a
-	// key over an inner one's, and closeMapping would drop a key it still owns.
+	// key over an inner one's, and keyLedger.close would drop a key it still owns.
 	"mapkey.stackTailIsOneMapping": 0,
 }
 
