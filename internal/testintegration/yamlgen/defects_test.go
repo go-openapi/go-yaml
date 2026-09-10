@@ -463,10 +463,14 @@ func TestDefectACollectionKeyWrittenAloneInFlowIsRefused(t *testing.T) {
 		}
 	})
 
-	t.Run("the same key with a value parses", func(t *testing.T) {
+	t.Run("the same key with a value parses and does not decode", func(t *testing.T) {
+		// It read as {"map[a:0]": "v"} until the naming that invented that
+		// string went; a mapping cannot be a key in a Go map.
+		_, err := parser.ParseBytes([]byte("{{a: 0}: v}\n"))
+		require.NoError(t, err)
+
 		var got any
-		require.NoError(t, codec.Unmarshal([]byte("{{a: 0}: v}\n"), &got))
-		assert.Equal(t, map[string]any{"map[a:0]": "v"}, got)
+		assert.Error(t, codec.Unmarshal([]byte("{{a: 0}: v}\n"), &got), "read %v", got)
 	})
 }
 

@@ -30,11 +30,22 @@ var GoYAML = stance.Table{
 	Speaks:   Vocabulary(),
 	Requires: allRules(),
 	Stands: map[stance.Tag]stance.Stand{
-		// Measured: "first: &x [1, 2]\n*x : keyed\n" decodes, with the sequence
-		// as a key. A Go map key may be any comparable value and the decoder
-		// does not insist on a string, so a document JSON could not hold is one
-		// this library reads.
-		TagKeyNotAScalar: stance.Accepts,
+		// Changed 2026-09-10 by Fred's ruling, and the entry it replaced was
+		// measuring an accident. "first: &x [1, 2]\n*x : keyed\n" did decode,
+		// with the key named "[1 2]" -- Go's printing of the value the decoder
+		// built, not anything the document wrote. Three destinations gave three
+		// answers for one key, and a document writing that key beside the
+		// literal string "[1 2]" lost an entry with nothing reported.
+		//
+		// A collection has no text to name an entry by, so a destination keyed
+		// by a string cannot hold one and says so. A Go map keyed by any
+		// already refused it: Go hashes no slice or map. go.yaml.in/yaml/v3
+		// refuses one on every destination.
+		//
+		// The parse is unaffected: the document is well-formed and composes,
+		// and only the construction into Go stops. This table's verdict is at
+		// stance.Construct, which is the stage that stops.
+		TagKeyNotAScalar: stance.Refuses,
 
 		// Changed 2026-08-27, and it is the entry this table exists for.
 		//

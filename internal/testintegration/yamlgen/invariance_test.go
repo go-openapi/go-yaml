@@ -14,6 +14,7 @@ import (
 	"github.com/go-openapi/go-yaml"
 	"github.com/go-openapi/go-yaml/internal/testintegration/grammar"
 	"github.com/go-openapi/go-yaml/internal/testintegration/yamlgen"
+	"github.com/go-openapi/go-yaml/parser"
 )
 
 // TestPresentationInvariance is the property this package exists for: the same
@@ -116,8 +117,10 @@ func TestEmitParses(t *testing.T) {
 
 		src := yamlgen.Emit(value, style)
 
-		var got any
-		err := yaml.Unmarshal([]byte(src), &got)
+		// The parse and not a decode: a document may parse and still hold no Go
+		// value, which a collection standing as a mapping key does. Reading
+		// through Unmarshal reported that refusal here as a parser defect.
+		_, err := parser.ParseBytes([]byte(src))
 
 		if known := yamlgen.Known(yamlgen.Parses, value, style); known != nil {
 			tally.record(known.Name, err != nil)

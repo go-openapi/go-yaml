@@ -15,6 +15,7 @@ import (
 	yaml "github.com/go-openapi/go-yaml"
 	"github.com/go-openapi/go-yaml/codec"
 	"github.com/go-openapi/go-yaml/internal/testintegration/yamlgen"
+	"github.com/go-openapi/go-yaml/parser"
 )
 
 // plain is the style that writes a scalar unquoted wherever it can, which is
@@ -423,16 +424,38 @@ func readsAs(t *testing.T, w yamlgen.Written, core, under11 any) {
 // "%YAML 1.1" because a bare "<<" is an ordinary key under 1.2, where the merge
 // type is not in the schema.
 func TestAMergedKeyIsBeatenByTheOwnKeyThatResolvesToIt(t *testing.T) {
+	// ⚠️ The three cases here keyed on a sequence, which reached the decoder
+	// only while a collection key was named with Go's printing. A collection
+	// cannot be a key in a Go map, so the vehicle is a scalar written two ways:
+	// the question is whether an own key beats a merged one that *resolves* to
+	// it, not whether the two are spelled alike.
 	for _, tc := range []struct{ name, src string }{
-		{"a collection key", "%YAML 1.1\n---\na: &m\n  ? [1]\n  : from_merge\n  extra: kept\nb:\n  <<: *m\n  ? [1]\n  : own\n"},
-		{"the same key respelled", "%YAML 1.1\n---\na: &m\n  ? [1]\n  : from_merge\n  extra: kept\nb:\n  <<: *m\n  ? [ 1 ]\n  : own\n"},
-		{"an alias key", "%YAML 1.1\n---\nk: &k [1]\na: &m\n  ? *k\n  : from_merge\n  extra: kept\nb:\n  <<: *m\n  ? *k\n  : own\n"},
+		{"the same key respelled", "%YAML 1.1\n---\na: &m\n  ? 1\n  : from_merge\n  extra: kept\nb:\n  <<: *m\n  ? !!int 1\n  : own\n"},
+		{"quoted against plain", "%YAML 1.1\n---\na: &m\n  ? k\n  : from_merge\n  extra: kept\nb:\n  <<: *m\n  ? \"k\"\n  : own\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			var got map[string]any
 			require.NoErrorf(t, codec.Unmarshal([]byte(tc.src), &got), "%q", tc.src)
-			assert.Equalf(t, map[string]any{"[1]": "own", "extra": "kept"}, got["b"],
-				"the own entry wins and the merge-only key is kept: %q", tc.src)
+
+			b, ok := got["b"].(map[string]any)
+			require.Truef(t, ok, "%q", tc.src)
+			assert.Lenf(t, b, 2, "%q read %v", tc.src, b)
+			assert.Equalf(t, "kept", b["extra"], "the merge-only key is kept: %q", tc.src)
+			for name, v := range b {
+				if name != "extra" {
+					assert.Equalf(t, "own", v, "the own entry wins: %q", tc.src)
+				}
+			}
 		})
 	}
+
+	t.Run("and a collection key does not reach the question", func(t *testing.T) {
+		const src = "%YAML 1.1\n---\na: &m\n  ? [1]\n  : from_merge\nb:\n  <<: *m\n  ? [1]\n  : own\n"
+
+		_, err := parser.ParseBytes([]byte(src))
+		require.NoError(t, err)
+
+		var got any
+		assert.Error(t, codec.Unmarshal([]byte(src), &got), "read %v", got)
+	})
 }

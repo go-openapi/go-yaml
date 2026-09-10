@@ -138,6 +138,23 @@ func NewUnhashableKey(src reflect.Type, tk *token.Token) *Error {
 	}
 }
 
+// NewUnnamedKey reports a non-scalar key, at tk.
+//
+// A Go map keyed by a string needs a key with a spelling, and a collection has
+// none: [github.com/go-openapi/go-yaml/token.KeyName] writes the canonical text
+// of every scalar type and nothing for a sequence or a mapping. A Go map keyed
+// by any refuses one for a second reason -- Go hashes no slice or map.
+//
+// Go's own printing stood in before, naming the key after the value the decoder
+// built rather than after the document.
+func NewUnnamedKey(kind string, tk *token.Token) *Error {
+	return &Error{
+		kind:  ErrUnhashableKey,
+		msg:   fmt.Sprintf("a %s cannot be a key in a Go map", kind),
+		token: tk,
+	}
+}
+
 // NewNotJSON reports msg as a document JSON cannot hold, at tk.
 func NewNotJSON(msg string, tk *token.Token) *Error {
 	return &Error{kind: ErrNotJSON, msg: msg, token: tk}

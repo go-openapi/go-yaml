@@ -315,7 +315,12 @@ func (d *Decoder) mapKeyNodeToString(ctx context.Context, node ast.MapKeyNode) (
 		return "", err
 	}
 
-	return d.strs.clone(mapKeyString(node, key)), nil
+	name, err := mapKeyString(node, key)
+	if err != nil {
+		return "", err
+	}
+
+	return d.strs.clone(name), nil
 }
 
 // mapKeyNodeToValue is the key a [MapSlice] entry is addressed by.
@@ -337,7 +342,12 @@ func (d *Decoder) mapKeyNodeToValue(ctx context.Context, node ast.MapKeyNode) (a
 		return nil, err
 	}
 	if d.useStringKeys || !hashableKey(key) {
-		return d.strs.clone(mapKeyString(node, key)), nil
+		name, err := mapKeyString(node, key)
+		if err != nil {
+			return nil, err
+		}
+
+		return d.strs.clone(name), nil
 	}
 
 	return key, nil
@@ -368,18 +378,53 @@ func hashableKey(key any) bool {
 // A null gives "null" rather than the empty string, which is what the document
 // wrote and what keeps it apart from the empty key: "null: a" and "\"\": b" are
 // two entries.
-func mapKeyString(node ast.Node, key any) string {
+//
+// A collection has no spelling of its own and is refused. Go's own printing
+// stood in before -- "map[k:v]" into an any, "[{k v}]" into a MapSlice -- which
+// named the key after the value the decoder built rather than after the
+// document. It gave three destinations three answers for one key, and let
+// "? {k: v}" collide with a literal "map[k:v]" key and lose an entry with
+// nothing reported. go.yaml.in/yaml/v3 refuses one on every destination.
+func mapKeyString(node ast.Node, key any) (string, error) {
 	if name, kind := ast.KeyName(node); kind != token.KeyOther {
-		return name
+		return name, nil
 	}
 	if key == nil {
-		return "null"
+		return "null", nil
 	}
 	if k, ok := key.(string); ok {
-		return k
+		return k, nil
 	}
 
-	return fmt.Sprint(key)
+	return "", yamlerrors.NewUnnamedKey(kindOfKey(node), node.GetToken())
+}
+
+// kindOfKey names the key the document wrote, for the message that refuses it.
+//
+// From the node and not from the value it decoded to: UseOrderedMap reads a
+// mapping into a MapSlice, which is a Go slice, so a mapping key was refused as
+// "a sequence".
+func kindOfKey(node ast.Node) string {
+	switch n := node.(type) {
+	case *ast.MappingNode, *ast.MappingValueNode:
+		return "mapping"
+	case *ast.SequenceNode:
+		return "sequence"
+	case *ast.MappingKeyNode:
+		return kindOfKey(n.Value)
+	case *ast.AnchorNode:
+		return kindOfKey(n.Value)
+	case *ast.TagNode:
+		return kindOfKey(n.Value)
+	case *ast.AliasNode:
+		if n.Target != nil {
+			return kindOfKey(n.Target)
+		}
+
+		return "collection"
+	default:
+		return "collection"
+	}
 }
 
 // setToMapValue fills m from node.
@@ -1138,6 +1183,26 @@ func (d *Decoder) binaryBytes(node ast.Node) ([]byte, bool) {
 	default:
 		return nil, false
 	}
+}
+
+// byteArray reports whether t is an array of bytes, which a "!!binary" fills as
+// it fills a byte slice.
+func byteArray(t reflect.Type) bool {
+	return t.Kind() == reflect.Array && t.Elem().Kind() == reflect.Uint8
+}
+
+// copyIntoByteArray fills a byte array from b, and reports a length the array
+// cannot hold rather than writing part of it.
+func copyIntoByteArray(dst reflect.Value, b []byte, src ast.Node) error {
+	if len(b) != dst.Len() {
+		return yamlerrors.NewSyntax(
+			fmt.Sprintf("a %d byte array cannot hold the %d bytes this !!binary carries", dst.Len(), len(b)),
+			src.GetToken(),
+		)
+	}
+	reflect.Copy(dst, reflect.ValueOf(b))
+
+	return nil
 }
 
 // byteSlice reports whether t is a slice of bytes a []byte converts to. A
@@ -2653,6 +2718,13 @@ func (d *Decoder) decodeArray(ctx context.Context, dst reflect.Value, src ast.No
 		return ErrExceededMaxDepth
 	}
 
+	if b, ok := d.binaryBytes(src); ok && byteArray(dst.Type()) {
+		// "!!binary" into a byte array, as decodeSlice reads one into a byte
+		// slice. The text is a scalar, so the array reader below refused it
+		// with "string was used where sequence is expected".
+		return copyIntoByteArray(dst, b, src)
+	}
+
 	arrayNode, err := d.getArrayNode(src)
 	if err != nil {
 		return err
@@ -2934,7 +3006,11 @@ func (d *Decoder) decodeMap(ctx context.Context, dst reflect.Value, src ast.Node
 				// destinations disagreed over a []byte neither had to hash.
 				return yamlerrors.NewUnhashableKey(reflect.TypeOf(keyValue), key.GetToken())
 			}
-			k = reflect.ValueOf(d.strs.clone(mapKeyString(key, keyValue))).Convert(decodeKeyAs)
+			name, err := mapKeyString(key, keyValue)
+			if err != nil {
+				return err
+			}
+			k = reflect.ValueOf(d.strs.clone(name)).Convert(decodeKeyAs)
 		default:
 			keyVal, err := d.createDecodedNewValue(ctx, decodeKeyAs, reflect.Value{}, key)
 			if err != nil {

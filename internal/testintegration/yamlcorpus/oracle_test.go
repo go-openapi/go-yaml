@@ -47,17 +47,20 @@ import (
 // uncorroborated names the shapes whose stated meaning no outside
 // implementation can confirm, with the production that settles it.
 //
-// Two, and both are questions about what a key is. Adding a third means
-// claiming a meaning on a reading alone, and the test below makes that a
-// deliberate act rather than a quiet one.
+// One, and it is a question about what a key is. Adding another means claiming
+// a meaning on a reading alone, and the test below makes that a deliberate act
+// rather than a quiet one.
+//
+// "two collection keys in one mapping" left on 2026-09-10: it stated a meaning
+// this library alone read, and only because a collection key was named with
+// Go's printing of the value the decoder built. A mapping cannot be a key in a
+// Go map, so the shape now states none, which is what libfyaml and yaml/v3
+// already said.
 var uncorroborated = map[string]string{
 	"an explicit key whose own key is explicit": "8.2.2 puts an explicit entry's key at " +
 		"s-l+block-indented(n, block-out), which is any block node -- a mapping written the long way " +
 		"included, and a '?' of its own with it. The key it builds is a mapping, which libfyaml " +
 		"cannot hash and yaml/v3 refuses, so neither can say what the document holds",
-	"two collection keys in one mapping": "3.2.1.1 makes two keys equal when they resolve to the same " +
-		"node, and two different mappings do not. libfyaml cannot hash either of them and yaml/v3 " +
-		"refuses both, so neither can say the document holds two entries",
 }
 
 // TestEveryUncorroboratedMeaningIsNamed holds the corpus to naming the places

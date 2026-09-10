@@ -251,12 +251,65 @@ func Write(v Value, st Style) Written {
 		}
 	}
 
-	// One shape leaves the meaning unstated: a legacy spelling split between a
-	// plain and a quoted occurrence under "%YAML 1.1". readings tracks a
-	// spelling rather than a node, so it cannot say which occurrence resolved.
-	w.MeansUnclear = st.Version == Reading11Version && e.reads.splitALegacySpelling()
+	// Two shapes leave the meaning unstated.
+	//
+	// A legacy spelling split between a plain and a quoted occurrence under
+	// "%YAML 1.1": readings tracks a spelling rather than a node, so it cannot
+	// say which occurrence resolved.
+	//
+	// And a collection standing as a mapping key, which the document may hold
+	// and Go may not: a collection cannot be a key in a Go map, so the document
+	// parses and denotes no Go value at all. Value.Decoded builds the map this
+	// package would state, and Go refuses to key it before the statement can be
+	// made.
+	w.MeansUnclear = (st.Version == Reading11Version && e.reads.splitALegacySpelling()) ||
+		keysOnACollection(v)
 
 	return w
+}
+
+// keysOnACollection reports whether any mapping in v keys an entry on a
+// sequence or a mapping, which no Go map can hold.
+//
+// Not emit.go's isCollection, which answers a layout question: an alias is one
+// line whatever it stands for, and an empty collection is not laid out as one.
+// Both are collections for this, since both are what the key resolves to.
+func keysOnACollection(v Value) bool {
+	switch n := v.(type) {
+	case Map:
+		for _, p := range n.Pairs {
+			if resolvesToACollection(p.Key) || keysOnACollection(p.Key) || keysOnACollection(p.Val) {
+				return true
+			}
+		}
+	case Seq:
+		return slices.ContainsFunc(n.Items, keysOnACollection)
+	case Anchored:
+		return keysOnACollection(n.V)
+	case Tagged:
+		return keysOnACollection(n.V)
+	case Alias:
+		return keysOnACollection(n.V)
+	}
+
+	return false
+}
+
+// resolvesToACollection reports whether v denotes a sequence or a mapping,
+// through whatever properties and aliases stand in front of it.
+func resolvesToACollection(v Value) bool {
+	switch n := v.(type) {
+	case Map, Seq:
+		return true
+	case Anchored:
+		return resolvesToACollection(n.V)
+	case Tagged:
+		return resolvesToACollection(n.V)
+	case Alias:
+		return resolvesToACollection(n.V)
+	}
+
+	return false
 }
 
 // WriteStream writes several documents and reports what it wrote.

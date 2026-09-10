@@ -71,6 +71,11 @@ type buildFrame struct {
 	key     string
 	hasKey  bool
 	merging bool
+	// keyErr is a key this destination cannot hold, kept until the mapping
+	// closes. The parser hangs a mapping's repeated keys on it as it closes, so
+	// reporting an unusable key where it is met would speak over a repeat --
+	// "{[a]: 1, [ a ]: 2}" is a repeat first and an unusable key second.
+	keyErr error
 
 	// sequence
 	seq []any
@@ -156,6 +161,11 @@ func (b *valueBuilder) Leave(node ast.Node, at parser.Step) {
 		// read here rather than as it opened.
 		if err := refuseDuplicateKeys(node); err != nil {
 			b.fail(err)
+
+			return
+		}
+		if frame.keyErr != nil {
+			b.fail(frame.keyErr)
 
 			return
 		}
@@ -334,7 +344,16 @@ func (b *valueBuilder) deliver(v any, node ast.Node, at parser.Step) {
 				// Named from the node and not from the value, so that the type
 				// spells it: mapKeyString writes an integer in decimal and a
 				// float with the point that tells it from one.
-				top.key, top.hasKey = b.strs.clone(mapKeyString(node, v)), true
+				name, err := mapKeyString(node, v)
+				if err != nil {
+					if top.keyErr == nil {
+						top.keyErr = err
+					}
+					top.key, top.hasKey = "", false
+
+					return
+				}
+				top.key, top.hasKey = b.strs.clone(name), true
 
 				return
 			}

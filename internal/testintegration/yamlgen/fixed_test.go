@@ -1721,7 +1721,8 @@ func TestFixedAMappingKeyWrittenEmptyIsRead(t *testing.T) {
 		for src, want := range map[string]any{
 			"? a\n: 2\n":           map[string]any{"a": uint64(2)},
 			"? a\n: 2\n? b\n: 3\n": map[string]any{"a": uint64(2), "b": uint64(3)},
-			"? [a]\n: 1\n":         map[string]any{"[a]": uint64(1)},
+			// "? [a]" is well-formed and does not decode: a sequence has no
+			// text to name an entry by. See TestACollectionKeyDoesNotDecode.
 			// A key on the ':' line is still the key, grouped or not.
 			"!!str foo: 1\n": map[string]any{"foo": uint64(1)},
 			"&a1 x: 1\n":     map[string]any{"x": uint64(1)},
@@ -2247,10 +2248,18 @@ func TestFixedATabOpensABlockScalarAfterAnAnchor(t *testing.T) {
 // key and a repeat of it is still a duplicate, so the fix had to skip the
 // collection rather than skip a missing name.
 func TestFixedTwoCollectionKeysAreTwoKeys(t *testing.T) {
-	t.Run("two collection keys read as two", func(t *testing.T) {
+	t.Run("two collection keys are two, and neither decodes", func(t *testing.T) {
+		// They were two entries named "map[:0]" and "map[:1]" -- Go's printing
+		// of the values the decoder built. A collection has no text to name an
+		// entry by, so it is refused now; being two rather than one is what the
+		// parser says by accepting the document.
+		const src = `{{"": 0}: a, {"": 1}: b}` + "\n"
+
+		_, err := parser.ParseBytes([]byte(src))
+		require.NoError(t, err)
+
 		var got any
-		require.NoError(t, codec.Unmarshal([]byte(`{{"": 0}: a, {"": 1}: b}`+"\n"), &got))
-		assert.Equal(t, map[string]any{"map[:0]": "a", "map[:1]": "b"}, got)
+		assert.Error(t, codec.Unmarshal([]byte(src), &got), "read %v", got)
 	})
 
 	t.Run("a repeated empty key is still a duplicate", func(t *testing.T) {
@@ -2296,37 +2305,31 @@ func TestFixedARepeatedCollectionKeyIsRefused(t *testing.T) {
 		} {
 			var got any
 			err := codec.Unmarshal([]byte(src), &got)
-			require.Errorf(t, err, "%q", src)
+			require.Errorf(t, err, "%q read %v", src, got)
 			assert.Containsf(t, err.Error(), "already defined", "%q", src)
 		}
 	})
 
 	// The other direction, and the reason the fix is not simply "refuse two
 	// collection keys": collections that differ are different keys, and a
-	// mapping keyed by several of them is an ordinary document. The last is
-	// spec example 2.11.
+	// mapping keyed by several of them is an ordinary document, which the
+	// parser accepts. The last is spec example 2.11.
 	t.Run("collections that differ are still two keys", func(t *testing.T) {
-		for _, tc := range []struct {
-			src  string
-			want map[string]any
-		}{
-			{`{{a: 0}: 1, {a: 1}: 2}` + "\n", map[string]any{"map[a:0]": uint64(1), "map[a:1]": uint64(2)}},
-			{"{[a]: 1, [b]: 2}\n", map[string]any{"[a]": uint64(1), "[b]": uint64(2)}},
-			{"{[a]: 1, [a, b]: 2}\n", map[string]any{"[a]": uint64(1), "[a b]": uint64(2)}},
-			{`{{"": 0}: a, {"": 1}: b}` + "\n", map[string]any{"map[:0]": "a", "map[:1]": "b"}},
-			{
-				"? - Detroit Tigers\n  - Chicago cubs\n: - 2001-07-23\n" +
-					"? [ New York Yankees,\n    Atlanta Braves ]\n" +
-					": [ 2001-07-02, 2001-08-12,\n    2001-08-14 ]\n",
-				map[string]any{
-					"[Detroit Tigers Chicago cubs]":     []any{"2001-07-23"},
-					"[New York Yankees Atlanta Braves]": []any{"2001-07-02", "2001-08-12", "2001-08-14"},
-				},
-			},
+		// Two and not one, which the parse says by accepting: the repeats above
+		// are refused and these are not. Reading them into Go is the separate
+		// question a collection key always answers no to. The last is spec
+		// example 2.11.
+		for _, src := range []string{
+			`{{a: 0}: 1, {a: 1}: 2}` + "\n",
+			"{[a]: 1, [b]: 2}\n",
+			"{[a]: 1, [a, b]: 2}\n",
+			`{{"": 0}: a, {"": 1}: b}` + "\n",
+			"? - Detroit Tigers\n  - Chicago cubs\n: - 2001-07-23\n" +
+				"? [ New York Yankees,\n    Atlanta Braves ]\n" +
+				": [ 2001-07-02, 2001-08-12,\n    2001-08-14 ]\n",
 		} {
-			var got any
-			require.NoErrorf(t, codec.Unmarshal([]byte(tc.src), &got), "%q", tc.src)
-			assert.Equalf(t, tc.want, got, "%q", tc.src)
+			_, err := parser.ParseBytes([]byte(src))
+			assert.NoErrorf(t, err, "%q parses", src)
 		}
 	})
 }
@@ -2384,19 +2387,22 @@ func TestFixedACollectionKeyIsNamedByWhatItResolvesTo(t *testing.T) {
 	})
 
 	t.Run("two block collection keys are two keys", func(t *testing.T) {
-		for _, tc := range []struct {
-			src  string
-			want map[string]any
-		}{
-			{"? - a\n: 1\n? - b\n: 2\n", map[string]any{"[a]": uint64(1), "[b]": uint64(2)}},
-			{"?\n  a: 0\n: 1\n?\n  b: 0\n: 2\n", map[string]any{"map[a:0]": uint64(1), "map[b:0]": uint64(2)}},
+		// Two and not one, which the parse says by recording no repeat. Reading
+		// them into Go is a separate question: a collection cannot be a key in
+		// a Go map, so the load refuses whatever the keys resolve to.
+		for _, src := range []string{
+			"? - a\n: 1\n? - b\n: 2\n",
+			"?\n  a: 0\n: 1\n?\n  b: 0\n: 2\n",
 			// A block key beside a flow key, which the two namings used to tell
 			// apart by accident.
-			{"? - a\n: 1\n? [b]\n: 2\n", map[string]any{"[a]": uint64(1), "[b]": uint64(2)}},
+			"? - a\n: 1\n? [b]\n: 2\n",
 		} {
-			var got any
-			require.NoErrorf(t, codec.Unmarshal([]byte(tc.src), &got), "%q", tc.src)
-			assert.Equalf(t, tc.want, got, "%q", tc.src)
+			file, err := parser.ParseBytes([]byte(src))
+			require.NoErrorf(t, err, "%q", src)
+
+			mapping, ok := file.Docs[0].Body.(*ast.MappingNode)
+			require.Truef(t, ok, "%q", src)
+			assert.Emptyf(t, mapping.Duplicates, "%q records no repeat", src)
 		}
 	})
 
@@ -2515,16 +2521,30 @@ func TestFixedAnAliasKeyIsTheNodeItsAnchorNames(t *testing.T) {
 			src  string
 			want map[string]any
 		}{
-			{"a: &x [1,2]\nb: &y [3,4]\n*x : p\n*y : q\n",
-				map[string]any{"a": []any{uint64(1), uint64(2)}, "b": []any{uint64(3), uint64(4)}, "[1 2]": "p", "[3 4]": "q"}},
-			{"a: &x {k: 1}\nb: &y {k: 2}\n*x : p\n*y : q\n",
-				map[string]any{"a": map[string]any{"k": uint64(1)}, "b": map[string]any{"k": uint64(2)}, "map[k:1]": "p", "map[k:2]": "q"}},
 			{"a: &x s\nb: &y t\n*x : p\n*y : q\n",
 				map[string]any{"a": "s", "b": "t", "s": "p", "t": "q"}},
 		} {
 			var got any
 			require.NoErrorf(t, codec.Unmarshal([]byte(tc.src), &got), "%q", tc.src)
 			assert.Equalf(t, tc.want, got, "%q", tc.src)
+		}
+
+		// An alias to a collection is a collection in key position, so it
+		// parses as two keys and does not decode. The parse is where "two keys
+		// and not one" is settled.
+		for _, src := range []string{
+			"a: &x [1,2]\nb: &y [3,4]\n*x : p\n*y : q\n",
+			"a: &x {k: 1}\nb: &y {k: 2}\n*x : p\n*y : q\n",
+		} {
+			file, err := parser.ParseBytes([]byte(src))
+			require.NoErrorf(t, err, "%q", src)
+
+			mapping, ok := file.Docs[0].Body.(*ast.MappingNode)
+			require.Truef(t, ok, "%q", src)
+			assert.Emptyf(t, mapping.Duplicates, "%q records no repeat", src)
+
+			var got any
+			assert.Errorf(t, codec.Unmarshal([]byte(src), &got), "%q read %v", src, got)
 		}
 	})
 }
@@ -2770,35 +2790,39 @@ func TestFixedAnAliasKeyIsNamedAsTheNodeItsAnchorNamed(t *testing.T) {
 // Test Suite holds no nested explicit key either, so nothing on either side had
 // provoked it.
 func TestFixedAnExplicitKeyInsideAnExplicitKeyReads(t *testing.T) {
-	t.Run("the nesting reads, in block and in flow", func(t *testing.T) {
-		for _, tc := range []struct {
-			src  string
-			want any
-		}{
-			{"?\n  ? a\n  : 0\n: v\n", map[string]any{"map[a:0]": "v"}},
-			{"? ? a\n  : 1\n: 2\n", map[string]any{"map[a:1]": uint64(2)}},
-			{"? {? a: 1}\n: v\n", map[string]any{"map[a:1]": "v"}},
-			{"{? {? a: 1}: v}\n", map[string]any{"map[a:1]": "v"}},
-			{"? ? ? a\n", map[string]any{"map[map[a:<nil>]:<nil>]": nil}},
+	t.Run("the nesting parses, in block and in flow", func(t *testing.T) {
+		// The shape is the question here: an explicit key holding an explicit
+		// key. Every one of these keys on a mapping, which parses and does not
+		// decode -- a mapping cannot be a key in a Go map.
+		for _, src := range []string{
+			"?\n  ? a\n  : 0\n: v\n",
+			"? ? a\n  : 1\n: 2\n",
+			"? {? a: 1}\n: v\n",
+			"{? {? a: 1}: v}\n",
+			"? ? ? a\n",
 		} {
+			_, err := parser.ParseBytes([]byte(src))
+			require.NoErrorf(t, err, "%q parses", src)
+
 			var got any
-			require.NoErrorf(t, codec.Unmarshal([]byte(tc.src), &got), "%q", tc.src)
-			assert.Equalf(t, tc.want, got, "%q", tc.src)
+			assert.Errorf(t, codec.Unmarshal([]byte(src), &got), "%q read %v", src, got)
 		}
 	})
 
-	t.Run("the same key written any other way reads", func(t *testing.T) {
-		for _, tc := range []struct{ src, key string }{
-			{"?\n  a: 0\n: v\n", "map[a:0]"},
-			{"? {a: 0}\n: v\n", "map[a:0]"},
-			{"?\n  - a\n  - b\n: v\n", "[a b]"},
+	t.Run("the same key written any other way parses", func(t *testing.T) {
+		for _, src := range []string{
+			"?\n  a: 0\n: v\n",
+			"? {a: 0}\n: v\n",
+			"?\n  - a\n  - b\n: v\n",
 		} {
-			// Into an `any`, which names the key by walking it. A typed map
-			// cannot hold one: `cannot use map[string]interface {} as a map
-			// key: it is not comparable`.
+			// The shapes are what this asserts. None of them decodes: a
+			// collection cannot be a key in a Go map, into an any or a typed
+			// map alike.
+			_, err := parser.ParseBytes([]byte(src))
+			require.NoErrorf(t, err, "%q parses", src)
+
 			var got any
-			require.NoErrorf(t, codec.Unmarshal([]byte(tc.src), &got), "%q", tc.src)
-			assert.Equalf(t, map[string]any{tc.key: "v"}, got, "%q", tc.src)
+			assert.Errorf(t, codec.Unmarshal([]byte(src), &got), "%q read %v", src, got)
 		}
 	})
 }
@@ -2982,22 +3006,24 @@ func TestFixedAKeyBelowItsIndicatorKeepsItsIndentation(t *testing.T) {
 	})
 
 	t.Run("and the rendering reads back as the document that went in", func(t *testing.T) {
+		// Every key here is a collection, which no Go map can hold, so the
+		// reading compared is the tree's: the rendering has to parse and give
+		// the same document, which is what the indentation defect broke.
 		for _, src := range []string{
 			"?\n\n \"\": 0\n: v\n",
 			"?\n\n  a: 0\n: v\n",
 			"?\n\n  - a\n: v\n",
 			"? # c\n\n \"\": 0\n: v\n",
 		} {
-			var want any
-			require.NoErrorf(t, codec.Unmarshal([]byte(src), &want), "%q", src)
-
-			f, err := parser.ParseBytes([]byte(src), parser.WithComments())
+			first, err := parser.ParseBytes([]byte(src), parser.WithComments())
 			require.NoErrorf(t, err, "%q", src)
+			want := first.String()
 
-			var got any
+			f, err := parser.ParseBytes([]byte(want), parser.WithComments())
+			require.NoErrorf(t, err, "%q rendered to %q, which does not parse", src, want)
+
 			once := f.String()
-			require.NoErrorf(t, codec.Unmarshal([]byte(once), &got), "%q rendered to %q", src, once)
-			assert.Equalf(t, want, got, "%q rendered to %q, which reads as something else", src, once)
+			assert.Equalf(t, want, once, "%q rendered to %q, which reads as something else", src, want)
 		}
 	})
 

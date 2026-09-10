@@ -42,18 +42,16 @@ func TestAMapSliceKeyCarriesTheTypeItResolvesTo(t *testing.T) {
 	// Go cannot hash a slice or a map, so a resolved collection key would panic
 	// MapSlice.ToMap and reach no Go map at all. It keeps its rendered text, as
 	// it always has, which is the line UseStringKeys already draws.
-	t.Run("a collection key keeps its text, and ToMap still works", func(t *testing.T) {
+	t.Run("a collection key does not decode, here as anywhere", func(t *testing.T) {
+		// It used to hold the text Go prints, "[x]", so that ToMap could not
+		// panic on an unhashable key. That text named the value the decoder
+		// built rather than anything the document wrote, and a MapSlice was one
+		// of the three destinations that each answered differently. A
+		// collection has no text to name an entry by, so it is refused here as
+		// it is everywhere else, and ToMap has nothing unhashable to meet.
 		var got any
-		require.NoError(t, codec.UnmarshalWithOptions(
-			[]byte("? [x]\n: f\n1: a\n"), &got, codec.UseOrderedMap()))
-
-		ordered, isOrdered := got.(codec.MapSlice)
-		require.True(t, isOrdered)
-		assert.Equal(t, codec.MapSlice{{Key: "[x]", Value: "f"}, {Key: uint64(1), Value: "a"}}, ordered)
-
-		assert.NotPanics(t, func() {
-			assert.Len(t, ordered.ToMap(), 2)
-		})
+		err := codec.UnmarshalWithOptions([]byte("? [x]\n: f\n1: a\n"), &got, codec.UseOrderedMap())
+		assert.Error(t, err, "read %v", got)
 	})
 
 	t.Run("UseStringKeys asks for text and gets it", func(t *testing.T) {

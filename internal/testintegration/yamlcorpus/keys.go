@@ -153,10 +153,14 @@ func KeyShapes() []stance.Shape {
 			// key by its opening character while checking for duplicates until
 			// 913fb19, so every collection key in a mapping was the same key as
 			// every other -- see TestFixedTwoCollectionKeysAreTwoKeys.
+			// No Means, and the absence is the claim: two keys and not one,
+			// which the parse says by recording no repeat, and no Go value at
+			// all, since a mapping cannot be a key in a Go map. It stated
+			// {"map[:0]": "a", "map[:1]": "b"} while a collection key was named
+			// with Go's printing of the value the decoder built.
 			Name:   "two collection keys in one mapping",
 			Src:    []byte("{{\"\": 0}: a, {\"\": 1}: b}\n"),
 			Intent: []stance.Tag{TagKeyNotAString},
-			Means:  map[string]any{"map[:0]": "a", "map[:1]": "b"},
 		},
 		{
 			// No Means, and the absence is the claim. 7.4.2 lets a flow entry be

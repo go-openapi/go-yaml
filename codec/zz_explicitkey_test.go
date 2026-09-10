@@ -10,6 +10,7 @@ import (
 	"github.com/go-openapi/testify/v2/require"
 
 	"github.com/go-openapi/go-yaml/codec"
+	"github.com/go-openapi/go-yaml/parser"
 )
 
 // The explicit-key documents that are YAML 1.2, pinned so that closing the ones
@@ -38,6 +39,9 @@ func TestAnExplicitKeyReadsWhereTheGrammarAllowsIt(t *testing.T) {
 		name string
 		src  string
 		want any
+		// parseOnly says the document parses and does not decode, which is
+		// every shape keying on a collection.
+		parseOnly bool
 	}{
 		{
 			name: "the ':' at the mapping's own indent",
@@ -73,27 +77,42 @@ func TestAnExplicitKeyReadsWhereTheGrammarAllowsIt(t *testing.T) {
 			// The two that a column test would refuse. The ':' is deeper than
 			// the '?' in both, and legal in both, because the key's first line
 			// is a mapping and the ':' continues it.
-			name: "a mapping key opened on the '?' line, continued below",
-			src:  "? a: b\n  : d\n: v\n",
-			want: map[string]any{"map[a:b null:d]": "v"},
+			//
+			// These four key on a collection, which parses and does not decode:
+			// a collection has no text to name an entry by. The shape is what
+			// this test is about, so the parse is what it asserts.
+			name:      "a mapping key opened on the '?' line, continued below",
+			src:       "? a: b\n  : d\n: v\n",
+			parseOnly: true,
 		},
 		{
-			name: "a mapping key opened on the line under the '?'",
-			src:  "?\n  : b\n",
-			want: map[string]any{"map[null:b]": nil},
+			name:      "a mapping key opened on the line under the '?'",
+			src:       "?\n  : b\n",
+			parseOnly: true,
 		},
 		{
-			name: "a mapping key written under the '?'",
-			src:  "?\n a: b\n: v",
-			want: map[string]any{"map[a:b]": "v"},
+			name:      "a mapping key written under the '?'",
+			src:       "?\n a: b\n: v",
+			parseOnly: true,
 		},
 		{
-			name: "a sequence key written under the '?'",
-			src:  "? - a\n  - b\n: v\n",
-			want: map[string]any{"[a b]": "v"},
+			name:      "a sequence key written under the '?'",
+			src:       "? - a\n  - b\n: v\n",
+			parseOnly: true,
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			if tc.parseOnly {
+				_, err := parser.ParseBytes([]byte(tc.src))
+				require.NoErrorf(t, err, "%q parses", tc.src)
+
+				var got any
+				assert.Errorf(t, codec.Unmarshal([]byte(tc.src), &got),
+					"%q keys on a collection and does not decode", tc.src)
+
+				return
+			}
+
 			var got any
 			require.NoErrorf(t, codec.Unmarshal([]byte(tc.src), &got), "%q", tc.src)
 			assert.Equalf(t, tc.want, got, "%q", tc.src)

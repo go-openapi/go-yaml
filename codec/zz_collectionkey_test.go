@@ -11,6 +11,7 @@ import (
 
 	"github.com/go-openapi/go-yaml/codec"
 	yamlerrors "github.com/go-openapi/go-yaml/errors"
+	"github.com/go-openapi/go-yaml/parser"
 )
 
 // TestTwoCollectionKeysAreTwoKeys is the key-identity rule where the key is not
@@ -34,24 +35,33 @@ import (
 // and libfyaml 1.0.0b1 both parse them and then refuse to hold a collection as
 // a map key, which is a value model declining rather than a syntax verdict.
 func TestTwoCollectionKeysAreTwoKeys(t *testing.T) {
-	t.Run("two collection keys read, in flow and in block", func(t *testing.T) {
+	t.Run("two collection keys parse as two, and neither decodes", func(t *testing.T) {
+		// The parse is where this rule lives: two collections that differ are
+		// two keys, and the check that says so is ast.KeyIdentity's. Reading
+		// them into Go is a separate question and the answer is no -- a
+		// collection has no text to name an entry by -- so the decode is where
+		// they stop, not the parse.
 		for _, src := range []string{
 			"{[a]: 1, [b]: 2}\n",
 			"{{a: 1}: x, {b: 2}: y}\n",
 			"? [a]\n: 1\n? [b]\n: 2\n",
 			"{[a]: 1, a: 2}\n",
 		} {
+			_, err := parser.ParseBytes([]byte(src))
+			require.NoErrorf(t, err, "%q parses", src)
+
 			var got any
-			require.NoErrorf(t,
-				codec.UnmarshalWithOptions([]byte(src), &got, codec.UseOrderedMap()), "%q", src)
-			assert.Lenf(t, got, 2, "%q read %v", src, got)
+			assert.Errorf(t, codec.UnmarshalWithOptions([]byte(src), &got, codec.UseOrderedMap()),
+				"%q read %v", src, got)
 		}
 	})
 
-	t.Run("one collection key still reads", func(t *testing.T) {
+	t.Run("one collection key parses and does not decode", func(t *testing.T) {
+		_, err := parser.ParseBytes([]byte("{[a]: 1}\n"))
+		require.NoError(t, err)
+
 		var got any
-		require.NoError(t, codec.UnmarshalWithOptions([]byte("{[a]: 1}\n"), &got, codec.UseOrderedMap()))
-		assert.Len(t, got, 1)
+		assert.Error(t, codec.UnmarshalWithOptions([]byte("{[a]: 1}\n"), &got, codec.UseOrderedMap()))
 	})
 
 	t.Run("a collection key repeated is refused, in every spelling", func(t *testing.T) {
@@ -92,10 +102,10 @@ func TestTwoCollectionKeysAreTwoKeys(t *testing.T) {
 			"? [a]\n: 1\n? [b]\n: 2\n",
 			"? - Detroit Tigers\n  - Chicago cubs\n: 1\n? [ New York Yankees ]\n: 2\n",
 		} {
-			var got any
-			require.NoErrorf(t,
-				codec.UnmarshalWithOptions([]byte(src), &got, codec.UseOrderedMap()), "%q", src)
-			assert.Lenf(t, got, 2, "%q read %v", src, got)
+			// Two keys and not one, which the parse says by accepting: a repeat
+			// is refused above and these are not repeats.
+			_, err := parser.ParseBytes([]byte(src))
+			assert.NoErrorf(t, err, "%q", src)
 		}
 	})
 
