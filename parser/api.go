@@ -8,6 +8,7 @@ import (
 	"github.com/go-openapi/go-yaml/internal/scanner"
 	"github.com/go-openapi/go-yaml/internal/tokenarena"
 	"github.com/go-openapi/go-yaml/parser/group"
+	"github.com/go-openapi/go-yaml/parser/key"
 	"github.com/go-openapi/go-yaml/token"
 )
 
@@ -46,8 +47,8 @@ type Parser struct {
 	tagHandles map[string]string
 
 	// keys records the keys of the mapping being read and notes a repeat on
-	// that mapping. See keys.go.
-	keys keyLedger
+	// that mapping. The parser names the keys it records; see keys.go.
+	keys key.Ledger
 
 	// walk is where a Walk stands, and nil for a parse that gathers a tree
 	// rather than handing it over.

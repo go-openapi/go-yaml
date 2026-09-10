@@ -11,15 +11,15 @@ import (
 )
 
 func (p *Parser) parseFlowMap(ctx context) (*ast.MappingNode, error) {
-	base := p.keys.base()
-	defer p.keys.close(base)
+	base := p.keys.Base()
+	defer p.keys.Close(base)
 	ctx = ctx.withMapping(base)
 
 	node, err := newMappingNode(ctx, ctx.currentToken().RawToken(), true, nil)
 	if err != nil {
 		return nil, err
 	}
-	defer p.keys.open(node)()
+	defer p.keys.Open(node)()
 	p.enter(ctx, node, KindMapping)
 	defer p.leave(ctx, node)
 

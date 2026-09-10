@@ -155,8 +155,8 @@ func (p *Parser) parseMap(ctx context) (*ast.MappingNode, error) {
 	p.holdRun(runSeq)
 	defer p.releaseRun(runSeq)
 
-	base := p.keys.base()
-	defer p.keys.close(base)
+	base := p.keys.Base()
+	defer p.keys.Close(base)
 	ctx = ctx.withMapping(base)
 
 	// The entries are gathered on a stack the parser reuses for every mapping,
@@ -173,7 +173,7 @@ func (p *Parser) parseMap(ctx context) (*ast.MappingNode, error) {
 	// over instead.
 	mapNode := ctx.arena.Mapping(keyTk.RawToken(), false, nil)
 	mapNode.SetPathNode(ctx.path)
-	defer p.keys.open(mapNode)()
+	defer p.keys.Open(mapNode)()
 	p.enter(ctx, mapNode, KindMapping)
 
 	// Where the arena stands before an entry is read. A walk has seen the entry

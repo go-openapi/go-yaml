@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: Copyright 2025 go-swagger maintainers
 // SPDX-License-Identifier: Apache-2.0
 
-package parser
+package key
 
 import (
 	"github.com/go-openapi/go-yaml/token"
@@ -18,7 +18,7 @@ import (
 const spillAt = 64
 
 // mapKeyRef addresses one key of one mapping, and is the key of the spilled
-// index: base is where that mapping's keys start in keySet.entries, and text is
+// index: base is where that mapping's keys start in Set.entries, and text is
 // the key as mapKeyText reads it.
 //
 // §3.2.1.1 makes two keys equal when they resolve to the same node, so the type
@@ -42,7 +42,7 @@ type keyEntry struct {
 // alone. token.KeyKind runs from KeyOther to KeyFloat, so 255 is no key's type.
 const anyKind = token.KeyKind(255)
 
-// keySet finds a key a mapping has already used.
+// Set finds a key a mapping has already used.
 //
 // The keys of every mapping open at this point in the descent sit in entries,
 // innermost last, and a mapping's own keys are the tail from its base --
@@ -58,12 +58,12 @@ const anyKind = token.KeyKind(255)
 // index is for a mapping that passes spillAt, and stays nil on every document
 // in the corpus.
 //
-// jsonNames matches two keys by name as well as by node. [Parser.begin] turns
-// it on for [WithJSONCompatible], where "1: a" and "\"1\": b" are two YAML keys
-// that write one JSON member. The scan reads the name out of the filter it
+// jsonNames matches two keys by name as well as by node. The parser turns it on
+// for its WithJSONCompatible option, where "1: a" and "\"1\": b" are two YAML
+// keys that write one JSON member. The scan reads the name out of the filter it
 // already holds; the index takes a second entry per key, keyed on anyKind, so
 // the default path keeps the map it had.
-type keySet struct {
+type Set struct {
 	filter    []uint32
 	entries   []keyEntry
 	index     map[mapKeyRef]token.Position
@@ -89,16 +89,21 @@ func keyFilter(text string, kind token.KeyKind) uint32 {
 	return f
 }
 
-// base returns where the mapping opening now starts its keys.
-func (k *keySet) base() int { return len(k.entries) }
+// Base returns where the mapping opening now starts its keys.
+func (k *Set) Base() int { return len(k.entries) }
 
-// record records that the mapping starting at base uses text as a key, written
+// UseJSONNames compares a key under the name JSON gives it as well as under the
+// node it resolves to. Set it before the first Record: a set that already holds
+// keys was built without the second index entry.
+func (k *Set) UseJSONNames(on bool) { k.jsonNames = on }
+
+// Record records that the mapping starting at base uses text as a key, written
 // at pos.
 //
 // It returns where text was first written, whether the two keys are one JSON
 // member name written as two YAML nodes, and whether the mapping had already
 // used the name.
-func (k *keySet) record(base int, text string, kind token.KeyKind, pos token.Position) (token.Position, bool, bool) {
+func (k *Set) Record(base int, text string, kind token.KeyKind, pos token.Position) (token.Position, bool, bool) {
 	f := keyFilter(text, kind)
 	if len(k.entries)-base >= spillAt {
 		return k.recordIndexed(base, text, kind, pos, f)
@@ -126,14 +131,14 @@ func (k *keySet) record(base int, text string, kind token.KeyKind, pos token.Pos
 }
 
 // push adds one key to the stack.
-func (k *keySet) push(text string, pos token.Position, f uint32) {
+func (k *Set) push(text string, pos token.Position, f uint32) {
 	k.filter = append(k.filter, f)
 	k.entries = append(k.entries, keyEntry{text: text, at: pos})
 }
 
 // recordIndexed records a key of a mapping big enough to have earned an index,
 // and builds that index the first time one is.
-func (k *keySet) recordIndexed(base int, text string, kind token.KeyKind, pos token.Position, f uint32) (token.Position, bool, bool) {
+func (k *Set) recordIndexed(base int, text string, kind token.KeyKind, pos token.Position, f uint32) (token.Position, bool, bool) {
 	if len(k.entries)-base == spillAt {
 		k.spill(base)
 	}
@@ -157,7 +162,7 @@ func (k *keySet) recordIndexed(base int, text string, kind token.KeyKind, pos to
 
 // spill moves the keys a mapping gathered under the scan into the index, once,
 // as it passes spillAt.
-func (k *keySet) spill(base int) {
+func (k *Set) spill(base int) {
 	if k.index == nil {
 		k.index = make(map[mapKeyRef]token.Position, spillAt*2)
 	}
@@ -176,12 +181,12 @@ func (k *keySet) spill(base int) {
 	}
 }
 
-// close drops the keys of the mapping that started at base.
+// Close drops the keys of the mapping that started at base.
 //
 // Mappings close in the order they open, so the keys of the one closing are
 // always those above its base. A mapping that never spilled is dropped by
 // truncating; only a spilled one has entries to delete.
-func (k *keySet) close(base int) {
+func (k *Set) Close(base int) {
 	if len(k.entries)-base >= spillAt {
 		for i := base; i < len(k.entries); i++ {
 			delete(k.index, mapKeyRef{

@@ -232,16 +232,18 @@ func TestDuplicateMapKeyIsPerType(t *testing.T) {
 // Three pieces of work meet here and none of them has a test for the
 // combination. The scanner types a scalar by the tag's URI rather than by the
 // characters the tag was written with, so "!!map", "!<tag:yaml.org,2002:map>"
-// and a local "!foo" all leave the keys under them to resolve. keySet scans a
-// mapping's keys up to spillAt and builds a hash index past it. And the key
+// and a local "!foo" all leave the keys under them to resolve. key.Set scans a
+// mapping's keys up to its spill threshold of 64 and builds a hash index past
+// it. And the key
 // rules say two keys are equal when they resolve to the same node, so "False"
 // and "false" are one key and "1" and "\"1\"" are two.
 //
-// The index inherits the resolution for free because keyFilter reads the kind
+// The index inherits the resolution for free because the set's key filter
+// reads the kind
 // from token.KeyName, the way the map it replaced did -- the optimization made
 // the lookup cheaper without hardcoding any typing. That is worth a test rather
 // than a comment: a later index that compared the written characters would pass
-// every other test in this file, since none of them reaches spillAt with a key
+// every other test in this file, since none of them reaches the spill with a key
 // whose name is not its text.
 func TestDuplicateMapKeyUnderATagFollowsTheResolvedName(t *testing.T) {
 	// wide writes a tagged mapping of n ordinary keys, with first written above
@@ -273,7 +275,7 @@ func TestDuplicateMapKeyUnderATagFollowsTheResolvedName(t *testing.T) {
 		"two integers":         {src: "!foo\n1: a\n2: b\n"},
 		"a number and a quote": {src: "!foo\n1: a\n\"1\": b\n"},
 
-		// Past spillAt, where the index answers instead of the scan.
+		// Past the spill, where the index answers instead of the scan.
 		"a repeat past the spill":          {src: wide("k0: first\n", "k0: again\n", 80), duplicate: true},
 		"no repeat past the spill":         {src: wide("", "", 80)},
 		"a resolved repeat past the spill": {src: wide("False: 1\n", "false: 2\n", 80), duplicate: true},

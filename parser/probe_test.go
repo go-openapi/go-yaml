@@ -25,13 +25,14 @@ import (
 // invariant; one that stops may have become removable, and it comes down.
 var keyLedger = map[string]int64{ //nolint:gochecknoglobals // ok to store an immutable map as a global
 	// Mappings nest, so a mapping records keys only while it is the innermost
-	// one open. If that holds, keyStack[base:] is exactly one mapping's keys
-	// and mapKeyRef.base says nothing the slice bound does not, which is what
-	// lets a duplicate be found by scanning the tail instead of hashing base
-	// into a document-wide map.
+	// one open. If that holds, the key set's entries above base are exactly one
+	// mapping's keys, so the base its index records adds nothing to the slice
+	// bound, and a duplicate can be found by scanning the tail instead of
+	// hashing base into a document-wide map.
 	//
 	// Nothing may raise this: a disagreement means an outer mapping recorded a
-	// key over an inner one's, and keyLedger.close would drop a key it still owns.
+	// key over an inner one's, and key.Ledger.Close would drop a key it still
+	// owns.
 	"mapkey.stackTailIsOneMapping": 0,
 }
 
