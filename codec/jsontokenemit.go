@@ -190,6 +190,19 @@ func (t *jsonTokener) closeTag(n *ast.TagNode, at parser.Step) {
 
 	resolved, ok := t.taggedValue(n)
 	if t.stopped {
+		// taggedValue reads the tag's verdict as jsonWriter does, so a tag
+		// naming a kind its node is not is refused here and the held tokens go
+		// nowhere.
+		if len(t.omaps) > 0 && t.omaps[len(t.omaps)-1].node == n {
+			t.omaps = t.omaps[:len(t.omaps)-1]
+		}
+
+		return
+	}
+
+	if len(t.omaps) > 0 && t.omaps[len(t.omaps)-1].node == n {
+		t.releaseOrderedMap(n)
+
 		return
 	}
 
@@ -498,10 +511,55 @@ func (t *jsonTokener) openTag(n *ast.TagNode, key bool) {
 	scalarType := namesScalarType(n.URI)
 	mark := tokenTagMark{at: t.count, key: key, suppressed: true, peeking: !key && !scalarType}
 	t.tags = append(t.tags, mark)
+	if namesOrderedMap(n.URI) && !key {
+		// What the tagged node hands over is held until the tag closes, and
+		// rewritten there as the object the tag names. See
+		// jsonTokener.releaseOrderedMap.
+		t.omaps = append(t.omaps, omapMark{node: n})
+	}
 	t.suppress++
 	if mark.peeking {
 		t.peek = len(t.tags) - 1
 	}
+}
+
+// releaseOrderedMap hands an "!!omap" over as the object the tag names, or
+// refuses the document where the tokens it held are not that shape.
+func (t *jsonTokener) releaseOrderedMap(n *ast.TagNode) {
+	mark := t.omaps[len(t.omaps)-1]
+	t.omaps = t.omaps[:len(t.omaps)-1]
+
+	folded, ordered, twice := foldOrderedMapTokens(mark.toks)
+	if twice != "" {
+		at := n.GetToken()
+		if n.Value != nil {
+			at = n.Value.GetToken()
+		}
+		t.fail(yamlerrors.NewDuplicateKey(
+			fmt.Sprintf("mapping key %q is written twice in an !!omap", twice), at))
+
+		return
+	}
+	if !ordered {
+		at := n.GetToken()
+		if n.Value != nil {
+			at = n.Value.GetToken()
+		}
+		t.fail(yamlerrors.NewSyntax("!!omap names a sequence of one-entry mappings", at))
+
+		return
+	}
+	for _, tok := range folded {
+		t.emit(tok)
+	}
+}
+
+// namesOrderedMap reports the "!!omap" tag, whatever handle the document spells
+// it with.
+func namesOrderedMap(uri string) bool {
+	keyword, ok := token.ReservedTagOf(uri)
+
+	return ok && keyword == token.OrderedMapTag
 }
 
 // namesScalarType reports whether the tag says what a scalar is worth, rather

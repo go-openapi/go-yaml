@@ -500,9 +500,74 @@ func (w *jsonWriter) closeTag(t *ast.TagNode) {
 		w.out = appendJSONScalar(w.out, jsonScalarOf(t.Value))
 	}
 
+	// Only while the first document is being written: ToJSON converts that one
+	// and walks the rest, so a later document's shape decides nothing here.
+	if res := t.Resolve(); w.firstEnd < 0 &&
+		res.Verdict == ast.TagResolved && res.Tag == token.OrderedMapTag && !res.Empty {
+		written, err := orderedMapJSON(w.out[mark.at:], t)
+		if err != nil {
+			w.fail(err)
+
+			return
+		}
+		w.out = append(w.out[:mark.at], written...)
+	}
+
 	if mark.key {
 		w.out = appendJSONString(w.out[:mark.at], unquoted(w.out[mark.at:]))
 	}
+}
+
+// orderedMapJSON rewrites what an "!!omap" node wrote as the JSON object the
+// tag names, and reports whether the tag names this node's shape at all.
+//
+// JSON specifies no ordering, so an ordered map is written as an object holding
+// the sequence's order and not as the array of one-entry objects the document
+// spells it with. The decoder reads the same document into a MapSliceSeq and
+// the encoder writes that as an object too.
+//
+// A node that is not a sequence of one-entry mappings has no ordered map to be
+// and is refused, as it is on the way into a value. So is a key written twice,
+// since each mapping of an "!!omap" holds one key and the parser records no
+// repeat for refuseDuplicateKeys to find.
+func orderedMapJSON(text []byte, t *ast.TagNode) ([]byte, error) {
+	if len(text) == 0 || text[0] != '[' {
+		return nil, notAnOrderedMap(t.Value)
+	}
+
+	out := []byte{'{'}
+	seen := make(map[string]struct{})
+	i := 1
+	for i < len(text) && text[i] != ']' {
+		if text[i] == ',' {
+			i++
+
+			continue
+		}
+		end := jsonValueEnd(text, i)
+		entry := text[i:end]
+		pairs := jsonPairs(entry)
+		if len(pairs) != 1 {
+			return nil, notAnOrderedMap(t.Value)
+		}
+		if _, twice := seen[pairs[0].key]; twice {
+			return nil, yamlerrors.NewDuplicateKey(
+				fmt.Sprintf("mapping key %q is written twice in an !!omap", pairs[0].key),
+				t.Value.GetToken(),
+			)
+		}
+		seen[pairs[0].key] = struct{}{}
+		if len(out) > 1 {
+			out = append(out, ',')
+		}
+		out = append(out, entry[pairs[0].from:pairs[0].to]...)
+		i = end
+	}
+	if i >= len(text) {
+		return nil, notAnOrderedMap(t.Value)
+	}
+
+	return append(out, '}'), nil
 }
 
 // taggedValue is the JSON a tagged scalar is written as, and whether the tag

@@ -316,8 +316,47 @@ func (t Tagged) Decoded() any {
 			return n.V
 		}
 	}
+	if t.Tag == TagOMap {
+		if ordered, isOrdered := orderedMapDecoded(t.V); isOrdered {
+			return ordered
+		}
+	}
 
 	return t.V.Decoded()
+}
+
+// orderedMapDecoded is what a sequence tagged "!!omap" decodes to, and whether
+// the tag names its shape.
+//
+// Since 2026-09-10 the library reads "!!omap" as the ordered map it names,
+// where the node under it is a sequence of one-entry mappings. A sequence that
+// is not that shape stands as it is written, which is what every implementation
+// does for a tag it passes through, so this reports the shape rather than
+// assuming it.
+func orderedMapDecoded(v Value) (codec.MapSliceSeq, bool) {
+	seq, isSeq := v.(Seq)
+	if !isSeq {
+		return codec.MapSliceSeq{}, false
+	}
+
+	items := make([]codec.MapItem, 0, len(seq.Items))
+	for _, entry := range seq.Items {
+		m, isMap := entry.(Map)
+		if !isMap || len(m.Pairs) != 1 {
+			return codec.MapSliceSeq{}, false
+		}
+		items = append(items, codec.MapItem{
+			Key:   KeyText(m.Pairs[0].Key),
+			Value: m.Pairs[0].Val.Decoded(),
+		})
+	}
+
+	ordered, err := codec.NewMapSliceSeq(items...)
+	if err != nil {
+		return codec.MapSliceSeq{}, false
+	}
+
+	return ordered, true
 }
 
 // Decoded returns what the anchored value decodes to, built afresh.
@@ -438,12 +477,17 @@ const (
 	//
 	// Offered on the kind the type is written over -- `!!set` on a mapping,
 	// `!!omap` and `!!pairs` on a sequence -- and not on the shapes *inside*
-	// it, which the type definitions constrain and no implementation enforces.
-	// Measured on 2026-09-13: `a: !!set` over `x: 1` and `a: !!omap` over `- 1`
-	// are read by this library, by libfyaml 1.0.0b1 and by
-	// go.yaml.in/yaml/v3 v3.0.5, and grammar.NewRecognizer accepts both. So
-	// requiring null values under a set, or single-pair mappings under an omap,
-	// would narrow the draw for a rule nobody applies.
+	// it, which the type definitions constrain.
+	//
+	// Measured 2026-09-10: `a: !!set` over `x: 1` and `a: !!omap` over `- 1`
+	// are read by libfyaml 1.0.0b1 and by go.yaml.in/yaml/v3 v3.0.5, and
+	// grammar.NewRecognizer accepts both. Both implementations pass every one
+	// of these tags through, so what they read says nothing about the shapes
+	// inside; it says only that neither builds the type the tag names.
+	//
+	// This library builds one for `!!omap` since 2026-09-10, and takes the
+	// sequence as it stands where the shape does not fit, so the draw is left
+	// wide. [Tagged.Decoded] states which of the two a document means.
 	TagSet   = "!!set"
 	TagOMap  = "!!omap"
 	TagPairs = "!!pairs"

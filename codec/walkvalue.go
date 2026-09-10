@@ -485,11 +485,53 @@ func (b *valueBuilder) taggedWalkValue(n *ast.TagNode, value any) (any, error) {
 		t, _ := ast.ParseTimestamp(res.Text)
 
 		return t, nil
+	case token.OrderedMapTag:
+		return orderedMapOfWalked(value, n)
 	default:
-		// A tag naming a kind -- !!seq, !!map, !!set, !!omap, !!merge -- takes
-		// the node as it stands.
+		// A tag naming a kind -- !!seq, !!map, !!set, !!merge -- takes the node
+		// as it stands.
 		return value, nil
 	}
+}
+
+// orderedMapOfWalked folds what an "!!omap" node built into a [MapSliceSeq].
+//
+// The walk has already built the sequence and each of its mappings, so this
+// reads the values and not the nodes. It holds the shape Decoder.orderedMapOf
+// holds and is lenient the same way: a sequence that is not one-entry mappings
+// stands as it is written.
+//
+// It parts company with the tree over the key's type. The walk names every key
+// with mapKeyString, so "!!omap [{1: a}]" reads uint64(1) on the tree and "1"
+// here -- the same difference a plain mapping has on the two paths, since the
+// walk builds map[string]any and the tree builds a MapSlice under
+// UseOrderedMap.
+func orderedMapOfWalked(value any, n *ast.TagNode) (any, error) {
+	seq, isSeq := value.([]any)
+	if !isSeq {
+		return nil, notAnOrderedMap(n.Value)
+	}
+
+	var m MapSlice
+	for _, entry := range seq {
+		one, isMapping := entry.(map[string]any)
+		if !isMapping || len(one) != 1 {
+			return nil, notAnOrderedMap(n.Value)
+		}
+		for key, v := range one {
+			if m.index(key) >= 0 {
+				return nil, yamlerrors.NewDuplicateKey(
+					fmt.Sprintf("mapping key %v is written twice in an !!omap", key),
+					n.Value.GetToken(),
+				)
+			}
+			if err := m.Set(key, v); err != nil {
+				return nil, err
+			}
+		}
+	}
+
+	return MapSliceSeq(m), nil
 }
 
 // WalkValue reads the first document of src by walking it. EXPERIMENT.

@@ -33,7 +33,10 @@ func TestToJSONReadsTheTagsItKnows(t *testing.T) {
 		{"seq", "a: !!seq [1,2]\n", `{"a":[1,2]}`},
 		{"map", "a: !!map {x: 1}\n", `{"a":{"x":1}}`},
 		{"set", "a: !!set {x, y}\n", `{"a":{"x":null,"y":null}}`},
-		{"omap", "a: !!omap [{x: 1},{y: 2}]\n", `{"a":[{"x":1},{"y":2}]}`},
+		// Not transparent: the tag names an ordered map, and JSON has no
+		// ordering to lose, so the entries are written as one object holding
+		// the order the sequence gave them.
+		{"omap", "a: !!omap [{x: 1},{y: 2}]\n", `{"a":{"x":1,"y":2}}`},
 
 		// A timestamp is written as the instant it names, in RFC 3339, which is
 		// what the value converter writes for the time.Time the decoder builds.

@@ -539,6 +539,9 @@ func (e *Encoder) encodeValue(ctx context.Context, v reflect.Value, column int) 
 			if mapSlice, ok := reflect.TypeAssert[MapSlice](v); ok {
 				return e.encodeMapSlice(ctx, mapSlice, column)
 			}
+			if seq, ok := reflect.TypeAssert[MapSliceSeq](v); ok {
+				return e.encodeOrderedMapSeq(ctx, seq, column)
+			}
 			if mapItem, ok := v.Interface().(MapItem); ok {
 				return e.encodeMapItem(ctx, mapItem, column)
 			}
@@ -715,6 +718,37 @@ func (e *Encoder) encodeMapItem(ctx context.Context, item MapItem, column int) (
 		key,
 		value,
 	), nil
+}
+
+// encodeOrderedMapSeq writes a [MapSliceSeq] as the "!!omap" the tag names: a
+// flow sequence of one-entry mappings, "!!omap [{x: 1}, {y: 2}]".
+//
+// The tag goes back on, so a document read and written again keeps it. A
+// MapSlice writes a plain mapping instead, which is why the two are separate
+// types: the destination a caller declares decides the spelling.
+func (e *Encoder) encodeOrderedMapSeq(ctx context.Context, value MapSliceSeq, column int) (ast.Node, error) {
+	if e.isJSONStyle {
+		// JSON has no ordered map and no tags. The entries are written as an
+		// object in the order the sequence held them, which is what ToJSON
+		// writes for the same document.
+		return e.encodeMapSlice(ctx, MapSlice(value), column)
+	}
+
+	seq := ast.Sequence(token.New("", "", e.pos(column)), true)
+	for _, item := range MapSlice(value).items {
+		entry, err := e.encodeMapItem(ctx, item, column)
+		if err != nil {
+			return nil, err
+		}
+		mapping := ast.Mapping(token.New("", "", e.pos(column)), true)
+		mapping.Values = append(mapping.Values, entry)
+		seq.Values = append(seq.Values, mapping)
+	}
+
+	node := ast.Tag(token.New("!!omap", "!!omap", e.pos(column)))
+	node.Value = seq
+
+	return node, nil
 }
 
 func (e *Encoder) encodeMapSlice(ctx context.Context, value MapSlice, column int) (*ast.MappingNode, error) {

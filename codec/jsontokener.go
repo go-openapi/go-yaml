@@ -5,6 +5,7 @@ package codec
 
 import (
 	"fmt"
+	"slices"
 
 	"github.com/go-openapi/go-yaml/ast"
 	yamlerrors "github.com/go-openapi/go-yaml/errors"
@@ -63,6 +64,9 @@ type jsonTokener struct {
 	// where a block collection's closer goes: a block has no "}" or "]" of its
 	// own, so the closer stands at the end of what it encloses.
 	lastAt token.Position
+	// omaps is the "!!omap" nodes being handed over, innermost last. Their
+	// tokens are rewritten on the way out by foldOrderedMap.
+	omaps []omapMark
 	// peek indexes the tag in tags whose first token decides whether it holds a
 	// scalar or a collection, and is -1 where there is none.
 	peek int
@@ -290,6 +294,15 @@ func (t *jsonTokener) emit(tok JSONToken) {
 
 		return
 	}
+	if len(t.omaps) > 0 {
+		// Held until the tag closes and the shape is known. A "<<" inside one
+		// collects into t.buffer first and hands its run over here, so the two
+		// captures compose.
+		m := &t.omaps[len(t.omaps)-1]
+		m.toks = append(m.toks, tok)
+
+		return
+	}
 
 	if !t.wellFormed(tok) {
 		t.fail(yamlerrors.NewNotJSON(
@@ -306,7 +319,72 @@ func (t *jsonTokener) emit(tok JSONToken) {
 	}
 }
 
-// releasePeeked stops the tags naming a kind holding back what they stand on,
+// omapMark is one "!!omap" whose tokens are held back to be rewritten.
+type omapMark struct {
+	// node is the tag, so closeTag can tell its own mark from an inner one.
+	node ast.Node
+	// toks are the tokens the tagged node handed over, kept until the tag
+	// closes and the shape is known.
+	toks []JSONToken
+}
+
+// foldOrderedMapTokens rewrites the tokens an "!!omap" handed over as the
+// object JSON writes, and reports whether the tag names their shape.
+//
+// JSON specifies no ordering, so the sequence of one-entry mappings the
+// document writes is handed over as a single object holding that order: the
+// sequence's '[' and ']' become '{' and '}', and each entry's own braces are
+// dropped. ToJSON rewrites its bytes the same way and a MapSliceSeq encodes to
+// the same object.
+//
+// The tokens are held rather than rewritten as they arrive because this cannot
+// take a token back: whether the tag names the shape is only known at the ']',
+// and a node it does not name stands as it was written.
+func foldOrderedMapTokens(toks []JSONToken) ([]JSONToken, bool, string) {
+	last := len(toks) - 1
+	if last < 1 || toks[0].Kind != JSONArrayStart || toks[last].Kind != JSONArrayEnd {
+		return nil, false, ""
+	}
+
+	out := make([]JSONToken, 0, len(toks))
+	out = append(out, JSONToken{Kind: JSONObjectStart, At: toks[0].At})
+
+	var keys []string
+	for i := 1; i < last; {
+		if toks[i].Kind != JSONObjectStart {
+			return nil, false, ""
+		}
+		i++
+		depth, entryKeys := 1, 0
+		for i < last && depth > 0 {
+			switch toks[i].Kind {
+			case JSONObjectStart, JSONArrayStart:
+				depth++
+			case JSONObjectEnd, JSONArrayEnd:
+				depth--
+			case JSONKey:
+				if depth == 1 {
+					entryKeys++
+					if slices.Contains(keys, toks[i].Value) {
+						return nil, false, toks[i].Value
+					}
+					keys = append(keys, toks[i].Value)
+				}
+			}
+			if depth > 0 {
+				out = append(out, toks[i])
+			}
+			i++
+		}
+		if depth != 0 || entryKeys != 1 {
+			return nil, false, ""
+		}
+	}
+
+	return append(out, JSONToken{Kind: JSONObjectEnd, At: toks[last].At}), true, ""
+}
+
+// releasePeeked stops the tags naming a kind holding back what they stand on,// releasePeeked stops the tags naming a kind holding back what they stand on,
 // innermost first, once a collection has said that is what they stand on.
 func (t *jsonTokener) releasePeeked() {
 	for i := len(t.tags) - 1; i >= 0; i-- {

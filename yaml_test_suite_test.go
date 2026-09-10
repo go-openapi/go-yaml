@@ -65,6 +65,10 @@ const (
 	// The fixture expects a value the specification's own grammar does not
 	// produce, and the implementations agree with the grammar.
 	reasonFixtureDiffersFromSpec = "the fixture expects a value the grammar does not produce"
+	// The fixture writes an "!!omap" as the array of one-entry objects the
+	// document spells it with, and the decoder reads it as the ordered map the
+	// tag names.
+	reasonOrderedMap = "an !!omap decodes to an ordered map, not to the array that spells it"
 )
 
 // The two fixtures the decoder does not match, neither of them a defect.
@@ -138,6 +142,14 @@ var decodeLedger = map[string]string{
 	"zero-indented-sequences-in-explicit-mapping-keys": reasonNoExpectation,
 
 	"trailing-line-of-spaces/01": reasonFixtureDiffersFromSpec,
+
+	// "!!omap" reads into a codec.MapSliceSeq, which holds the entries of the
+	// sequence's one-entry mappings under the order they stood in. in.json
+	// states the array the document is written as -- [{"Mark McGwire":65},...]
+	// -- where ToJSON and the encoder both write the object {"Mark
+	// McGwire":65,...}. JSON specifies no ordering, so neither spelling is the
+	// JSON of an ordered map and the tag's meaning decides which we write.
+	"spec-example-2-26-ordered-mappings": reasonOrderedMap,
 }
 
 // scoredReasons are the reasons that mean the decoder got something wrong. The

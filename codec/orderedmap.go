@@ -8,7 +8,7 @@ import (
 	"iter"
 )
 
-// MapItem is one entry of a [MapSlice].
+// MapItem is one entry of a [MapSlice] or a [MapSliceSeq].
 //
 // A decode fills Key with the value the key resolves to, as it fills a
 // map[any]any key: "1:" gives uint64(1), "1.0:" float64(1), "null:" nil,
@@ -39,6 +39,18 @@ type MapSlice struct {
 	items []MapItem
 }
 
+// MapSliceSeq is a [MapSlice] that reads and writes YAML's "!!omap", a sequence
+// of one-entry mappings: "!!omap [{x: 1}, {y: 2}]".
+//
+// It holds the same entries under the same rules and differs in what the
+// encoder writes: a MapSlice writes a plain mapping, a MapSliceSeq writes the
+// tagged sequence, with or without [UseOrderedMap]. A decode builds one for a
+// node tagged "!!omap", and builds whichever type the destination names where
+// the destination names one.
+//
+// The two convert into each other: MapSlice(seq) and MapSliceSeq(m).
+type MapSliceSeq MapSlice
+
 // NewMapSlice returns a MapSlice holding items, in the order given.
 //
 // It returns an error for a key Go cannot hash, and for a key given twice --
@@ -46,6 +58,11 @@ type MapSlice struct {
 // caller asking for the value to be replaced.
 func NewMapSlice(items ...MapItem) (MapSlice, error) {
 	var m MapSlice
+	if len(items) == 0 {
+		// The zero value, so an empty MapSlice built here compares equal to one
+		// a decode builds for an empty mapping.
+		return m, nil
+	}
 	m.items = make([]MapItem, 0, len(items))
 	for _, item := range items {
 		if !hashableKey(item.Key) {
@@ -58,6 +75,14 @@ func NewMapSlice(items ...MapItem) (MapSlice, error) {
 	}
 
 	return m, nil
+}
+
+// NewMapSliceSeq returns a [MapSliceSeq] holding items, reading them as
+// [NewMapSlice] does.
+func NewMapSliceSeq(items ...MapItem) (MapSliceSeq, error) {
+	m, err := NewMapSlice(items...)
+
+	return MapSliceSeq(m), err
 }
 
 // unusableKey reports a key that cannot address an entry.
@@ -177,3 +202,30 @@ func (s MapSlice) index(key any) int {
 
 	return -1
 }
+
+// Len returns the number of entries.
+func (s MapSliceSeq) Len() int { return MapSlice(s).Len() }
+
+// At returns the entry standing at position i, counting from 0.
+func (s MapSliceSeq) At(i int) MapItem { return MapSlice(s).At(i) }
+
+// Get returns the value stored under key, and whether the map holds one.
+func (s MapSliceSeq) Get(key any) (any, bool) { return MapSlice(s).Get(key) }
+
+// Set stores value under key, as [MapSlice.Set] does.
+func (s *MapSliceSeq) Set(key, value any) error { return (*MapSlice)(s).Set(key, value) }
+
+// Delete removes the entry stored under key and reports whether it held one.
+func (s *MapSliceSeq) Delete(key any) bool { return (*MapSlice)(s).Delete(key) }
+
+// Keys iterates the keys in order.
+func (s MapSliceSeq) Keys() iter.Seq[any] { return MapSlice(s).Keys() }
+
+// Values iterates the values in key order.
+func (s MapSliceSeq) Values() iter.Seq[any] { return MapSlice(s).Values() }
+
+// All iterates the entries in order.
+func (s MapSliceSeq) All() iter.Seq2[any, any] { return MapSlice(s).All() }
+
+// ToMap returns the entries as a Go map, dropping the order.
+func (s MapSliceSeq) ToMap() map[any]any { return MapSlice(s).ToMap() }

@@ -1017,7 +1017,10 @@ func (d *Decoder) nodeToValue(ctx context.Context, node ast.Node) (any, error) {
 			return nil, err
 		}
 		if d.useOrderedMap {
-			m := MapSlice{items: make([]MapItem, 0, len(n.Values))}
+			var m MapSlice
+			if len(n.Values) > 0 {
+				m.items = make([]MapItem, 0, len(n.Values))
+			}
 			if err := eachEntryOwnFirst(n, func(value ast.Node, isMerge bool) error {
 				return d.setToOrderedMapValue(ctx, value, &m, isMerge)
 			}); err != nil {
@@ -1648,6 +1651,9 @@ func (d *Decoder) decodeValue(ctx context.Context, dst reflect.Value, src ast.No
 		if mapSlice, ok := dst.Addr().Interface().(*MapSlice); ok {
 			return d.decodeMapSlice(ctx, mapSlice, src)
 		}
+		if seq, ok := reflect.TypeAssert[*MapSliceSeq](dst.Addr()); ok {
+			return d.decodeOrderedMapSeq(ctx, seq, src)
+		}
 		if mapItem, ok := dst.Addr().Interface().(*MapItem); ok {
 			return d.decodeMapItem(ctx, mapItem, src)
 		}
@@ -2026,10 +2032,102 @@ func (d *Decoder) taggedValue(ctx context.Context, n *ast.TagNode, res ast.Resol
 		}
 
 		return text, nil
+	case token.OrderedMapTag:
+		seq, ordered := orderedMapShape(n.Value)
+		if !ordered {
+			return nil, notAnOrderedMap(n.Value)
+		}
+
+		return d.orderedMapOf(ctx, seq)
 	default:
-		// A tag naming a kind -- !!seq, !!map, !!set, !!omap, !!merge. The
-		// node is read as it stands.
+		// A tag naming a kind -- !!seq, !!map, !!set, !!merge. The node is read
+		// as it stands.
 		return d.nodeToValue(ctx, n.Value)
+	}
+}
+
+// orderedMapOf reads a sequence an "!!omap" names into a [MapSliceSeq].
+//
+// The shape is orderedMapShape's, so every element holds one entry and the
+// ordered map is the sequence's order. A key given twice is refused: the parser
+// records a repeat on the mapping that holds it and refuseDuplicateKeys reads
+// that record, but each mapping of an "!!omap" holds one key, so a repeat
+// across two of them leaves nothing to record and the check has to run here.
+func (d *Decoder) orderedMapOf(ctx context.Context, seq *ast.SequenceNode) (MapSliceSeq, error) {
+	var m MapSlice
+	for _, entry := range seq.Values {
+		var one MapSlice
+		if err := d.setToOrderedMapValue(ctx, entryMapping(entry), &one, false); err != nil {
+			return MapSliceSeq{}, err
+		}
+		for _, item := range one.items {
+			if m.index(item.Key) >= 0 {
+				return MapSliceSeq{}, yamlerrors.NewDuplicateKey(
+					fmt.Sprintf("mapping key %v is written twice in an !!omap", item.Key),
+					entry.GetToken(),
+				)
+			}
+			if err := m.Set(item.Key, item.Value); err != nil {
+				return MapSliceSeq{}, err
+			}
+		}
+	}
+
+	return MapSliceSeq(m), nil
+}
+
+// orderedMapShape reports the sequence of one-entry mappings an "!!omap" names,
+// where the node the tag stands on is one.
+//
+// A tag naming a kind its node is not is refused, as every other malformed tag
+// is: the document parses -- the shape is a question about what it means, not
+// about how it is written -- and the loader declines to build a value. So
+// "!!omap [1, 2]" is a document the parser reports and nodeToValue refuses.
+//
+// No implementation here votes on the shape. Measured 2026-09-10:
+// go.yaml.in/yaml/v3 v3.0.5 and libfyaml 1.0.0b1 both pass "!!omap" through
+// whatever stands under it -- a conforming sequence included -- so neither
+// builds an ordered map at all and neither reports a key written twice. What
+// they read says nothing about the shape a reader that builds the type should
+// require.
+func orderedMapShape(node ast.Node) (*ast.SequenceNode, bool) {
+	seq, isSeq := node.(*ast.SequenceNode)
+	if !isSeq {
+		return nil, false
+	}
+	for _, entry := range seq.Values {
+		if entryMapping(entry) == nil {
+			return nil, false
+		}
+	}
+
+	return seq, true
+}
+
+// notAnOrderedMap reports a node "!!omap" stands on that is not the shape the
+// tag names.
+func notAnOrderedMap(node ast.Node) error {
+	return yamlerrors.NewSyntax("!!omap names a sequence of one-entry mappings", node.GetToken())
+}
+
+// entryMapping is the one entry an "!!omap" element holds, or nil where the
+// element is not a mapping holding exactly one.
+func entryMapping(entry ast.Node) ast.Node {
+	switch n := entry.(type) {
+	case *ast.MappingNode:
+		if len(n.Values) != 1 {
+			return nil
+		}
+
+		return n.Values[0]
+	case *ast.MappingValueNode:
+		return n
+	case *ast.AnchorNode:
+		return entryMapping(n.Value)
+	case *ast.TagNode:
+		return entryMapping(n.Value)
+	default:
+		return nil
 	}
 }
 
@@ -2877,6 +2975,16 @@ func (d *Decoder) decodeMapSlice(ctx context.Context, dst *MapSlice, src ast.Nod
 		return ErrExceededMaxDepth
 	}
 
+	if seq, ordered := taggedOrderedMap(src); ordered {
+		one, err := d.orderedMapOf(ctx, seq)
+		if err != nil {
+			return err
+		}
+		*dst = MapSlice(one)
+
+		return nil
+	}
+
 	mapNode, err := d.getMapNode(src, isMerge(ctx))
 	if err != nil {
 		return err
@@ -2885,7 +2993,9 @@ func (d *Decoder) decodeMapSlice(ctx context.Context, dst *MapSlice, src ast.Nod
 	var m MapSlice
 	switch n := mapNode.(type) {
 	case *ast.MappingNode:
-		m.items = make([]MapItem, 0, len(n.Values))
+		if len(n.Values) > 0 {
+			m.items = make([]MapItem, 0, len(n.Values))
+		}
 		if err := d.setToOrderedMapValue(ctx, n, &m, isMerge(ctx)); err != nil {
 			return err
 		}
@@ -2897,6 +3007,50 @@ func (d *Decoder) decodeMapSlice(ctx context.Context, dst *MapSlice, src ast.Nod
 	*dst = m
 
 	return nil
+}
+
+// decodeOrderedMapSeq reads a mapping or an "!!omap" into dst.
+//
+// The destination names the spelling, so a plain mapping read into a
+// MapSliceSeq writes back as an "!!omap" and an "!!omap" read into a MapSlice
+// writes back as a plain mapping.
+func (d *Decoder) decodeOrderedMapSeq(ctx context.Context, dst *MapSliceSeq, src ast.Node) error {
+	m, err := d.orderedEntriesOf(ctx, src)
+	if err != nil {
+		return err
+	}
+	*dst = MapSliceSeq(m)
+
+	return nil
+}
+
+// orderedEntriesOf reads the entries of a mapping or of an "!!omap".
+func (d *Decoder) orderedEntriesOf(ctx context.Context, src ast.Node) (MapSlice, error) {
+	if seq, ordered := taggedOrderedMap(src); ordered {
+		one, err := d.orderedMapOf(ctx, seq)
+
+		return MapSlice(one), err
+	}
+
+	var m MapSlice
+	err := d.decodeMapSlice(ctx, &m, src)
+
+	return m, err
+}
+
+// taggedOrderedMap reports the sequence an "!!omap" standing on node names,
+// through an anchor.
+func taggedOrderedMap(node ast.Node) (*ast.SequenceNode, bool) {
+	switch n := node.(type) {
+	case *ast.TagNode:
+		if res := n.Resolve(); res.Verdict == ast.TagResolved && res.Tag == token.OrderedMapTag && !res.Empty {
+			return orderedMapShape(n.Value)
+		}
+	case *ast.AnchorNode:
+		return taggedOrderedMap(n.Value)
+	}
+
+	return nil, false
 }
 
 func (d *Decoder) decodeMap(ctx context.Context, dst reflect.Value, src ast.Node) error {

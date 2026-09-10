@@ -581,7 +581,7 @@ func (b *typedBuilder) handled(dst reflect.Value) bool {
 		return true
 	}
 	switch dst.Interface().(type) {
-	case MapSlice, MapItem:
+	case MapSlice, MapSliceSeq, MapItem:
 
 		return true
 	}
@@ -628,6 +628,7 @@ var (
 		reflect.TypeFor[time.Time](),
 		reflect.TypeFor[time.Duration](),
 		reflect.TypeFor[MapSlice](),
+		reflect.TypeFor[MapSliceSeq](),
 		reflect.TypeFor[MapItem](),
 		reflect.TypeFor[RawMessage](),
 	}

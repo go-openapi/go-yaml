@@ -263,9 +263,47 @@ func Write(v Value, st Style) Written {
 	// package would state, and Go refuses to key it before the statement can be
 	// made.
 	w.MeansUnclear = (st.Version == Reading11Version && e.reads.splitALegacySpelling()) ||
-		keysOnACollection(v)
+		keysOnACollection(v) ||
+		malformedOrderedMap(v)
 
 	return w
+}
+
+// malformedOrderedMap reports an "!!omap" in v standing on anything but a
+// sequence of one-entry mappings, which denotes no ordered map.
+//
+// [TagFor] offers the tag over any sequence, since neither libfyaml 1.0.0b1 nor
+// go.yaml.in/yaml/v3 v3.0.5 constrains what stands inside one -- both pass the
+// tag through and build no ordered map at all, so neither has a position to
+// take. This library builds one, and refuses the document where the shape the
+// tag names is not there: the parse is unaffected and the loader declines,
+// which is the rule every malformed tag takes. So the document is generated and
+// no meaning is stated for it.
+func malformedOrderedMap(v Value) bool {
+	switch n := v.(type) {
+	case Tagged:
+		if n.Tag == TagOMap {
+			if _, ordered := orderedMapDecoded(n.V); !ordered {
+				return true
+			}
+		}
+
+		return malformedOrderedMap(n.V)
+	case Map:
+		for _, p := range n.Pairs {
+			if malformedOrderedMap(p.Key) || malformedOrderedMap(p.Val) {
+				return true
+			}
+		}
+	case Seq:
+		return slices.ContainsFunc(n.Items, malformedOrderedMap)
+	case Anchored:
+		return malformedOrderedMap(n.V)
+	case Alias:
+		return malformedOrderedMap(n.V)
+	}
+
+	return false
 }
 
 // keysOnACollection reports whether any mapping in v keys an entry on a

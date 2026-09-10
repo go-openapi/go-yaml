@@ -27,6 +27,8 @@ import (
 var jsonTokenLedger = map[string]string{
 	"construct-binary": "!!binary resolves to the bytes it encodes, where the fixture records the text",
 
+	"spec-example-2-26-ordered-mappings": "an !!omap writes the ordered map the tag names, where the fixture writes the array that spells it",
+
 	"trailing-line-of-spaces/01": "the fixture keeps a trailing line of spaces that 7.4.1 folds away",
 }
 
