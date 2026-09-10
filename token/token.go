@@ -1764,6 +1764,24 @@ func (t *Token) AddColumn(col int) {
 	t.Position.Column += int32(col)
 }
 
+// Detached returns a copy of t that claims no document.
+//
+// A token cut from a source carries the offsets it was read at, and a verbatim
+// rendering writes it by copying those bytes back. A copy of a node put
+// somewhere else in the tree must not do that: the bytes at those offsets stand
+// where the document wrote the original, and the copy of the source runs
+// forward past them once. Detached clears [Token.FromSource] so the node it
+// belongs to is laid out where it was put instead. See [ast.Clone].
+func (t *Token) Detached() *Token {
+	if t == nil {
+		return nil
+	}
+	detached := *t
+	detached.spans &^= 1 << fromSourceShift
+
+	return &detached
+}
+
 // Clone copy token ( preserve Prev/Next reference )
 func (t *Token) Clone() *Token {
 	if t == nil {
