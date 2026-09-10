@@ -96,18 +96,27 @@ func (s *Scanner) normalizeMultiLineBreak(ctx *Context, c rune) rune {
 
 // closeMultiLineAtEOS ends the block on the last character of the source.
 func (s *Scanner) closeMultiLineAtEOS(ctx *Context, state *MultiLineState, c rune) error {
-	if s.isFirstCharAtLine && c == ' ' {
+	// The line has held nothing but spaces up to here: updateIndent leaves
+	// isFirstCharAtLine set for every space of the run, so this is true of the
+	// whole line and not of its first character alone.
+	spaceOnlyLine := s.isFirstCharAtLine && c == ' '
+
+	if spaceOnlyLine {
 		state.addIndent(ctx, s.column)
 	} else {
 		state.began(s.pos())
 		ctx.addBuf(c)
 	}
 
-	if !isNewLineChar(c) {
+	if !isNewLineChar(c) && !spaceOnlyLine {
 		// A line that ends here without content is empty, and an empty line is allowed less indentation than the header
 		// states: l-empty admits s-indent(<n).
 		// Holding it to the stated width refused every document whose block scalar both states its indentation and keeps its
 		// trailing blank lines.
+		//
+		// The source ending on such a line reached here rather than
+		// readMultiLineBreak, which is where a line break marks one empty, so
+		// "k: >1-\n  1\n " was refused where "k: >1-\n  1\n \n" was read.
 		state.updateIndentColumn(s.column)
 		if err := state.validateIndentColumn(); err != nil {
 			return s.refuseMultiLine(ctx, err.Error())

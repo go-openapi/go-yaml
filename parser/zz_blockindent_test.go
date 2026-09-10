@@ -130,3 +130,53 @@ func renderDocument(t *testing.T, src string) string {
 
 	return b.String() + "\n"
 }
+
+// TestFixedALastLineOfSpacesEndsABlockScalar: a block scalar whose last line
+// holds nothing but spaces was refused when the source ended there.
+//
+// "k: >1-\n  1\n " came back *the content of a block scalar is indented less
+// than the indicator in its header states*, where "k: >1-\n  1\n \n" -- the same
+// document with a line break after it -- was read. A line of spaces is an empty
+// line, and l-empty admits s-indent(<n), so the indicator does not apply to it.
+// readMultiLineBreak marks a line empty when the break arrives;
+// closeMultiLineAtEOS is reached instead when the source ends on that line, and
+// it validated the spaces as content.
+//
+// go.yaml.in/yaml/v3 v3.0.5, libfyaml 1.0.0b1 and the reference parser all read
+// every shape below, and agree on the value: " 1" for the scalar and ["1"] for
+// the sequence.
+func TestFixedALastLineOfSpacesEndsABlockScalar(t *testing.T) {
+	for _, tc := range []struct{ src, want string }{
+		{"k: >1-\n  1\n ", " 1"},
+		{"k: >2-\n   1\n  ", " 1"},
+		{"k: >2-\n   1\n ", " 1"},
+		{"k: |2-\n   1\n ", " 1"},
+		// The shapes that always parsed, so the fix is bounded: a line break
+		// after the spaces, and no trailing line at all.
+		{"k: >1-\n  1\n \n", " 1"},
+		{"k: >1-\n  1\n", " 1"},
+		// A trailing line holding as many spaces as the indicator states is
+		// content and not an empty line, so it folds into the value. Unchanged
+		// by the fix, and libfyaml 1.0.0b1 reads it the same way.
+		{"k: >1-\n  1\n  ", " 1\n "},
+	} {
+		file, err := parser.ParseBytes([]byte(tc.src))
+		require.NoErrorf(t, err, "%q", tc.src)
+
+		mapping, ok := file.Docs[0].Body.(*ast.MappingNode)
+		require.Truef(t, ok, "%q read as %T", tc.src, file.Docs[0].Body)
+		require.Lenf(t, mapping.Values, 1, "%q", tc.src)
+		literal, ok := mapping.Values[0].Value.(*ast.LiteralNode)
+		require.Truef(t, ok, "%q holds %T", tc.src, mapping.Values[0].Value)
+		assert.Equalf(t, tc.want, literal.Value.Value, "%q", tc.src)
+	}
+
+	t.Run("and inside a sequence entry, which is where the corpus found it", func(t *testing.T) {
+		// Reached by removing the comment from "k:\n - >1-\n  1\n # c\n ": the
+		// comment's line was the only thing between the content and the end of
+		// the source, so the removal left a document the parser refused.
+		file, err := parser.ParseBytes([]byte("k:\n - >1-\n  1\n "))
+		require.NoError(t, err)
+		assert.Equal(t, "k:\n- >2-\n  1", strings.TrimRight(file.Docs[0].String(), "\n"))
+	})
+}

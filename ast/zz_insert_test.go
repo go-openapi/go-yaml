@@ -268,10 +268,15 @@ type placement struct {
 // Appending was 86 unreadable and 1293 disturbed until writeEntry took the rest
 // of the previous entry's line from the cursor instead of from its extent -- a
 // token's extent runs to the end of its tile, which can be a line further on.
+//
+// 1747 to 1750 when the scanner stopped refusing a block scalar whose last line
+// holds nothing but spaces. All three new documents end on such a line, so
+// appending after it disturbs one, which took back from 187 to 190; front and
+// middle did not move.
 var insertionCensus = map[string]placement{
-	"front":  {tested: 1747, unreadable: 59, disturbed: 0},
-	"middle": {tested: 1747, unreadable: 59, disturbed: 17},
-	"back":   {tested: 1747, unreadable: 13, disturbed: 187},
+	"front":  {tested: 1750, unreadable: 59, disturbed: 0},
+	"middle": {tested: 1750, unreadable: 59, disturbed: 17},
+	"back":   {tested: 1750, unreadable: 13, disturbed: 190},
 }
 
 // TestInsertingIntoTheCorpus puts one entry into every document the corpus holds
