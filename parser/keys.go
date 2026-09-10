@@ -270,7 +270,7 @@ func (p *Parser) recordBuiltKeyOnce(key ast.MapKeyNode) {
 // 2 -- 1.46 MiB against 55 KiB. The nodes stand on content the tape is keeping
 // either way.
 func (p *Parser) keepsNothing() bool {
-	return p.readingKey == 0 && len(p.openAnchors) == 0
+	return !p.descent.readingAKey() && len(p.openAnchors) == 0
 }
 
 // builtKeyIdentity names a key that a single token could not.

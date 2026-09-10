@@ -202,7 +202,7 @@ func (p *Parser) parseScalarValue(ctx context, tk *group.TapeToken) (ast.ScalarN
 // forms with either "T" or "t", short date fields, and the refusals "1-2-3",
 // "15:04", "12:34:56", "2001-13-45" and a zone written "-5".
 func (p *Parser) resolveTimestamp(ctx context, tk *group.TapeToken, node ast.ScalarNode) ast.Node {
-	if tk.Type() != token.StringType || p.inLiteral > 0 || p.schemaInForce() != token.Schema11 {
+	if tk.Type() != token.StringType || p.descent.inBlockScalar() || p.schemaInForce() != token.Schema11 {
 		return node
 	}
 	text, isString := node.(*ast.StringNode)
@@ -256,9 +256,9 @@ func (p *Parser) parseLiteral(ctx context) (*ast.LiteralNode, error) {
 	// The content belongs to the literal and is not a value of its own, so it
 	// does not go over on its own account.
 	loud := p.quiet()
-	p.inLiteral++
+	doneLiteral := p.descent.enterLiteral()
 	value, err := p.parseToken(ctx, tk)
-	p.inLiteral--
+	doneLiteral()
 	loud()
 	if err != nil {
 		return nil, err

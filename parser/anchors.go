@@ -337,7 +337,7 @@ func (p *Parser) readAnchorValue(ctx context, anchor *ast.AnchorNode) (ast.Node,
 	if ctx.isComment() {
 		after = ctx.nextNotCommentToken()
 	}
-	if after != nil && p.opensNextEntry(after, int(anchor.GetToken().Position.Line)) {
+	if after != nil && p.descent.opensNextEntry(after, int(anchor.GetToken().Position.Line)) {
 		// The anchor was the last thing on its line and what follows opens the
 		// next entry of the collection around it, so the anchor names the empty
 		// node. parseMapValue and parseSequenceValue say this for the entries
@@ -489,7 +489,7 @@ func (p *Parser) anchorNamesNothing(ctx context, tk *group.TapeToken) (*group.To
 	}
 
 	next := ctx.nextNotCommentToken()
-	if next != nil && !endsValue(next) && !p.opensNextEntry(next, tk.Line()) {
+	if next != nil && !endsValue(next) && !p.descent.opensNextEntry(next, tk.Line()) {
 		return nil, false
 	}
 

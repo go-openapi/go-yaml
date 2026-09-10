@@ -17,7 +17,7 @@ func (p *Parser) hold(entry *ast.MappingValueNode) {
 	if p.walking() && p.keepsNothing() {
 		return
 	}
-	p.entries = append(p.entries, entry)
+	p.descent.holdEntry(entry)
 }
 
 // pendingEntry is one entry of a sequence being parsed, held until the sequence
@@ -79,11 +79,11 @@ func (p *Parser) parseSequence(ctx context) (*ast.SequenceNode, error) {
 	// The entries are gathered on a stack the parser reuses for every sequence,
 	// so this one's slices are allocated at its own length rather than grown an
 	// entry at a time. base is where this sequence's run starts.
-	base := len(p.seqEntries)
-	defer func() { p.seqEntries = p.seqEntries[:base] }()
+	base := p.descent.seqBase()
+	defer p.descent.dropSeqEntries(base)
 
 	tk := seqTk
-	// index counts the entries read, which is what len(p.seqEntries)-base used
+	// index counts the entries read, which is what the run's own length used
 	// to say. A walk holds no entry, so it cannot be counted by them.
 	var index uint
 	for tk.Type() == token.SequenceEntryType && tk.Column() == seqTk.Column() {
@@ -109,7 +109,7 @@ func (p *Parser) parseSequence(ctx context) (*ast.SequenceNode, error) {
 			// it holds.
 			p.rewindNodes(ctx)
 		} else {
-			p.seqEntries = append(p.seqEntries, pendingEntry{
+			p.descent.holdSeqEntry(pendingEntry{
 				value:       value,
 				entry:       seqEntry,
 				headComment: headComment,
@@ -123,7 +123,7 @@ func (p *Parser) parseSequence(ctx context) (*ast.SequenceNode, error) {
 		}
 	}
 	if !p.walking() || !p.keepsNothing() {
-		fillSequence(seqNode, p.seqEntries[base:])
+		fillSequence(seqNode, p.descent.seqEntriesFrom(base))
 	}
 
 	if ctx.isComment() {
@@ -152,7 +152,7 @@ func (p *Parser) parseSequenceValue(ctx context, seqTk *group.TapeToken) (ast.No
 	seqCol := seqTk.Column()
 	seqLine := seqTk.Line()
 
-	defer p.enterEntry(int(seqCol), false)()
+	defer p.descent.enterEntry(int(seqCol), false)()
 
 	if tk.Column() == seqCol && tk.Type() == token.SequenceEntryType {
 		// in this case,

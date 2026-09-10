@@ -162,8 +162,8 @@ func (p *Parser) parseMap(ctx context) (*ast.MappingNode, error) {
 	// The entries are gathered on a stack the parser reuses for every mapping,
 	// so a mapping's Values is allocated once, at its own length, rather than
 	// grown an entry at a time. entryBase is where this mapping's run starts.
-	entryBase := len(p.entries)
-	defer func() { p.entries = p.entries[:entryBase] }()
+	entryBase := p.descent.entryBase()
+	defer p.descent.dropEntries(entryBase)
 
 	keyTk := ctx.currentToken()
 
@@ -207,7 +207,7 @@ func (p *Parser) parseMap(ctx context) (*ast.MappingNode, error) {
 			// ] <=
 			break
 		}
-		if !p.isMapToken(tk) {
+		if !isMapToken(tk) {
 			return nil, yamlerrors.NewSyntax("non-map value is specified", tk.RawToken())
 		}
 		cm := p.parseHeadComment(ctx)
@@ -235,7 +235,7 @@ func (p *Parser) parseMap(ctx context) (*ast.MappingNode, error) {
 		}
 	}
 	if !p.walking() || !p.keepsNothing() {
-		mapNode.Values = ctx.arena.MappingRun(p.entries[entryBase:])
+		mapNode.Values = ctx.arena.MappingRun(p.descent.entriesFrom(entryBase))
 	}
 	defer p.leave(ctx, mapNode)
 
@@ -282,7 +282,7 @@ func (p *Parser) validateMapKeyValueNextToken(ctx context, keyTk, tk *group.Tape
 	return yamlerrors.NewSyntax("value is not allowed in this context. map key-value is pre-defined", tk.RawToken())
 }
 
-func (p *Parser) isMapToken(tk *group.TapeToken) bool {
+func isMapToken(tk *group.TapeToken) bool {
 	if tk.Group == nil {
 		return tk.Type() == token.MappingStartType || tk.Type() == token.MappingEndType
 	}
@@ -313,7 +313,7 @@ func (p *Parser) parseMapKeyValue(ctx context, g *group.TokenGroup, entryTk *gro
 	// end of a line knows what indentation its node has to be past. parseMapValue
 	// records this for the "k: v" shape; without it here, "? a" over ": &a1"
 	// took the "? b" below it as the node the anchor names.
-	defer p.enterEntry(int(key.GetToken().Position.Column), true)()
+	defer p.descent.enterEntry(int(key.GetToken().Position.Column), true)()
 
 	value, err := p.parseToken(c, g.Last())
 	if err != nil {
@@ -383,9 +383,9 @@ func (p *Parser) parseMapKey(ctx context, g *group.TokenGroup) (ast.MapKeyNode, 
 			return nil, yamlerrors.NewSyntax("could not find value for mapping key", mapKeyTk.RawToken())
 		}
 
-		p.readingKey++
+		doneKey := p.descent.enterKey()
 		value, err := p.parseToken(ctx, ctx.currentToken())
-		p.readingKey--
+		doneKey()
 		if err != nil {
 			return nil, err
 		}
@@ -445,9 +445,9 @@ func (p *Parser) parseMapKey(ctx context, g *group.TokenGroup) (ast.MapKeyNode, 
 		return nil, yamlerrors.NewSyntax("expected map key-value delimiter ':'", g.Last().RawToken())
 	}
 
-	p.readingKey++
+	doneKey := p.descent.enterKey()
 	scalar, err := p.parseMapKeyValueNode(ctx, g)
-	p.readingKey--
+	doneKey()
 	if err != nil {
 		return nil, err
 	}
@@ -528,7 +528,7 @@ func (p *Parser) parseMapValue(ctx context, key ast.MapKeyNode, colonTk *group.T
 	keyCol := int(key.GetToken().Position.Column)
 	keyLine := int(key.GetToken().Position.Line)
 
-	defer p.enterEntry(keyCol, true)()
+	defer p.descent.enterEntry(keyCol, true)()
 
 	if tk.Column() != keyCol && tk.Line() == keyLine && (tk.GroupType() == group.TokenGroupMapKey || tk.GroupType() == group.TokenGroupMapKeyValue) {
 		// a: b:
@@ -539,7 +539,7 @@ func (p *Parser) parseMapValue(ctx context, key ast.MapKeyNode, colonTk *group.T
 		return nil, yamlerrors.NewSyntax("mapping value is not allowed in this context", tk.RawToken())
 	}
 
-	if tk.Column() == keyCol && p.isMapToken(tk) {
+	if tk.Column() == keyCol && isMapToken(tk) {
 		// in this case,
 		// ----
 		// key: <value does not defined>
@@ -554,7 +554,7 @@ func (p *Parser) parseMapValue(ctx context, key ast.MapKeyNode, colonTk *group.T
 	}
 
 	if next := ctx.nextNotCommentToken(); tk.Line() == keyLine && carriesProperty(tk) &&
-		next != nil && next.Column() <= keyCol && !p.isMapToken(next) &&
+		next != nil && next.Column() <= keyCol && !isMapToken(next) &&
 		next.Type() != token.SequenceEntryType && next.Type() != token.DocumentHeaderType &&
 		next.Type() != token.DocumentEndType {
 		// key: &anchor
@@ -571,7 +571,7 @@ func (p *Parser) parseMapValue(ctx context, key ast.MapKeyNode, colonTk *group.T
 	}
 
 	if next := ctx.nextNotCommentToken(); tk.Line() == keyLine && tk.GroupType() == group.TokenGroupAnchorName &&
-		next.Column() == keyCol && p.isMapToken(next) {
+		next.Column() == keyCol && isMapToken(next) {
 		// in this case,
 		// ----
 		// key: &anchor

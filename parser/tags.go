@@ -167,7 +167,7 @@ func (p *Parser) parseTagValue(ctx context, uri string, tagRawTk *token.Token, t
 	tag, _ := token.ReservedTagOf(uri)
 	switch tag {
 	case token.MappingTag, token.SetTag:
-		if !p.isMapToken(tk) {
+		if !isMapToken(tk) {
 			return p.parseTaggedOtherKind(ctx, uri, tagRawTk, tk)
 		}
 		if tk.Type() == token.MappingStartType {
@@ -204,7 +204,7 @@ func (p *Parser) parseTagValue(ctx context, uri string, tagRawTk *token.Token, t
 
 			return anchor, nil
 		}
-		if opensCollection(tk) || p.isMapToken(tk) {
+		if opensCollection(tk) || isMapToken(tk) {
 			return p.parseTaggedOtherKind(ctx, uri, tagRawTk, tk)
 		}
 		scalar, err := p.parseScalarValue(ctx, tk)
@@ -230,7 +230,7 @@ func (p *Parser) parseTagValue(ctx context, uri string, tagRawTk *token.Token, t
 		// the empty node takes the tag's own default rather than null.
 		return newTagDefaultScalarValueNode(ctx, uri, tagRawTk)
 	}
-	if p.opensNextEntry(tk, int(tagRawTk.Position.Line)) {
+	if p.descent.opensNextEntry(tk, int(tagRawTk.Position.Line)) {
 		// A tag written with nothing after it, and what follows opens the next
 		// entry of the collection around it: the tag stands on the empty node.
 		// The tags the core schema resolves reach the same answer through
@@ -317,5 +317,5 @@ func (p *Parser) tagStandsOver(tk *group.TapeToken, tag *token.Token) bool {
 		return false
 	}
 
-	return !p.opensNextEntry(tk, int(tag.Position.Line))
+	return !p.descent.opensNextEntry(tk, int(tag.Position.Line))
 }

@@ -32,10 +32,6 @@ type Parser struct {
 	src string
 	// onComplete is told about each node as it is finished. EXPERIMENT.
 	onComplete func(ast.Node)
-	// entries holds the entries of every mapping open at this point in the
-	// descent, innermost run last. parseMap takes its run off the end once the
-	// mapping is built.
-	entries []*ast.MappingValueNode
 	// lineComments holds the comment closing a token's line, against that
 	// token. It is nil where the parse was not asked for comments.
 	lineComments map[*group.TapeToken]*token.Token
@@ -58,14 +54,6 @@ type Parser struct {
 	// notes the repeat on that mapping. See keys.go.
 	keys keyLedger
 
-	// seqEntries holds the entries of every sequence open at this point in the
-	// descent, innermost last. A sequence fills its slices from its own run
-	// when it closes, each at the length it ends up with, rather than growing
-	// three of them an entry at a time. That growth was 96-99% of everything
-	// runtime.growslice copied during a parse -- 1,385K of 1,389K on
-	// canada_geometry, which is deep sequences and nothing else.
-	seqEntries []pendingEntry
-
 	// walk is where a Walk stands, and nil for a parse that gathers a tree
 	// rather than handing it over.
 	walk *walkState
@@ -74,28 +62,10 @@ type Parser struct {
 	// begins, innermost last. Anchors nest, so it is a stack.
 	anchorFrom []int32
 
-	// inLiteral counts the block scalars whose content is being read. A literal
-	// or folded scalar is a string whatever it spells -- 10.2.1.2 gives it
-	// tag:yaml.org,2002:str -- so nothing inside one resolves to another type,
-	// and the scanner cuts its content as a plain String token like any other.
-	inLiteral int
-	// readingKey counts the keys being read, one deep for a key holding
-	// another. A walk hands a collection's members over instead of appending
-	// them, which leaves the node empty and unnameable; inside a key it appends
-	// them after all, so that the key can be named by what it holds. The bound
-	// is the key's own size and not the document's.
-	readingKey int
-
-	// entryCol is the column of the '-' or of the key of the entry being read,
-	// and 0 at the document's root where no entry encloses anything. entryInMap
-	// says which of the two it is.
-	//
-	// Together they say what a property standing at the end of its line may
-	// name. parseMapValue and parseSequenceValue know this and act on it for a
-	// bare anchor; a tag before the anchor takes the descent down parseTagValue,
-	// which is too far from either to see it. See anchorEndsTheLine.
-	entryCol   int
-	entryInMap bool
+	// descent is where the parse stands in the document: the entries of the
+	// collections it has open, the entry it is reading, and whether it is
+	// inside a block scalar or a key. See descent.go.
+	descent descentState
 
 	// anchors holds the node each anchor of the document in hand names, under
 	// the anchor's name. It goes to the document as that one closes, and the
