@@ -10,6 +10,8 @@ import (
 	"github.com/go-openapi/testify/v2/require"
 
 	"github.com/go-openapi/go-yaml/internal/scanner"
+	"github.com/go-openapi/go-yaml/internal/scanner/internal/testscanner"
+	"github.com/go-openapi/go-yaml/token"
 )
 
 // TestDoubleQuoteEscapes holds every escape that stands for one character to the character it stands for.
@@ -124,4 +126,408 @@ func TestDoubleQuoteRefusesACodePointThatIsNotACharacter(t *testing.T) {
 			assert.ErrorContains(t, s.Err(), "found an escaped code point that is not a character")
 		})
 	}
+}
+
+// TestTokenizeQuotedScalars checks the tokens string.go scans, for both quotes.
+//
+// TestDoubleQuoteEscapes above reads one escape at a time. These cases read whole documents: quoted values,
+// quoted keys, a quote holding ": ", and the folded double quote spanning several lines.
+func TestTokenizeQuotedScalars(t *testing.T) {
+	t.Parallel()
+
+	runCases(t, []testscanner.Case{
+		{
+			YAML: `"hello\tworld"`,
+			Tokens: []testscanner.WantToken{
+				{
+					Type:   token.DoubleQuoteType,
+					Value:  "hello\tworld",
+					Origin: `"hello\tworld"`,
+				},
+			},
+		},
+		{
+			YAML: `v: "true"`,
+			Tokens: []testscanner.WantToken{
+				{
+					Type:   token.StringType,
+					Value:  "v",
+					Origin: "v",
+				},
+				{
+					Type:   token.MappingValueType,
+					Value:  ":",
+					Origin: ":",
+				},
+				{
+					Type:   token.DoubleQuoteType,
+					Value:  "true",
+					Origin: " \"true\"",
+				},
+			},
+		},
+		{
+			YAML: `v: "false"`,
+			Tokens: []testscanner.WantToken{
+				{
+					Type:   token.StringType,
+					Value:  "v",
+					Origin: "v",
+				},
+				{
+					Type:   token.MappingValueType,
+					Value:  ":",
+					Origin: ":",
+				},
+				{
+					Type:   token.DoubleQuoteType,
+					Value:  "false",
+					Origin: " \"false\"",
+				},
+			},
+		},
+		{
+			YAML: `v: "10"`,
+			Tokens: []testscanner.WantToken{
+				{
+					Type:   token.StringType,
+					Value:  "v",
+					Origin: "v",
+				},
+				{
+					Type:   token.MappingValueType,
+					Value:  ":",
+					Origin: ":",
+				},
+				{
+					Type:   token.DoubleQuoteType,
+					Value:  "10",
+					Origin: " \"10\"",
+				},
+			},
+		},
+		{
+			YAML: `
+a:
+  "bbb  \
+      ccc
+
+      ddd eee\n\
+  \ \ fff ggg\nhhh iii\n
+  jjj kkk
+  "
+`,
+			Tokens: []testscanner.WantToken{
+				{
+					Type:   token.StringType,
+					Value:  "a",
+					Origin: "\na",
+				},
+				{
+					Type:   token.MappingValueType,
+					Value:  ":",
+					Origin: ":",
+				},
+				{
+					Type:   token.DoubleQuoteType,
+					Value:  "bbb  ccc\nddd eee\n  fff ggg\nhhh iii\n jjj kkk ",
+					Origin: "\n  \"bbb  \\\n      ccc\n\n      ddd eee\\n\\\n  \\ \\ fff ggg\\nhhh iii\\n\n  jjj kkk\n  \"",
+				},
+			},
+		},
+		{
+			YAML: `v: ""`,
+			Tokens: []testscanner.WantToken{
+				{
+					Type:   token.StringType,
+					Value:  "v",
+					Origin: "v",
+				},
+				{
+					Type:   token.MappingValueType,
+					Value:  ":",
+					Origin: ":",
+				},
+				{
+					Type:   token.DoubleQuoteType,
+					Value:  "",
+					Origin: " \"\"",
+				},
+			},
+		},
+		{
+			YAML: `a: '-'`,
+			Tokens: []testscanner.WantToken{
+				{
+					Type:   token.StringType,
+					Value:  "a",
+					Origin: "a",
+				},
+				{
+					Type:   token.MappingValueType,
+					Value:  ":",
+					Origin: ":",
+				},
+				{
+					Type:   token.SingleQuoteType,
+					Value:  "-",
+					Origin: " '-'",
+				},
+			},
+		},
+		{
+			YAML: `a: "1:1"`,
+			Tokens: []testscanner.WantToken{
+				{
+					Type:   token.StringType,
+					Value:  "a",
+					Origin: "a",
+				},
+				{
+					Type:   token.MappingValueType,
+					Value:  ":",
+					Origin: ":",
+				},
+				{
+					Type:   token.DoubleQuoteType,
+					Value:  "1:1",
+					Origin: " \"1:1\"",
+				},
+			},
+		},
+		{
+			YAML: `a: "\0"`,
+			Tokens: []testscanner.WantToken{
+				{
+					Type:   token.StringType,
+					Value:  "a",
+					Origin: "a",
+				},
+				{
+					Type:   token.MappingValueType,
+					Value:  ":",
+					Origin: ":",
+				},
+				{
+					Type:   token.DoubleQuoteType,
+					Value:  "\x00",
+					Origin: " \"\\0\"",
+				},
+			},
+		},
+		{
+			YAML: `a: "2015-02-24T18:19:39Z"`,
+			Tokens: []testscanner.WantToken{
+				{
+					Type:   token.StringType,
+					Value:  "a",
+					Origin: "a",
+				},
+				{
+					Type:   token.MappingValueType,
+					Value:  ":",
+					Origin: ":",
+				},
+				{
+					Type:   token.DoubleQuoteType,
+					Value:  "2015-02-24T18:19:39Z",
+					Origin: " \"2015-02-24T18:19:39Z\"",
+				},
+			},
+		},
+		{
+			YAML: `a: 'b: c'`,
+			Tokens: []testscanner.WantToken{
+				{
+					Type:   token.StringType,
+					Value:  "a",
+					Origin: "a",
+				},
+				{
+					Type:   token.MappingValueType,
+					Value:  ":",
+					Origin: ":",
+				},
+				{
+					Type:   token.SingleQuoteType,
+					Value:  "b: c",
+					Origin: " 'b: c'",
+				},
+			},
+		},
+		{
+			YAML: `a: 'Hello #comment'`,
+			Tokens: []testscanner.WantToken{
+				{
+					Type:   token.StringType,
+					Value:  "a",
+					Origin: "a",
+				},
+				{
+					Type:   token.MappingValueType,
+					Value:  ":",
+					Origin: ":",
+				},
+				{
+					Type:   token.SingleQuoteType,
+					Value:  "Hello #comment",
+					Origin: " 'Hello #comment'",
+				},
+			},
+		},
+		{
+			YAML: `"a": double quoted map key`,
+			Tokens: []testscanner.WantToken{
+				{
+					Type:   token.DoubleQuoteType,
+					Value:  "a",
+					Origin: "\"a\"",
+				},
+				{
+					Type:   token.MappingValueType,
+					Value:  ":",
+					Origin: ":",
+				},
+				{
+					Type:   token.StringType,
+					Value:  "double quoted map key",
+					Origin: " double quoted map key",
+				},
+			},
+		},
+		{
+			YAML: `'a': single quoted map key`,
+			Tokens: []testscanner.WantToken{
+				{
+					Type:   token.SingleQuoteType,
+					Value:  "a",
+					Origin: "'a'",
+				},
+				{
+					Type:   token.MappingValueType,
+					Value:  ":",
+					Origin: ":",
+				},
+				{
+					Type:   token.StringType,
+					Value:  "single quoted map key",
+					Origin: " single quoted map key",
+				},
+			},
+		},
+		{
+			YAML: `
+a: "double quoted"
+b: "value map"`,
+			Tokens: []testscanner.WantToken{
+				{
+					Type:   token.StringType,
+					Value:  "a",
+					Origin: "\na",
+				},
+				{
+					Type:   token.MappingValueType,
+					Value:  ":",
+					Origin: ":",
+				},
+				{
+					Type:   token.DoubleQuoteType,
+					Value:  "double quoted",
+					Origin: " \"double quoted\"",
+				},
+				{
+					Type:   token.StringType,
+					Value:  "b",
+					Origin: "\nb",
+				},
+				{
+					Type:   token.MappingValueType,
+					Value:  ":",
+					Origin: ":",
+				},
+				{
+					Type:   token.DoubleQuoteType,
+					Value:  "value map",
+					Origin: " \"value map\"",
+				},
+			},
+		},
+		{
+			YAML: `
+a: 'single quoted'
+b: 'value map'`,
+			Tokens: []testscanner.WantToken{
+				{
+					Type:   token.StringType,
+					Value:  "a",
+					Origin: "\na",
+				},
+				{
+					Type:   token.MappingValueType,
+					Value:  ":",
+					Origin: ":",
+				},
+				{
+					Type:   token.SingleQuoteType,
+					Value:  "single quoted",
+					Origin: " 'single quoted'",
+				},
+				{
+					Type:   token.StringType,
+					Value:  "b",
+					Origin: "\nb",
+				},
+				{
+					Type:   token.MappingValueType,
+					Value:  ":",
+					Origin: ":",
+				},
+				{
+					Type:   token.SingleQuoteType,
+					Value:  "value map",
+					Origin: " 'value map'",
+				},
+			},
+		},
+		{
+			YAML: `json: '\"expression\": \"thi:\"'`,
+			Tokens: []testscanner.WantToken{
+				{
+					Type:   token.StringType,
+					Value:  "json",
+					Origin: "json",
+				},
+				{
+					Type:   token.MappingValueType,
+					Value:  ":",
+					Origin: ":",
+				},
+				{
+					Type:   token.SingleQuoteType,
+					Value:  "\\\"expression\\\": \\\"thi:\\\"",
+					Origin: " '\\\"expression\\\": \\\"thi:\\\"'",
+				},
+			},
+		},
+		{
+			YAML: `json: "\"expression\": \"thi:\""`,
+			Tokens: []testscanner.WantToken{
+				{
+					Type:   token.StringType,
+					Value:  "json",
+					Origin: "json",
+				},
+				{
+					Type:   token.MappingValueType,
+					Value:  ":",
+					Origin: ":",
+				},
+				{
+					Type:   token.DoubleQuoteType,
+					Value:  "\"expression\": \"thi:\"",
+					Origin: " \"\\\"expression\\\": \\\"thi:\\\"\"",
+				},
+			},
+		},
+	})
 }

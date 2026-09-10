@@ -10,6 +10,7 @@ import (
 	"github.com/go-openapi/testify/v2/require"
 
 	"github.com/go-openapi/go-yaml/internal/fuzzseeds"
+	"github.com/go-openapi/go-yaml/internal/scanner/internal/testscanner"
 	"github.com/go-openapi/go-yaml/token"
 )
 
@@ -118,5 +119,558 @@ func FuzzAlnumRunMatchesTheByteLoop(f *testing.F) {
 		fast, slow, fastErr, slowErr := scanBoth(src)
 		require.Equalf(t, slowErr == nil, fastErr == nil, "the two paths disagree on whether %q reads", src)
 		require.Equal(t, slow, fast)
+	})
+}
+
+// scanPlain drives a Scanner from inside the package, so the tokenize cases run beside the differential test above.
+//
+// scanner_test.go carries the same adapter for package scanner_test. [testscanner.RunCases] takes the scan as a
+// parameter because testscanner must not import the scanner: this file imports testscanner, so that would be a cycle.
+func scanPlain(src string) ([]token.Token, error) {
+	var s Scanner
+	s.Init([]byte(src))
+
+	tokens := make([]token.Token, 0, testscanner.EstimateTokens(src))
+	for tk := range s.Tokens() {
+		held := tk
+		tokens = append(tokens, held)
+	}
+
+	return tokens, s.Err()
+}
+
+// TestTokenizePlainScalars checks the plain scalars plain.go steps over, and the type each one resolves to.
+//
+// The resolution itself happens in token.New against the current schema; these cases pin the answer the scanner
+// hands back for the spellings YAML 1.1 and YAML 1.2 read differently -- "0100", "0o10", "0x_1A_2B_3C", "+0b1010".
+func TestTokenizePlainScalars(t *testing.T) {
+	t.Parallel()
+
+	testscanner.RunCases(t, scanPlain, []testscanner.Case{
+		{
+			YAML: `null
+  `,
+			Tokens: []testscanner.WantToken{
+				{
+					Type:   token.NullType,
+					Value:  "null",
+					Origin: "null\n  ",
+				},
+			},
+		},
+		{
+			// The "_" digit separator is YAML 1.1's; the 1.2 core schema has none.
+			YAML: `0_`,
+			Tokens: []testscanner.WantToken{
+				{
+					Type:   token.StringType,
+					Value:  "0_",
+					Origin: "0_",
+				},
+			},
+		},
+		{
+			YAML: `0x_1A_2B_3C`,
+			Tokens: []testscanner.WantToken{
+				{
+					Type:   token.StringType,
+					Value:  "0x_1A_2B_3C",
+					Origin: "0x_1A_2B_3C",
+				},
+			},
+		},
+		{
+			// YAML 1.1 wrote a binary integer as "0b..."; 1.2 has no such form.
+			YAML: `+0b1010`,
+			Tokens: []testscanner.WantToken{
+				{
+					Type:   token.StringType,
+					Value:  "+0b1010",
+					Origin: "+0b1010",
+				},
+			},
+		},
+		{
+			// A leading zero made a number octal in YAML 1.1. The 1.2 decimal form is "[-+]?
+			// [0-9]+", which reads the zero and nothing into it.
+			YAML: `0100`,
+			Tokens: []testscanner.WantToken{
+				{
+					Type:   token.IntegerType,
+					Value:  "0100",
+					Origin: "0100",
+				},
+			},
+		},
+		{
+			YAML: `0o10`,
+			Tokens: []testscanner.WantToken{
+				{
+					Type:   token.OctetIntegerType,
+					Value:  "0o10",
+					Origin: "0o10",
+				},
+			},
+		},
+		{
+			YAML: `0.123e+123`,
+			Tokens: []testscanner.WantToken{
+				{
+					Type:   token.FloatType,
+					Value:  "0.123e+123",
+					Origin: "0.123e+123",
+				},
+			},
+		},
+		{
+			YAML: `v: true`,
+			Tokens: []testscanner.WantToken{
+				{
+					Type:   token.StringType,
+					Value:  "v",
+					Origin: "v",
+				},
+				{
+					Type:   token.MappingValueType,
+					Value:  ":",
+					Origin: ":",
+				},
+				{
+					Type:   token.BoolType,
+					Value:  "true",
+					Origin: " true",
+				},
+			},
+		},
+		{
+			YAML: `v: false`,
+			Tokens: []testscanner.WantToken{
+				{
+					Type:   token.StringType,
+					Value:  "v",
+					Origin: "v",
+				},
+				{
+					Type:   token.MappingValueType,
+					Value:  ":",
+					Origin: ":",
+				},
+				{
+					Type:   token.BoolType,
+					Value:  "false",
+					Origin: " false",
+				},
+			},
+		},
+		{
+			YAML: `v: 10`,
+			Tokens: []testscanner.WantToken{
+				{
+					Type:   token.StringType,
+					Value:  "v",
+					Origin: "v",
+				},
+				{
+					Type:   token.MappingValueType,
+					Value:  ":",
+					Origin: ":",
+				},
+				{
+					Type:   token.IntegerType,
+					Value:  "10",
+					Origin: " 10",
+				},
+			},
+		},
+		{
+			YAML: `v: -10`,
+			Tokens: []testscanner.WantToken{
+				{
+					Type:   token.StringType,
+					Value:  "v",
+					Origin: "v",
+				},
+				{
+					Type:   token.MappingValueType,
+					Value:  ":",
+					Origin: ":",
+				},
+				{
+					Type:   token.IntegerType,
+					Value:  "-10",
+					Origin: " -10",
+				},
+			},
+		},
+		{
+			YAML: `v: 42`,
+			Tokens: []testscanner.WantToken{
+				{
+					Type:   token.StringType,
+					Value:  "v",
+					Origin: "v",
+				},
+				{
+					Type:   token.MappingValueType,
+					Value:  ":",
+					Origin: ":",
+				},
+				{
+					Type:   token.IntegerType,
+					Value:  "42",
+					Origin: " 42",
+				},
+			},
+		},
+		{
+			YAML: `v: 4294967296`,
+			Tokens: []testscanner.WantToken{
+				{
+					Type:   token.StringType,
+					Value:  "v",
+					Origin: "v",
+				},
+				{
+					Type:   token.MappingValueType,
+					Value:  ":",
+					Origin: ":",
+				},
+				{
+					Type:   token.IntegerType,
+					Value:  "4294967296",
+					Origin: " 4294967296",
+				},
+			},
+		},
+		{
+			YAML: `v: 0.1`,
+			Tokens: []testscanner.WantToken{
+				{
+					Type:   token.StringType,
+					Value:  "v",
+					Origin: "v",
+				},
+				{
+					Type:   token.MappingValueType,
+					Value:  ":",
+					Origin: ":",
+				},
+				{
+					Type:   token.FloatType,
+					Value:  "0.1",
+					Origin: " 0.1",
+				},
+			},
+		},
+		{
+			YAML: `v: 0.99`,
+			Tokens: []testscanner.WantToken{
+				{
+					Type:   token.StringType,
+					Value:  "v",
+					Origin: "v",
+				},
+				{
+					Type:   token.MappingValueType,
+					Value:  ":",
+					Origin: ":",
+				},
+				{
+					Type:   token.FloatType,
+					Value:  "0.99",
+					Origin: " 0.99",
+				},
+			},
+		},
+		{
+			YAML: `v: -0.1`,
+			Tokens: []testscanner.WantToken{
+				{
+					Type:   token.StringType,
+					Value:  "v",
+					Origin: "v",
+				},
+				{
+					Type:   token.MappingValueType,
+					Value:  ":",
+					Origin: ":",
+				},
+				{
+					Type:   token.FloatType,
+					Value:  "-0.1",
+					Origin: " -0.1",
+				},
+			},
+		},
+		{
+			YAML: `v: .inf`,
+			Tokens: []testscanner.WantToken{
+				{
+					Type:   token.StringType,
+					Value:  "v",
+					Origin: "v",
+				},
+				{
+					Type:   token.MappingValueType,
+					Value:  ":",
+					Origin: ":",
+				},
+				{
+					Type:   token.InfinityType,
+					Value:  ".inf",
+					Origin: " .inf",
+				},
+			},
+		},
+		{
+			YAML: `v: -.inf`,
+			Tokens: []testscanner.WantToken{
+				{
+					Type:   token.StringType,
+					Value:  "v",
+					Origin: "v",
+				},
+				{
+					Type:   token.MappingValueType,
+					Value:  ":",
+					Origin: ":",
+				},
+				{
+					Type:   token.InfinityType,
+					Value:  "-.inf",
+					Origin: " -.inf",
+				},
+			},
+		},
+		{
+			YAML: `v: .nan`,
+			Tokens: []testscanner.WantToken{
+				{
+					Type:   token.StringType,
+					Value:  "v",
+					Origin: "v",
+				},
+				{
+					Type:   token.MappingValueType,
+					Value:  ":",
+					Origin: ":",
+				},
+				{
+					Type:   token.NanType,
+					Value:  ".nan",
+					Origin: " .nan",
+				},
+			},
+		},
+		{
+			YAML: `v: null`,
+			Tokens: []testscanner.WantToken{
+				{
+					Type:   token.StringType,
+					Value:  "v",
+					Origin: "v",
+				},
+				{
+					Type:   token.MappingValueType,
+					Value:  ":",
+					Origin: ":",
+				},
+				{
+					Type:   token.NullType,
+					Value:  "null",
+					Origin: " null",
+				},
+			},
+		},
+		{
+			YAML: `123`,
+			Tokens: []testscanner.WantToken{
+				{
+					Type:   token.IntegerType,
+					Value:  "123",
+					Origin: "123",
+				},
+			},
+		},
+		{
+			YAML: `a: null`,
+			Tokens: []testscanner.WantToken{
+				{
+					Type:   token.StringType,
+					Value:  "a",
+					Origin: "a",
+				},
+				{
+					Type:   token.MappingValueType,
+					Value:  ":",
+					Origin: ":",
+				},
+				{
+					Type:   token.NullType,
+					Value:  "null",
+					Origin: " null",
+				},
+			},
+		},
+		{
+			YAML: `
+t2: 2018-01-09T10:40:47Z
+t4: 2098-01-09T10:40:47Z
+`,
+			Tokens: []testscanner.WantToken{
+				{
+					Type:   token.StringType,
+					Value:  "t2",
+					Origin: "\nt2",
+				},
+				{
+					Type:   token.MappingValueType,
+					Value:  ":",
+					Origin: ":",
+				},
+				{
+					Type:   token.StringType,
+					Value:  "2018-01-09T10:40:47Z",
+					Origin: " 2018-01-09T10:40:47Z\n",
+				},
+				{
+					Type:   token.StringType,
+					Value:  "t4",
+					Origin: "t4",
+				},
+				{
+					Type:   token.MappingValueType,
+					Value:  ":",
+					Origin: ":",
+				},
+				{
+					Type:   token.StringType,
+					Value:  "2098-01-09T10:40:47Z",
+					Origin: " 2098-01-09T10:40:47Z",
+				},
+			},
+		},
+		{
+			YAML: `a: 3s`,
+			Tokens: []testscanner.WantToken{
+				{
+					Type:   token.StringType,
+					Value:  "a",
+					Origin: "a",
+				},
+				{
+					Type:   token.MappingValueType,
+					Value:  ":",
+					Origin: ":",
+				},
+				{
+					Type:   token.StringType,
+					Value:  "3s",
+					Origin: " 3s",
+				},
+			},
+		},
+		{
+			YAML: `a: 1.2.3.4`,
+			Tokens: []testscanner.WantToken{
+				{
+					Type:   token.StringType,
+					Value:  "a",
+					Origin: "a",
+				},
+				{
+					Type:   token.MappingValueType,
+					Value:  ":",
+					Origin: ":",
+				},
+				{
+					Type:   token.StringType,
+					Value:  "1.2.3.4",
+					Origin: " 1.2.3.4",
+				},
+			},
+		},
+		{
+			YAML: `a: 100.5`,
+			Tokens: []testscanner.WantToken{
+				{
+					Type:   token.StringType,
+					Value:  "a",
+					Origin: "a",
+				},
+				{
+					Type:   token.MappingValueType,
+					Value:  ":",
+					Origin: ":",
+				},
+				{
+					Type:   token.FloatType,
+					Value:  "100.5",
+					Origin: " 100.5",
+				},
+			},
+		},
+		{
+			YAML: `a: bogus`,
+			Tokens: []testscanner.WantToken{
+				{
+					Type:   token.StringType,
+					Value:  "a",
+					Origin: "a",
+				},
+				{
+					Type:   token.MappingValueType,
+					Value:  ":",
+					Origin: ":",
+				},
+				{
+					Type:   token.StringType,
+					Value:  "bogus",
+					Origin: " bogus",
+				},
+			},
+		},
+		{
+			YAML: `1x0`,
+			Tokens: []testscanner.WantToken{
+				{
+					Type:   token.StringType,
+					Value:  "1x0",
+					Origin: "1x0",
+				},
+			},
+		},
+		{
+			YAML: `0b98765`,
+			Tokens: []testscanner.WantToken{
+				{
+					Type:   token.StringType,
+					Value:  "0b98765",
+					Origin: "0b98765",
+				},
+			},
+		},
+		{
+			// 9 and 8 are not octal digits, so this was a string under YAML 1.1. Under 1.2 it is a decimal number that opens
+			// with a zero.
+			YAML: `098765`,
+			Tokens: []testscanner.WantToken{
+				{
+					Type:   token.IntegerType,
+					Value:  "098765",
+					Origin: "098765",
+				},
+			},
+		},
+		{
+			YAML: `0o98765`,
+			Tokens: []testscanner.WantToken{
+				{
+					Type:   token.StringType,
+					Value:  "0o98765",
+					Origin: "0o98765",
+				},
+			},
+		},
 	})
 }

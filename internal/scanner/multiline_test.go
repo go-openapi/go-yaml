@@ -9,6 +9,7 @@ import (
 	"github.com/go-openapi/testify/v2/assert"
 	"github.com/go-openapi/testify/v2/require"
 
+	"github.com/go-openapi/go-yaml/internal/scanner/internal/testscanner"
 	"github.com/go-openapi/go-yaml/token"
 )
 
@@ -67,4 +68,522 @@ func TestBlockScalarHeaderEndingTheSource(t *testing.T) {
 			assert.Equal(t, got[0].Type, withBreak[0].Type, "the trailing break should not change what the header is")
 		})
 	}
+}
+
+// TestTokenizeBlockScalars checks what multiline.go scans: "|" and ">", their indentation indicators and their
+// chomping indicators.
+//
+// "a: !!binary |" is here and not in tag_test.go because the literal block is what separates it from
+// "a: !!binary gIGC".
+func TestTokenizeBlockScalars(t *testing.T) {
+	t.Parallel()
+
+	runCases(t, []testscanner.Case{
+		{
+			YAML: `
+v:
+- A
+- |-
+ B
+ C
+`,
+			Tokens: []testscanner.WantToken{
+				{
+					Type:   token.StringType,
+					Value:  "v",
+					Origin: "\nv",
+				},
+				{
+					Type:   token.MappingValueType,
+					Value:  ":",
+					Origin: ":",
+				},
+				{
+					Type:   token.SequenceEntryType,
+					Value:  "-",
+					Origin: "\n-",
+				},
+				{
+					Type:   token.StringType,
+					Value:  "A",
+					Origin: " A\n",
+				},
+				{
+					Type:   token.SequenceEntryType,
+					Value:  "-",
+					Origin: "-",
+				},
+				{
+					Type:   token.LiteralType,
+					Value:  "|-",
+					Origin: " |-\n",
+				},
+				{
+					Type:   token.StringType,
+					Value:  "B\nC",
+					Origin: " B\n C\n",
+				},
+			},
+		},
+		{
+			YAML: `
+a: !!binary |
+ kJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJ
+ CQ
+`,
+			Tokens: []testscanner.WantToken{
+				{
+					Type:   token.StringType,
+					Value:  "a",
+					Origin: "\na",
+				},
+				{
+					Type:   token.MappingValueType,
+					Value:  ":",
+					Origin: ":",
+				},
+				{
+					Type:   token.TagType,
+					Value:  "!!binary",
+					Origin: " !!binary ",
+				},
+				{
+					Type:   token.LiteralType,
+					Value:  "|",
+					Origin: "|\n",
+				},
+				{
+					Type:   token.StringType,
+					Value:  "kJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJ\nCQ\n",
+					Origin: " kJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJ\n CQ\n",
+				},
+			},
+		},
+		{
+			YAML: `
+a: |
+ b   
+
+  
+ c
+ d 
+e: f
+`,
+			Tokens: []testscanner.WantToken{
+				{
+					Type:   token.StringType,
+					Value:  "a",
+					Origin: "\na",
+				},
+				{
+					Type:   token.MappingValueType,
+					Value:  ":",
+					Origin: ":",
+				},
+				{
+					Type:   token.LiteralType,
+					Value:  "|",
+					Origin: " |\n",
+				},
+				{
+					Type:   token.StringType,
+					Value:  "b   \n\n \nc\nd \n",
+					Origin: " b   \n\n  \n c\n d \n",
+				},
+				{
+					Type:   token.StringType,
+					Value:  "e",
+					Origin: "e",
+				},
+				{
+					Type:   token.MappingValueType,
+					Value:  ":",
+					Origin: ":",
+				},
+				{
+					Type:   token.StringType,
+					Value:  "f",
+					Origin: " f",
+				},
+			},
+		},
+		{
+			YAML: `
+a: >
+ b   
+
+  
+ c
+ d 
+e: f
+`,
+			Tokens: []testscanner.WantToken{
+				{
+					Type:   token.StringType,
+					Value:  "a",
+					Origin: "\na",
+				},
+				{
+					Type:   token.MappingValueType,
+					Value:  ":",
+					Origin: ":",
+				},
+				{
+					Type:   token.FoldedType,
+					Value:  ">",
+					Origin: " >\n",
+				},
+				{
+					Type:   token.StringType,
+					Value:  "b   \n\n \nc d \n",
+					Origin: " b   \n\n  \n c\n d \n",
+				},
+				{
+					Type:   token.StringType,
+					Value:  "e",
+					Origin: "e",
+				},
+				{
+					Type:   token.MappingValueType,
+					Value:  ":",
+					Origin: ":",
+				},
+				{
+					Type:   token.StringType,
+					Value:  "f",
+					Origin: " f",
+				},
+			},
+		},
+		{
+			YAML: `
+a: >
+  Text`,
+			Tokens: []testscanner.WantToken{
+				{
+					Type:   token.StringType,
+					Value:  "a",
+					Origin: "\na",
+				},
+				{
+					Type:   token.MappingValueType,
+					Value:  ":",
+					Origin: ":",
+				},
+				{
+					Type:   token.FoldedType,
+					Value:  ">",
+					Origin: " >\n",
+				},
+				{
+					Type:   token.StringType,
+					Value:  "Text",
+					Origin: "  Text",
+				},
+			},
+		},
+		{
+			YAML: `
+s: >
+        1s
+`,
+			Tokens: []testscanner.WantToken{
+				{
+					Type:   token.StringType,
+					Value:  "s",
+					Origin: "\ns",
+				},
+				{
+					Type:   token.MappingValueType,
+					Value:  ":",
+					Origin: ":",
+				},
+				{
+					Type:   token.FoldedType,
+					Value:  ">",
+					Origin: " >\n",
+				},
+				{
+					Type:   token.StringType,
+					Value:  "1s\n",
+					Origin: "        1s\n",
+				},
+			},
+		},
+		{
+			YAML: `
+s: >1        # comment
+        1s
+`,
+			Tokens: []testscanner.WantToken{
+				{
+					Type:   token.StringType,
+					Value:  "s",
+					Origin: "\ns",
+				},
+				{
+					Type:   token.MappingValueType,
+					Value:  ":",
+					Origin: ":",
+				},
+				{
+					Type:   token.FoldedType,
+					Value:  ">1",
+					Origin: " >1        ",
+				},
+				{
+					Type:   token.CommentType,
+					Value:  " comment",
+					Origin: "# comment\n",
+				},
+				{
+					Type:   token.StringType,
+					Value:  "       1s\n",
+					Origin: "        1s\n",
+				},
+			},
+		},
+		{
+			YAML: `
+s: >+2
+        1s
+`,
+			Tokens: []testscanner.WantToken{
+				{
+					Type:   token.StringType,
+					Value:  "s",
+					Origin: "\ns",
+				},
+				{
+					Type:   token.MappingValueType,
+					Value:  ":",
+					Origin: ":",
+				},
+				{
+					Type:   token.FoldedType,
+					Value:  ">+2",
+					Origin: " >+2\n",
+				},
+				{
+					Type:   token.StringType,
+					Value:  "      1s\n",
+					Origin: "        1s\n",
+				},
+			},
+		},
+		{
+			YAML: `
+s: >-3
+        1s
+`,
+			Tokens: []testscanner.WantToken{
+				{
+					Type:   token.StringType,
+					Value:  "s",
+					Origin: "\ns",
+				},
+				{
+					Type:   token.MappingValueType,
+					Value:  ":",
+					Origin: ":",
+				},
+				{
+					Type:   token.FoldedType,
+					Value:  ">-3",
+					Origin: " >-3\n",
+				},
+				{
+					Type:   token.StringType,
+					Value:  "     1s",
+					Origin: "        1s\n",
+				},
+			},
+		},
+		{
+			YAML: `
+s: >
+    1s
+    2s
+`,
+			Tokens: []testscanner.WantToken{
+				{
+					Type:   token.StringType,
+					Value:  "s",
+					Origin: "\ns",
+				},
+				{
+					Type:   token.MappingValueType,
+					Value:  ":",
+					Origin: ":",
+				},
+				{
+					Type:   token.FoldedType,
+					Value:  ">",
+					Origin: " >\n",
+				},
+				{
+					Type:   token.StringType,
+					Value:  "1s 2s\n",
+					Origin: "    1s\n    2s\n",
+				},
+			},
+		},
+		{
+			YAML: `
+s: >
+    1s
+      2s
+    3s
+`,
+			Tokens: []testscanner.WantToken{
+				{
+					Type:   token.StringType,
+					Value:  "s",
+					Origin: "\ns",
+				},
+				{
+					Type:   token.MappingValueType,
+					Value:  ":",
+					Origin: ":",
+				},
+				{
+					Type:   token.FoldedType,
+					Value:  ">",
+					Origin: " >\n",
+				},
+				{
+					Type:   token.StringType,
+					Value:  "1s\n  2s\n3s\n",
+					Origin: "    1s\n      2s\n    3s\n",
+				},
+			},
+		},
+		{
+			YAML: `
+s: >
+    1s
+      2s
+      3s
+    4s
+    5s
+`,
+			Tokens: []testscanner.WantToken{
+				{
+					Type:   token.StringType,
+					Value:  "s",
+					Origin: "\ns",
+				},
+				{
+					Type:   token.MappingValueType,
+					Value:  ":",
+					Origin: ":",
+				},
+				{
+					Type:   token.FoldedType,
+					Value:  ">",
+					Origin: " >\n",
+				},
+				{
+					Type:   token.StringType,
+					Value:  "1s\n  2s\n  3s\n4s 5s\n",
+					Origin: "    1s\n      2s\n      3s\n    4s\n    5s\n",
+				},
+			},
+		},
+		{
+			YAML: `
+s: >-3
+    1s
+      2s
+      3s
+    4s
+    5s
+`,
+			Tokens: []testscanner.WantToken{
+				{
+					Type:   token.StringType,
+					Value:  "s",
+					Origin: "\ns",
+				},
+				{
+					Type:   token.MappingValueType,
+					Value:  ":",
+					Origin: ":",
+				},
+				{
+					Type:   token.FoldedType,
+					Value:  ">-3",
+					Origin: " >-3\n",
+				},
+				{
+					Type:   token.StringType,
+					Value:  " 1s\n   2s\n   3s\n 4s\n 5s",
+					Origin: "    1s\n      2s\n      3s\n    4s\n    5s\n",
+				},
+			},
+		},
+		{
+			YAML: `
+|2-
+
+                  text
+`,
+			Tokens: []testscanner.WantToken{
+				{
+					Type:   token.LiteralType,
+					Value:  "|2-",
+					Origin: "\n|2-\n",
+				},
+				{
+					Type:   token.StringType,
+					Value:  "\n                 text",
+					Origin: "\n                  text\n",
+				},
+			},
+		},
+		{
+			YAML: `
+|
+  a
+
+
+
+`,
+			Tokens: []testscanner.WantToken{
+				{
+					Type:   token.LiteralType,
+					Value:  "|",
+					Origin: "\n|\n",
+				},
+				{
+					Type:   token.StringType,
+					Value:  "a\n",
+					Origin: "  a\n\n\n\n",
+				},
+			},
+		},
+		{
+			YAML: `
+|  		  # comment
+  foo
+`,
+			Tokens: []testscanner.WantToken{
+				{
+					Type:   token.LiteralType,
+					Value:  "|",
+					Origin: "\n|  		  ",
+				},
+				{
+					Type:   token.CommentType,
+					Value:  " comment",
+					Origin: "# comment\n",
+				},
+				{
+					Type:   token.StringType,
+					Value:  "foo\n",
+					Origin: "  foo\n",
+				},
+			},
+		},
+	})
 }
