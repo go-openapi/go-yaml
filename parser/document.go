@@ -34,7 +34,7 @@ func (p *Parser) begin(src []byte) {
 
 	p.src = nocopy.String(src)
 	p.scan.Init(src)
-	p.scan.SetSchema(schemaFor(p.opts.version))
+	p.scan.SetSchema(p.opts.version.Schema())
 
 	// Guessed from the source rather than counted, since counting would mean
 	// reading the document through before parsing any of it. It sizes buffers

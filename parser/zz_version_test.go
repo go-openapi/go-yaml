@@ -13,6 +13,7 @@ import (
 
 	"github.com/go-openapi/go-yaml/ast"
 	"github.com/go-openapi/go-yaml/parser"
+	"github.com/go-openapi/go-yaml/token"
 )
 
 // TestYAMLVersionResolvesScalars checks what a plain scalar means under each
@@ -183,4 +184,45 @@ func firstValue(t *testing.T, src string, opts ...parser.Option) any {
 	require.Failf(t, "no value", "%q holds no mapping value", src)
 
 	return nil
+}
+
+// TestVersionSchemaMatchesTheParse checks [parser.YAMLVersion.Schema] against
+// what a parse of the same version resolves.
+//
+// transform reads the schema through this method and scans a document beside a
+// parse with it. The two used to be separate switch statements, one in each
+// package, so a change to either resolved a plain scalar differently in a
+// transform from in a parse and nothing failed.
+func TestVersionSchemaMatchesTheParse(t *testing.T) {
+	t.Parallel()
+
+	for _, version := range []struct {
+		v    parser.YAMLVersion
+		want token.Schema
+	}{
+		{parser.YAML10, token.Schema11},
+		{parser.YAML11, token.Schema11},
+		{parser.YAML12, token.Schema12},
+		{parser.YAML13, token.Schema12},
+		{parser.YAMLVersion(""), token.Schema12},
+		{parser.YAMLVersion("2.0"), token.Schema12},
+	} {
+		t.Run(string(version.v), func(t *testing.T) {
+			t.Parallel()
+
+			require.Equal(t, version.want, version.v.Schema())
+
+			// "yes" is a bool under 1.1 and a string under 1.2, so the parse
+			// says which schema it used.
+			f, err := parser.New(parser.WithYAMLVersion(version.v)).Parse([]byte("a: yes\n"))
+			require.NoError(t, err)
+
+			wantType := token.StringType
+			if version.want == token.Schema11 {
+				wantType = token.BoolType
+			}
+			value := f.Docs[0].Body.(*ast.MappingNode).Values[0].Value
+			assert.Equal(t, wantType, value.GetToken().Type)
+		})
+	}
 }

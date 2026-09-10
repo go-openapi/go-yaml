@@ -51,8 +51,8 @@ func (p *Parser) parseDirective(ctx context, g *group.TokenGroup) (*ast.Directiv
 		// The scanner resolves plain scalars, so it is told here rather than
 		// asked later: a schema set part way through takes effect from the next
 		// scalar it cuts, and the directive stands before the document's body.
-		p.scan.SetSchema(schemaFor(ver))
-		p.retypeAhead(schemaFor(ver), valueTk.Seq())
+		p.scan.SetSchema(ver.Schema())
+		p.retypeAhead(ver.Schema(), valueTk.Seq())
 
 		versionNode, err := newStringNode(ctx, valueTk)
 		if err != nil {

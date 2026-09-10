@@ -86,7 +86,7 @@ func Walk(w io.Writer, src []byte, t Transformer, opts ...Option) error {
 
 	wk := &walker{src: src, out: w, t: t, labels: make(map[int]label)}
 	wk.scan.Init(src)
-	wk.scan.SetSchema(schemaFor(cfg.version))
+	wk.scan.SetSchema(cfg.version.Schema())
 
 	parse := append([]parser.Option{parser.WithYAMLVersion(cfg.version)}, cfg.parse...)
 	if _, err := parser.New(parse...).Walk(src, wk); err != nil {
@@ -97,17 +97,6 @@ func Walk(w io.Writer, src []byte, t Transformer, opts ...Option) error {
 	}
 
 	return wk.finish()
-}
-
-// schemaFor mirrors the parser's own reading of a version, so that the scan
-// beside it resolves a plain scalar the same way.
-func schemaFor(v parser.YAMLVersion) token.Schema {
-	switch v {
-	case parser.YAML10, parser.YAML11:
-		return token.Schema11
-	default:
-		return token.Schema12
-	}
 }
 
 // label holds the node the parse opened at one offset, and the role that

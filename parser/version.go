@@ -31,31 +31,37 @@ var yamlVersionMap = map[string]YAMLVersion{
 	"1.3": YAML13,
 }
 
-// schemaFor is the scalar schema a version resolves against. 1.0 predates the
-// core schema and is read as 1.1, which is the closest thing it has.
-// schemaInForce is the schema the document being read is resolved under: the
-// version it declared with a "%YAML" line, and the option where it declared
-// none.
+// Schema returns the schema v resolves plain scalars against.
 //
-// The directive wins over the option, and its scope is one document --
-// endVersionScope clears yamlVersion at each document's end, which is defect
-// 43's fix. Reading schemaFor(p.opts.version) instead asks for the option alone and
-// misses every directive, which is what a first cut of the merge rule did.
-func (p *Parser) schemaInForce() token.Schema {
-	if p.yamlVersion != "" {
-		return schemaFor(p.yamlVersion)
-	}
-
-	return schemaFor(p.opts.version)
-}
-
-func schemaFor(v YAMLVersion) token.Schema {
+// 1.0 and 1.1 resolve against [token.Schema11], 1.2 and 1.3 against
+// [token.Schema12]. 1.0 predates the core schema and is read as 1.1.
+//
+// Use it where you scan a document alongside a parse and need the same reading
+// of a plain scalar: under 1.1 "yes" resolves to a bool and "0100" to 64, under
+// 1.2 both are strings.
+func (v YAMLVersion) Schema() token.Schema {
 	switch v {
 	case YAML10, YAML11:
 		return token.Schema11
 	default:
 		return token.Schema12
 	}
+}
+
+// schemaInForce is the schema the document being read is resolved under: the
+// version it declared with a "%YAML" line, and the option where it declared
+// none.
+//
+// The directive wins over the option, and its scope is one document --
+// endVersionScope clears yamlVersion at each document's end, which is defect
+// 43's fix. Reading opts.version.Schema() instead asks for the option alone and
+// misses every directive, which a first cut of the merge rule did.
+func (p *Parser) schemaInForce() token.Schema {
+	if p.yamlVersion != "" {
+		return p.yamlVersion.Schema()
+	}
+
+	return p.opts.version.Schema()
 }
 
 // endVersionScope takes the version the document just read out of scope, so the
@@ -78,7 +84,7 @@ func (p *Parser) endVersionScope() {
 		return
 	}
 	p.yamlVersion = ""
-	schema := schemaFor(p.opts.version)
+	schema := p.opts.version.Schema()
 	p.scan.SetSchema(schema)
 
 	from := int32(p.reader.seq) - 1
