@@ -4,6 +4,8 @@
 package scanner_test
 
 import (
+	"iter"
+	"slices"
 	"testing"
 
 	"github.com/go-openapi/testify/v2/assert"
@@ -25,7 +27,11 @@ import (
 func TestTokenizeComments(t *testing.T) {
 	t.Parallel()
 
-	runCases(t, []testscanner.Case{
+	runCases(t, commentTestCases())
+}
+
+func commentTestCases() iter.Seq[testscanner.Case] {
+	return slices.Values([]testscanner.Case{
 		{
 			YAML: "# c\n",
 			Tokens: []testscanner.WantToken{

@@ -4,6 +4,8 @@
 package scanner_test
 
 import (
+	"iter"
+	"slices"
 	"testing"
 
 	"github.com/go-openapi/go-yaml/internal/scanner/internal/testscanner"
@@ -17,7 +19,11 @@ import (
 func TestTokenizeTags(t *testing.T) {
 	t.Parallel()
 
-	runCases(t, []testscanner.Case{
+	runCases(t, tagTestCases())
+}
+
+func tagTestCases() iter.Seq[testscanner.Case] {
+	return slices.Values([]testscanner.Case{
 		{
 			YAML: `a: <foo>`,
 			Tokens: []testscanner.WantToken{

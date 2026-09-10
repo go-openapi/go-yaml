@@ -4,6 +4,8 @@
 package scanner_test
 
 import (
+	"iter"
+	"slices"
 	"testing"
 
 	"github.com/go-openapi/testify/v2/assert"
@@ -135,7 +137,11 @@ func TestDoubleQuoteRefusesACodePointThatIsNotACharacter(t *testing.T) {
 func TestTokenizeQuotedScalars(t *testing.T) {
 	t.Parallel()
 
-	runCases(t, []testscanner.Case{
+	runCases(t, quotedScalarTestCases())
+}
+
+func quotedScalarTestCases() iter.Seq[testscanner.Case] {
+	return slices.Values([]testscanner.Case{
 		{
 			YAML: `"hello\tworld"`,
 			Tokens: []testscanner.WantToken{

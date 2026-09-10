@@ -4,6 +4,8 @@
 package scanner
 
 import (
+	"iter"
+	"slices"
 	"testing"
 
 	"github.com/go-openapi/testify/v2/assert"
@@ -146,7 +148,11 @@ func scanPlain(src string) ([]token.Token, error) {
 func TestTokenizePlainScalars(t *testing.T) {
 	t.Parallel()
 
-	testscanner.RunCases(t, scanPlain, []testscanner.Case{
+	testscanner.RunCases(t, scanPlain, plainScalarTestCases())
+}
+
+func plainScalarTestCases() iter.Seq[testscanner.Case] {
+	return slices.Values([]testscanner.Case{
 		{
 			YAML: `null
   `,

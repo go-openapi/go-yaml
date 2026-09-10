@@ -4,6 +4,8 @@
 package scanner_test
 
 import (
+	"iter"
+	"slices"
 	"testing"
 
 	"github.com/go-openapi/testify/v2/assert"
@@ -78,7 +80,11 @@ func TestBlockScalarHeaderEndingTheSource(t *testing.T) {
 func TestTokenizeBlockScalars(t *testing.T) {
 	t.Parallel()
 
-	runCases(t, []testscanner.Case{
+	runCases(t, blockScalarTestCases())
+}
+
+func blockScalarTestCases() iter.Seq[testscanner.Case] {
+	return slices.Values([]testscanner.Case{
 		{
 			YAML: `
 v:

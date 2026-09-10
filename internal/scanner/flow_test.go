@@ -4,6 +4,8 @@
 package scanner_test
 
 import (
+	"iter"
+	"slices"
 	"testing"
 
 	"github.com/go-openapi/go-yaml/internal/scanner/internal/testscanner"
@@ -14,7 +16,11 @@ import (
 func TestTokenizeFlowCollections(t *testing.T) {
 	t.Parallel()
 
-	runCases(t, []testscanner.Case{
+	runCases(t, flowCollectionTestCases())
+}
+
+func flowCollectionTestCases() iter.Seq[testscanner.Case] {
+	return slices.Values([]testscanner.Case{
 		{
 			YAML: `{}
   `,

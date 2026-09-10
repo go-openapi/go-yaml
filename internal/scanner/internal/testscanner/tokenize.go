@@ -4,6 +4,7 @@
 package testscanner
 
 import (
+	"iter"
 	"testing"
 
 	"github.com/go-openapi/testify/v2/assert"
@@ -56,10 +57,10 @@ type ScanFunc func(src string) ([]token.Token, error)
 // RunCases scans each case and compares the type, the value and the source text of every token it returns.
 //
 // It names each subtest after the document, so a failure prints the YAML that produced it.
-func RunCases(t *testing.T, scan ScanFunc, cases []Case) {
+func RunCases(t *testing.T, scan ScanFunc, cases iter.Seq[Case]) {
 	t.Helper()
 
-	for _, test := range cases {
+	for test := range cases {
 		t.Run(test.YAML, func(t *testing.T) {
 			tokens, err := scan(test.YAML)
 			require.NoErrorf(t, err,

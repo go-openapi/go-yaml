@@ -4,6 +4,7 @@
 package scanner_test
 
 import (
+	"iter"
 	"testing"
 
 	"github.com/go-openapi/testify/v2/require"
@@ -75,7 +76,7 @@ func tokenize(t *testing.T, src string) []token.Token {
 //
 // Every {kind}_test.go holding tokenize cases calls it. A package scanner file writes its own one-line adapter over
 // the unexported Scanner, which is why testscanner takes the scan as a parameter.
-func runCases(t *testing.T, cases []testscanner.Case) {
+func runCases(t *testing.T, cases iter.Seq[testscanner.Case]) {
 	t.Helper()
 
 	testscanner.RunCases(t, scanTokens[string], cases)
