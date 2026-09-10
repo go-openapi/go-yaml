@@ -169,6 +169,16 @@ type Pair struct {
 // That is what makes a key presentation-invariant, and it is why the generator
 // can draw a key of any scalar kind and still state what the document means.
 //
+// ⚠️ Two tags break that rule at the library, and this follows them: !!binary
+// and !!timestamp are named by the characters the document wrote, because
+// ast.TaggedKeyName resolves !!str, !!null, !!bool, !!int and !!float and
+// leaves the rest to the scalar underneath. So "!!binary AA==" is the key
+// "AA==" rather than the byte, and "!!timestamp 2001-12-14" and
+// "!!timestamp \"2001-12-14\"" are one key while the same instant written in
+// another form is a different one. The Binary case below spells that out; the
+// Timestamp one cannot, since the form is Style.TimeForm's and Map.Decoded
+// takes no Style.
+//
 // ⚠️ Naming per type puts every typed key into the strings' namespace, and a
 // map[string]any cannot hold a key twice -- so Str{"1.0"} and Float{1.0} are
 // two keys that this library collapses into one, silently. keyFamily keeps the
@@ -220,6 +230,21 @@ func KeyText(v Value) string {
 		return KeyText(n.V)
 	case Tagged:
 		return KeyText(n.V)
+	case Binary:
+		// The base64 characters, which is what the library names the key by:
+		// ast.TaggedKeyName resolves !!str, !!null, !!bool, !!int and !!float
+		// and hands every other tag back to the scalar under it, so
+		// "!!binary AA==" is the key "AA==" and not the byte it decodes to.
+		// Emit writes the same base64, so this names the characters the
+		// document wrote.
+		//
+		// Keys() draws no Binary. One arrives through aliasAKey, which takes a
+		// key from the anchor pool, and the pool holds what drawTextual makes
+		// -- a Timestamp or a Binary one textual value in eight. Without this
+		// case a Binary fell to the default below and was named "[0]", Go's
+		// rendering of []byte{0}, so the generator and the library disagreed
+		// about a key neither of them got wrong.
+		return base64.StdEncoding.EncodeToString(n.V)
 	default:
 		// A collection used as a key, which Keys() draws one key in 24. The
 		// library renders it with Go's %v and codec.ToJSON writes something
