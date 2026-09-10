@@ -86,6 +86,15 @@ const (
 	TagTimestampNotADate stance.Tag = "tag/timestamp-not-a-date"
 	// TagBinaryNotBase64 is "!!binary not base64!".
 	TagBinaryNotBase64 stance.Tag = "tag/binary-not-base64"
+	// TagOMapNotASequenceOfPairs is "!!omap" over anything but a sequence of
+	// one-entry mappings: an element that is not a mapping, an element holding
+	// two entries, the tag on a mapping, or one key written twice.
+	//
+	// The collection member of the family above, and it arrived later than the
+	// rest. `!!omap` was a pass-through here until `go-yaml-perf` made it build
+	// a codec.MapSliceSeq on all four readers -- the walk, the tree, ToJSON and
+	// ToJSONTokens -- and refuse every other shape.
+	TagOMapNotASequenceOfPairs stance.Tag = "tag/omap-not-a-sequence-of-pairs"
 )
 
 // TagRules is what the specification settles about the above.
@@ -161,6 +170,12 @@ func TagVocabulary() stance.Vocabulary {
 		TagNullNotNull:       stance.Construct,
 		TagTimestampNotADate: stance.Construct,
 		TagBinaryNotBase64:   stance.Construct,
+
+		// The same stage for the same reason, and worth saying because the
+		// shape is a collection rather than a scalar: "!!omap [{x: 1}, -2]"
+		// parses and composes, and the element that is not a mapping is only a
+		// problem once something has to hold the ordered map.
+		TagOMapNotASequenceOfPairs: stance.Construct,
 	}
 }
 
@@ -276,6 +291,79 @@ func TagShapes() []stance.Shape {
 			Name:   "a binary tag over text that is not base64",
 			Src:    []byte("k: !!binary not base64!\n"),
 			Intent: []stance.Tag{TagSecondary, TagBinaryNotBase64},
+		},
+
+		// The shape "!!omap" names, written six ways. No Means on any of them:
+		// the value is an ordered map, json.Marshal of a Go map sorts the keys
+		// and would lose the order that is the whole point of the type. What
+		// the readers build is asserted in codec, and what belongs here is the
+		// shapes and the stage they are settled at.
+		{
+			Name:   "an omap written in flow",
+			Src:    []byte("!!omap [{x: 1}, {b: 2}]\n"),
+			Intent: []stance.Tag{TagSecondary},
+		},
+		{
+			Name:   "an omap written in block",
+			Src:    []byte("!!omap\n- x: 1\n- b: 2\n"),
+			Intent: []stance.Tag{TagSecondary},
+		},
+		{
+			Name:   "an empty omap",
+			Src:    []byte("!!omap []\n"),
+			Intent: []stance.Tag{TagSecondary},
+		},
+		{
+			Name:   "an omap as a mapping value and as a sequence element",
+			Src:    []byte("k: !!omap [{x: 1}]\nl:\n  - !!omap [{b: 2}]\n"),
+			Intent: []stance.Tag{TagSecondary},
+		},
+		{
+			Name:   "an omap anchored and aliased",
+			Src:    []byte("a: &m !!omap [{x: 1}]\nb: *m\n"),
+			Intent: []stance.Tag{TagSecondary},
+		},
+		{
+			// The verbatim spelling is the one a fuzz seed reached first, per
+			// go-yaml-perf on 2026-09-10. All three resolve to the same tag.
+			Name:   "an omap under a verbatim tag",
+			Src:    []byte("!<tag:yaml.org,2002:omap> [{x: 1}]\n"),
+			Intent: []stance.Tag{TagVerbatim},
+		},
+		{
+			Name:   "an omap under a declared handle",
+			Src:    []byte("%TAG !x! tag:yaml.org,2002:\n---\n!x!omap [{x: 1}]\n"),
+			Intent: []stance.Tag{TagNamedHandle},
+		},
+
+		// And the four shapes the tag does not name. Every one of them parses
+		// and composes: the refusal is the loader's, which is Fred's rule for a
+		// malformed tag -- the parser reports the document and the loader
+		// refuses it.
+		{
+			Name:   "an omap element that is not a mapping",
+			Src:    []byte("!!omap [{x: 1}, -2]\n"),
+			Intent: []stance.Tag{TagSecondary, TagOMapNotASequenceOfPairs},
+		},
+		{
+			Name:   "an omap element holding two entries",
+			Src:    []byte("!!omap [{x: 1, b: 2}]\n"),
+			Intent: []stance.Tag{TagSecondary, TagOMapNotASequenceOfPairs},
+		},
+		{
+			Name:   "an omap tag over a mapping",
+			Src:    []byte("!!omap {x: 1}\n"),
+			Intent: []stance.Tag{TagSecondary, TagOMapNotASequenceOfPairs},
+		},
+		{
+			// The one refusal with no parser-side evidence behind it. Each
+			// mapping of an omap holds exactly one key, so the parser records
+			// no repeat and codec.refuseDuplicateKeys has nothing to read; the
+			// check is written in the loader instead, and says so: "mapping key
+			// x is written twice in an !!omap".
+			Name:   "an omap key written twice across two entries",
+			Src:    []byte("!!omap [{x: 1}, {x: 2}]\n"),
+			Intent: []stance.Tag{TagSecondary, TagOMapNotASequenceOfPairs, TagDuplicateAfterResolution},
 		},
 	}
 }

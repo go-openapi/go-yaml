@@ -471,23 +471,39 @@ const (
 	TagNone  = "!"
 
 	// TagSet, TagOMap and TagPairs name collection types the 2005 type
-	// repository defines. Each is an annotation and nothing more here: a `!!set`
-	// mapping decodes to the same map[string]any as an untagged one, and an
-	// `!!omap` sequence to the same []any.
+	// repository defines, and each constrains the shape under it: a `!!set` is a
+	// mapping whose values are all null, an `!!omap` and a `!!pairs` a sequence
+	// of one-entry mappings.
 	//
-	// Offered on the kind the type is written over -- `!!set` on a mapping,
-	// `!!omap` and `!!pairs` on a sequence -- and not on the shapes *inside*
-	// it, which the type definitions constrain.
+	// [TagFor] offers a tag on the shape it names where this library enforces
+	// the constraint, and on the kind alone where it does not. That is the same
+	// line the scalar tags are drawn on: `!!timestamp` is offered on a
+	// [Timestamp] and `!!binary` on a [Binary], because the library refuses a
+	// scalar those tags do not fit, and the refusing side is covered by the
+	// written-out cases in yamlcorpus rather than by the draw.
 	//
-	// Measured 2026-09-10: `a: !!set` over `x: 1` and `a: !!omap` over `- 1`
-	// are read by libfyaml 1.0.0b1 and by go.yaml.in/yaml/v3 v3.0.5, and
-	// grammar.NewRecognizer accepts both. Both implementations pass every one
-	// of these tags through, so what they read says nothing about the shapes
-	// inside; it says only that neither builds the type the tag names.
+	// `!!omap` joined them on 2026-09-10, when it began building a
+	// codec.MapSliceSeq. Before that the draw offered it on any sequence, and 65
+	// of 105 drawn `!!omap` nodes over 20,000 documents were not a sequence of
+	// one-entry mappings.
 	//
-	// This library builds one for `!!omap` since 2026-09-10, and takes the
-	// sequence as it stands where the shape does not fit, so the draw is left
-	// wide. [Tagged.Decoded] states which of the two a document means.
+	// ⚠️ The comment this replaced said the library "takes the sequence as it
+	// stands where the shape does not fit". It does not, and did not when that
+	// was written: measured on master at 3a00098, `!!omap [{x: 1}, -2]`,
+	// `!!omap [{x: 1, b: 2}]`, `!!omap {x: 1}` and `!!omap [{x: 1}, {x: 2}]` are
+	// all refused, the first three with *!!omap names a sequence of one-entry
+	// mappings*. The draw was left wide because [Written.MeansUnclear] covered
+	// the malformed shapes, which is a different reason.
+	//
+	// Both readings pass every one of these tags through, so what libfyaml
+	// 1.0.0b1 and go.yaml.in/yaml/v3 v3.0.5 make of them says nothing about the
+	// shapes inside; it says only that neither builds the type the tag names.
+	//
+	// `!!set` and `!!pairs` stay on the kind, because nothing enforces them:
+	// `a: !!set [1, 2]` and `a: !!pairs {x: 1}` both read. Narrowing those would
+	// drop about 155 corpus documents the library reads correctly, for a rule
+	// nobody has written. The day `!!set` is enforced is the day to narrow it,
+	// and the narrowing arrives with the census that proves it.
 	TagSet   = "!!set"
 	TagOMap  = "!!omap"
 	TagPairs = "!!pairs"
@@ -499,6 +515,41 @@ const (
 	TagTimestamp = "!!timestamp"
 	TagBinary    = "!!binary"
 )
+
+// isSequenceOfSinglePairs reports whether v is the shape `!!omap` names: a
+// sequence whose every element is a mapping of exactly one entry.
+//
+// `!!pairs` names the same shape and is not asked, because nothing refuses a
+// `!!pairs` that does not have it.
+func isSequenceOfSinglePairs(v Value) bool {
+	seq, ok := v.(Seq)
+	if !ok {
+		return false
+	}
+
+	for _, item := range seq.Items {
+		m, isMap := bare(item).(Map)
+		if !isMap || len(m.Pairs) != 1 {
+			return false
+		}
+	}
+
+	return true
+}
+
+// bare returns the value under any anchors and tags standing on it.
+func bare(v Value) Value {
+	for {
+		switch n := v.(type) {
+		case Anchored:
+			v = n.V
+		case Tagged:
+			v = n.V
+		default:
+			return v
+		}
+	}
+}
 
 // TagFor returns the tags that can be written on v without changing what it
 // decodes to, apart from the integer case [Tagged.Decoded] records.
@@ -521,7 +572,12 @@ func TagFor(v Value) []string {
 	case Str:
 		return []string{TagStr, TagLocal, TagNone}
 	case Seq:
-		return []string{TagSeq, TagOMap, TagPairs, TagLocal, TagNone}
+		tags := []string{TagSeq, TagPairs, TagLocal, TagNone}
+		if isSequenceOfSinglePairs(v) {
+			tags = append(tags, TagOMap)
+		}
+
+		return tags
 	case Map:
 		return []string{TagMap, TagSet, TagLocal, TagNone}
 	default:

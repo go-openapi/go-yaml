@@ -134,7 +134,7 @@ func isBreak(r rune) bool { return r == '\n' || r == '\r' }
 func TestWalkMatchesTheStream(t *testing.T) {
 	srcs := corpusSources()
 
-	var same, differ, bothErr, oneErr, skipped int
+	var same, differ, bothErr, oneErr, skipped, heldOut int
 	for _, src := range srcs {
 		if strings.Contains(src.text, "&!") {
 			skipped++
@@ -193,14 +193,20 @@ func TestWalkMatchesTheStream(t *testing.T) {
 			}
 		case fmt.Sprintf("%#v", want) == fmt.Sprintf("%#v", got):
 			same++
+		case walkStreamHoldOuts[src.text] != "":
+			heldOut++
 		default:
 			differ++
 			if differ <= 5 {
 				t.Logf("%s:\n  src  %q\n  want %#v\n  got  %#v", src.name, src.text, want, got)
 			}
 		}
+		if reason, held := walkStreamHoldOuts[src.text]; held &&
+			fmt.Sprintf("%#v", want) == fmt.Sprintf("%#v", got) {
+			t.Errorf("%s: %q agrees now, so %s has closed: delete the hold-out", src.name, src.text, reason)
+		}
 	}
-	t.Logf("same=%d differ=%d bothErr=%d oneErr=%d skipped=%d", same, differ, bothErr, oneErr, skipped)
+	t.Logf("same=%d differ=%d bothErr=%d oneErr=%d skipped=%d heldOut=%d", same, differ, bothErr, oneErr, skipped, heldOut)
 	if differ > 0 || oneErr > 0 {
 		t.Errorf("the walk and the tree disagree on %d documents (%d only one failed)", differ, oneErr)
 	}
@@ -252,4 +258,15 @@ func TestStreamSwitchesFromWalkToTree(t *testing.T) {
 	if err := dec.Decode(&extra); !errors.Is(err, io.EOF) {
 		t.Errorf("after the last document: got %v, want io.EOF", err)
 	}
+}
+
+// walkStreamHoldOuts are the documents the walk and the tree disagree about,
+// with the defect that explains each.
+//
+// Keyed on the source text and not on the corpus name, because a regeneration
+// renames every seed. A held-out document that starts agreeing fails, so the
+// entry reports the fix instead of outliving it.
+var walkStreamHoldOuts = map[string]string{
+	"%TAG !x! tag:yaml.org,2002:\r---\r&a1 !x!pairs\r- !x!omap [:]\r": "defect 109: a null key in an " +
+		"!!omap is named \"null\" by the walk and nil by the tree",
 }

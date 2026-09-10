@@ -138,6 +138,23 @@ func KeyShapes() []stance.Shape {
 			Means:  []any{map[string]any{"null": "x\n"}},
 		},
 		{
+			// Two aliases in key position, which the census had no drawn case
+			// for after the 2026-09-10 regeneration -- the YAML Test Suite
+			// holds one and the generator writes none, so it is written here.
+			//
+			// Each alias resolves to its own scalar, so the two keys are "1"
+			// and "2" and neither is a repeat. The spelling matters: "? *x"
+			// over ": p" reads, and so does "*x : p" with a space before the
+			// colon, but "*x: p" is refused with *non-map value is specified*
+			// -- the ':' is scanned into the alias name. That is a defect
+			// nobody has filed and this case does not carry it; it uses the
+			// explicit spelling, which is the one 7.1 makes plainly legal.
+			Name:   "two alias keys in one mapping",
+			Src:    []byte("a: &x 1\nb: &y 2\n? *x\n: p\n? *y\n: q\n"),
+			Intent: []stance.Tag{TagAliasAsKey},
+			Means:  map[string]any{"a": 1, "b": 2, "1": "p", "2": "q"},
+		},
+		{
 			// 8.2.2 puts an explicit entry's key at s-l+block-indented(n,
 			// block-out), which is any block node -- a mapping written the long
 			// way included, and a '?' of its own with it.

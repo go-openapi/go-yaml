@@ -169,6 +169,10 @@ func TestARefusalSignatureKeepsTheParserAndDropsTheDocument(t *testing.T) {
 // it, and that document is valid -- the grammar accepts it -- so it now parses.
 // The complaint is still live: the enumerated shape "]: 1" in refusals.go draws
 // it, and TestTheParserVocabularyGapIsMeasured does not count it unreached.
+//
+// It came back on 2026-09-10, and nothing about the parser changed: narrowing
+// the "!!omap" draw to the shape the tag names reshuffled every seed, and the
+// reshuffled corpus draws the complaint again. One added, none gone.
 var parserComplaints = []string{
 	"YAML version has already been specified",
 	"_ is a reserved character",
@@ -205,6 +209,7 @@ var parserComplaints = []string{
 	"found a character that is not a hexadecimal digit in escaped UTF-N character",
 	"found a tab character where an indentation space is expected",
 	"found an escaped code point that is not a character",
+	"found an invalid key for this map",
 	"found character _ that a YAML stream may not hold",
 	"found character _ that cannot start any token",
 	"found invalid tag character _",

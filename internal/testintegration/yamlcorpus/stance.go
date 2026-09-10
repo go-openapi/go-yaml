@@ -137,6 +137,19 @@ var GoYAML = stance.Table{
 		TagIntNotAnInteger:   stance.Refuses,
 		TagFloatNotANumber:   stance.Refuses,
 		TagNullNotNull:       stance.Refuses,
+
+		// The collection member of the family, from 12dd678. "!!omap" builds a
+		// codec.MapSliceSeq and refuses every shape the type definition does
+		// not name -- an element that is not a mapping, an element holding two
+		// entries, the tag over a mapping -- with "!!omap names a sequence of
+		// one-entry mappings", and a key written twice across two entries with
+		// "mapping key x is written twice in an !!omap". Measured on master at
+		// 3a00098.
+		//
+		// The last of those is the only refusal in this table with no
+		// parser-side evidence behind it: each mapping of an omap holds one
+		// key, so the parser records no repeat and the check is the loader's.
+		TagOMapNotASequenceOfPairs: stance.Refuses,
 	},
 }
 

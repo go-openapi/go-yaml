@@ -67,10 +67,18 @@ func TestTheVerbatimDescentFollowsTheDocument(t *testing.T) {
 // descentCeiling is how many documents the verbatim descent may read out of
 // order.
 //
-// A count rather than a ledger, and it is not allowed to rise. It was 23 until
-// the parser's explicit-key fixes landed on 2026-09-09 and closed five. Two
-// shapes make up what is left, and both are the tree reporting a token that is
-// not the node's:
+// A count rather than a ledger, and it is not allowed to rise on a corpus that
+// stood still. It was 23 until the parser's explicit-key fixes landed on
+// 2026-09-09 and closed five, and 18 until 2026-09-10, when narrowing the
+// "!!omap" draw to the shape the tag names reshuffled every seed. 18 of 12,558
+// documents -> 20 of 12,596, and all 20 were read one by one: every one is one
+// of the two shapes below, so the corpus drew two more instances of faults
+// already recorded and no new shape arrived. Raising it on a reshuffle is the
+// count following the corpus; raising it on a still corpus would be the descent
+// losing ground, and the denominator is here so the two can be told apart.
+//
+// Two shapes make up what is left, and both are the tree reporting a token that
+// is not the node's:
 //
 //   - "? []: x" gives a MappingValueNode whose Start is a SequenceStart "[" at
 //     offset 2, where the field holds the ":" that closes a key. Handed over
@@ -85,7 +93,7 @@ func TestTheVerbatimDescentFollowsTheDocument(t *testing.T) {
 // token read out of order was already written with an earlier one. They matter
 // when a node the source does not reach interrupts the copy, which is what the
 // insertion case does.
-const descentCeiling = 18
+const descentCeiling = 20
 
 // TestVerbatimWritesANodeBack checks the per-node half: a node writes the
 // stretch of source it covers, and nothing of its neighbors.

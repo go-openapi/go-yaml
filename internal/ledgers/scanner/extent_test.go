@@ -74,6 +74,10 @@ var extentLedger = map[string]string{
 	"a1258ce0": "a String token ends 11 bytes past the document",
 	// seed/17802: a flow mapping after a "%TAG" directive, with "\r\n" breaks.
 	"c49d6b9d": "a MappingValue token starts 1 bytes before the one before it",
+	// A second of the same kind, drawn on 2026-09-10 when narrowing the "!!omap" draw reshuffled every seed.
+	// Five bytes rather than one, so it is a different document and not the same one re-keyed: the other five
+	// entries all still match, and only this arrived unrecorded.
+	"c70d7289": "a MappingValue token starts 5 bytes before the one before it",
 }
 
 // TestExtentsTileTheAcceptedCorpus scans every document the parse accepts and holds what fails to tile against

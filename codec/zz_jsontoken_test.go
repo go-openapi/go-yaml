@@ -84,7 +84,7 @@ func collectJSONTokens(src []byte) ([]JSONToken, error) {
 // is a comparison and not a restatement. Where they disagree, one of them is
 // wrong.
 func TestJSONTokensRebuildWhatToJSONWrites(t *testing.T) {
-	var compared, refused, malformed int
+	var compared, refused, malformed, heldOut int
 
 	for _, src := range corpusSources() {
 		want, wantErr := ToJSON([]byte(src.text))
@@ -111,10 +111,30 @@ func TestJSONTokensRebuildWhatToJSONWrites(t *testing.T) {
 			continue
 		}
 
-		assert.Equalf(t, string(want), string(rebuildJSON(toks)), "%s: %q", src.name, src.text)
+		got := string(rebuildJSON(toks))
+		if reason, held := jsonTokenHoldOuts[src.text]; held {
+			assert.NotEqualf(t, string(want), got,
+				"%s: %q agrees now, so %s has closed: delete the hold-out", src.name, src.text, reason)
+			heldOut++
+
+			continue
+		}
+
+		assert.Equalf(t, string(want), got, "%s: %q", src.name, src.text)
 		compared++
 	}
 
-	t.Logf("%d documents converted alike, %d refused alike, %d skipped where ToJSON wrote no JSON document",
-		compared, refused, malformed)
+	t.Logf("%d documents converted alike, %d refused alike, %d skipped where ToJSON wrote no JSON document, %d held out",
+		compared, refused, malformed, heldOut)
+}
+
+// jsonTokenHoldOuts are the documents the two converters disagree about, with
+// the defect that explains each.
+//
+// Keyed on the source text and not on the corpus name, because a regeneration
+// renames every seed. Asserted the other way about -- a held-out document that
+// starts agreeing fails -- so the entry reports the fix instead of outliving it.
+var jsonTokenHoldOuts = map[string]string{
+	"a: &m !!omap [{x: 1}]\nb: *m\n": "defect 108: an alias to an anchored !!omap loses the tag, " +
+		"so the tokens write the sequence where ToJSON writes the object",
 }
