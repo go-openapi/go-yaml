@@ -94,7 +94,10 @@ func cloneKey(n MapKeyNode) MapKeyNode {
 // clone copies what every node carries. The path is dropped: it records where
 // the original stood, and a copy is being put somewhere else.
 func cloneBase(n BaseNode) BaseNode {
-	return BaseNode{Comment: n.Comment.Clone()}
+	return BaseNode{
+		Comment:     n.Comment.Clone(),
+		HeadComment: n.HeadComment.Clone(),
+	}
 }
 
 func (n *DocumentNode) Clone() *DocumentNode {
@@ -105,6 +108,8 @@ func (n *DocumentNode) Clone() *DocumentNode {
 	cloned.BaseNode = cloneBase(n.BaseNode)
 	cloned.Start = n.Start.Detached()
 	cloned.End = n.End.Detached()
+	cloned.StartComment = n.StartComment.Clone()
+	cloned.EndComment = n.EndComment.Clone()
 	cloned.Body = cloneNode(n.Body)
 
 	return &cloned
