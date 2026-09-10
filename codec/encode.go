@@ -348,6 +348,14 @@ func (e *Encoder) canEncodeByMarshaler(v reflect.Value) bool {
 	}
 	iface := v.Interface()
 	switch iface.(type) {
+	case MapSlice, MapSliceSeq, MapItem, Base64:
+		// Written by the encoder itself, ahead of any interface they satisfy.
+		// [UseJSONMarshaler] is a last resort -- a route for a type the encoder
+		// has no reading of -- and these four it does: a MapSlice is a mapping,
+		// a MapSliceSeq an "!!omap", a Base64 a "!!binary". Asking the
+		// interface first sent a Base64 out through FromJSON as a plain string
+		// with the tag gone, for anyone who set the option.
+		return false
 	case ContextMarshaler:
 		return true
 	case Marshaler:
@@ -712,6 +720,7 @@ func (e *Encoder) encodeMapItem(ctx context.Context, item MapItem, column int) (
 	if !isKey || err != nil {
 		key = e.encodeString(fmt.Sprint(item.Key), column)
 	}
+	key = e.jsonKeyNode(key, column)
 
 	return ast.MappingValue(
 		token.New("", "", e.pos(column)),
@@ -763,6 +772,32 @@ func (e *Encoder) encodeMapSlice(ctx context.Context, value MapSlice, column int
 	return node, nil
 }
 
+// jsonKeyNode is key written the way JSON names a member, where the encoder is
+// writing JSON.
+//
+// A JSON member name is a string and every other spelling is a YAML key, so
+// "1: a" writes {"1":"a"} and not {1: "a"} -- which is what this wrote for
+// every key that is not a string, and is not JSON at all.
+//
+// The text comes from [ast.KeyName], which is the same reading [ToJSON] takes
+// through keyText: one rule for a member name, asked of the node the key
+// encoded to rather than of the Go value, so an integer writes in decimal and a
+// float with the point that tells it from one.
+func (e *Encoder) jsonKeyNode(key ast.MapKeyNode, column int) ast.MapKeyNode {
+	if !e.isJSONStyle {
+		return key
+	}
+	if _, isString := key.(*ast.StringNode); isString {
+		return key
+	}
+	name, kind := ast.KeyName(key)
+	if kind == token.KeyOther {
+		return key
+	}
+
+	return e.encodeString(name, column)
+}
+
 func (e *Encoder) encodeMap(ctx context.Context, value reflect.Value, column int) (ast.Node, error) {
 	node := ast.Mapping(token.New("", "", e.pos(column)), e.isFlowStyle)
 	keys := make([]interface{}, len(value.MapKeys()))
@@ -796,6 +831,7 @@ func (e *Encoder) encodeMap(ctx context.Context, value reflect.Value, column int
 		if !ok || err != nil {
 			keyNode = e.encodeString(fmt.Sprint(key), column)
 		}
+		keyNode = e.jsonKeyNode(keyNode, column)
 		node.Values = append(node.Values, ast.MappingValue(
 			nil,
 			keyNode,
