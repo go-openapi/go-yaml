@@ -276,6 +276,38 @@ func (vw *verbatimWriter) upTo(end int) {
 	vw.hand(Written{Text: written, FromSource: true})
 }
 
+// flushEdits applies the edits the copy never reached, which is one: a document
+// that does not end in a line break anchors a comment added to its last node at
+// the last byte, and applyEdits only fires on an edit standing *before* where the
+// copy is going. "- false" with no break after it dropped the comment; "- false\n"
+// kept it.
+func (vw *verbatimWriter) flushEdits() {
+	if len(vw.edits) > 0 {
+		vw.applyEdits(len(vw.src) + 1)
+	}
+	vw.refuseUnwritten()
+}
+
+// refuseUnwritten fails the rendering where a comment a caller added never
+// reached the output.
+//
+// A comment goes above its node only where the descent hands that node over, and
+// the descent does not reach every node it holds: a flow sequence's entries, a
+// document's own body wrapper. Rather than let those go without a word -- which
+// is how four misplacements went unnoticed until they were looked for -- the
+// rendering says so. Fred's ruling of 2026-09-10: an edit the renderer cannot
+// carry out is an error, never a silent drop.
+func (vw *verbatimWriter) refuseUnwritten() {
+	if vw.err != nil || len(vw.above) == 0 {
+		return
+	}
+	for comment := range vw.above {
+		vw.err = fmt.Errorf("%s was added to a node this rendering does not reach", comment.String())
+
+		return
+	}
+}
+
 // applyEdits writes out every comment edit standing between the copy and end.
 //
 // A comment may stand anywhere inside a node -- between an explicit key and its
@@ -773,21 +805,24 @@ func (r *Renderer) write(vw *verbatimWriter, n Node) {
 			r.writeTokenOf(vw, v.Start, v)
 		}
 		for i, value := range v.Values {
-			if !v.IsFlowStyle && i < len(v.Entries) && v.Entries[i] != nil {
-				r.writeTokenOf(vw, v.Entries[i].Start, v)
-			}
-			r.writeEntry(vw, value, collection{
-				siblings: sliceSiblings(v.Values),
-				flow:     v.IsFlowStyle,
-				seq:      !v.IsFlowStyle,
-			}, i)
+			r.writeSequenceEntry(vw, v, value, i)
 		}
 		if v.IsFlowStyle {
 			r.writeTokenOf(vw, v.End, v)
 		}
 	case *AnchorNode:
+		if v.Name != nil {
+			r.writeComments(vw, v.Name, sourceExtent(v.Name), true)
+		}
 		r.writeTokenOf(vw, v.Start, v)
 		r.writeNameOf(vw, v.Name, v)
+		if v.Name != nil {
+			// The name carries the comment written beside the anchor, and a
+			// caller may put one there too. writeNameOf writes the token and
+			// not the node, so nothing else reaches it -- both passes, since a
+			// comment with no room on the anchor's line goes above it.
+			r.writeComments(vw, v.Name, sourceExtent(v.Name), false)
+		}
 		r.write(vw, v.Value)
 	case *AliasNode:
 		r.writeTokenOf(vw, v.Start, v)
@@ -807,6 +842,41 @@ func (r *Renderer) write(vw *verbatimWriter, n Node) {
 	default:
 		r.writeTokenOf(vw, n.GetToken(), n)
 	}
+}
+
+// writeSequenceEntry writes the '-' of a block entry and then the entry's value.
+//
+// The entry node itself is not handed to write -- the sequence owns the '-' --
+// so its comments are asked for here. Nothing else reaches them, and a comment
+// put on an entry was dropped without a word.
+func (r *Renderer) writeSequenceEntry(vw *verbatimWriter, n *SequenceNode, value Node, i int) {
+	entry := entryAt(n, i)
+	if entry != nil {
+		span := extent{from: entry.Start.Position.Offset(), to: entry.Start.EndOffset()}
+		r.writeComments(vw, entry, span, true)
+		if !n.IsFlowStyle {
+			// Only a block sequence writes its own '-' here; a flow one has a
+			// ',' the copy picks up as it goes.
+			r.writeTokenOf(vw, entry.Start, n)
+		}
+		defer r.writeComments(vw, entry, span, false)
+	}
+
+	r.writeEntry(vw, value, collection{
+		siblings: sliceSiblings(n.Values),
+		flow:     n.IsFlowStyle,
+		seq:      !n.IsFlowStyle,
+	}, i)
+}
+
+// entryAt is the block entry at index i, or nil where the sequence is written in
+// flow or holds no entry there.
+func entryAt(n *SequenceNode, i int) *SequenceEntryNode {
+	if i >= len(n.Entries) || n.Entries[i] == nil || n.Entries[i].Start == nil {
+		return nil
+	}
+
+	return n.Entries[i]
 }
 
 func (r *Renderer) writeToken(vw *verbatimWriter, tk *token.Token) {
@@ -859,6 +929,7 @@ func (r *Renderer) writeComments(vw *verbatimWriter, n Node, span extent, above 
 		if comment.Removed() || !above || !vw.above[comment] {
 			continue
 		}
+		delete(vw.above, comment)
 		vw.writeAddedComment(comment, span, n)
 	}
 }
@@ -1019,11 +1090,19 @@ func besideAnchor(n Node, src []byte) (int32, bool) {
 	for at > 0 && isSpacing(src[at-1]) {
 		at--
 	}
+
+	// The whole line and not the stretch after the node: a comment anywhere on
+	// it takes the rest of the line with it, so a second one has nowhere to go
+	// whichever side of the node it stands. "# Comment only." is a document
+	// whose body is the comment, and appending to that line gave one comment
+	// reading "# Comment only. # c".
 	start := at
-	for at < len(src) && !isBreak(src[at]) {
-		if src[at] == '#' && (at == 0 || isSpacing(src[at-1])) {
+	for i := lineStartIn(src, at); i < len(src) && !isBreak(src[i]); i++ {
+		if src[i] == '#' && (i == 0 || isSpacing(src[i-1])) {
 			return 0, false
 		}
+	}
+	for at < len(src) && !isBreak(src[at]) {
 		at++
 	}
 	for at > start && isSpacing(src[at-1]) {
@@ -1031,6 +1110,17 @@ func besideAnchor(n Node, src []byte) (int32, bool) {
 	}
 
 	return int32(at), true
+}
+
+// lineStartIn is the offset the line holding at opens on.
+func lineStartIn(src []byte, at int) int {
+	for i := min(at, len(src)) - 1; i >= 0; i-- {
+		if isBreak(src[i]) {
+			return i + 1
+		}
+	}
+
+	return 0
 }
 
 // headerToken is the "|" or ">" a block scalar opens with, and nil for every
@@ -1589,6 +1679,7 @@ func (r *Renderer) Verbatim(w io.Writer, n Node) error {
 	vw := &verbatimWriter{w: w, fn: r.transform, src: r.src, cursor: int(span.from), edits: edits, above: above}
 	r.write(vw, n)
 	vw.upTo(int(span.to))
+	vw.flushEdits()
 
 	return vw.err
 }
@@ -1618,6 +1709,7 @@ func (r *Renderer) VerbatimFile(w io.Writer, f *File) error {
 	// A document ending in a line break closes the stream rather than opening a
 	// token on it, so the last stretch has no token to be written with.
 	vw.upTo(len(r.src))
+	vw.flushEdits()
 
 	return vw.err
 }

@@ -276,6 +276,30 @@ func TestFixedAnAddedCommentDoesNotBreakTheLineItLandsOn(t *testing.T) {
 		assert.Equal(t, "a: 1 # c\rb: 2\r", out.String())
 	})
 
+	t.Run("and a comment that cannot be placed is refused, never dropped", func(t *testing.T) {
+		// Fred's ruling of 2026-09-10: where adding a comment is not legitimate,
+		// say so. A node the document did not write says so at SetComment; a
+		// placement the source has no room for says so at the rendering. Over
+		// the 86,086 placements the corpus offers -- a comment on every node of
+		// every document, one at a time -- nothing is dropped without a word.
+		for _, tc := range []struct {
+			name, src string
+			at        func(*ast.File) ast.Node
+		}{{
+			name: "a null the document did not write",
+			src:  "- \n- 1\n",
+			at:   func(f *ast.File) ast.Node { return f.Docs[0].Body.(*ast.SequenceNode).Values[0] },
+		}, {
+			name: "a comment group standing where a node would",
+			src:  "# c\n...\n",
+			at:   func(f *ast.File) ast.Node { return f.Docs[0].Body },
+		}} {
+			file, err := parser.ParseBytes([]byte(tc.src), parser.WithComments())
+			require.NoErrorf(t, err, "%q", tc.src)
+			assert.Errorf(t, tc.at(file).SetComment(comment(" c")), "%s: %q", tc.name, tc.src)
+		}
+	})
+
 	t.Run("and a comment with nowhere to go fails the rendering", func(t *testing.T) {
 		// The scalar begins partway along its line and runs over the next, so
 		// there is no end of line to close and no start of one to stand above.

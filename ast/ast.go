@@ -384,6 +384,28 @@ func (n *BaseNode) clearComment() { n.Comment = nil }
 
 func (n *SequenceEntryNode) clearComment() { n.LineComment = nil }
 
+// SetComment records a comment on n, and rejects a comment of a caller's own on
+// a null the document did not write.
+//
+// An implicit null stands for a node that is not in the source: the value of
+// "a:" with nothing after it, the entry of a bare "-". A comment the parser
+// hangs there is a comment the document did write -- "k: # note" holds the note
+// on the null -- and it is copied back from the bytes it was read from. One a
+// caller adds has no bytes and nowhere to go: [Renderer.Verbatim] laid the null
+// out as though it had been inserted, so "- " over "- 1" came back with an entry
+// that was never there, reading [nil nil 1] where the document holds [nil 1].
+//
+// A null a caller built, and one the document spells out, both take a comment:
+// only an implicit one is refused, and only for a comment with no source of its
+// own.
+func (n *NullNode) SetComment(node *CommentGroupNode) error {
+	if node != nil && !fromSourceGroup(node) && n.Token != nil && n.Token.Type == token.ImplicitNullType {
+		return errors.New("this null stands for a node the document does not hold, so a comment on it has nowhere to go")
+	}
+
+	return n.BaseNode.SetComment(node)
+}
+
 // Null create node for null value
 func Null(tk *token.Token) *NullNode {
 	return &NullNode{
@@ -2174,6 +2196,15 @@ type CommentGroupNode struct {
 
 // Type returns TagType
 func (n *CommentGroupNode) Type() NodeType { return CommentType }
+
+// SetComment rejects a comment on a comment.
+//
+// A group holds comments; it does not carry one. The parser puts a group where a
+// node would stand for a document that holds nothing else -- "# c" over "..." --
+// and there is no line of its own for a second comment to close.
+func (n *CommentGroupNode) SetComment(*CommentGroupNode) error {
+	return errors.New("a comment group holds comments and does not carry one")
+}
 
 // GetToken returns token instance
 func (n *CommentGroupNode) GetToken() *token.Token {
