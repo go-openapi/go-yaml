@@ -241,18 +241,14 @@ type verbatimWriter struct {
 	// dropping says a node the caller replaced has been written and the text it
 	// replaced is still ahead of the copy. See take.
 	dropping bool
-	// edits holds the comments the document wrote that a caller has replaced or
-	// removed, in the order the document wrote them, with the ones already
-	// passed dropped from the front. The copy applies them as it reaches them.
-	edits []*CommentNode
-	// appending counts the comments a caller added beside a node being written,
-	// which stand in front of the spacing that closes the node's line. See
-	// tokenEnd.
-	appending int
-	// added says a caller has put a comment on a node the document holds, which
-	// is the only reason the descent has to look at the comments at all when
-	// nothing is transforming the output.
-	added bool
+	// edits holds the comment edits still ahead of the copy, in the order the
+	// copy reaches them, with the ones already applied dropped from the front.
+	edits []pendingComment
+	// above holds the comments a caller added that the descent writes above
+	// their node, the copy having no place on the node's own line for them. It
+	// is empty for a rendering that adds nothing, which is why the descent may
+	// leave the comments alone when nothing is transforming the output.
+	above map[*CommentNode]bool
 	err   error
 }
 
@@ -289,8 +285,8 @@ func (vw *verbatimWriter) upTo(end int) {
 // applied exactly where the comment stands.
 func (vw *verbatimWriter) applyEdits(end int) {
 	for len(vw.edits) > 0 && vw.err == nil {
-		comment := vw.edits[0]
-		at := int(comment.Token.Position.Offset())
+		pending := vw.edits[0]
+		at := int(pending.at)
 		if at >= end {
 			return
 		}
@@ -298,12 +294,20 @@ func (vw *verbatimWriter) applyEdits(end int) {
 		if at < vw.cursor {
 			continue
 		}
-		switch comment.edit {
+		if pending.add {
+			// A comment a caller put beside a node, written where the line the
+			// node opens on ends.
+			vw.upTo(at)
+			vw.raw(" " + pending.comment.String())
+
+			continue
+		}
+		switch pending.comment.edit {
 		case commentRemoved:
-			vw.skipComment(comment.Token, true)
+			vw.skipComment(pending.comment.Token, true)
 		case commentReplaced:
-			vw.skipComment(comment.Token, false)
-			vw.raw("#" + comment.text)
+			vw.skipComment(pending.comment.Token, false)
+			vw.raw("#" + pending.comment.text)
 		}
 	}
 }
@@ -449,26 +453,72 @@ func onlySpacing(text []byte) bool {
 	return true
 }
 
-// writeAddedComment lays out a comment a caller put on a node the document
+// lineOf is the number of line breaks before at, which is enough to tell two
+// offsets apart by line.
+func lineOf(src []byte, at int) int {
+	at = min(max(at, 0), len(src))
+	var lines int
+	for i := range at {
+		if src[i] == '\n' {
+			lines++
+		}
+	}
+
+	return lines
+}
+
+// lastByteOf is the node's last character, the spacing its final token carries
+// after it taken off.
+func lastByteOf(src []byte, to int) int {
+	to = min(max(to, 0), len(src))
+	for to > 0 && isSpacing(src[to-1]) {
+		to--
+	}
+
+	return max(to-1, 0)
+}
+
+// writeAddedComment lays out a comment a caller put above a node the document
 // holds, which has no bytes of its own to copy.
 //
-// A head comment opens a line of its own above the node and the node's own
-// indentation goes back under it, so what follows stands where it stood. One
-// beside the node closes its line and needs only the space in front of it.
-func (vw *verbatimWriter) writeAddedComment(comment *CommentNode, span extent, head bool) {
+// It opens a line of its own above the node, and the node's own indentation goes
+// back under it so that what follows stands where it stood.
+func (vw *verbatimWriter) writeAddedComment(comment *CommentNode, span extent, n Node) {
 	if vw.err != nil {
 		return
 	}
-	if !head {
-		vw.raw(" " + comment.String())
+	if !span.found() || !opensItsLine(vw.src, int(span.from)) {
+		// Nothing to hang it on, or the node begins partway along a line, where
+		// a comment above it would stand above whatever shares that line:
+		// "a: one" over "  two" with a comment on the scalar wrote "a: # c"
+		// over "one", which is a different document. Refusing beats writing
+		// that, and the layout renderer places it correctly.
+		vw.err = fmt.Errorf(
+			"%s cannot be written beside or above %T here: it is neither at the end of a line nor at the start of one",
+			comment.String(), n,
+		)
 
 		return
 	}
-	if span.found() {
-		// The gap in front of the node: its line break and its indentation.
-		vw.upTo(int(span.from))
-	}
+
+	// The gap in front of the node: its line break and its indentation.
+	vw.upTo(int(span.from))
 	vw.raw(comment.String() + "\n" + vw.lineIndent())
+}
+
+// opensItsLine reports whether nothing but spacing stands before at on its line.
+func opensItsLine(src []byte, at int) bool {
+	at = min(max(at, 0), len(src))
+	for i := at - 1; i >= 0; i-- {
+		if src[i] == '\n' {
+			return true
+		}
+		if src[i] != ' ' && src[i] != '\t' {
+			return false
+		}
+	}
+
+	return true
 }
 
 // removalAt reports whether a comment being removed opens at end, so that the
@@ -480,7 +530,7 @@ func (vw *verbatimWriter) removalAt(end int) bool {
 	}
 	next := vw.edits[0]
 
-	return next.edit == commentRemoved && int(next.Token.Position.Offset()) == end
+	return !next.add && next.comment.edit == commentRemoved && int(next.at) == end
 }
 
 // tokenEnd is where tk's text ends, less the spacing it carries after it in
@@ -499,7 +549,7 @@ func (vw *verbatimWriter) removalAt(end int) bool {
 // insertion that has nothing to do with any comment.
 func (vw *verbatimWriter) tokenEnd(tk *token.Token) int {
 	end := min(int(tk.EndOffset()), len(vw.src))
-	if vw.appending == 0 && !vw.removalAt(end) {
+	if !vw.removalAt(end) {
 		return end
 	}
 
@@ -743,7 +793,7 @@ func (r *Renderer) writeComments(vw *verbatimWriter, n Node, span extent, above 
 	if vw.err != nil {
 		return
 	}
-	if vw.fn == nil && !vw.added {
+	if vw.fn == nil && len(vw.above) == 0 {
 		// Nothing was added and nothing is transforming the output, so every
 		// comment is either copied as the filler in front of the token after it
 		// or applied by verbatimWriter.upTo where it stands. Walking the slots
@@ -771,25 +821,13 @@ func (r *Renderer) writeComments(vw *verbatimWriter, n Node, span extent, above 
 
 			continue
 		}
-		// A comment a caller added: the document has no bytes for it, so it is
-		// laid out where its slot puts it -- above the node, or at the end of
-		// the node's line.
-		if comment.Removed() {
+		// A comment a caller added. One beside the node is anchored by
+		// collectEdits and written by the copy; one above it is laid out here,
+		// where the node's indentation is known.
+		if comment.Removed() || !above || !vw.above[comment] {
 			continue
 		}
-		if !placed.head {
-			// Counted on the way in and taken off on the way out, so that the
-			// tokens written between the two hold their trailing spacing back
-			// and the comment lands on the node's line.
-			if above {
-				vw.appending++
-			} else {
-				vw.appending--
-			}
-		}
-		if placed.head == above {
-			vw.writeAddedComment(comment, span, placed.head)
-		}
+		vw.writeAddedComment(comment, span, n)
 	}
 }
 
@@ -801,38 +839,193 @@ func (r *Renderer) writeComments(vw *verbatimWriter, n Node, span extent, above 
 // costs nothing to a rendering with no edits in it and is wrong: a comment
 // attached to a node further on stands where it stands, and the copy had passed
 // it -- 957 corpus documents kept a comment that way, and 48 stopped parsing.
-func collectEdits(n Node) (edits []*CommentNode, added bool) {
-	var out []*CommentNode
-	onGroup := func(group *CommentGroupNode, _ bool) {
+func collectEdits(n Node, src []byte) (edits []pendingComment, above map[*CommentNode]bool) {
+	var out []pendingComment
+	above = make(map[*CommentNode]bool)
+	var node Node
+	onGroup := func(group *CommentGroupNode, head bool) {
 		for _, comment := range group.Comments {
 			tk := comment.Token
-			if tk == nil || !tk.FromSource() {
-				// A comment a caller added, which the descent lays out where
-				// its slot puts it. Recorded here only so that a rendering with
-				// none of them can leave writeComments alone.
-				added = added || !comment.Removed()
+			if tk != nil && tk.FromSource() {
+				if comment.edit != commentAsWritten {
+					out = append(out, pendingComment{comment: comment, at: tk.Position.Offset()})
+				}
 
 				continue
 			}
-			if comment.edit == commentAsWritten {
+			// A comment a caller added. One above the node is laid out by the
+			// descent, which knows the node's indentation; one beside it is
+			// anchored here, at the end of the line the node opens on.
+			if comment.Removed() {
 				continue
 			}
-			out = append(out, comment)
+			if head {
+				above[comment] = true
+
+				continue
+			}
+			at, ok := besideAnchor(node, src)
+			if !ok {
+				// Nothing in the source to hang it on, or the line already
+				// ends on a comment and two cannot share one. It goes above
+				// the node instead, where the descent places it.
+				above[comment] = true
+
+				continue
+			}
+			out = append(out, pendingComment{comment: comment, at: at, add: true})
 		}
 	}
-	onNode := func(node Node) { eachCommentGroup(node, onGroup) }
-	eachNode(n, onNode)
+	eachNode(n, func(current Node) {
+		node = current
+		eachCommentGroup(current, onGroup)
+	})
 
+	out = settleAnchors(n, src, out, above)
 	if len(out) > 1 {
-		sort.SliceStable(out, func(i, j int) bool {
-			return out[i].Token.Position.Offset() < out[j].Token.Position.Offset()
-		})
+		sort.SliceStable(out, func(i, j int) bool { return out[i].at < out[j].at })
 	}
 
-	return out, added
+	return out, above
 }
 
-// eachNode hands over n and everything under it.
+// settleAnchors drops the added comments whose anchor falls inside a node that
+// runs past it, which the node they were put on cannot see.
+//
+// A line ends where the source says, and that is not always a place a comment
+// may go: the key of "safe: a#!..." over "     ...more" ends its own text on the
+// first line, but the value's plain scalar carries on over the second, so a
+// comment at the end of the first line cuts the scalar in half. The extents say
+// so -- a node whose text opens before the anchor and closes after it is running
+// through it -- and they are gathered only where something was added, which is
+// nearly never.
+func settleAnchors(n Node, src []byte, out []pendingComment, above map[*CommentNode]bool) []pendingComment {
+	var added bool
+	for _, pending := range out {
+		added = added || pending.add
+	}
+	if !added {
+		return out
+	}
+
+	// Token extents and not node extents: a collection's text runs over many
+	// lines by design and every node above the anchor spans it, where the
+	// hazard is one token whose own text carries on past the line -- a plain
+	// scalar written across two lines, a quoted one broken by a "\".
+	var spans []extent
+	walkSourceTokens(n, func(tk *token.Token) {
+		spans = append(spans, extent{from: tk.Position.Offset(), to: int32(lastByteOf(src, int(tk.EndOffset())) + 1)})
+	})
+
+	kept := out[:0]
+	for _, pending := range out {
+		if pending.add && runsThrough(spans, pending.at) {
+			// Written above the node instead, where the descent places it.
+			above[pending.comment] = true
+
+			continue
+		}
+		kept = append(kept, pending)
+	}
+
+	return kept
+}
+
+// runsThrough reports whether a token's own text opens before at and carries on
+// past it.
+func runsThrough(spans []extent, at int32) bool {
+	for _, span := range spans {
+		if span.from < at && span.to > at {
+			return true
+		}
+	}
+
+	return false
+}
+
+// besideAnchor is where a comment put beside n goes: the end of the line n opens
+// on, past the spacing that closes it.
+//
+// Not where the descent stands when it finishes writing n, which is what this
+// replaced. A node does not always end its own line -- "{a: 1}" closes with a
+// bracket, "a: 1" continues with the value when the comment is on the key, and
+// a block scalar's own line is the "|" header with its content underneath -- so
+// writing the comment there put "{a: 1 # c}", "a # c: 1" and "a: |" over
+// "  text # c" into the document. The first two do not parse and the last two
+// change the value.
+//
+// It reports false where the line already ends on a comment: two comments on one
+// line come back as one, so the caller writes it above the node instead.
+func besideAnchor(n Node, src []byte) (int32, bool) {
+	span := sourceExtent(n)
+	if !span.found() {
+		return 0, false
+	}
+
+	// The line the node ends on, since a node may run over several: a plain
+	// scalar written across two lines took the comment onto the first of them,
+	// where the second then continued past it.
+	//
+	// A property is the exception, and so is a block scalar. Both carry a value
+	// whose text is not theirs -- "&a" over a block mapping, "|" over its
+	// content -- and a comment goes after the marker, which is where the
+	// layout renderer puts it too.
+	at := int(span.to)
+	if tk := headerToken(n); tk != nil {
+		at = int(tk.EndOffset())
+	} else if lineOf(src, int(span.from)) != lineOf(src, lastByteOf(src, int(span.to))) {
+		// The node runs over more than one line, so there is no line of its own
+		// to close: a plain scalar written across two took the comment onto the
+		// first, where the second then ran on past it, and a property standing
+		// over a block took it to the end of the block.
+		return 0, false
+	}
+	at = min(max(at, 0), len(src))
+	// A token's text runs to where the next one starts, so the offset it ends on
+	// stands past the spacing and may stand on the line below. Back off to the
+	// node's last character, and take the line from there.
+	for at > 0 && isSpacing(src[at-1]) {
+		at--
+	}
+	start := at
+	for at < len(src) && src[at] != '\n' {
+		if src[at] == '#' && (at == 0 || isSpacing(src[at-1])) {
+			return 0, false
+		}
+		at++
+	}
+	for at > start && isSpacing(src[at-1]) {
+		at--
+	}
+
+	return int32(at), true
+}
+
+// headerToken is the "|" or ">" a block scalar opens with, and nil for every
+// other node.
+//
+// A block scalar's own line is its header; its content stands underneath and is
+// content, not layout. A comment goes after the header, which is where the
+// layout renderer puts it too -- written after the content it becomes part of
+// the scalar, so "a: |" over "  text" read back as "text # c".
+func headerToken(n Node) *token.Token {
+	literal, ok := n.(*LiteralNode)
+	if !ok || literal.Start == nil || !literal.Start.FromSource() {
+		return nil
+	}
+
+	return literal.Start
+}
+
+// pendingComment is one comment the copy has still to deal with: a comment of
+// the document's own that a caller edited, or one a caller added beside a node.
+type pendingComment struct {
+	comment *CommentNode
+	at      int32
+	add     bool
+}
+
+// eachNode hands over n and everything under it.// eachNode hands over n and everything under it.
 //
 // It reaches further than walkSourceTokens: a comment hangs on nodes that carry
 // no token of the descent's own -- an anchor's name, a sequence's entry -- and
@@ -870,7 +1063,10 @@ func eachNode(n Node, fn func(Node)) {
 	case *TagNode:
 		eachNode(v.Value, fn)
 	case *LiteralNode:
-		eachNode(v.Value, fn)
+		// Not into the content: a block scalar's body is text, and a comment
+		// written among its lines is content too. "text: |" over "  a" over
+		// "  b" with a comment on the content node wrote "# added" inside the
+		// scalar, which read back as part of the value.
 	case *DirectiveNode:
 		eachNode(v.Name, fn)
 		for _, value := range v.Values {
@@ -1357,8 +1553,8 @@ func (r *Renderer) Verbatim(w io.Writer, n Node) error {
 		return nil
 	}
 
-	edits, added := collectEdits(n)
-	vw := &verbatimWriter{w: w, fn: r.transform, src: r.src, cursor: int(span.from), edits: edits, added: added}
+	edits, above := collectEdits(n, r.src)
+	vw := &verbatimWriter{w: w, fn: r.transform, src: r.src, cursor: int(span.from), edits: edits, above: above}
 	r.write(vw, n)
 	vw.upTo(int(span.to))
 
@@ -1372,11 +1568,16 @@ func (r *Renderer) VerbatimFile(w io.Writer, f *File) error {
 		return nil
 	}
 
-	vw := &verbatimWriter{w: w, fn: r.transform, src: r.src}
+	vw := &verbatimWriter{w: w, fn: r.transform, src: r.src, above: map[*CommentNode]bool{}}
 	for _, doc := range f.Docs {
-		edits, added := collectEdits(doc)
+		edits, above := collectEdits(doc, r.src)
 		vw.edits = append(vw.edits, edits...)
-		vw.added = vw.added || added
+		for comment := range above {
+			vw.above[comment] = true
+		}
+	}
+	if len(vw.edits) > 1 {
+		sort.SliceStable(vw.edits, func(i, j int) bool { return vw.edits[i].at < vw.edits[j].at })
 	}
 
 	for _, doc := range f.Docs {

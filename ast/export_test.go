@@ -43,3 +43,7 @@ func EveryComment(n Node) []*CommentNode {
 
 	return out
 }
+
+// EachNode hands over n and everything under it, which is the walk the verbatim
+// renderer collects its edits by.
+func EachNode(n Node, fn func(Node)) { eachNode(n, fn) }

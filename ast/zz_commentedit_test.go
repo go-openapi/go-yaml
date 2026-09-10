@@ -11,6 +11,7 @@ import (
 	"github.com/go-openapi/testify/v2/require"
 
 	"github.com/go-openapi/go-yaml/ast"
+	"github.com/go-openapi/go-yaml/codec"
 	"github.com/go-openapi/go-yaml/parser"
 	"github.com/go-openapi/go-yaml/token"
 )
@@ -171,6 +172,136 @@ func TestEditingEveryCommentOfTheCorpus(t *testing.T) {
 	require.Zerof(t, leftBehind, "%d documents kept a comment after every one was removed: %v", leftBehind, names)
 	require.Zerof(t, lostOnReplace, "%d documents hold a different number of comments after every one was replaced: %v", lostOnReplace, names)
 	require.Zerof(t, unreadable, "%d documents no longer parse once their comments are removed: %v", unreadable, names)
+}
+
+// TestFixedAnAddedCommentDoesNotBreakTheLineItLandsOn.
+//
+// A comment a caller added was written where the descent stood when it finished
+// the node, which is only the end of a line for a block mapping entry and a
+// block sequence entry. Everywhere else the line goes on: "{a: 1}" closes with a
+// bracket, "a: 1" continues with the value when the comment is on the key, and a
+// block scalar's own line is the "|" header with its content underneath. So
+// "{a: 1 # c}" and "[1 # c, 2]" no longer parsed, and "a # c: 1" and "a: |" over
+// "  text # c" parsed and read back as a different document -- the two that a
+// parseability check waves through.
+//
+// verbatimWriter.applyEdits writes an added comment at an anchor instead, the
+// end of the line the node's text closes on, and the anchor is dropped where a
+// node runs through it or the line already ends on a comment: the comment then
+// goes above the node, and where it cannot go there either the rendering fails
+// rather than write a document that says something else.
+//
+// Reported by yaml-transform, who dated all four to 4b41cf9 by running the same
+// shapes at its parent, where an added comment was dropped rather than
+// misplaced.
+func TestFixedAnAddedCommentDoesNotBreakTheLineItLandsOn(t *testing.T) {
+	for _, tc := range []struct {
+		name, src, want string
+		at              func(*ast.File) ast.Node
+	}{{
+		name: "a flow mapping's value",
+		src:  "{a: 1}\n",
+		want: "{a: 1} # c\n",
+		at:   func(f *ast.File) ast.Node { return f.Docs[0].Body.(*ast.MappingNode).Values[0].Value },
+	}, {
+		name: "a flow sequence's value",
+		src:  "[1, 2]\n",
+		want: "[1, 2] # c\n",
+		at:   func(f *ast.File) ast.Node { return f.Docs[0].Body.(*ast.SequenceNode).Values[0] },
+	}, {
+		name: "a mapping key",
+		src:  "a: 1\n",
+		want: "a: 1 # c\n",
+		at:   func(f *ast.File) ast.Node { return f.Docs[0].Body.(*ast.MappingNode).Values[0].Key },
+	}, {
+		name: "a block scalar, on its header",
+		src:  "a: |\n  text\n",
+		want: "a: | # c\n  text\n",
+		at:   func(f *ast.File) ast.Node { return f.Docs[0].Body.(*ast.MappingNode).Values[0].Value },
+	}, {
+		name: "a block sequence's value",
+		src:  "- 1\n- 2\n",
+		want: "- 1 # c\n- 2\n",
+		at:   func(f *ast.File) ast.Node { return f.Docs[0].Body.(*ast.SequenceNode).Values[0] },
+	}, {
+		name: "a block mapping's value",
+		src:  "a: 1\nb: 2\n",
+		want: "a: 1 # c\nb: 2\n",
+		at:   func(f *ast.File) ast.Node { return f.Docs[0].Body.(*ast.MappingNode).Values[0].Value },
+	}, {
+		name: "a line that already ends on a comment",
+		src:  "a: 1 # old\nb: 2\n",
+		want: "# c\na: 1 # old\nb: 2\n",
+		at:   func(f *ast.File) ast.Node { return f.Docs[0].Body.(*ast.MappingNode).Values[0].Key },
+	}, {
+		name: "a key whose value runs over two lines",
+		src:  "a: one\n  two\nb: 2\n",
+		want: "# c\na: one\n  two\nb: 2\n",
+		at:   func(f *ast.File) ast.Node { return f.Docs[0].Body.(*ast.MappingNode).Values[0].Key },
+	}} {
+		t.Run(tc.name, func(t *testing.T) {
+			file, err := parser.ParseBytes([]byte(tc.src), parser.WithComments())
+			require.NoErrorf(t, err, "%q", tc.src)
+
+			var before any
+			require.NoError(t, codec.Unmarshal([]byte(tc.src), &before))
+			require.NoError(t, tc.at(file).SetComment(comment(" c")))
+
+			var out bytes.Buffer
+			require.NoError(t, ast.NewRenderer(ast.WithSource([]byte(tc.src))).VerbatimFile(&out, file))
+			assert.Equal(t, tc.want, out.String())
+
+			var after any
+			require.NoErrorf(t, codec.Unmarshal(out.Bytes(), &after),
+				"%q renders as %q, which does not parse", tc.src, out.String())
+			assert.Equalf(t, before, after, "%q renders as %q, which says something else", tc.src, out.String())
+			assert.Equalf(t, commentTokensIn(tc.src)+1, commentTokensIn(out.String()),
+				"%q renders as %q", tc.src, out.String())
+		})
+	}
+
+	t.Run("and a comment with nowhere to go fails the rendering", func(t *testing.T) {
+		// The scalar begins partway along its line and runs over the next, so
+		// there is no end of line to close and no start of one to stand above.
+		const src = "a: one\n  two\nb: 2\n"
+
+		file, err := parser.ParseBytes([]byte(src), parser.WithComments())
+		require.NoError(t, err)
+		require.NoError(t, file.Docs[0].Body.(*ast.MappingNode).Values[0].Value.SetComment(comment(" c")))
+
+		var out bytes.Buffer
+		assert.Error(t, ast.NewRenderer(ast.WithSource([]byte(src))).VerbatimFile(&out, file))
+	})
+}
+
+// TestFixedARemovedHeadCommentDoesNotLeaveItsLine.
+//
+// Renderer.sequence tested SequenceNode.ValueHeadComments[i] against nil where
+// every other site had moved to Blank, so a group emptied by CommentNode.Remove
+// rendered as nothing and still took its line: "- a" over "# head" over "- b"
+// came back with a blank line where the comment had been.
+//
+// The blank line an author left above the comment is the other half. It is
+// recorded on the comment's own token, and CommentGroupNode.GetToken answers for
+// the comments still written, so reading the gap through it loses one the author
+// did leave. blankAboveComment reads the group's first comment whatever became
+// of it.
+func TestFixedARemovedHeadCommentDoesNotLeaveItsLine(t *testing.T) {
+	for _, tc := range []struct{ src, want string }{
+		{src: "- a\n# head\n- b\n", want: "- a\n- b\n"},
+		{src: "- a\n\n# head\n- b\n", want: "- a\n\n- b\n"},
+	} {
+		file, err := parser.ParseBytes([]byte(tc.src), parser.WithComments())
+		require.NoErrorf(t, err, "%q", tc.src)
+		for _, c := range ast.EveryComment(file.Docs[0]) {
+			c.Remove()
+		}
+
+		var out bytes.Buffer
+		require.NoError(t, ast.NewRenderer(ast.WithSource([]byte(tc.src))).VerbatimFile(&out, file))
+		assert.Equalf(t, tc.want, out.String(), "verbatim: %q", tc.src)
+		assert.Equalf(t, tc.want, file.String(), "the two renderings say the same: %q", tc.src)
+	}
 }
 
 // renderEdited parses src, applies edit to every comment in it, and renders it

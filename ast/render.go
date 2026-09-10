@@ -766,22 +766,29 @@ func (r *Renderer) sequence(n *SequenceNode) rendered {
 		if entry.leads {
 			blank, entry = "\n", entry.withoutLead()
 		}
-		if r.comments && i < len(n.ValueHeadComments) && n.ValueHeadComments[i] != nil {
-			comment := n.ValueHeadComments[i]
+		if head := headOf(n, i); r.comments && !head.Blank() {
 			if blank == "" {
 				// The entry's own token follows the comment, so the gap the
 				// author left shows up above the comment instead.
-				blank = blankLineBefore(comment)
+				blank = blankLineBefore(head)
 			}
-			lines = append(lines, join(sepNone, leaf(blank), r.render(comment)))
+			lines = append(lines, join(sepNone, leaf(blank), r.render(head)))
 			blank = ""
 		} else if blank == "" {
+			// A head comment the caller removed still says where the author
+			// left a gap, and it is the only thing that does: the entry's own
+			// token stands under the comment, not under the blank line.
+			if r.comments && head != nil {
+				blank = blankAboveComment(head)
+			}
 			// Only a block collection reports a gap of its own. For anything
 			// else the sequence reads it off the entry's first token, falling
 			// back to the '-'. An empty entry has no token of its own to read:
 			// ": &1" over a blank over "-" over "? \"\"" wrote the '-' with
 			// nothing above it and lost the author's blank line.
-			blank = blankLineBefore(value)
+			if blank == "" {
+				blank = blankLineBefore(value)
+			}
 			if blank == "" {
 				blank = entryBlankLine(n, i)
 			}
@@ -821,6 +828,34 @@ func (r *Renderer) sequence(n *SequenceNode) rendered {
 	}
 
 	return join(sepBreak, lines...)
+}
+
+// headOf returns the comment written above the entry at index i, or nil.
+func headOf(n *SequenceNode, i int) *CommentGroupNode {
+	if i >= len(n.ValueHeadComments) {
+		return nil
+	}
+
+	return n.ValueHeadComments[i]
+}
+
+// blankAboveComment returns the blank line an author left above a comment group,
+// reading the group's first comment whether or not it is still written.
+//
+// CommentGroupNode.GetToken answers for the comments still written, which is
+// what a renderer wants everywhere else. Here the group has been emptied by
+// [CommentNode.Remove] and the gap the author left above it is still the
+// document's: "- a" over a blank over "# head" over "- b" keeps its blank line
+// when the comment goes.
+func blankAboveComment(c *CommentGroupNode) string {
+	if c == nil || len(c.Comments) == 0 {
+		return ""
+	}
+	if tk := c.Comments[0].Token; tk != nil && tk.BlankLineAbove() {
+		return "\n"
+	}
+
+	return ""
 }
 
 // entryBlankLine returns the blank line an author left above the '-' of the
