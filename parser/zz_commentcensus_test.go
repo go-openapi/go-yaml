@@ -44,7 +44,7 @@ const (
 	staleCommentCeiling  = 2
 	overwroteHeadCeiling = 0
 
-	commentedDocuments = 6687
+	commentedDocuments = 6691
 )
 
 // TestNoCommentIsReadAndThenDropped counts, for every document the parse

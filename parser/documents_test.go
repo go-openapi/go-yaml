@@ -424,3 +424,47 @@ func TestFixedARootNodeKeepsBothItsComments(t *testing.T) {
 		}
 	})
 }
+
+// TestFixedAnIndentedCommentBetweenAKeyAndItsColonIsKept.
+//
+// A comment written between an explicit key and its ":" survived only at column
+// 1. endsExplicitKeyBody ends the body at a token whose column is not past the
+// "?", so a comment written further in was taken for part of the body, grouped
+// with the key and never reached a node: "? key" over "  # comment" over
+// ": value" lost it, where the same comment at column 1 ended the body and was
+// read as the ":" line's head comment.
+//
+// A comment is not a node, so it is held aside rather than added to the body,
+// and handed on after the key. Where more of the body follows it goes back
+// where it was written, which is what keeps a comment inside a block collection
+// under the key in its place.
+//
+// Four documents of the corpus that were refused now parse, all four accepted
+// by grammar.NewRecognizer, and none stops parsing.
+func TestFixedAnIndentedCommentBetweenAKeyAndItsColonIsKept(t *testing.T) {
+	for _, tc := range []struct{ src, want string }{
+		{src: "? key\n# comment\n: value\n", want: "? key\n: value # comment\n"},
+		{src: "? key\n # comment\n: value\n", want: "? key\n: value # comment\n"},
+		{src: "? key\n  # comment\n: value\n", want: "? key\n: value # comment\n"},
+		{src: "? key\n    # comment\n: value\n", want: "? key\n: value # comment\n"},
+		// A multi-line plain key, whose comment ends it -- see the scanner's
+		// TestFixedAPlainScalarEndsAtAComment.
+		{src: "?\n  a\n      - b\n# c\n: v\n", want: "? a - b\n: v # c\n"},
+		{src: "?\n  a\n      - b\n  # c\n: v\n", want: "? a - b\n: v # c\n"},
+		{src: "?\n  a\n      - b\n      # c\n: v\n", want: "? a - b\n: v # c\n"},
+	} {
+		f, err := parser.ParseBytes([]byte(tc.src), parser.WithComments())
+		require.NoErrorf(t, err, "%q", tc.src)
+		assert.Equalf(t, tc.want, f.String(), "%q", tc.src)
+	}
+
+	t.Run("and a comment inside the body stays where it was written", func(t *testing.T) {
+		// More of the body follows, so the comment belongs to the sequence and
+		// not to the key.
+		const src = "?\n  - a\n  # c\n  - b\n: v\n"
+
+		f, err := parser.ParseBytes([]byte(src), parser.WithComments())
+		require.NoError(t, err)
+		assert.Contains(t, f.String(), "# c", "%q keeps its comment", src)
+	})
+}

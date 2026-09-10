@@ -659,6 +659,11 @@ type explicitKey struct {
 	flowDepth int
 	key       *tapeToken // a '?', while the body naming its key is read
 	keyColumn int
+	// comments holds the comment lines read since the last body token. A
+	// comment is not a node, so it does not belong in the key's body; it is
+	// flushed back into the body when more of the body follows it, and handed
+	// on after the key where the key ends first. See stageExplicitKeys.
+	comments  []*tapeToken
 	keyInFlow bool
 	bodyDepth int
 	body      []*tapeToken

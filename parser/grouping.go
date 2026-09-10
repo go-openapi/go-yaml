@@ -227,6 +227,23 @@ func stageExplicitKeys(g *grouper, at int, tk *tapeToken, out []*tapeToken) []*t
 	if g.explicit.key != nil {
 		if !endsExplicitKeyBody(tk, g.explicit.keyColumn, g.explicit.keyInFlow,
 			g.explicit.body, &g.explicit.bodyDepth) {
+			if tk.Type() == token.CommentType {
+				// Held rather than added: a comment is not a node, and one
+				// written between the key and its ':' belongs after the key.
+				// Swallowed into the body it was parsed as part of the key's
+				// group and never reached a node, so "? key" over
+				// "  # comment" over ": value" lost the comment -- while the
+				// same comment at column 1 ended the body and was read as the
+				// ':' line's head comment. The column decided, and it should
+				// not.
+				g.explicit.comments = append(g.explicit.comments, tk)
+
+				return out
+			}
+			// More of the body follows, so the comments stood inside it and go
+			// back where they were written.
+			g.explicit.body = append(g.explicit.body, g.explicit.comments...)
+			g.explicit.comments = g.explicit.comments[:0]
 			g.explicit.body = append(g.explicit.body, tk)
 
 			return out
@@ -292,8 +309,16 @@ func (g *grouper) emitExplicitKey(at int, out []*tapeToken) ([]*tapeToken, bool)
 	if !ok {
 		return out, false
 	}
+	out = g.pass(at, grouped, out)
 
-	return g.pass(at, grouped, out), true
+	// The comments the key ended on stand after it, where the parse reads them
+	// as the ':' line's head comment.
+	for _, comment := range g.explicit.comments {
+		out = g.pass(at, comment, out)
+	}
+	g.explicit.comments = g.explicit.comments[:0]
+
+	return out, true
 }
 
 // groupExplicitKeysIn groups the explicit keys written inside another key's

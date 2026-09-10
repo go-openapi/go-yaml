@@ -191,7 +191,6 @@ var parserComplaints = []string{
 	"anchor is not allowed in this sequence context",
 	"anchors cannot be used consecutively",
 	"block sequence entries are not allowed in this context",
-	"cannot use this node as a map key",
 	"comment must be separated from the block scalar header by a space",
 	"could not find _ character corresponding to _",
 	"could not find alias _",
