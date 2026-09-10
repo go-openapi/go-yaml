@@ -6,36 +6,25 @@ package scanner_test
 import (
 	"testing"
 
-	"github.com/go-openapi/go-yaml/internal/scanner"
-	"github.com/go-openapi/go-yaml/token"
 	"github.com/go-openapi/testify/v2/require"
+
+	"github.com/go-openapi/go-yaml/internal/scanner"
+	"github.com/go-openapi/go-yaml/internal/scanner/internal/testscanner"
+	"github.com/go-openapi/go-yaml/token"
 )
 
-// maxScanCalls bounds the scanning loop.
-//
-// Scanner.Scan only signals completion with io.EOF.
-//
-// A caller that keeps calling it after any other error relies on the scanner always making progress or on its internal
-// bounds.
-//
-// Currently, nothing enforces that, so the bound turns a hypothetical non-progressing loop into a test failure rather
-// than a fuzzing timeout.
-const maxScanCalls = 1 << 16
-
-// Doc is a convenience type to share utilities that accept either a string or []byte.
-type Doc interface {
-	string | []byte
-}
+// maxScanCalls bounds the scanning loop. See [testscanner.MaxScanCalls].
+const maxScanCalls = testscanner.MaxScanCalls
 
 // scanAll drives a Scanner to exhaustion and reports whether it terminated on its own.
 //
 // It materialize all tokens so a test can reason about the entire collection.
-func scanAll[V Doc](t *testing.T, src V) []token.Token {
+func scanAll[V testscanner.Doc](t *testing.T, src V) []token.Token {
 	t.Helper()
 
 	var s scanner.Scanner
 	s.Init([]byte(src))
-	tokens := make([]token.Token, 0, estimateTokens(src))
+	tokens := make([]token.Token, 0, testscanner.EstimateTokens(src))
 
 	for calls := 0; ; calls++ {
 		require.Lessf(t, calls, maxScanCalls,
@@ -58,11 +47,11 @@ func scanAll[V Doc](t *testing.T, src V) []token.Token {
 //
 // A scanner returns one token at a time. A test comparing a whole document needs them collected, and nothing else
 // does.
-func scanTokens[V Doc](src V) ([]token.Token, error) {
+func scanTokens[V testscanner.Doc](src V) ([]token.Token, error) {
 	var s scanner.Scanner
 	s.Init([]byte(src))
 
-	tokens := make([]token.Token, 0, estimateTokens(src))
+	tokens := make([]token.Token, 0, testscanner.EstimateTokens(src))
 	for tk := range s.Tokens() {
 		held := tk
 		tokens = append(tokens, held)
@@ -82,33 +71,12 @@ func tokenize(t *testing.T, src string) []token.Token {
 	return tokens
 }
 
-func estimateTokens[V Doc](src V) int {
-	// Four bytes a token is close enough to size the slice: the corpus shapes run 2.4 to 12 bytes a token, so this
-	// over-allocates a little on the dense ones and grows once or twice on the sparse ones.
-	return len(src) / 4
-}
-
-// originsOf reads back the text the document wrote each token as.
+// runCases feeds this package's scan to [testscanner.RunCases].
 //
-// [token.Token] does not carry it.
-// The tokens' extents tile the source, which TestOriginsTileTheSource checks, so the text of the token
-// at i is the source between the end of the one before it and its own end, leading whitespace included.
-func originsOf(src string, tokens []token.Token) []string {
-	origins := make([]string, len(tokens))
-	prev := 0
+// Every {kind}_test.go holding tokenize cases calls it. A package scanner file writes its own one-line adapter over
+// the unexported Scanner, which is why testscanner takes the scan as a parameter.
+func runCases(t *testing.T, cases []testscanner.Case) {
+	t.Helper()
 
-	for i, tk := range tokens {
-		end := int(tk.EndOffset())
-		if end < prev || end > len(src) {
-			origins[i] = ""
-			prev = min(max(end, prev), len(src))
-
-			continue
-		}
-
-		origins[i] = src[prev:end]
-		prev = end
-	}
-
-	return origins
+	testscanner.RunCases(t, scanTokens[string], cases)
 }
