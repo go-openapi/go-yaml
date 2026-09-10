@@ -96,19 +96,36 @@ func TestVerbatimWritesANodeBack(t *testing.T) {
 
 	file, err := parser.ParseBytes([]byte(src), parser.WithComments())
 	require.NoError(t, err)
-	r := ast.NewRenderer(ast.WithSource([]byte(src)))
 
 	var checked int
 	for _, doc := range file.Docs {
 		walkEveryNode(doc, func(n ast.Node) {
 			var out bytes.Buffer
-			require.NoError(t, r.Verbatim(&out, n))
+			var carryingAToken int
+			labeling := ast.NewRenderer(
+				ast.WithSource([]byte(src)),
+				ast.WithTransform(func(w io.Writer, s ast.Written) error {
+					if s.Token != nil {
+						carryingAToken++
+					}
+					_, err := w.Write(s.Text)
+
+					return err
+				}),
+			)
+			require.NoError(t, labeling.Verbatim(&out, n))
 			if out.Len() == 0 {
 				return
 			}
 			checked++
 			require.Containsf(t, src, out.String(),
 				"a %s wrote %q, which the document does not hold", n.Type(), out.String())
+
+			// Verbatim ends on upTo(span.to), so a node writes its own stretch of
+			// the document whether the descent ran or not. What the descent adds
+			// is the naming, and that is what is checked.
+			require.Positivef(t, carryingAToken,
+				"a %s wrote %q and named none of it", n.Type(), out.String())
 		})
 	}
 	require.Positive(t, checked)
@@ -258,9 +275,7 @@ func TestVerbatimKeepsWhatARebuildFromValuesWouldLose(t *testing.T) {
 			file, err := parser.ParseBytes([]byte(tc.src), parser.WithComments())
 			require.NoError(t, err)
 
-			var out bytes.Buffer
-			require.NoError(t, ast.NewRenderer(ast.WithSource([]byte(tc.src))).VerbatimFile(&out, file))
-			require.Equal(t, tc.src, out.String())
+			requireWrittenThroughTheDescent(t, tc.src, file)
 		})
 	}
 }
@@ -272,4 +287,35 @@ func TestInvalidUTF8NeverReachesTheRenderer(t *testing.T) {
 
 	_, err := parser.ParseBytes([]byte("a: \"\xff\xfe\"\n"), parser.WithComments())
 	require.ErrorContains(t, err, "found a byte that is part of no character")
+}
+
+// requireWrittenThroughTheDescent renders file and requires two things of the
+// result: it is the document byte for byte, and it was written by the descent.
+//
+// The second is not implied by the first, which is the trap this package keeps
+// walking into. VerbatimFile ends on upTo(len(src)), so a run with
+// Renderer.write deleted outright hands the whole document over as one stretch
+// carrying no token, and every byte-identity check in the package passes. What
+// the descent adds is that the stretches are named, so that is what is asked.
+func requireWrittenThroughTheDescent(t *testing.T, src string, file *ast.File) {
+	t.Helper()
+
+	var out bytes.Buffer
+	var carryingAToken int
+	renderer := ast.NewRenderer(
+		ast.WithSource([]byte(src)),
+		ast.WithTransform(func(w io.Writer, s ast.Written) error {
+			if s.Token != nil {
+				carryingAToken++
+			}
+			_, err := w.Write(s.Text)
+
+			return err
+		}),
+	)
+
+	require.NoError(t, renderer.VerbatimFile(&out, file))
+	require.Equal(t, src, out.String())
+	require.Positive(t, carryingAToken,
+		"the document came back whole and not one stretch of it carried a token")
 }

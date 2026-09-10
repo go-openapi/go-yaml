@@ -124,10 +124,8 @@ func TestACloneSharesNothingWithWhatItCopied(t *testing.T) {
 	require.Equal(t, " beside", original.Values[0].Value.GetComment().Comments[0].Token.Value)
 	require.Equal(t, "one", original.Values[1].Value.(*ast.SequenceNode).Values[0].GetToken().Value)
 
-	// And the original still renders as the document wrote it.
-	var out bytes.Buffer
-	require.NoError(t, ast.NewRenderer(ast.WithSource([]byte(src))).VerbatimFile(&out, file))
-	require.Equal(t, src, out.String())
+	// And the original still writes the document it was read from.
+	requireWrittenThroughTheDescent(t, src, file)
 }
 
 // TestCloningTheCorpusChangesNothing asks two things of every node the corpus

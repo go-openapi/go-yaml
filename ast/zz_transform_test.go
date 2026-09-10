@@ -23,10 +23,16 @@ import (
 // has to give the document. It holds the hook to that: a stretch dropped, handed
 // over twice, or handed over in the wrong order shows up here as a document that
 // does not come back.
+//
+// The document coming back is not on its own evidence that the hook was called.
+// VerbatimFile ends on upTo(len(src)), so a run with Renderer.write deleted
+// hands the whole document over as one stretch and rebuilds it. So the count of
+// stretches carrying a token is checked as well: nothing labels anything when
+// the descent is gone.
 func TestATransformThatWritesEverythingChangesNothing(t *testing.T) {
 	t.Parallel()
 
-	var rebuilt int
+	var rebuilt, labeled int
 	for _, src := range renderSources(t) {
 		file, err := parser.ParseBytes([]byte(src.text), parser.WithComments())
 		if err != nil {
@@ -34,9 +40,13 @@ func TestATransformThatWritesEverythingChangesNothing(t *testing.T) {
 		}
 
 		var out bytes.Buffer
+		var carryingAToken int
 		r := ast.NewRenderer(
 			ast.WithSource([]byte(src.text)),
 			ast.WithTransform(func(w io.Writer, s ast.Written) error {
+				if s.Token != nil {
+					carryingAToken++
+				}
 				_, err := w.Write(s.Text)
 
 				return err
@@ -45,10 +55,18 @@ func TestATransformThatWritesEverythingChangesNothing(t *testing.T) {
 		require.NoError(t, r.VerbatimFile(&out, file))
 		require.Equalf(t, src.text, out.String(), "%s did not come back as it went in", src.name)
 		rebuilt++
+
+		if held := tokensTheTreeHolds(file); held > 0 {
+			require.Positivef(t, carryingAToken,
+				"%s came back whole and not one stretch carried a token, though the tree holds %d: the descent wrote nothing and the tail copied the document",
+				src.name, held)
+			labeled++
+		}
 	}
 
-	t.Logf("rebuilt %d documents through a pass-through transform", rebuilt)
+	t.Logf("rebuilt %d documents through a pass-through transform, %d of them labeling a token", rebuilt, labeled)
 	require.Positive(t, rebuilt)
+	require.Positive(t, labeled)
 }
 
 // TestATransformNamesWhatItIsWriting is the worked example the hook exists for:
@@ -105,4 +123,15 @@ func TestATransformNamesWhatItIsWriting(t *testing.T) {
 	require.Contains(t, out.String(), "<n>8080</n>", "a plain 8080 is a number")
 	require.Contains(t, out.String(), "<s>name</s>", "and a key is a string")
 	fmt.Fprint(io.Discard, out.String())
+}
+
+// tokensTheTreeHolds counts the source tokens a file's documents reach, which is
+// how many stretches a rendering of it has to label at most.
+func tokensTheTreeHolds(file *ast.File) int {
+	var held int
+	for _, doc := range file.Docs {
+		held += len(ast.SourceTokenEnds(doc))
+	}
+
+	return held
 }
