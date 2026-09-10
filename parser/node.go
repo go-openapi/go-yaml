@@ -430,6 +430,20 @@ func headCommentTarget(value ast.Node) ast.Node {
 	return value
 }
 
+// countFootAttached records that a foot comment reached a node.
+//
+// The census reads comment.scanned against the routes a comment can be attached
+// by, and a foot comment had none: parseFootComment counted what it read and
+// nothing counted where it went, so a kept foot comment looked like a lost one.
+// A comment written on a "---" or a "..." needs no counter of its own, taking
+// the staged/taken route through markerComment below.
+func countFootAttached(cm *ast.CommentGroupNode) {
+	if !probe.Enabled || cm == nil {
+		return
+	}
+	probe.Count("comment.foot.attached", int64(len(cm.Comments)))
+}
+
 // markerComment is the comment closing a "---" or "..." line, as a group.
 //
 // A marker is not a node, so nothing takes the comment staged against it and

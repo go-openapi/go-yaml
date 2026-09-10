@@ -936,6 +936,7 @@ func (p *Parser) parseFlowMap(ctx context) (*ast.MappingNode, error) {
 		if tk.Type() == token.MappingEndType {
 			node.End = tk.RawToken()
 			node.FootComment = headComment
+			countFootAttached(node.FootComment)
 			break
 		}
 
@@ -1313,6 +1314,7 @@ func (p *Parser) parseMap(ctx context) (*ast.MappingNode, error) {
 				last := mapNode.Values[len(mapNode.Values)-1]
 				last.FootComment = foot
 				last.FootComment.SetPathNode(last.Key.GetPathNode())
+				countFootAttached(last.FootComment)
 			}
 		}
 	}
@@ -2843,6 +2845,7 @@ func (p *Parser) parseFlowSequence(ctx context) (*ast.SequenceNode, error) {
 		if tk.Type() == token.SequenceEndType {
 			node.End = tk.RawToken()
 			node.FootComment = headComment
+			countFootAttached(node.FootComment)
 			break
 		}
 
@@ -3053,6 +3056,7 @@ func (p *Parser) parseSequence(ctx context) (*ast.SequenceNode, error) {
 			// If the comment is in the same or deeper column as the last element column in sequence value,
 			// treat it as a footer comment for the last element.
 			seqNode.FootComment = p.parseFootComment(ctx, seqTk.Column())
+			countFootAttached(seqNode.FootComment)
 			if len(seqNode.Values) != 0 {
 				seqNode.FootComment.SetPathNode(seqNode.Values[len(seqNode.Values)-1].GetPathNode())
 			}
