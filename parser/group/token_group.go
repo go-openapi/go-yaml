@@ -395,7 +395,11 @@ func (g *Grouper) Release(released int, dead func(seq int32) bool) {
 	}
 	g.sweptAt = released
 
-	g.leaves.Release(dead, poisonLeaves) // TODO: should not refer to the poison probe in production code unless guarded by a probe flag
+	// poisonLeaves and poisonGroups are declared in both builds. probe.go
+	// carries //go:build !yamlprobe and defines them empty, so a normal build
+	// passes a func with no body and Run.Release calls it once per sweep.
+	// probe_on.go stamps each released cell, and checkLive reads that stamp.
+	g.leaves.Release(dead, poisonLeaves)
 	g.groups.Release(dead, poisonGroups)
 }
 

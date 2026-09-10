@@ -86,7 +86,12 @@ func (a *Run[T]) advance() {
 	if a.filling != nil {
 		a.full = append(a.full, a.filling)
 	}
-	if n := len(a.free); n > 0 && probe.ReuseReleased { // TODO: defaut (no tag should actually be true and we should have an explicit probe section here
+	// probe.ReuseReleased is a constant: true in a normal build, so a chunk
+	// Release gave back is filled again, and false under yamlprobe, where a
+	// released chunk is kept aside so a cell read after it went back still
+	// carries the stamp poisonLeaves put there. parser/probe holds both, and
+	// parser/probe/poison_test.go pins each to its build.
+	if n := len(a.free); n > 0 && probe.ReuseReleased {
 		a.filling = a.free[n-1]
 		a.free = a.free[:n-1]
 		a.filling.used, a.filling.checked, a.filling.unknown = 0, 0, false

@@ -6,6 +6,7 @@ package parser
 import (
 	"os"
 	"sort"
+	"strings"
 	"testing"
 
 	"github.com/go-openapi/testify/v2/require"
@@ -15,21 +16,29 @@ import (
 	"github.com/go-openapi/go-yaml/parser/group"
 )
 
-// TestGroupCensus counts what the group.Grouper builds, by kind.
+// TestGroupCensus counts the groups one document builds, by kind.
 //
-// TODO: explain what it does, not the result (probably outdated anyways).
-// EXPLAIN WHERE THE FILE IS or provide a standard file from the corpus.
+// It reads the document through newReader, walks every group.TokenGroup the
+// tokens reach, and logs a table: how many groups of each group.TokenGroupType,
+// how many members they hold between them, and what their cells weigh at 32
+// bytes each. It asserts nothing. Read the table before changing what
+// group.Grouper spends its allocations on, so the change starts on the kind a
+// document is actually made of.
 //
-// group.Grouper.nextGroup is 33.3% of a parse's churn and group.Grouper.token another
-// 17.1%, so the question that decides where to start is which groups those
-// bytes are. Set CENSUS_YAML to a document to run it.
+// Set CENSUS_YAML to the document. A name ending in ".gz" is decompressed, so
+// the workloads read the corpus where it lies:
+//
+//	CENSUS_YAML=../internal/analysis/workloads/testdata/citm_catalog.yaml.gz \
+//	    go test -v -run TestGroupCensus ./parser/
+//
+// testcorpus.Dir names that directory, and readCorpus in corpus_test.go reads
+// all seven of them.
 func TestGroupCensus(t *testing.T) {
 	path := os.Getenv("CENSUS_YAML")
 	if path == "" {
 		t.Skip("set CENSUS_YAML=<file> to run the census")
 	}
-	src, err := os.ReadFile(path)
-	require.NoError(t, err)
+	src := readCensusSource(t, path)
 
 	var s scanner.Scanner
 	s.Init(src)
@@ -104,4 +113,19 @@ func TestGroupCensus(t *testing.T) {
 		groups*32/1024)
 	t.Logf("wrappers: %d x 16B = %dK  (raw slab %d x 16B = %dK)",
 		wrappers, wrappers*16/1024, raw.Len(), raw.Len()*16/1024)
+}
+
+// readCensusSource reads the document CENSUS_YAML names, decompressing it where
+// the name says it is gzipped. The workload corpus is stored that way.
+func readCensusSource(t *testing.T, path string) []byte {
+	t.Helper()
+
+	if strings.HasSuffix(path, ".gz") {
+		return readGzipped(t, path)
+	}
+
+	src, err := os.ReadFile(path)
+	require.NoError(t, err)
+
+	return src
 }
