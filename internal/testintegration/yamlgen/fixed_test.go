@@ -1828,7 +1828,7 @@ func TestFixedABlockSequenceOnItsTagsLineIsRefused(t *testing.T) {
 // back and left the tokens alone, though by the time a "..." is read the
 // grouping has cut the whole of the next document. Parser.endVersionScope runs
 // for every document and hands retypeAhead the first token the descent has not
-// taken. parser/zz_version_test.go holds the shapes that separate the two.
+// taken. parser/version_test.go holds the shapes that separate the two.
 func TestFixedAVersionDirectiveIsScopedToOneDocument(t *testing.T) {
 	t.Run("the directive stops at the document it opens", func(t *testing.T) {
 		const src = "%YAML 1.1\n---\na: yes\n---\nb: yes\n"
