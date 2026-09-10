@@ -78,11 +78,12 @@ const (
 //     "x\n " as well, and the sibling fixture 00 -- the same document with a
 //     final break -- decodes to "x\n \n" here and everywhere.
 //
-//  2. construct-binary is not a defect either. "!!binary" resolves to []byte,
-//     json.Marshal writes those bytes back as base64 without the line breaks
-//     the literal block carried, and the fixture's in.json records the scalar
-//     text with its line breaks intact. The decoder is right and the
-//     comparison is the wrong one.
+//  2. construct-binary was here for the same kind of reason and is not any
+//     more. "!!binary" resolved to []byte, json.Marshal wrote those bytes back
+//     as base64 without the line breaks the literal block carried, and the
+//     fixture's in.json records the scalar text. A "!!binary" reads into a
+//     [codec.Base64] now -- the encoded text, canonical -- which is what the
+//     fixture records, so the case decodes as expected.
 
 // decodeLedger records every case that does not decode to its expected JSON,
 // with why.
@@ -137,7 +138,6 @@ var decodeLedger = map[string]string{
 	"zero-indented-sequences-in-explicit-mapping-keys": reasonNoExpectation,
 
 	"trailing-line-of-spaces/01": reasonFixtureDiffersFromSpec,
-	"construct-binary":           reasonTagResolved,
 }
 
 // scoredReasons are the reasons that mean the decoder got something wrong. The

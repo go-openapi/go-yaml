@@ -5,7 +5,9 @@ package codec
 
 import (
 	"context"
+	"encoding/base64"
 	"reflect"
+	"strings"
 	"sync"
 
 	"github.com/go-openapi/go-yaml/ast"
@@ -111,6 +113,59 @@ type MapItem struct {
 // a map[string]any refuses the pair as a duplicate and a map[any]any keeps
 // both but loses the order.
 type MapSlice []MapItem
+
+// Base64 is the value a "!!binary" scalar decodes to: the base64 text the
+// document carries, with the bytes it stands for a method call away.
+//
+// The text and not the bytes, for three reasons. It is comparable, so a
+// "!!binary" scalar can key a mapping where a []byte cannot -- Go hashes no
+// slice. It survives a round trip, since a Base64 tells an encoder it is
+// binary where a plain string or a []byte does not. And it is what JSON means
+// by binary, so [ToJSON] and a decode followed by a JSON encode write the same
+// thing.
+//
+// The underlying type is string, so a caller may compare two, use one as a map
+// key, and print one without decoding anything. RFC 2045 lets the encoded
+// stream carry line breaks; a Base64 holds them as the document wrote them, and
+// [Base64.Canonical] takes them out.
+type Base64 string
+
+// Bytes returns the bytes the text stands for.
+//
+// The decode happens here and not when the document was read, so a caller who
+// only moves the value about never pays for it. An error says the text is not
+// RFC 2045 base64, which a "!!binary" that resolved cannot be -- reach for it
+// on a Base64 a caller built themselves.
+func (b Base64) Bytes() ([]byte, error) {
+	return base64.StdEncoding.DecodeString(b.Canonical())
+}
+
+// String returns the base64 text, which is what a Base64 holds.
+//
+// It is the encoded form and not the bytes: printing binary would write
+// whatever the payload happens to be, and a Stringer is read by fmt wherever a
+// value is logged. Use [Base64.Bytes] for the payload.
+func (b Base64) String() string { return string(b) }
+
+// Canonical returns the text with the line breaks and spacing RFC 2045 permits
+// inside an encoded stream taken out, which is base64's canonical spelling.
+func (b Base64) Canonical() string {
+	if !strings.ContainsAny(string(b), " \t\r\n") {
+		return string(b)
+	}
+
+	var out strings.Builder
+	out.Grow(len(b))
+	for i := range len(b) {
+		switch c := b[i]; c {
+		case ' ', '\t', '\r', '\n':
+		default:
+			out.WriteByte(c)
+		}
+	}
+
+	return out.String()
+}
 
 // ToMap returns the entries as a map, dropping the order.
 //

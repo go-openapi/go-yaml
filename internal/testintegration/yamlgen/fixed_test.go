@@ -859,7 +859,7 @@ func TestFixedAnAnchorAfterATagNamesTheTaggedNode(t *testing.T) {
 		{
 			tagFirst:    "a: !!binary &a1 aGk=\nb: *a1\n",
 			anchorFirst: "a: &a1 !!binary aGk=\nb: *a1\n",
-			want:        map[string]any{"a": []byte("hi"), "b": []byte("hi")},
+			want:        map[string]any{"a": codec.Base64("aGk="), "b": codec.Base64("aGk=")},
 		},
 	} {
 		t.Run(tc.tagFirst, func(t *testing.T) {
@@ -1531,7 +1531,10 @@ func TestFixedABinaryTagReadsIntoAGoByteSlice(t *testing.T) {
 	t.Run("and the destinations that always worked still do", func(t *testing.T) {
 		var loose any
 		require.NoError(t, yaml.Unmarshal([]byte(src), &loose))
-		assert.Equal(t, map[string]any{"a": []byte("hello")}, loose)
+		// A codec.Base64, the encoded text: comparable, so it can key a
+		// mapping, and it tells the encoder the value is binary. The []byte
+		// destinations above are the caller's choice of type and unaffected.
+		assert.Equal(t, map[string]any{"a": codec.Base64("aGVsbG8=")}, loose)
 
 		var timed struct {
 			T time.Time `yaml:"t"`

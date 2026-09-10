@@ -368,6 +368,24 @@ func (e *Encoder) canEncodeByMarshaler(v reflect.Value) bool {
 	return false
 }
 
+// base64Type is [Base64], compared against a value's type rather than read
+// through reflect.Value.Interface: that panics on an unexported field, and a
+// struct holding one is written like any other.
+var base64Type = reflect.TypeFor[Base64]()
+
+// encodeBinary writes a [Base64] as the "!!binary" scalar it came from.
+//
+// The text is written in canonical form -- the line breaks RFC 2045 permits
+// taken out -- so a value carried through Go comes back on one line whatever
+// the document it was read from looked like.
+func (e *Encoder) encodeBinary(b Base64, column int) ast.Node {
+	value := e.encodeString(b.Canonical(), column)
+	node := ast.Tag(token.New("!!binary", "!!binary", value.GetToken().Position))
+	node.Value = value
+
+	return node
+}
+
 func (e *Encoder) encodeByMarshaler(ctx context.Context, v reflect.Value, column int) (ast.Node, error) {
 	iface := v.Interface()
 
@@ -475,6 +493,19 @@ func (e *Encoder) encodeValue(ctx context.Context, v reflect.Value, column int) 
 			return nil, err
 		}
 		return node, nil
+	}
+	if v.Type() == base64Type {
+		b := Base64(v.String())
+		// The tag goes back on, so a document read and written again keeps its
+		// "!!binary". A plain string could not say so, which is half the reason
+		// the decoder builds a [Base64]. JSON has no tags and no binary type,
+		// so there it is the base64 string alone -- which is what ToJSON writes
+		// for the same document.
+		if e.isJSONStyle {
+			return e.encodeString(b.Canonical(), column), nil
+		}
+
+		return e.encodeBinary(b, column), nil
 	}
 	switch v.Type().Kind() {
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:

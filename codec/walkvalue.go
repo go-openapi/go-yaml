@@ -5,7 +5,6 @@ package codec
 
 import (
 	"bytes"
-	"encoding/base64"
 	"fmt"
 	"math/big"
 	"slices"
@@ -460,8 +459,9 @@ func (b *valueBuilder) taggedWalkValue(n *ast.TagNode, value any) (any, error) {
 
 		return b, nil
 	case token.BinaryTag:
-		// Resolve has read the text as base64 already, so this cannot fail.
-		return base64.StdEncoding.DecodeString(res.Text)
+		// A Base64, as Decoder.taggedValue reads it. The two paths have to
+		// agree, and they parted on "!!float -0" once already.
+		return Base64(res.Text), nil
 	case token.TimestampTag:
 		t, _ := ast.ParseTimestamp(res.Text)
 

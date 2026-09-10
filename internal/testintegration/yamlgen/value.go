@@ -4,6 +4,7 @@
 package yamlgen
 
 import (
+	"encoding/base64"
 	"fmt"
 	"math"
 	"math/big"
@@ -14,6 +15,8 @@ import (
 	"time"
 
 	"pgregory.net/rapid"
+
+	"github.com/go-openapi/go-yaml/codec"
 )
 
 // Value is a logical YAML value: what a document means, with nothing said about
@@ -83,6 +86,12 @@ type (
 	// The time is always UTC and carries no monotonic reading, so the value the
 	// document decodes to compares equal to this one under reflect's equality.
 	Timestamp struct{ V time.Time }
+	// Binary is a byte string. The library reads one into a codec.Base64, the
+	// encoded text -- comparable, so it can key a mapping, and it tells an
+	// encoder the value is binary. So Decoded says Base64 and not []byte; a
+	// caller asking for a []byte still gets one, which is the destination's
+	// choice and not what the document means on its own.
+	//
 	// Binary is a byte string, which this library reads from a scalar carrying
 	// `!!binary` by decoding its base64 text.
 	//
@@ -243,7 +252,7 @@ func (b BigFloat) Decoded() any { return b.V }
 func (s Str) Decoded() any      { return s.V }
 
 func (t Timestamp) Decoded() any { return t.V }
-func (b Binary) Decoded() any    { return b.V }
+func (b Binary) Decoded() any    { return codec.Base64(base64.StdEncoding.EncodeToString(b.V)) }
 
 func (s Seq) Decoded() any {
 	if len(s.Items) == 0 {

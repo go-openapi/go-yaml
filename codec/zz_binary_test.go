@@ -63,11 +63,20 @@ func TestBinaryTagReadsIntoAByteSlice(t *testing.T) {
 		assert.Equal(t, []byte{}, got.B)
 	})
 
-	t.Run("the other destinations are unchanged", func(t *testing.T) {
+	t.Run("a string field and an any hold the encoded text", func(t *testing.T) {
+		// An any holds a codec.Base64, the base64 the document wrote: it is
+		// comparable, so a "!!binary" can key a mapping, and it tells the
+		// encoder the value is binary so a round trip keeps the tag. Bytes
+		// gives the payload. A string field takes the text for the same reason
+		// -- the caller asked for text, and the text is base64.
 		var got box
 		require.NoError(t, yaml.Unmarshal([]byte("s: !!binary aGVsbG8=\na: !!binary aGVsbG8=\n"), &got))
-		assert.Equal(t, "hello", got.S)
-		assert.Equal(t, []byte("hello"), got.A)
+		assert.Equal(t, "aGVsbG8=", got.S)
+		assert.Equal(t, codec.Base64("aGVsbG8="), got.A)
+
+		raw, err := got.A.(codec.Base64).Bytes()
+		require.NoError(t, err)
+		assert.Equal(t, []byte("hello"), raw)
 	})
 
 	t.Run("and a sequence of numbers still reads into a byte slice", func(t *testing.T) {

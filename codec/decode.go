@@ -1945,8 +1945,11 @@ func (d *Decoder) taggedValue(ctx context.Context, n *ast.TagNode, res ast.Resol
 	case token.NullTag:
 		return nil, nil
 	case token.BinaryTag:
-		// Resolve has read the text as base64 already, so this cannot fail.
-		return base64.StdEncoding.DecodeString(res.Text)
+		// A Base64 and not a []byte: it is comparable, so "? !!binary" keys a
+		// mapping where a byte slice cannot, and it tells an encoder the value
+		// is binary, so a round trip writes "!!binary" again. Resolve has read
+		// the text as base64 already. See [Base64].
+		return Base64(res.Text), nil
 	case token.BooleanTag:
 		// The tag says boolean whatever the text is, so a spelling neither
 		// schema resolves is read in lower case: "!!bool Yes" and
@@ -1988,7 +1991,7 @@ func tagZero(tag token.ReservedTagKeyword) (any, error) {
 	case token.StringTag:
 		return "", nil
 	case token.BinaryTag:
-		return []byte{}, nil
+		return Base64(""), nil
 	case token.TimestampTag:
 		return time.Time{}, nil
 	default:

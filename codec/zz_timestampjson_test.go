@@ -60,29 +60,47 @@ func TestToJSONWritesATimestampAsTheInstantItNames(t *testing.T) {
 		}
 	})
 
-	t.Run("a binary value is written the same way by both", func(t *testing.T) {
+	t.Run("a binary value is the base64 text on both paths", func(t *testing.T) {
 		const src = "a: !!binary aGVsbG8=\n"
 
+		// JSON has no binary type and a JSON string is UTF-8, so the encoded
+		// text travels -- the same thing encoding/json writes for a []byte.
 		out, err := codec.ToJSON([]byte(src))
 		require.NoError(t, err)
-		assert.Equal(t, `{"a":[104,101,108,108,111]}`, string(out))
+		assert.Equal(t, `{"a":"aGVsbG8="}`, string(out))
 
+		// And the decoder reads a codec.Base64, which holds that same text, so
+		// writing the value as JSON writes it too. The two agree, which they
+		// did not while the decoder read the bytes.
 		var v any
 		require.NoError(t, codec.UnmarshalWithOptions([]byte(src), &v, codec.UseOrderedMap()))
 		through, err := codec.MarshalWithOptions(v, codec.JSON())
 		require.NoError(t, err)
-		assert.Equal(t, `{"a": [104, 101, 108, 108, 111]}`+"\n", string(through))
+		assert.Equal(t, `{"a": "aGVsbG8="}`+"\n", string(through))
 	})
 
-	t.Run("as a key a timestamp agrees now and a binary does not, which is defect 30", func(t *testing.T) {
+	t.Run("a binary written over lines is canonical in JSON", func(t *testing.T) {
+		// RFC 2045 lets the encoded stream carry line breaks; JSON takes the
+		// canonical spelling, which is the same characters without them.
+		out, err := codec.ToJSON([]byte("a: !!binary |\n  aGVs\n  bG8=\n"))
+		require.NoError(t, err)
+		assert.Equal(t, `{"a":"aGVsbG8="}`, string(out))
+
+		empty, err := codec.ToJSON([]byte("a: !!binary\n"))
+		require.NoError(t, err)
+		assert.Equal(t, `{"a":""}`, string(empty))
+	})
+
+	t.Run("as a key a timestamp and a binary both agree now, which closes defect 30", func(t *testing.T) {
 		// A MapItem.Key carries what the key resolves to, so a "!!timestamp"
 		// key is a time.Time and the encoder writes RFC 3339 -- the instant
 		// ToJSON already wrote. The two agree.
 		//
-		// "!!binary" does not: ast.KeyName leaves a byte string to speak for
-		// itself, so the key is the base64 text the document wrote, where
-		// ToJSON writes the decoded bytes as a JSON array. Both are defensible
-		// and they are not the same, which is what keeps 30 open.
+		// "!!binary" agrees now too. ToJSON writes the base64 text, which is
+		// what a JSON reader means by binary, and the decoder reads a
+		// codec.Base64 holding that same text -- so the key is the same string
+		// whichever path wrote it. It did not agree while the decoder resolved
+		// the tag to []byte and ToJSON wrote the bytes as a JSON array.
 		for _, tc := range []struct{ src, folds, values string }{
 			{
 				src:    "!!timestamp 2001-12-14: x\n",
@@ -91,7 +109,7 @@ func TestToJSONWritesATimestampAsTheInstantItNames(t *testing.T) {
 			},
 			{
 				src:    "!!binary aGVsbG8=: x\n",
-				folds:  `{"[104,101,108,108,111]":"x"}`,
+				folds:  `{"aGVsbG8=":"x"}`,
 				values: `{"aGVsbG8=": "x"}`,
 			},
 		} {

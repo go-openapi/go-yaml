@@ -602,7 +602,9 @@ func tagZeroJSON(tag token.ReservedTagKeyword) []byte {
 	case token.StringTag:
 		return []byte(`""`)
 	case token.BinaryTag:
-		return []byte("[]")
+		// "!!binary" with nothing after it is the empty byte string, which
+		// base64 spells as no characters at all.
+		return []byte(`""`)
 	case token.TimestampTag:
 		// The zero time, as encoding/json writes a time.Time.
 		return []byte(`"` + time.Time{}.Format(time.RFC3339Nano) + `"`)
@@ -1182,13 +1184,46 @@ func withFraction(out []byte, at int) []byte {
 }
 
 // appendJSONBinary writes the bytes a "!!binary" scalar holds.
+// appendJSONBinary writes a "!!binary" scalar as the base64 string the document
+// carries, in canonical form: the same characters with the line breaks RFC 2045
+// allows taken out.
+//
+// JSON has no binary type and no way to spell arbitrary bytes -- a JSON string
+// is UTF-8 -- so the encoded text is what travels, which is what
+// encoding/json writes for a []byte and what every JSON API means by binary.
+// The bytes are not decoded and re-encoded: the document already holds the
+// canonical spelling bar the breaks, and ast.TagNode.Resolve has already read
+// it as base64, so writing the text back cannot invent one.
+//
+// It was a sequence of the numbers before -- "!!binary aGVsbG8=" gave
+// [104,101,108,108,111] -- which no other JSON writer produces.
 func appendJSONBinary(out []byte, text string) []byte {
-	raw, err := base64.StdEncoding.DecodeString(text)
-	if err != nil {
+	canonical := withoutBase64Breaks(text)
+	if _, err := base64.StdEncoding.DecodeString(canonical); err != nil {
 		return appendJSONString(out, text)
 	}
 
-	return appendJSONBytes(out, raw)
+	return appendJSONString(out, canonical)
+}
+
+// withoutBase64Breaks returns text with the line breaks and spacing RFC 2045
+// permits inside an encoded stream taken out, which is base64's canonical form.
+func withoutBase64Breaks(text string) string {
+	if !strings.ContainsAny(text, " \t\r\n") {
+		return text
+	}
+
+	var b strings.Builder
+	b.Grow(len(text))
+	for i := range len(text) {
+		switch c := text[i]; c {
+		case ' ', '\t', '\r', '\n':
+		default:
+			b.WriteByte(c)
+		}
+	}
+
+	return b.String()
 }
 
 // appendJSONBytes writes a byte slice the way the value encoder does: a

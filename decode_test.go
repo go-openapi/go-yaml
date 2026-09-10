@@ -1005,12 +1005,16 @@ merge:
 			value:  map[string]string{"v": "hello\n...\nworld\n"},
 		},
 		{
+			// A "!!binary" reads as codec.Base64, the encoded text, so a string
+			// destination takes that text. Ask for a []byte to get the payload.
 			source: "a: !!binary gIGC\n",
-			value:  map[string]string{"a": "\x80\x81\x82"},
+			value:  map[string]string{"a": "gIGC"},
 		},
 		{
+			// The line breaks RFC 2045 allows are the document's; the value
+			// keeps them, and codec.Base64.Canonical takes them out.
 			source: "a: !!binary |\n  " + strings.Repeat("kJCQ", 17) + "kJ\n  CQ\n",
-			value:  map[string]string{"a": strings.Repeat("\x90", 54)},
+			value:  map[string]string{"a": strings.Repeat("kJCQ", 17) + "kJ\nCQ\n"},
 		},
 		{
 			source: "v:\n- A\n- |-\n  B\n  C\n",
