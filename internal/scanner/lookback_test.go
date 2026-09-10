@@ -4,6 +4,8 @@
 package scanner_test
 
 import (
+	"iter"
+	"slices"
 	"testing"
 
 	"github.com/go-openapi/testify/v2/assert"
@@ -185,22 +187,8 @@ func TestTokensResumesAfterBreak(t *testing.T) {
 // Only the last two cases record a gap: "\n\n" before the entry is content
 // under ">+" and "|+", and a gap under ">" and ">-", which discard it.
 func TestBlankLineAboveDoesNotCountAFoldedScalarShort(t *testing.T) {
-	for name, test := range map[string]struct {
-		src  string
-		want bool
-	}{
-		"folded over a gap":              {"- >+\n  x\n\n  y\n- 1\n", false},
-		"folded over a gap, clipped":     {"- >\n  x\n\n  y\n- 1\n", false},
-		"folded over a gap, stripped":    {"- >-\n  x\n\n  y\n- 1\n", false},
-		"literal over a gap":             {"- |+\n  x\n\n  y\n- 1\n", false},
-		"two lines folded to one":        {"- >+\n  x\n  y\n\n- 1\n", false},
-		"no break inside":                {"- >+\n  x\n- 1\n", false},
-		"a kept blank line is content":   {"- >+\n  x\n\n  y\n\n- 1\n", false},
-		"and so is a literal's":          {"- |+\n  x\n\n  y\n\n- 1\n", false},
-		"a clipped blank line is a gap":  {"- >\n  x\n\n  y\n\n- 1\n", true},
-		"a stripped blank line is a gap": {"- >-\n  x\n\n  y\n\n- 1\n", true},
-	} {
-		t.Run(name, func(t *testing.T) {
+	for test := range blankAboveTestCases() {
+		t.Run(test.name, func(t *testing.T) {
 			var s scanner.Scanner
 			s.Init([]byte(test.src))
 
@@ -219,4 +207,26 @@ func TestBlankLineAboveDoesNotCountAFoldedScalarShort(t *testing.T) {
 			assert.Equal(t, test.want, entry.BlankLineAbove())
 		})
 	}
+}
+
+// blankAboveTestCase is a sequence entry after a folded or literal scalar, and whether a blank line stands above it.
+type blankAboveTestCase struct {
+	name string
+	src  string
+	want bool
+}
+
+func blankAboveTestCases() iter.Seq[blankAboveTestCase] {
+	return slices.Values([]blankAboveTestCase{
+		{name: "folded over a gap", src: "- >+\n  x\n\n  y\n- 1\n", want: false},
+		{name: "folded over a gap, clipped", src: "- >\n  x\n\n  y\n- 1\n", want: false},
+		{name: "folded over a gap, stripped", src: "- >-\n  x\n\n  y\n- 1\n", want: false},
+		{name: "literal over a gap", src: "- |+\n  x\n\n  y\n- 1\n", want: false},
+		{name: "two lines folded to one", src: "- >+\n  x\n  y\n\n- 1\n", want: false},
+		{name: "no break inside", src: "- >+\n  x\n- 1\n", want: false},
+		{name: "a kept blank line is content", src: "- >+\n  x\n\n  y\n\n- 1\n", want: false},
+		{name: "and so is a literal's", src: "- |+\n  x\n\n  y\n\n- 1\n", want: false},
+		{name: "a clipped blank line is a gap", src: "- >\n  x\n\n  y\n\n- 1\n", want: true},
+		{name: "a stripped blank line is a gap", src: "- >-\n  x\n\n  y\n\n- 1\n", want: true},
+	})
 }

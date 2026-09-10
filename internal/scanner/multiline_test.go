@@ -23,33 +23,8 @@ import (
 // the '#' that makes it malformed, and the comment was then built out of what came before it.
 // Each case is paired with the same document written with a trailing line break, which was always read correctly.
 func TestBlockScalarHeaderEndingTheSource(t *testing.T) {
-	tests := map[string]struct {
-		src       string
-		withBreak string
-		types     []token.Type
-		values    []string
-	}{
-		"comment pressed against the header": {
-			src:       "   >1#",
-			withBreak: "   >1#\n",
-			types:     []token.Type{token.InvalidType},
-		},
-		"comment separated from the header": {
-			src:       "   >1 # c",
-			withBreak: "   >1 # c\n",
-			types:     []token.Type{token.FoldedType, token.CommentType},
-			values:    []string{">1", " c"},
-		},
-		"chomping indicator last": {
-			src:       "--- |1+",
-			withBreak: "--- |1+\n",
-			types:     []token.Type{token.DocumentHeaderType, token.LiteralType},
-			values:    []string{"---", "|1+"},
-		},
-	}
-
-	for name, test := range tests {
-		t.Run(name, func(t *testing.T) {
+	for test := range blockHeaderTestCases() {
+		t.Run(test.name, func(t *testing.T) {
 			got, err := scanTokens(test.src)
 			if test.types[0] == token.InvalidType {
 				require.Error(t, err, "the scanner should refuse this")
@@ -590,6 +565,41 @@ s: >-3
 					Origin: "  foo\n",
 				},
 			},
+		},
+	})
+}
+
+// blockHeaderTestCase is a block scalar header ending the source, paired with the same document written with the
+// line break it was missing.
+type blockHeaderTestCase struct {
+	name      string
+	src       string
+	withBreak string
+	types     []token.Type
+	values    []string
+}
+
+func blockHeaderTestCases() iter.Seq[blockHeaderTestCase] {
+	return slices.Values([]blockHeaderTestCase{
+		{
+			name:      "comment pressed against the header",
+			src:       "   >1#",
+			withBreak: "   >1#\n",
+			types:     []token.Type{token.InvalidType},
+		},
+		{
+			name:      "comment separated from the header",
+			src:       "   >1 # c",
+			withBreak: "   >1 # c\n",
+			types:     []token.Type{token.FoldedType, token.CommentType},
+			values:    []string{">1", " c"},
+		},
+		{
+			name:      "chomping indicator last",
+			src:       "--- |1+",
+			withBreak: "--- |1+\n",
+			types:     []token.Type{token.DocumentHeaderType, token.LiteralType},
+			values:    []string{"---", "|1+"},
 		},
 	})
 }

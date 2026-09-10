@@ -21,30 +21,7 @@ import (
 // These are c-ns-esc-char less the three that name a code point by its digits. Nothing else in the suite reads "\e",
 // "\N", "\_", "\L" or "\P", so escapeChar could be rewritten wrongly and every other test would still pass.
 func TestDoubleQuoteEscapes(t *testing.T) {
-	for _, tc := range []struct {
-		written string
-		want    string
-	}{
-		{`\0`, "\x00"},
-		{`\a`, "\a"},
-		{`\b`, "\b"},
-		{`\t`, "\t"},
-		{`\n`, "\n"},
-		{`\v`, "\v"},
-		{`\f`, "\f"},
-		{`\r`, "\r"},
-		{`\e`, "\x1b"},
-		{`\ `, " "},
-		{`\"`, `"`},
-		{`\/`, "/"},
-		{`\\`, `\`},
-		{`\N`, "\u0085"},
-		{`\_`, "\u00a0"},
-		{`\L`, "\u2028"},
-		{`\P`, "\u2029"},
-		// A backslash followed by a literal tab is outside the grammar, and reads as a tab.
-		{"\\\t", "\t"},
-	} {
+	for tc := range escapeTestCases() {
 		t.Run(tc.written, func(t *testing.T) {
 			var s scanner.Scanner
 			s.Init([]byte(`"` + tc.written + `"`))
@@ -75,20 +52,7 @@ func TestDoubleQuoteRefusesAnUnknownEscape(t *testing.T) {
 
 // TestDoubleQuoteCodePointEscapes holds the three escapes that name a code point by its digits.
 func TestDoubleQuoteCodePointEscapes(t *testing.T) {
-	for _, tc := range []struct {
-		written string
-		want    string
-	}{
-		{`\x41`, "A"},
-		{`\x00`, "\x00"},
-		{`\xff`, "\u00ff"},
-		{`\u00e9`, "\u00e9"},
-		{`\U0001F600`, "\U0001F600"},
-		{`\U0010FFFF`, "\U0010FFFF"},
-		{`\U00000000`, "\x00"},
-		// A UTF-16 pair is combined, so the two halves name one character between them.
-		{`\uD83D\uDE00`, "\U0001F600"},
-	} {
+	for tc := range codePointEscapeTestCases() {
 		t.Run(tc.written, func(t *testing.T) {
 			var s scanner.Scanner
 			s.Init([]byte(`"` + tc.written + `"`))
@@ -535,5 +499,49 @@ b: 'value map'`,
 				},
 			},
 		},
+	})
+}
+
+// escapeTestCase is one escape as the document writes it, and the character it stands for.
+type escapeTestCase struct {
+	written string
+	want    string
+}
+
+func escapeTestCases() iter.Seq[escapeTestCase] {
+	return slices.Values([]escapeTestCase{
+		{`\0`, "\x00"},
+		{`\a`, "\a"},
+		{`\b`, "\b"},
+		{`\t`, "\t"},
+		{`\n`, "\n"},
+		{`\v`, "\v"},
+		{`\f`, "\f"},
+		{`\r`, "\r"},
+		{`\e`, "\x1b"},
+		{`\ `, " "},
+		{`\"`, `"`},
+		{`\/`, "/"},
+		{`\\`, `\`},
+		{`\N`, "\u0085"},
+		{`\_`, "\u00a0"},
+		{`\L`, "\u2028"},
+		{`\P`, "\u2029"},
+		// A backslash followed by a literal tab is outside the grammar, and reads as a tab.
+		{"\\\t", "\t"},
+	})
+}
+
+func codePointEscapeTestCases() iter.Seq[escapeTestCase] {
+	return slices.Values([]escapeTestCase{
+		{`\x41`, "A"},
+		{`\x00`, "\x00"},
+		{`\xff`, "\u00ff"},
+		{`\u00e9`, "\u00e9"},
+		{`\U0001F600`, "\U0001F600"},
+		{`\U0010FFFF`, "\U0010FFFF"},
+		{`\U00000000`, "\x00"},
+		// A UTF-16 pair is combined, so the two halves name one character between them.
+		{`\uD83D\uDE00`, "\U0001F600"},
 	})
 }

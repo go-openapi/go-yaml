@@ -23,16 +23,7 @@ import (
 // it wrong for a folded scalar: "a: >\n  fold\n  more\n" reported line 2 column 3, and the same scalar with "b: 1"
 // after it reported line 3 column 0.
 func TestBlockScalarPositionDoesNotDependOnWhatFollows(t *testing.T) {
-	for _, tc := range []struct {
-		name  string
-		alone string
-		then  string
-	}{
-		{"folded", "a: >\n  fold\n  more\n", "a: >\n  fold\n  more\nb: 1\n"},
-		{"literal", "a: |\n  one\n  two\n", "a: |\n  one\n  two\nb: 1\n"},
-		{"folded, indentation indicator", "a: >2\n   x\n   y\n", "a: >2\n   x\n   y\nb: 1\n"},
-		{"literal, kept breaks", "a: |+\n  x\n\n", "a: |+\n  x\n\nb: 1\n"},
-	} {
+	for tc := range blockPositionTestCases() {
 		t.Run(tc.name, func(t *testing.T) {
 			alone := blockContentToken(t, tc.alone)
 			then := blockContentToken(t, tc.then)
@@ -78,22 +69,7 @@ func blockContentToken(t *testing.T, src string) token.Token {
 // A ledger over the corpus would not find this: the documents that end a line with blanks nearly all end
 // it with a tab, and the tab cases hide the column half.
 func TestTrailingBlanksDoNotMovePosition(t *testing.T) {
-	for _, tc := range []struct {
-		name   string
-		src    string
-		value  string
-		offset int
-		column int32
-	}{
-		{"three spaces", "a: 1   \n", "1", 3, 4},
-		{"one space", "a: 1 \n", "1", 3, 4},
-		{"a tab", "a: 1\t\n", "1", 3, 4},
-		{"spaces around a tab", "a: 1 \t \n", "1", 3, 4},
-		{"no blanks", "a: 1\n", "1", 3, 4},
-		{"no line break", "a: 1   ", "1", 3, 4},
-		{"a longer value, another line following", "a: hello  \nb: 2\n", "hello", 3, 4},
-		{"indented", "m:\n  k: v   \n", "v", 8, 6},
-	} {
+	for tc := range trailingBlankTestCases() {
 		t.Run(tc.name, func(t *testing.T) {
 			tk := valueToken(t, tc.src, tc.value)
 
@@ -749,5 +725,43 @@ b: 1`,
 				},
 			},
 		},
+	})
+}
+
+// blockPositionTestCase pairs a block scalar standing alone with the same one followed by another key.
+type blockPositionTestCase struct {
+	name  string
+	alone string
+	then  string
+}
+
+func blockPositionTestCases() iter.Seq[blockPositionTestCase] {
+	return slices.Values([]blockPositionTestCase{
+		{"folded", "a: >\n  fold\n  more\n", "a: >\n  fold\n  more\nb: 1\n"},
+		{"literal", "a: |\n  one\n  two\n", "a: |\n  one\n  two\nb: 1\n"},
+		{"folded, indentation indicator", "a: >2\n   x\n   y\n", "a: >2\n   x\n   y\nb: 1\n"},
+		{"literal, kept breaks", "a: |+\n  x\n\n", "a: |+\n  x\n\nb: 1\n"},
+	})
+}
+
+// trailingBlankTestCase is a document whose value line ends in blanks, and where that value stands.
+type trailingBlankTestCase struct {
+	name   string
+	src    string
+	value  string
+	offset int
+	column int32
+}
+
+func trailingBlankTestCases() iter.Seq[trailingBlankTestCase] {
+	return slices.Values([]trailingBlankTestCase{
+		{"three spaces", "a: 1   \n", "1", 3, 4},
+		{"one space", "a: 1 \n", "1", 3, 4},
+		{"a tab", "a: 1\t\n", "1", 3, 4},
+		{"spaces around a tab", "a: 1 \t \n", "1", 3, 4},
+		{"no blanks", "a: 1\n", "1", 3, 4},
+		{"no line break", "a: 1   ", "1", 3, 4},
+		{"a longer value, another line following", "a: hello  \nb: 2\n", "hello", 3, 4},
+		{"indented", "m:\n  k: v   \n", "v", 8, 6},
 	})
 }

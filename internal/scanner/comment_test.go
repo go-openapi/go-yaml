@@ -222,42 +222,7 @@ func commentTestCases() iter.Seq[testscanner.Case] {
 // isRawFolded is what tells a plain scalar from a literal or folded block,
 // where a '#' is content whatever precedes it.
 func TestFixedAPlainScalarEndsAtAComment(t *testing.T) {
-	for _, tc := range []struct {
-		name  string
-		src   string
-		types []token.Type
-		vals  []string
-	}{{
-		name:  "comment on its own line, inside the continuation",
-		src:   "?\n  a\n      - b\n      # c\n: v\n",
-		types: []token.Type{token.MappingKeyType, token.StringType, token.CommentType, token.MappingValueType, token.StringType},
-		vals:  []string{"?", "a - b", " c", ":", "v"},
-	}, {
-		name:  "comment deeper than the continuation",
-		src:   "?\n  a\n      - b\n        # c\n: v\n",
-		types: []token.Type{token.MappingKeyType, token.StringType, token.CommentType, token.MappingValueType, token.StringType},
-		vals:  []string{"?", "a - b", " c", ":", "v"},
-	}, {
-		name:  "comment shallower, which already worked",
-		src:   "?\n  a\n      - b\n  # c\n: v\n",
-		types: []token.Type{token.MappingKeyType, token.StringType, token.CommentType, token.MappingValueType, token.StringType},
-		vals:  []string{"?", "a - b", " c", ":", "v"},
-	}, {
-		name:  "a space then a '#' part way along a continuation line",
-		src:   "?\n  a\n      - b # c\n: v\n",
-		types: []token.Type{token.MappingKeyType, token.StringType, token.CommentType, token.MappingValueType, token.StringType},
-		vals:  []string{"?", "a - b", " c", ":", "v"},
-	}, {
-		name:  "no space before the '#', so it is content",
-		src:   "?\n  a\n      - b#c\n: v\n",
-		types: []token.Type{token.MappingKeyType, token.StringType, token.MappingValueType, token.StringType},
-		vals:  []string{"?", "a - b#c", ":", "v"},
-	}, {
-		name:  "a literal block keeps its '#'",
-		src:   "k: |\n  a\n  # not a comment\n",
-		types: []token.Type{token.StringType, token.MappingValueType, token.LiteralType, token.StringType},
-		vals:  []string{"k", ":", "|", "a\n# not a comment\n"},
-	}} {
+	for tc := range plainCommentTestCases() {
 		t.Run(tc.name, func(t *testing.T) {
 			tokens := tokenize(t, tc.src)
 
@@ -273,4 +238,53 @@ func TestFixedAPlainScalarEndsAtAComment(t *testing.T) {
 			assertOriginsTile(t, tc.src)
 		})
 	}
+}
+
+// plainCommentTestCase is a multi-line plain scalar with a "#" somewhere in it, and the tokens it scans to.
+type plainCommentTestCase struct {
+	name  string
+	src   string
+	types []token.Type
+	vals  []string
+}
+
+func plainCommentTestCases() iter.Seq[plainCommentTestCase] {
+	return slices.Values([]plainCommentTestCase{
+		{
+			name:  "comment on its own line, inside the continuation",
+			src:   "?\n  a\n      - b\n      # c\n: v\n",
+			types: []token.Type{token.MappingKeyType, token.StringType, token.CommentType, token.MappingValueType, token.StringType},
+			vals:  []string{"?", "a - b", " c", ":", "v"},
+		},
+		{
+			name:  "comment deeper than the continuation",
+			src:   "?\n  a\n      - b\n        # c\n: v\n",
+			types: []token.Type{token.MappingKeyType, token.StringType, token.CommentType, token.MappingValueType, token.StringType},
+			vals:  []string{"?", "a - b", " c", ":", "v"},
+		},
+		{
+			name:  "comment shallower, which already worked",
+			src:   "?\n  a\n      - b\n  # c\n: v\n",
+			types: []token.Type{token.MappingKeyType, token.StringType, token.CommentType, token.MappingValueType, token.StringType},
+			vals:  []string{"?", "a - b", " c", ":", "v"},
+		},
+		{
+			name:  "a space then a '#' part way along a continuation line",
+			src:   "?\n  a\n      - b # c\n: v\n",
+			types: []token.Type{token.MappingKeyType, token.StringType, token.CommentType, token.MappingValueType, token.StringType},
+			vals:  []string{"?", "a - b", " c", ":", "v"},
+		},
+		{
+			name:  "no space before the '#', so it is content",
+			src:   "?\n  a\n      - b#c\n: v\n",
+			types: []token.Type{token.MappingKeyType, token.StringType, token.MappingValueType, token.StringType},
+			vals:  []string{"?", "a - b#c", ":", "v"},
+		},
+		{
+			name:  "a literal block keeps its '#'",
+			src:   "k: |\n  a\n  # not a comment\n",
+			types: []token.Type{token.StringType, token.MappingValueType, token.LiteralType, token.StringType},
+			vals:  []string{"k", ":", "|", "a\n# not a comment\n"},
+		},
+	})
 }

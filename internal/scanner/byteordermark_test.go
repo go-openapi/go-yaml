@@ -4,6 +4,8 @@
 package scanner_test
 
 import (
+	"iter"
+	"slices"
 	"strings"
 	"testing"
 
@@ -28,44 +30,7 @@ const bom = "\ufeff"
 // The two that the ledgers named are the first pair: "a: <mark>b" was read and is now refused, and "a: 1 / ... /
 // <mark>--- / b: 2" was refused and is now read.
 func TestByteOrderMarkStandsOnlyInADocumentPrefix(t *testing.T) {
-	tests := []struct {
-		name string
-		src  string
-		ok   bool
-	}{
-		{name: "inside a line, holding content", src: "a: " + bom + "b\n"},
-		{name: "after a document suffix, before ---", src: "a: 1\n...\n" + bom + "---\nb: 2\n", ok: true},
-
-		{name: "opening the stream", src: bom + "a: 1\n", ok: true},
-		{name: "opening the stream, twice", src: bom + bom + "---\na: 1\n", ok: true},
-		{name: "opening the stream, before a comment", src: bom + "# c\n---\na: 1\n", ok: true},
-		{name: "opening the stream, before a directive", src: bom + "%YAML 1.2\n---\na: 1\n", ok: true},
-
-		{name: "before an explicit document, with no suffix", src: "a: 1\n" + bom + "---\nb: 2\n", ok: true},
-		{name: "before a comment that stands before ---", src: "a: 1\n" + bom + "# c\n---\nb: 2\n", ok: true},
-		{name: "before a blank line that stands before ---", src: "a: 1\n" + bom + "   \n---\nb: 2\n", ok: true},
-		{name: "before a document suffix", src: "a: 1\n" + bom + "...\n", ok: true},
-		{name: "after a document suffix, before a bare document", src: "a: 1\n...\n" + bom + "b: 2\n", ok: true},
-
-		{name: "opening a mapping entry", src: "a: 1\n" + bom + "b: 2\n"},
-		{name: "opening a sequence entry", src: "- a\n" + bom + "- b\n"},
-		{name: "opening a line inside an explicit document", src: "---\n" + bom + "a: 1\n"},
-		{name: "opening a line that ends a block scalar", src: "a: |\n  x\n" + bom + "b: 2\n"},
-		{name: "alone on a line inside a document", src: "a: 1\n" + bom + "\nb: 2\n"},
-		{name: "before a directive that may not stand there", src: "a: 1\n" + bom + "%YAML 1.2\n---\nb: 2\n"},
-		{name: "inside a flow sequence", src: "[" + bom + "a]\n"},
-
-		// nb-double-char and nb-single-char are built from nb-json, which is #x9 | [#x20-#x10FFFF] and takes the mark like
-		// any other character.
-		// So a quoted scalar holds one where a plain or block scalar may not.
-		{name: "inside a double-quoted scalar", src: "a: \"x" + bom + "y\"\n", ok: true},
-		{name: "inside a single-quoted scalar", src: "a: 'x" + bom + "y'\n", ok: true},
-		{name: "the whole of a double-quoted scalar", src: "a: \"" + bom + "\"\n", ok: true},
-		{name: "inside a quoted scalar in a flow sequence", src: "[\"a" + bom + "b\"]\n", ok: true},
-		{name: "opening a quoted scalar's second line", src: "a: \"x\n" + bom + "y\"\n"},
-		{name: "inside a block scalar", src: "a: |\n  x" + bom + "y\n"},
-	}
-	for _, test := range tests {
+	for test := range markPlacementTestCases() {
 		t.Run(test.name, func(t *testing.T) {
 			err := scanErr(test.src)
 			if test.ok {
@@ -99,26 +64,8 @@ func TestByteOrderMarkIsDroppedRatherThanRead(t *testing.T) {
 // Init used to delete every mark before scanning, so a document carrying one was tokenized against a text the caller
 // never wrote and every offset after the mark was three bytes short.
 func TestOffsetsCountAByteOrderMark(t *testing.T) {
-	tests := map[string]struct {
-		src  string
-		want map[string]int // token value -> byte offset in src
-	}{
-		"opening the stream": {
-			src:  bom + "a: 1\n",
-			want: map[string]int{"a": 3, ":": 4, "1": 6},
-		},
-		"opening a document after a suffix": {
-			src:  "a: 1\n...\n" + bom + "---\nb: 2\n",
-			want: map[string]int{"...": 5, "---": 12, "b": 16, "2": 19},
-		},
-		"none at all": {
-			src:  "a: 1\n",
-			want: map[string]int{"a": 0, ":": 1, "1": 3},
-		},
-	}
-
-	for name, test := range tests {
-		t.Run(name, func(t *testing.T) {
+	for test := range markOffsetTestCases() {
+		t.Run(test.name, func(t *testing.T) {
 			seen := make(map[string]bool)
 			for _, tk := range tokenize(t, test.src) {
 				want, ok := test.want[tk.Value]
@@ -152,4 +99,74 @@ func scanErr(src string) error {
 	}
 
 	return nil
+}
+
+// markPlacementTestCase is a document carrying U+FEFF somewhere, and whether YAML 1.2 admits it there.
+type markPlacementTestCase struct {
+	name string
+	src  string
+	ok   bool
+}
+
+func markPlacementTestCases() iter.Seq[markPlacementTestCase] {
+	return slices.Values([]markPlacementTestCase{
+		{name: "inside a line, holding content", src: "a: " + bom + "b\n"},
+		{name: "after a document suffix, before ---", src: "a: 1\n...\n" + bom + "---\nb: 2\n", ok: true},
+
+		{name: "opening the stream", src: bom + "a: 1\n", ok: true},
+		{name: "opening the stream, twice", src: bom + bom + "---\na: 1\n", ok: true},
+		{name: "opening the stream, before a comment", src: bom + "# c\n---\na: 1\n", ok: true},
+		{name: "opening the stream, before a directive", src: bom + "%YAML 1.2\n---\na: 1\n", ok: true},
+
+		{name: "before an explicit document, with no suffix", src: "a: 1\n" + bom + "---\nb: 2\n", ok: true},
+		{name: "before a comment that stands before ---", src: "a: 1\n" + bom + "# c\n---\nb: 2\n", ok: true},
+		{name: "before a blank line that stands before ---", src: "a: 1\n" + bom + "   \n---\nb: 2\n", ok: true},
+		{name: "before a document suffix", src: "a: 1\n" + bom + "...\n", ok: true},
+		{name: "after a document suffix, before a bare document", src: "a: 1\n...\n" + bom + "b: 2\n", ok: true},
+
+		{name: "opening a mapping entry", src: "a: 1\n" + bom + "b: 2\n"},
+		{name: "opening a sequence entry", src: "- a\n" + bom + "- b\n"},
+		{name: "opening a line inside an explicit document", src: "---\n" + bom + "a: 1\n"},
+		{name: "opening a line that ends a block scalar", src: "a: |\n  x\n" + bom + "b: 2\n"},
+		{name: "alone on a line inside a document", src: "a: 1\n" + bom + "\nb: 2\n"},
+		{name: "before a directive that may not stand there", src: "a: 1\n" + bom + "%YAML 1.2\n---\nb: 2\n"},
+		{name: "inside a flow sequence", src: "[" + bom + "a]\n"},
+
+		// nb-double-char and nb-single-char are built from nb-json, which is #x9 | [#x20-#x10FFFF] and takes the mark like
+		// any other character.
+		// So a quoted scalar holds one where a plain or block scalar may not.
+		{name: "inside a double-quoted scalar", src: "a: \"x" + bom + "y\"\n", ok: true},
+		{name: "inside a single-quoted scalar", src: "a: 'x" + bom + "y'\n", ok: true},
+		{name: "the whole of a double-quoted scalar", src: "a: \"" + bom + "\"\n", ok: true},
+		{name: "inside a quoted scalar in a flow sequence", src: "[\"a" + bom + "b\"]\n", ok: true},
+		{name: "opening a quoted scalar's second line", src: "a: \"x\n" + bom + "y\"\n"},
+		{name: "inside a block scalar", src: "a: |\n  x" + bom + "y\n"},
+	})
+}
+
+// markOffsetTestCase is a document and the byte offset each of its token values stands at.
+type markOffsetTestCase struct {
+	name string
+	src  string
+	want map[string]int // token value -> byte offset in src
+}
+
+func markOffsetTestCases() iter.Seq[markOffsetTestCase] {
+	return slices.Values([]markOffsetTestCase{
+		{
+			name: "opening the stream",
+			src:  bom + "a: 1\n",
+			want: map[string]int{"a": 3, ":": 4, "1": 6},
+		},
+		{
+			name: "opening a document after a suffix",
+			src:  "a: 1\n...\n" + bom + "---\nb: 2\n",
+			want: map[string]int{"...": 5, "---": 12, "b": 16, "2": 19},
+		},
+		{
+			name: "none at all",
+			src:  "a: 1\n",
+			want: map[string]int{"a": 0, ":": 1, "1": 3},
+		},
+	})
 }
