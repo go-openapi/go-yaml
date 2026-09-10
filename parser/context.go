@@ -367,3 +367,42 @@ func (c context) addToken(tk *group.TapeToken) {
 	ref.end() // the token goes after everything the run holds
 	ref.tokens = append(ref.tokens, tk)
 }
+
+// tokenRefAt returns the reference for a group read at depth, positioned at the
+// start of tokens.
+//
+// The parse is depth first, so one group at most is being read at each depth at
+// any moment: the reference for a depth is set again for the next group read
+// there rather than another being taken. A document nested N deep costs N
+// references however many groups it holds.
+func (p *Parser) tokenRefAt(depth int32, g *group.TokenGroup) *tokenRef {
+	for int(depth) >= len(p.refs) {
+		p.refs = append(p.refs, new(tokenRef))
+	}
+
+	ref := p.refs[depth]
+	ref.tokens, ref.idx, ref.base = g.Members(&ref.pair), 0, 0
+	ref.cur, ref.held = nil, false
+	ref.pull, ref.drained = nil, false
+
+	return ref
+}
+
+// tokenRefFrom returns the reference for a run read at depth from pull, which
+// draws one token at a time and reports false at the run's end.
+//
+// The run is not held: [tokenRef.forget] drops what the parser has read past,
+// so a document read this way costs the window the descent is reading and not
+// the document.
+func (p *Parser) tokenRefFrom(depth int32, pull func() (*group.TapeToken, bool)) *tokenRef {
+	for int(depth) >= len(p.refs) {
+		p.refs = append(p.refs, new(tokenRef))
+	}
+
+	ref := p.refs[depth]
+	ref.tokens, ref.idx, ref.base = ref.tokens[:0], 0, 0
+	ref.cur, ref.held = nil, false
+	ref.pull, ref.drained = pull, false
+
+	return ref
+}

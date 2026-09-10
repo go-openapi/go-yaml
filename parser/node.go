@@ -525,3 +525,22 @@ func markerComment(ctx context, tk *group.TapeToken) *ast.CommentGroupNode {
 
 	return ast.CommentGroup([]*token.Token{cm})
 }
+
+// pathSlabSize is how many trie steps one allocation covers. A document of N
+// keys then costs N/pathSlabSize allocations rather than N.
+const pathSlabSize = 512
+
+// newPathNode returns the next unused step of the path trie, or nil when
+// [WithOmitNodePaths] has turned path recording off.
+func (p *Parser) newPathNode() *ast.PathNode {
+	if p.omitNodePaths {
+		return nil
+	}
+	if len(p.pathSlab) == 0 {
+		p.pathSlab = make([]ast.PathNode, pathSlabSize)
+	}
+	n := &p.pathSlab[0]
+	p.pathSlab = p.pathSlab[1:]
+
+	return n
+}

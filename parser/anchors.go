@@ -8,6 +8,7 @@ import (
 
 	"github.com/go-openapi/go-yaml/ast"
 	yamlerrors "github.com/go-openapi/go-yaml/errors"
+	"github.com/go-openapi/go-yaml/parser/group"
 	"github.com/go-openapi/go-yaml/token"
 )
 
@@ -246,4 +247,251 @@ func (p *Parser) pinAnchoredNodes() {
 		return
 	}
 	p.arena.Commit()
+}
+
+func (p *Parser) validateAnchorValueInMapOrSeq(value ast.Node, col int) error {
+	anchor, ok := value.(*ast.AnchorNode)
+	if !ok {
+		return nil
+	}
+	tag, ok := anchor.Value.(*ast.TagNode)
+	if !ok {
+		return nil
+	}
+	anchorTk := anchor.GetToken()
+	tagTk := tag.GetToken()
+
+	if anchorTk.Position.Line == tagTk.Position.Line {
+		// key:
+		//   &anchor !!tag
+		//
+		// - &anchor !!tag
+		return nil
+	}
+
+	if int(tagTk.Position.Column) <= col {
+		// key: &anchor
+		// !!tag
+		//
+		// - &anchor
+		// !!tag
+		return yamlerrors.NewSyntax("tag is not allowed in this context", tagTk)
+	}
+	return nil
+}
+
+func (p *Parser) parseAnchor(ctx context, g *group.TokenGroup) (*ast.AnchorNode, error) {
+	anchorNameGroup := g.First().Group
+	anchor, err := p.parseAnchorName(ctx.withGroup(p, anchorNameGroup))
+	if err != nil {
+		return nil, err
+	}
+	ctx.goNext()
+	value, err := p.parseAnchorValue(ctx, anchor)
+	if err != nil {
+		return nil, err
+	}
+	anchor.Value = value
+	return anchor, nil
+}
+
+// parseAnchorValue reads what an anchor names.
+//
+// An anchor with nothing after it names the empty node: "a: &x" is a valid
+// document, and *x resolves to null. Refusing it made an anchor the one thing
+// that could not be attached to an absent value.
+func (p *Parser) parseAnchorValue(ctx context, anchor *ast.AnchorNode) (ast.Node, error) {
+	defer p.closeAnchor(ctx)
+
+	value, err := p.readAnchorValue(ctx, anchor)
+	if err != nil {
+		p.dropAnchorName()
+
+		return nil, err
+	}
+	// An anchor names its node only once that node is read. Entering the name
+	// here, and not where the '&' was, is the whole of what makes an alias
+	// standing inside it name nothing.
+	p.keepAnchor(anchorNameOf(anchor.Name), value)
+
+	return value, nil
+}
+
+// readAnchorValue reads the node itself, and hands it over as the anchor's.
+func (p *Parser) readAnchorValue(ctx context, anchor *ast.AnchorNode) (ast.Node, error) {
+	// The anchor stands around the node it names, so it goes over before that
+	// node and closes after it. Handing it over afterwards, as a node holding
+	// nothing does, put it beside its own value at the same depth and lost the
+	// nesting: "a: &x 1" read as the two values 1 and &x.
+	p.enter(ctx, anchor, KindAnchor)
+	defer p.leave(ctx, anchor)
+
+	if ctx.isTokenNotFound() || endsValue(ctx.currentToken()) {
+		// Built rather than inserted: there is no token here to stand for the
+		// null, and putting one in the stream would leave it to be read again.
+		return p.handNull(ctx, ctx.createImplicitNullToken(group.NewSynthetic(anchor.GetToken())))
+	}
+	// A comment may stand between the anchor and the next token. It belongs to
+	// what comes after and says nothing about where this node ends.
+	after := ctx.currentToken()
+	if ctx.isComment() {
+		after = ctx.nextNotCommentToken()
+	}
+	if after != nil && p.opensNextEntry(after, int(anchor.GetToken().Position.Line)) {
+		// The anchor was the last thing on its line and what follows opens the
+		// next entry of the collection around it, so the anchor names the empty
+		// node. parseMapValue and parseSequenceValue say this for the entries
+		// they read; an explicit key's value is read here and nowhere else, so
+		// "? a" over ": &a1" over "? b" came back as {a: {b: nil}}.
+		return p.handNull(ctx, ctx.createImplicitNullToken(group.NewSynthetic(anchor.GetToken())))
+	}
+
+	value, err := p.parseToken(ctx, ctx.currentToken())
+	if err != nil {
+		return nil, err
+	}
+	if _, ok := value.(*ast.AnchorNode); ok {
+		return nil, yamlerrors.NewSyntax("anchors cannot be used consecutively", value.GetToken())
+	}
+	// Attached here and not by parseAnchor, which runs after this returns: the
+	// Leave deferred above fires on the way out, so a walking reader that took
+	// the assignment on trust was handed an anchor holding nothing.
+	// codec.unwrapKeyNode then unwrapped to nil and named "&a1 1.0" after
+	// fmt.Sprint of the float rather than after its YAML spelling.
+	anchor.Value = value
+
+	return value, nil
+}
+
+func (p *Parser) parseAnchorName(ctx context) (*ast.AnchorNode, error) {
+	// An alias may name this anchor anywhere below it in the document, so what
+	// the anchor covers outlives the tail. How far it runs is not known here,
+	// so the tape is held from the '&' until parseAnchorValue closes the node.
+	p.openAnchor(ctx)
+
+	anchor, err := newAnchorNode(ctx, ctx.currentToken())
+	if err != nil {
+		return nil, err
+	}
+	ctx.goNext()
+	if ctx.isTokenNotFound() {
+		return nil, yamlerrors.NewSyntax("could not find anchor value", anchor.GetToken())
+	}
+
+	anchorName, err := p.parseScalarValue(ctx, ctx.currentToken())
+	if err != nil {
+		return nil, err
+	}
+	if anchorName == nil {
+		return nil, yamlerrors.NewSyntax("unexpected anchor. anchor name is not scalar value", ctx.currentToken().RawToken())
+	}
+	anchor.Name = anchorName
+	// The name is open from here and not from where the node ends, so an alias
+	// inside that node names it: "&x [ *x ]" is a document, and the tree it
+	// builds holds a cycle.
+	p.openAnchorName(anchorNameOf(anchorName), anchor)
+
+	return anchor, nil
+}
+
+func (p *Parser) parseAlias(ctx context) (*ast.AliasNode, error) {
+	alias, err := newAliasNode(ctx, ctx.currentToken())
+	if err != nil {
+		return nil, err
+	}
+	ctx.goNext()
+	if ctx.isTokenNotFound() {
+		return nil, yamlerrors.NewSyntax("could not find alias value", alias.GetToken())
+	}
+
+	aliasName, err := p.parseScalarValue(ctx, ctx.currentToken())
+	if err != nil {
+		return nil, err
+	}
+	if aliasName == nil {
+		return nil, yamlerrors.NewSyntax("unexpected alias. alias name is not scalar value", ctx.currentToken().RawToken())
+	}
+	alias.Value = aliasName
+
+	if err := p.resolveAlias(alias, anchorNameOf(aliasName), aliasName.GetToken()); err != nil {
+		return nil, err
+	}
+
+	return alias, nil
+}
+
+// anchorNameOf reads the name off the scalar an anchor or an alias was written
+// with. It is "" where the scan could not read one, which names nothing.
+func anchorNameOf(n ast.Node) string {
+	if n == nil {
+		return ""
+	}
+	tk := n.GetToken()
+	if tk == nil {
+		return ""
+	}
+
+	return tk.Value
+}
+
+// anchoredScalar returns the plain scalar an anchor group names, or nil where
+// tk is not an anchor or names something other than one.
+func anchoredScalar(tk *group.TapeToken) *group.TapeToken {
+	if tk.GroupType() != group.TokenGroupAnchor {
+		return nil
+	}
+	value := tk.Group.Last()
+	if value == nil || value.Group != nil {
+		return nil
+	}
+
+	return value
+}
+
+// anchorNamesNothing reports whether tk is an anchor with no node after it, and
+// returns the group standing it on the empty node.
+//
+// Punctuation closes it. A "}", a "]", a "," or a ":" after the anchor's name
+// belongs to the collection the anchor was written in, so the anchor names the
+// empty node -- the same test the tag's own next token gets through endsValue.
+// Without it "{a: !!str &x}" fell through to parseScalarValue, which builds the
+// null correctly and leaves the cursor on the "}"; the caller then stepped past
+// it and the flow mapping ran to the end of the stream looking for a closer it
+// had already passed.
+//
+// Whatever a property at the end of a line names has to be written inside the
+// entry holding it, which means further in than that entry's own column. A
+// token back at that column or before it belongs to something the entry is part
+// of. parseMapValue and parseSequenceValue say exactly this for a bare anchor;
+// a tag written before the anchor sends the descent down parseTagValue, which
+// stands too far from either to repeat the test, so the column is carried here
+// on the parser.
+//
+// Without it the anchor went looking for a value and took the next entry of the
+// collection around it: "- !!null &a1" over "- x" came back a one-item sequence
+// with the second entry swallowed and no error at all.
+//
+// Which token can be taken depends on what the entry is. Inside a sequence,
+// anything back at the '-' column opens the next entry. Inside a mapping only
+// another key does: a '-' at the key's column is a block sequence written as the
+// value, which is how "k: &a" over "- 1" reads, so parseMapValue asks isMapToken
+// and this asks the same.
+//
+// At the document's root no entry encloses anything, so nothing can be taken
+// from one and the anchor names whatever follows -- which is what "!!str" over
+// "&a2" over "scalar2" is, three lines and one node.
+//
+// A comment may stand between the anchor and the next token. It belongs to what
+// comes after and says nothing about where this node ends.
+func (p *Parser) anchorNamesNothing(ctx context, tk *group.TapeToken) (*group.TokenGroup, bool) {
+	if tk.GroupType() != group.TokenGroupAnchorName {
+		return nil, false
+	}
+
+	next := ctx.nextNotCommentToken()
+	if next != nil && !endsValue(next) && !p.opensNextEntry(next, tk.Line()) {
+		return nil, false
+	}
+
+	return group.NewTokenGroup(group.TokenGroupAnchor, []*group.TapeToken{tk, ctx.createImplicitNullToken(tk)}), true
 }
