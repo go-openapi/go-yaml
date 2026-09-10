@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	yamlerrors "github.com/go-openapi/go-yaml/errors"
+	"github.com/go-openapi/go-yaml/internal/probe"
 	"github.com/go-openapi/go-yaml/token"
 )
 
@@ -515,6 +516,13 @@ func (g *Grouper) releaseWindow(at int, w *keyWindow, out []*TapeToken) []*TapeT
 		// off every opener is what that used to cost, once per token, which
 		// made a document of nothing but "[" quadratic in its own length.
 		return out
+	}
+	if probe.Enabled {
+		// The elements this call moves. Summed over a parse it is the work the
+		// early return above exists to avoid, and it is a count, so it reads
+		// the same on any machine. TestWindowShiftStaysLinear holds it to a
+		// document's length.
+		probe.Count("grouper.keyWindow.shifted", int64(len(w.held)-keep+len(w.openers)))
 	}
 
 	for _, held := range w.held[:keep] {

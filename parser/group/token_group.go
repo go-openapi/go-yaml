@@ -631,8 +631,7 @@ func (w *keyWindow) keepFrom() int {
 	return last
 }
 
-// release hands on the tokens that can no longer take part in a key.
-// release hands on what the window no longer has to keep, appEnding it to out.
+// release hands on what the window no longer has to keep, appending it to out.
 func (w *keyWindow) release(out []*TapeToken) []*TapeToken {
 	keep := w.keepFrom()
 	if keep == 0 {
@@ -641,6 +640,13 @@ func (w *keyWindow) release(out []*TapeToken) []*TapeToken {
 		// off every opener is what that used to cost, once per token, which
 		// made a document of nothing but "[" quadratic in its own length.
 		return out
+	}
+	if probe.Enabled {
+		// The elements this call moves. Summed over a parse it is the work the
+		// early return above exists to avoid, and it is a count, so it reads
+		// the same on any machine. TestWindowShiftStaysLinear holds it to a
+		// document's length.
+		probe.Count("grouper.keyWindow.shifted", int64(len(w.held)-keep+len(w.openers)))
 	}
 	out = append(out, w.held[:keep]...)
 
