@@ -601,7 +601,7 @@ func (p *Parser) parseDocumentBody(ctx context) (ast.Node, error) {
 	// Comments may trail what the document holds -- between a directive and the
 	// '---' below it, most often. They are not a second value.
 	if comment := p.parseFootComment(ctx, 1); comment != nil {
-		if err := setHeadComment(comment, node); err != nil {
+		if err := setTrailingComment(comment, node); err != nil {
 			return nil, err
 		}
 	}
@@ -921,6 +921,12 @@ func (p *Parser) parseFlowMap(ctx context) (*ast.MappingNode, error) {
 	defer p.openMapping(node)()
 	p.enter(ctx, node, KindMapping)
 	defer p.leave(ctx, node)
+
+	// The comment closing the "{" line, which nothing used to take: the loop
+	// below reads the comments standing in front of a token, and this one hangs
+	// off the "{". "{ # lead" over "  a: 1 }" lost it.
+	node.StartComment = openerComment(ctx, ctx.currentToken())
+
 	ctx.goNext() // skip MappingStart token
 
 	isFirst := true
@@ -967,6 +973,12 @@ func (p *Parser) parseFlowMap(ctx context) (*ast.MappingNode, error) {
 
 		mapKeyTk := ctx.currentToken()
 		entered := len(node.Values)
+		// The comment closing the key's line, staged against the group the key
+		// opens rather than against the key's own token, so the constructor
+		// that builds the key looks it up and finds nothing: "{ \"foo\" # c"
+		// over "  :bar }" lost it. It is taken here and put on the key below,
+		// once there is a key to put it on.
+		keyComment := ctx.takeLineComment(mapKeyTk)
 		p.markNodes(ctx)
 		switch mapKeyTk.GroupType() {
 		case TokenGroupMapKeyValue:
@@ -1058,6 +1070,15 @@ func (p *Parser) parseFlowMap(ctx context) (*ast.MappingNode, error) {
 				// read by parseScalarValue, which already moved past it, and
 				// advancing again would step over the '}'.
 				ctx.goNext()
+			}
+		}
+		if keyComment != nil && len(node.Values) > entered {
+			if key := node.Values[entered].Key; key != nil && key.GetComment() == nil {
+				group := ast.CommentGroup([]*token.Token{keyComment})
+				group.SetPathNode(key.GetPathNode())
+				if err := key.SetComment(group); err != nil {
+					return nil, err
+				}
 			}
 		}
 		if headComment != nil && len(node.Values) > entered {

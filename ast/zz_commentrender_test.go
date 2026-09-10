@@ -14,24 +14,23 @@ import (
 )
 
 // renderedComments records how many documents come back from a rendering
-// holding a different number of comments than they went in with.
+// holding a different number of comments than they went in with. It is 0, so
+// the count below is an invariant and not a ceiling: every comment of every
+// document the parse accepts comes back from a rendering, once.
 //
 // changed counts documents, not comments, and moves in both directions:
 //
 //   - Fewer. A comment is dropped, or two are written onto one line. The second
 //     is invisible to everything else we have: "key: # Comment" over "# lines"
-//     over "  value" renders as "key: value # lines # Comment", which the
+//     over "  value" rendered as "key: value # lines # Comment", which the
 //     scanner reads as one comment because a "#" inside a comment is text. The
 //     text settles, so a fixed-point check sees nothing, and both comments are
 //     attached, so a census counting attachment sees nothing either.
 //   - More. Rendering a block onto one line can turn what followed a "#" into
 //     comment text and leave a "#" elsewhere opening a comment that did not.
-//     Three of them also change the document's value, and all three are
-//     documents grammar.NewRecognizer refuses -- see the explicit-key row in
-//     the ledger. The renderer is the symptom there and not the fault.
 //
 // tested follows the parser and the corpus; changed follows the renderer.
-var renderedComments = struct{ changed, tested int }{changed: 23, tested: 6293}
+var renderedComments = struct{ changed, tested int }{changed: 0, tested: 6293}
 
 // TestRenderingKeepsTheCommentsItWasGiven counts the comment tokens a document
 // holds, renders it, and counts them again.

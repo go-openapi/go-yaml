@@ -36,7 +36,7 @@ default	suite/block-sequence-in-block-mapping	ed8ab2a89749b9c8
 default	suite/block-sequence-in-block-sequence	33436b922e695a9b
 default	suite/block-sequence-indentation	a0cd789dcc6b2044
 default	suite/block-submapping	b95523b3afd69ba2
-default	suite/colon-and-adjacent-value-after-comment-on-next-line	87f268929d32de4a
+default	suite/colon-and-adjacent-value-after-comment-on-next-line	8da6d4b319aec68e
 default	suite/colon-and-adjacent-value-on-next-line	87f268929d32de4a
 default	suite/colon-at-the-beginning-of-adjacent-flow-scalar	7857682db630d012
 default	suite/colon-followed-by-comma	375de30024cb7e5f
@@ -73,7 +73,7 @@ default	suite/empty-lines-at-end-of-document	f3743a0a18e53d13
 default	suite/empty-lines-between-mapping-elements	b67ee1e121c89aa8
 default	suite/empty-stream	e3b0c44298fc1c14
 default	suite/escaped-slash-in-double-quotes	7b043480665ef186
-default	suite/explicit-key-and-value-seperated-by-comment	2b197d56a17ce86f
+default	suite/explicit-key-and-value-seperated-by-comment	691210833dc00889
 default	suite/explicit-non-specific-tag	75d97a3fd4869c06
 default	suite/explicit-non-specific-tag-1-3	7f0fe1e413438cc3
 default	suite/extra-words-on-yaml-directive	refused
@@ -243,9 +243,9 @@ default	suite/spec-example-5-6-node-property-indicators	a0809d51f216c4d9
 default	suite/spec-example-5-7-block-scalar-indicators	08c4343a8a240ee4
 default	suite/spec-example-5-8-quoted-scalar-indicators	4f58aa8b92f6fb0a
 default	suite/spec-example-5-9-directive-indicator	b40813565217624a
-default	suite/spec-example-6-1-indentation-spaces	d63302a1536a5046
+default	suite/spec-example-6-1-indentation-spaces	8e5b55130fd5a197
 default	suite/spec-example-6-10-comment-lines	3bd01738f6998208
-default	suite/spec-example-6-11-multi-line-comments	28a45b267ef9defb
+default	suite/spec-example-6-11-multi-line-comments	3aeceae99ad04157
 default	suite/spec-example-6-12-separation-spaces	3f625cccd1ce548c
 default	suite/spec-example-6-13-reserved-directives	b200dadf0f8d6b94
 default	suite/spec-example-6-13-reserved-directives-1-3	b200dadf0f8d6b94
@@ -400,7 +400,7 @@ default	suite/yaml-directive-without-document-end-marker	refused
 default	suite/zero-indented-block-scalar	96d20ea23ff3d888
 default	suite/zero-indented-block-scalar-with-line-that-looks-like-a-comment	5cb40cfbe3ac00e8
 default	suite/zero-indented-sequences-in-explicit-mapping-keys	892393d883c8f837
-default	seeds-aggregate	36ead48e5ce6f79a1a2b212894a5bec0245b0c49612e0d890e8f4e8a86c61301
+default	seeds-aggregate	2d45d67ac182ac4db3db0666779b2d81a33389c8feedbd1afc5a053b34b164a8
 nocomments	suite/aliases-in-block-sequence	c3257c52c7ceaed0
 nocomments	suite/aliases-in-explicit-block-mapping	fb58d00e3fefa58e
 nocomments	suite/aliases-in-flow-objects	3ea0a458126c1608
@@ -842,7 +842,7 @@ indent4	suite/block-sequence-in-block-mapping	ed8ab2a89749b9c8
 indent4	suite/block-sequence-in-block-sequence	f8c265d8bd6b98af
 indent4	suite/block-sequence-indentation	55fa9b0442f8c295
 indent4	suite/block-submapping	b7364a79d45ecf6b
-indent4	suite/colon-and-adjacent-value-after-comment-on-next-line	87f268929d32de4a
+indent4	suite/colon-and-adjacent-value-after-comment-on-next-line	bb371a304a12d683
 indent4	suite/colon-and-adjacent-value-on-next-line	87f268929d32de4a
 indent4	suite/colon-at-the-beginning-of-adjacent-flow-scalar	7857682db630d012
 indent4	suite/colon-followed-by-comma	375de30024cb7e5f
@@ -879,7 +879,7 @@ indent4	suite/empty-lines-at-end-of-document	f3743a0a18e53d13
 indent4	suite/empty-lines-between-mapping-elements	b67ee1e121c89aa8
 indent4	suite/empty-stream	e3b0c44298fc1c14
 indent4	suite/escaped-slash-in-double-quotes	7b043480665ef186
-indent4	suite/explicit-key-and-value-seperated-by-comment	2b197d56a17ce86f
+indent4	suite/explicit-key-and-value-seperated-by-comment	2aafc232548c8ab8
 indent4	suite/explicit-non-specific-tag	75d97a3fd4869c06
 indent4	suite/explicit-non-specific-tag-1-3	7f0fe1e413438cc3
 indent4	suite/extra-words-on-yaml-directive	refused
@@ -1049,9 +1049,9 @@ indent4	suite/spec-example-5-6-node-property-indicators	a0809d51f216c4d9
 indent4	suite/spec-example-5-7-block-scalar-indicators	1929d49a4de86755
 indent4	suite/spec-example-5-8-quoted-scalar-indicators	4f58aa8b92f6fb0a
 indent4	suite/spec-example-5-9-directive-indicator	b40813565217624a
-indent4	suite/spec-example-6-1-indentation-spaces	b3e2e116abee3e30
+indent4	suite/spec-example-6-1-indentation-spaces	e5c2b3e7d4c08265
 indent4	suite/spec-example-6-10-comment-lines	3bd01738f6998208
-indent4	suite/spec-example-6-11-multi-line-comments	521368339d9fd82f
+indent4	suite/spec-example-6-11-multi-line-comments	f2b60d23b9d980e3
 indent4	suite/spec-example-6-12-separation-spaces	adbf29819b9ba820
 indent4	suite/spec-example-6-13-reserved-directives	b200dadf0f8d6b94
 indent4	suite/spec-example-6-13-reserved-directives-1-3	b200dadf0f8d6b94
@@ -1206,7 +1206,7 @@ indent4	suite/yaml-directive-without-document-end-marker	refused
 indent4	suite/zero-indented-block-scalar	b5b8de23ec2cc27e
 indent4	suite/zero-indented-block-scalar-with-line-that-looks-like-a-comment	62e85933f841e569
 indent4	suite/zero-indented-sequences-in-explicit-mapping-keys	185788c3e20ba49d
-indent4	seeds-aggregate	0a8926cdd0fbf468cd1a9e48212710b9fb821f782dd80cb488611a7306317776
+indent4	seeds-aggregate	0a0eb31c6dbd5273d8aee28d1f37470d579afa3e74be346e49849ed0ec96f5b8
 indentseq	suite/aliases-in-block-sequence	c3257c52c7ceaed0
 indentseq	suite/aliases-in-explicit-block-mapping	fb58d00e3fefa58e
 indentseq	suite/aliases-in-flow-objects	3ea0a458126c1608
@@ -1245,7 +1245,7 @@ indentseq	suite/block-sequence-in-block-mapping	3c3d5a417927b9ef
 indentseq	suite/block-sequence-in-block-sequence	33436b922e695a9b
 indentseq	suite/block-sequence-indentation	a0cd789dcc6b2044
 indentseq	suite/block-submapping	b95523b3afd69ba2
-indentseq	suite/colon-and-adjacent-value-after-comment-on-next-line	87f268929d32de4a
+indentseq	suite/colon-and-adjacent-value-after-comment-on-next-line	8da6d4b319aec68e
 indentseq	suite/colon-and-adjacent-value-on-next-line	87f268929d32de4a
 indentseq	suite/colon-at-the-beginning-of-adjacent-flow-scalar	7857682db630d012
 indentseq	suite/colon-followed-by-comma	375de30024cb7e5f
@@ -1282,7 +1282,7 @@ indentseq	suite/empty-lines-at-end-of-document	f3743a0a18e53d13
 indentseq	suite/empty-lines-between-mapping-elements	b67ee1e121c89aa8
 indentseq	suite/empty-stream	e3b0c44298fc1c14
 indentseq	suite/escaped-slash-in-double-quotes	7b043480665ef186
-indentseq	suite/explicit-key-and-value-seperated-by-comment	2b197d56a17ce86f
+indentseq	suite/explicit-key-and-value-seperated-by-comment	691210833dc00889
 indentseq	suite/explicit-non-specific-tag	75d97a3fd4869c06
 indentseq	suite/explicit-non-specific-tag-1-3	7f0fe1e413438cc3
 indentseq	suite/extra-words-on-yaml-directive	refused
@@ -1452,9 +1452,9 @@ indentseq	suite/spec-example-5-6-node-property-indicators	a0809d51f216c4d9
 indentseq	suite/spec-example-5-7-block-scalar-indicators	08c4343a8a240ee4
 indentseq	suite/spec-example-5-8-quoted-scalar-indicators	4f58aa8b92f6fb0a
 indentseq	suite/spec-example-5-9-directive-indicator	b40813565217624a
-indentseq	suite/spec-example-6-1-indentation-spaces	d63302a1536a5046
+indentseq	suite/spec-example-6-1-indentation-spaces	8e5b55130fd5a197
 indentseq	suite/spec-example-6-10-comment-lines	3bd01738f6998208
-indentseq	suite/spec-example-6-11-multi-line-comments	28a45b267ef9defb
+indentseq	suite/spec-example-6-11-multi-line-comments	3aeceae99ad04157
 indentseq	suite/spec-example-6-12-separation-spaces	3f625cccd1ce548c
 indentseq	suite/spec-example-6-13-reserved-directives	b200dadf0f8d6b94
 indentseq	suite/spec-example-6-13-reserved-directives-1-3	b200dadf0f8d6b94
@@ -1609,4 +1609,4 @@ indentseq	suite/yaml-directive-without-document-end-marker	refused
 indentseq	suite/zero-indented-block-scalar	96d20ea23ff3d888
 indentseq	suite/zero-indented-block-scalar-with-line-that-looks-like-a-comment	5cb40cfbe3ac00e8
 indentseq	suite/zero-indented-sequences-in-explicit-mapping-keys	932337a2ed55ff89
-indentseq	seeds-aggregate	933df3d872252a77614dfd17669962bf01dd3ec3d1e4bf1df5ac5c77cfa477e5
+indentseq	seeds-aggregate	1239a5408a73f6a6e61a79b23f8575a426ca52dac64d52d217827b8bfaa5f494

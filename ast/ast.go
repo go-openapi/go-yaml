@@ -1239,6 +1239,12 @@ type MappingNode struct {
 	Duplicates  []DuplicateKey
 	Values      []*MappingValueNode
 	FootComment *CommentGroupNode
+	// StartComment is the comment closing the line the '{' stands on, as in
+	// "{ # why\n  a: 1 }". Comment holds the one after the '}' instead, so a
+	// flow mapping written with both keeps both.
+	//
+	// A block mapping opens on its first key and never fills this.
+	StartComment *CommentGroupNode
 }
 
 func (n *MappingNode) startPos() token.Position {
@@ -1496,6 +1502,13 @@ type SequenceNode struct {
 	ValueHeadComments []*CommentGroupNode
 	Entries           []*SequenceEntryNode
 	FootComment       *CommentGroupNode
+	// StartComment is the comment closing the line the '[' stands on, as in
+	// "[ # why\n  a ]". Comment holds the one after the ']' instead, so a flow
+	// sequence written with both keeps both.
+	//
+	// A block sequence opens on the '-' of its first entry, where a comment
+	// belongs to that entry, and never fills this.
+	StartComment *CommentGroupNode
 }
 
 // Replace replace value node.

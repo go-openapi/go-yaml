@@ -235,6 +235,7 @@ func (n *MappingNode) Clone() *MappingNode {
 	cloned.Start = n.Start.Detached()
 	cloned.End = n.End.Detached()
 	cloned.FootComment = n.FootComment.Clone()
+	cloned.StartComment = n.StartComment.Clone()
 	cloned.Duplicates = append([]DuplicateKey(nil), n.Duplicates...)
 	cloned.Values = make([]*MappingValueNode, len(n.Values))
 	for i, value := range n.Values {
@@ -281,6 +282,7 @@ func (n *SequenceNode) Clone() *SequenceNode {
 	cloned.Start = n.Start.Detached()
 	cloned.End = n.End.Detached()
 	cloned.FootComment = n.FootComment.Clone()
+	cloned.StartComment = n.StartComment.Clone()
 	cloned.Values = make([]Node, len(n.Values))
 	for i, value := range n.Values {
 		cloned.Values[i] = cloneNode(value)

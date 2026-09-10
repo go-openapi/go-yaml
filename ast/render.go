@@ -185,8 +185,20 @@ func endsOnAComment(n Node) bool {
 		if n.GetComment() != nil {
 			return true
 		}
+		if _, isComment := n.(*CommentGroupNode); isComment {
+			// The parse hung a comment on a property with nothing after it, so
+			// the comment *is* the node: "&a2" over "# x" gives an anchor whose
+			// value is the comment group.
+			return true
+		}
 		switch node := n.(type) {
 		case *AnchorNode:
+			// Renderer.anchor writes the name's comment where the anchor's own
+			// would go, so it ends the line just the same. "- # c2" over "&a2"
+			// over "# " came back as "- &a2 #  # c2".
+			if node.Name != nil && node.Name.GetComment() != nil {
+				return true
+			}
 			n = node.Value
 		case *TagNode:
 			n = node.Value
@@ -324,8 +336,9 @@ func (r *Renderer) mapping(n *MappingNode) rendered {
 		for _, value := range n.Values {
 			values = append(values, value)
 		}
-		if r.flowCarriesComments(values, nil, n.FootComment) {
-			return r.withComment(leaf(r.flowBlock("{", "}", values, nil, n.FootComment)), n.Comment)
+		comments := flowComments{start: n.StartComment, foot: n.FootComment}
+		if r.flowCarriesComments(values, comments) {
+			return r.withComment(leaf(r.flowBlock("{", "}", values, comments)), n.Comment)
 		}
 
 		entries := make([]string, 0, len(n.Values))
@@ -728,9 +741,9 @@ func (r *Renderer) sequence(n *SequenceNode) rendered {
 		return r.withComment(leaf("[]"), n.Comment)
 	}
 	if r.flowsInline(n.IsFlowStyle) {
-		if r.flowCarriesComments(n.Values, n.ValueHeadComments, n.FootComment) {
-			return r.withComment(
-				leaf(r.flowBlock("[", "]", n.Values, n.ValueHeadComments, n.FootComment)), n.Comment)
+		comments := flowComments{start: n.StartComment, heads: n.ValueHeadComments, foot: n.FootComment}
+		if r.flowCarriesComments(n.Values, comments) {
+			return r.withComment(leaf(r.flowBlock("[", "]", n.Values, comments)), n.Comment)
 		}
 
 		entries := make([]string, 0, len(n.Values))
@@ -832,8 +845,9 @@ func (r *Renderer) anchor(n *AnchorNode) string {
 	// became "&a # beside q", so the value stood inside the comment and the
 	// document read back as null. The tag below never had this, its comment
 	// reaching it through the value rather than through a name.
-	return r.withOwnComment(firstComment(n.Comment, n.Name.GetComment()),
-		r.prefixed("&"+r.bare().String(n.Name), n.Value))
+	own := firstComment(n.Comment, n.Name.GetComment())
+
+	return r.withOwnComment(own, r.prefixed("&"+r.bare().String(n.Name), n.Value, own))
 }
 
 // firstComment returns whichever of two comment groups is present, preferring
@@ -854,7 +868,7 @@ func (r *Renderer) tag(n *TagNode) string {
 		return r.withOwnComment(n.Comment, r.String(n.Value))
 	}
 
-	return r.withOwnComment(n.Comment, r.prefixed(n.Start.Value, n.Value))
+	return r.withOwnComment(n.Comment, r.prefixed(n.Start.Value, n.Value, n.Comment))
 }
 
 // withOwnComment puts a property's own comment back at the end of the line the
@@ -888,11 +902,13 @@ func (r *Renderer) withOwnComment(comment *CommentGroupNode, text string) string
 
 // prefixed renders a node introduced by a marker -- an anchor name or a tag --
 // which sits on its own line when what follows is a block.
-func (r *Renderer) prefixed(marker string, value Node) string {
-	return r.prefixedAt(marker, value, false)
+// own is the comment withOwnComment will put back at the end of the marker's
+// line, which decides whether the value may share that line.
+func (r *Renderer) prefixed(marker string, value Node, own *CommentGroupNode) string {
+	return r.prefixedAt(marker, value, own, false)
 }
 
-func (r *Renderer) prefixedAt(marker string, value Node, atDocumentRoot bool) string {
+func (r *Renderer) prefixedAt(marker string, value Node, own *CommentGroupNode, atDocumentRoot bool) string {
 	if value == nil {
 		return marker
 	}
@@ -912,6 +928,19 @@ func (r *Renderer) prefixedAt(marker string, value Node, atDocumentRoot bool) st
 			return marker + "\n" + text
 		}
 
+		return marker + "\n" + r.indented(text)
+	}
+	if r.comments && (standsAbove(value) != nil || (own != nil && endsOnAComment(value))) {
+		// The value cannot share the marker's line, for one of two reasons.
+		// Either text opens with the comment written above the value, which
+		// beside the marker lands on the marker's line and swallows the
+		// marker's own comment -- "- !foo # c2" over "# c3" over "\"rqSb\"" came
+		// back as "- !foo # c3 # c2". Or the value ends on a comment and the
+		// marker carries one too, which put both onto one line the other way
+		// round: "- &a1 # c2" over "K # c3" came back as "- &a1 K # c3 # c2".
+		// A comment runs to the end of its line, so either way the next read
+		// takes the two for one. A property may stand on its own line with its
+		// node underneath.
 		return marker + "\n" + r.indented(text)
 	}
 
@@ -958,12 +987,14 @@ func (r *Renderer) documentBody(n Node) rendered {
 	case *AnchorNode:
 		// The name without its comment, as Renderer.anchor does and for the
 		// same reason.
+		own := firstComment(node.Comment, node.Name.GetComment())
+
 		return r.withHeadComment(n,
-			leaf(r.withOwnComment(firstComment(node.Comment, node.Name.GetComment()),
-				r.prefixedAt("&"+r.bare().String(node.Name), node.Value, true))))
+			leaf(r.withOwnComment(own,
+				r.prefixedAt("&"+r.bare().String(node.Name), node.Value, own, true))))
 	case *TagNode:
 		return r.withHeadComment(n,
-			leaf(r.withOwnComment(node.Comment, r.prefixedAt(node.Start.Value, node.Value, true))))
+			leaf(r.withOwnComment(node.Comment, r.prefixedAt(node.Start.Value, node.Value, node.Comment, true))))
 	default:
 		// render wraps it already.
 		return r.render(n)
@@ -1320,16 +1351,25 @@ func splitLeadingBlank(text string) (string, string) {
 	return "", text
 }
 
+// flowComments gathers the comment slots a flow collection carries outside its
+// entries: the one on the opening bracket's line, the ones written above an
+// element, and the one on the line before the closing bracket.
+type flowComments struct {
+	start *CommentGroupNode
+	heads []*CommentGroupNode
+	foot  *CommentGroupNode
+}
+
 // flowCarriesComments reports whether anything in a flow collection has a
 // comment on it, which is what stops it fitting on one line.
-func (r *Renderer) flowCarriesComments(values []Node, heads []*CommentGroupNode, foot *CommentGroupNode) bool {
+func (r *Renderer) flowCarriesComments(values []Node, comments flowComments) bool {
 	if !r.comments {
 		return false
 	}
-	if foot != nil {
+	if comments.start != nil || comments.foot != nil {
 		return true
 	}
-	for _, head := range heads {
+	for _, head := range comments.heads {
 		if head != nil {
 			return true
 		}
@@ -1349,10 +1389,14 @@ func (r *Renderer) flowCarriesComments(values []Node, heads []*CommentGroupNode,
 // there: everything after it is commented out, including the bracket that
 // closes the collection. Several lines is the only layout that holds both, and
 // it is still a flow collection.
-func (r *Renderer) flowBlock(open, closing string, values []Node, heads []*CommentGroupNode, foot *CommentGroupNode) string {
+func (r *Renderer) flowBlock(open, closing string, values []Node, comments flowComments) string {
 	lines := make([]string, 0, len(values)+2)
+	if comments.start != nil {
+		open += " " + r.String(comments.start)
+	}
 	lines = append(lines, open)
 
+	heads := comments.heads
 	bare := r.bare()
 	for i, value := range values {
 		if i < len(heads) && heads[i] != nil {
@@ -1373,8 +1417,8 @@ func (r *Renderer) flowBlock(open, closing string, values []Node, heads []*Comme
 		}
 		lines = append(lines, r.indented(entry))
 	}
-	if foot != nil {
-		lines = append(lines, r.indented(r.String(foot)))
+	if comments.foot != nil {
+		lines = append(lines, r.indented(r.String(comments.foot)))
 	}
 
 	return strings.Join(append(lines, closing), "\n")

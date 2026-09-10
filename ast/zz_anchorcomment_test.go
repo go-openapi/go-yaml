@@ -75,9 +75,9 @@ func TestFixedTwoCommentsAreNotWrittenOntoOneLine(t *testing.T) {
 		{src: "k:\n  # c1\n  &a q # c2\n", want: "k:\n  # c1\n  &a q # c2\n"},
 		// A sequence entry's comment, with a value that ends on one.
 		{src: "- # c1\n  &a q # c2\n", want: "- # c1\n  &a q # c2\n"},
-		// A commented key over a value that ends on one. The layout moves --
-		// this is the normalising renderer -- and neither comment is lost.
-		{src: "key:    # Comment\n        # lines\n  value\n", want: "key: # Comment\n  value # lines\n"},
+		// A commented key over a value with a comment above it. Both comments
+		// come back on the line they were written on.
+		{src: "key:    # Comment\n        # lines\n  value\n", want: "key: # Comment\n  # lines\n  value\n"},
 		// A value carrying a comment above it opens its own line.
 		{src: "k:\n  # c1\n  v # c2\n", want: "k:\n  # c1\n  v # c2\n"},
 		// Untouched: one comment on the line is where one belongs.

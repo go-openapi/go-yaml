@@ -443,15 +443,17 @@ func TestFixedARootNodeKeepsBothItsComments(t *testing.T) {
 // by grammar.NewRecognizer, and none stops parsing.
 func TestFixedAnIndentedCommentBetweenAKeyAndItsColonIsKept(t *testing.T) {
 	for _, tc := range []struct{ src, want string }{
-		{src: "? key\n# comment\n: value\n", want: "? key\n: value # comment\n"},
-		{src: "? key\n # comment\n: value\n", want: "? key\n: value # comment\n"},
-		{src: "? key\n  # comment\n: value\n", want: "? key\n: value # comment\n"},
-		{src: "? key\n    # comment\n: value\n", want: "? key\n: value # comment\n"},
+		// The comment stands between the key and the value, so it is written
+		// above the value and the value goes under the ":".
+		{src: "? key\n# comment\n: value\n", want: "? key\n:\n  # comment\n  value\n"},
+		{src: "? key\n # comment\n: value\n", want: "? key\n:\n  # comment\n  value\n"},
+		{src: "? key\n  # comment\n: value\n", want: "? key\n:\n  # comment\n  value\n"},
+		{src: "? key\n    # comment\n: value\n", want: "? key\n:\n  # comment\n  value\n"},
 		// A multi-line plain key, whose comment ends it -- see the scanner's
 		// TestFixedAPlainScalarEndsAtAComment.
-		{src: "?\n  a\n      - b\n# c\n: v\n", want: "? a - b\n: v # c\n"},
-		{src: "?\n  a\n      - b\n  # c\n: v\n", want: "? a - b\n: v # c\n"},
-		{src: "?\n  a\n      - b\n      # c\n: v\n", want: "? a - b\n: v # c\n"},
+		{src: "?\n  a\n      - b\n# c\n: v\n", want: "? a - b\n:\n  # c\n  v\n"},
+		{src: "?\n  a\n      - b\n  # c\n: v\n", want: "? a - b\n:\n  # c\n  v\n"},
+		{src: "?\n  a\n      - b\n      # c\n: v\n", want: "? a - b\n:\n  # c\n  v\n"},
 	} {
 		f, err := parser.ParseBytes([]byte(tc.src), parser.WithComments())
 		require.NoErrorf(t, err, "%q", tc.src)

@@ -97,6 +97,36 @@ func takeIndicatorComment(ctx context, tk *tapeToken) *token.Token {
 	return ctx.takeLineComment(tk)
 }
 
+// openerComment is the comment closing the line a flow collection opens on, as
+// in "{ # why". It goes to MappingNode.StartComment or
+// SequenceNode.StartComment, which the renderer writes back after the bracket.
+//
+// A group token reports the type of the token it opens with, so the "{" the
+// parse holds may be a wrapper around the one the comment was staged against,
+// and only pointer identity tells the two apart. The descent through First()
+// asks at each step; without it a flow mapping lost every comment written on
+// its opening line.
+func openerComment(ctx context, tk *tapeToken) *ast.CommentGroupNode {
+	for tk != nil {
+		if cm := ctx.takeLineComment(tk); cm != nil {
+			comment := ast.CommentGroup([]*token.Token{cm})
+			comment.SetPathNode(ctx.path)
+
+			return comment
+		}
+		if tk.Group == nil || tk.Group.Len() == 0 {
+			break
+		}
+		first := tk.Group.First()
+		if first == tk {
+			break
+		}
+		tk = first
+	}
+
+	return nil
+}
+
 func newAnchorNode(ctx context, tk *tapeToken) (*ast.AnchorNode, error) {
 	node := ast.Anchor(tk.RawToken())
 	node.SetPathNode(ctx.path)
@@ -223,9 +253,7 @@ func newSequenceNode(ctx context, tk *tapeToken, isFlow bool) (*ast.SequenceNode
 		// its first entry, and a comment there is that entry's -- read as the
 		// whole sequence's it came back twice, once at the head and once where
 		// it was written.
-		if err := setLineComment(ctx, node, tk); err != nil {
-			return nil, err
-		}
+		node.StartComment = openerComment(ctx, tk)
 	}
 
 	return node, nil
@@ -341,6 +369,22 @@ func setEntryLineComment(ctx context, node *ast.MappingValueNode, tk *tapeToken)
 }
 
 func setHeadComment(cm *ast.CommentGroupNode, value ast.Node) error {
+	return attachComment(cm, value, true)
+}
+
+// setTrailingComment records a comment written after the node it is attached
+// to, which only the comments closing a document are: those between a directive
+// and the "---" under it, and those under the document's own node.
+//
+// It differs from setHeadComment in one place, and the difference is the whole
+// reason for it: a comment standing after a node must not be written above it.
+// "%FOO bar baz # Should be ignored" over "# with a warning." over "--- \"foo\""
+// came back with the warning line first, before the directive it follows.
+func setTrailingComment(cm *ast.CommentGroupNode, value ast.Node) error {
+	return attachComment(cm, value, false)
+}
+
+func attachComment(cm *ast.CommentGroupNode, value ast.Node, above bool) error {
 	if cm == nil {
 		return nil
 	}
@@ -378,7 +422,7 @@ func setHeadComment(cm *ast.CommentGroupNode, value ast.Node) error {
 	// such as the anchor of "# c1" over "&a q # c2": that one keeps both texts
 	// and renders them onto one line, which is the renderer's half of this and
 	// not the model's.
-	if head, ok := value.(headCommented); ok && (value.GetComment() != nil || meansBeside(value)) {
+	if head, ok := value.(headCommented); ok && (value.GetComment() != nil || meansBeside(value) || (above && onOneLine(value))) {
 		return head.SetHeadComment(cm)
 	}
 
@@ -400,6 +444,27 @@ func meansBeside(n ast.Node) bool {
 		return true
 	default:
 		return false
+	}
+}
+
+// onOneLine reports whether the node renders on a single line, so that its
+// Comment ends that line rather than standing above it.
+//
+// A scalar, an alias and a flow collection are written on one line. "# c1" over
+// "foo" put the comment in Comment and rendered "foo # c1", which is where a
+// comment beside the scalar goes -- the document wrote it above. A block
+// mapping or a block sequence renders Comment above itself, which is where a
+// head comment already belongs, so those keep it.
+func onOneLine(n ast.Node) bool {
+	switch node := n.(type) {
+	case *ast.MappingNode:
+		return node.IsFlowStyle
+	case *ast.SequenceNode:
+		return node.IsFlowStyle
+	case *ast.MappingValueNode, *ast.MappingKeyNode, *ast.DocumentNode, *ast.CommentGroupNode:
+		return false
+	default:
+		return true
 	}
 }
 

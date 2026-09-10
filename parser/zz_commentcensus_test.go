@@ -17,29 +17,27 @@ import (
 	"github.com/go-openapi/go-yaml/parser"
 )
 
-// commentLossCeiling is how many comments the parse may stage against a token
-// and then never claim, over the documents it accepts.
+// staleCommentCeiling is how many comments the parse may stage against a token
+// and then never claim, over the documents it accepts. It is 0, and a parse
+// that leaves one behind has dropped it.
 //
 // ⚠️ It counts one route out of several, and an earlier version of this comment
 // said it counted "the comments the parse read and attached to nothing", which
-// it does not.
-//
-// Twenty-three corpus documents come back from a rendering holding fewer
-// comments than they went in with. Two are here. The other twenty-one were
-// staged and taken, so the parse claimed them and put them on a node, and the
-// renderer does not write them -- a different fault in a different component,
-// correctly absent from a census of the parse. TestRenderingKeepsTheCommentsItWasGiven
-// in ast/ counts what comes back and is the measure of loss; this one says where
+// it does not. TestRenderingKeepsTheCommentsItWasGiven in ast/ counts what
+// comes back from a rendering and is the measure of loss; this one says where
 // the parse dropped what it dropped.
 //
 // comment.staged minus comment.taken separates kept from lost on every route
 // measured: a head comment, a line comment, a foot comment on a block or flow
-// collection, a comment on a "---", and a flow mapping's lead comment, which is
-// the one that is lost. Reaching for comment.scanned instead reports a comment
-// on a "---" as lost when it is kept.
+// collection, a comment on a "---", and the two the grouping stages against a
+// group token -- the comment on a flow collection's opening bracket and the one
+// closing a flow key's line, which were the last two to be lost.
+//
+// A comment left in the index also holds the token it points at, and the tape
+// chunk that token sits in, until the parse ends.
 
 const (
-	staleCommentCeiling  = 2
+	staleCommentCeiling  = 0
 	overwroteHeadCeiling = 0
 
 	commentedDocuments = 6691
