@@ -124,9 +124,12 @@ func TestAValueChangedBeforeRenderingIsNotReportedAsRendering(t *testing.T) {
 	assert.False(t, renderChangesValue([]byte(src)),
 		"rendering preserves this document, so a message naming the renderer names the wrong stage")
 
+	// The "!!binary" value reads as a codec.Base64, the text the document
+	// carries, since 752f09c. It was []byte{0} before that, which Go hashes
+	// nowhere and which nothing marked as binary.
 	var got any
 	require.NoError(t, codec.Unmarshal([]byte(src), &got))
-	assert.Equal(t, []any{map[string]any{"null": []byte{0}, "AA==": "aliased"}}, got)
+	assert.Equal(t, []any{map[string]any{"null": codec.Base64("AA=="), "AA==": "aliased"}}, got)
 }
 
 // TestReduceKeepsTheDocumentEndingInABreak: the byte pass will not remove the
