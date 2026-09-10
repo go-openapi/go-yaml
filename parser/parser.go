@@ -1026,6 +1026,10 @@ func (p *Parser) parseFlowMap(ctx context) (*ast.MappingNode, error) {
 			}
 			p.handKey(ctx, key)
 
+			if err := p.refuseMergeKeyAlone(key); err != nil {
+				return nil, err
+			}
+
 			name, kind := p.mapKeyIdentity(key)
 			p.recordKeyOnce(ctx, key.GetToken(), name, kind)
 
@@ -1069,6 +1073,36 @@ func (p *Parser) parseFlowMap(ctx context) (*ast.MappingNode, error) {
 	}
 	ctx.goNext() // skip mapping end token.
 	return node, nil
+}
+
+// refuseMergeKeyAlone rejects a "<<" written as a flow entry's key alone, where
+// the merge key is in force.
+//
+// yaml.org/type/merge.html spells the merge key "<<" followed by its ':' and a
+// value to merge, so "{a: 1, <<}" is not a merge at all -- the scanner types
+// the two characters MergeKeyType only when a ':' follows them, which is why
+// the bare one arrives here as a plain string.
+//
+// Read as an ordinary key instead, it put a "<<" named nothing into the mapping
+// beside the entries a real merge had brought in, so the same two characters
+// resolved to the merge type in one entry and to a string in another. Nobody
+// else does that: go.yaml.in/yaml/v3 v3.0.5 refuses the document and libfyaml
+// 1.0.0b1 drops the entry.
+//
+// Only the plain spelling. Quoting makes it a string whatever the version, so
+// `{"<<": {x: 1}, "<<"}` is an ordinary repeated key and is refused as one.
+// Under the core schema nothing merges and a bare "<<" is an ordinary key, so
+// this stands aside and the duplicate check answers instead.
+func (p *Parser) refuseMergeKeyAlone(key ast.MapKeyNode) error {
+	if !p.mergeKeys && p.schemaInForce() != token.Schema11 {
+		return nil
+	}
+	tk := key.GetToken()
+	if tk == nil || tk.Type != token.StringType || tk.Value != "<<" {
+		return nil
+	}
+
+	return yamlerrors.NewSyntax("merge key requires a ':' and a value to merge", tk)
 }
 
 func (p *Parser) isFlowMapDelim(tk *tapeToken) bool {
@@ -1785,6 +1819,20 @@ func (p *Parser) mapKeyIdentity(n ast.Node) (string, token.KeyKind) {
 		at := p.anchorIdentities[anchorNameOf(nn.Value)]
 
 		return at.text, at.kind
+	case *ast.StringNode:
+		// The node's own text and the string kind, not the token's, which is
+		// what [ast.KeyName] reads for the same reason.
+		//
+		// A "<<" that the core schema leaves an ordinary key reaches here as a
+		// StringNode over a token still typed MergeKey, and token.KeyName has
+		// no case for that type: it fell through to KeyOther, so the entry was
+		// recorded as "other/<<" where a bare "{<<}" is recorded as
+		// "string/<<". A key's identity is its kind and its name, so the two
+		// never met and "{<<: {x: 1}, <<}" read as {"<<": nil} with the first
+		// entry's mapping gone and nothing reported. Under 1.1 the merge key
+		// is a merge key and reaches here as another node, so it keeps its own
+		// identity and still collides only with another merge key.
+		return nn.Value, token.KeyString
 	case *ast.LiteralNode:
 		// A literal or folded block scalar is a string whatever it spells, and
 		// its own token is the header, "|-" or ">-". Falling through to the

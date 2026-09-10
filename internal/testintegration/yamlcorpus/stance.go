@@ -227,47 +227,15 @@ func departsMapping(got any, err error, wrong func(map[string]any) bool) bool {
 // None of them appears anywhere in the four hundred documents of the YAML Test
 // Suite. That is the argument for the patterns in one sentence.
 //
-// It is empty. Every entry it has held was fixed rather than argued away: a
-// cycle decoding to nil and an alias naming an earlier document's anchor on
+// One entry stands. Every other has been fixed rather than argued away: a cycle
+// decoding to nil and an alias naming an earlier document's anchor on
 // 2026-08-27, a flow entry written as a key alone that the duplicate check did
-// not see on 2026-09-03, and on 2026-09-07 a version directive missing the root
-// scalar, a document carrying two directives, and two keys alike in text and
-// different once resolved.
+// not see on 2026-09-03, on 2026-09-07 a version directive missing the root
+// scalar and a document carrying two directives, and on 2026-09-10 both merge
+// key entries -- "{a: 1, <<}" under 1.1 and "{<<: {x: 1}, <<}" under either
+// version, which Fred ruled on 2026-09-08 and which parser.refuseMergeKeyAlone
+// and the StringNode arm of Parser.mapKeyIdentity settle.
 var Departures = []Departure{
-	{
-		Pattern: "a merge key written as a key alone",
-		Kind:    Verdict,
-		Observed: `under "%YAML 1.1", "{a: 1, <<}" reads {"<<": null, "a": 1} -- the "<<" becomes ` +
-			`an ordinary key beside whatever the mapping's real merges brought in`,
-		Because: "the merge key requires its ':', so a \"<<\" written as a flow entry's key alone is " +
-			"invalid merge syntax and the document is refused. Reading it as a key instead lets the " +
-			"same two characters resolve to the merge type in one entry and to a string in another, " +
-			"in one mapping. Fred's ruling of 2026-09-08; under the core schema the same bytes stay " +
-			"an ordinary key and stay valid",
-		Corroborated: "go.yaml.in/yaml/v3 v3.0.5 refuses it -- \"map merge requires map or sequence " +
-			"of maps as the value\" -- reaching the same verdict by treating the entry as a merge of " +
-			"null. libfyaml 1.0.0b1 reads it and drops the entry with nothing reported, which is the " +
-			"third answer and the quietest",
-	},
-	{
-		Pattern: "two merge keys, the second written as a key alone",
-		Kind:    Verdict,
-		Observed: `"{<<: {x: 1}, <<}" is read on the walk under either version. Under the core ` +
-			`schema it comes back {"<<": null} with the first entry's mapping gone and nothing ` +
-			"reported, where the tree refuses it as `duplicate key \"<<\"`; under " +
-			`"%YAML 1.1" both paths read it as {"<<": null, "x": 1}`,
-		Because: "under the core schema the two entries are one key spelled \"<<\" twice, which " +
-			"3.2.1.1 settles, and the check has to reach a flow entry written as a key alone -- " +
-			"`{a: 1, a}` is refused, so this is the merge key escaping a check the ordinary key " +
-			"gets. Under \"%YAML 1.1\" the second \"<<\" carries no ':' and the document is refused " +
-			"as invalid merge syntax, so the duplicate question never arises. One character settles " +
-			"it either way: write the second entry \"<<: \" and every path refuses the document " +
-			"today",
-		Corroborated: "go.yaml.in/yaml/v3 v3.0.5 refuses it under both versions with " +
-			"`mapping key \"<<\" already defined`. libfyaml 1.0.0b1 reports no duplicate key " +
-			"anywhere -- `{a: 1, a: 2}` gives {\"a\": 2} -- so it says only that the document is " +
-			"readable",
-	},
 	{
 		// Anchored on the resolution shape rather than on "a key that is a
 		// boolean", which is `true: a` alone and reads correctly. The

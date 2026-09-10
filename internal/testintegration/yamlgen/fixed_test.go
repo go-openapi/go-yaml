@@ -2965,3 +2965,119 @@ func TestFixedADocumentSuffixReadsLikeAMarker(t *testing.T) {
 		}
 	})
 }
+
+// TestFixedAMergeKeyAloneInFlowIsRefused holds both halves of Fred's ruling of
+// 2026-09-08, closed on 2026-09-10.
+//
+// 3.2.1.1 makes two keys that resolve alike one key, and a flow entry written
+// as a key alone is an entry like any other: `{a: 1, a}` is refused, and so is
+// `{<<: {x: 1}, <<: {y: 2}}`. `{<<: {x: 1}, <<}` was read.
+//
+// Two faults, one per version, and the ruling settles them separately.
+//
+// Under the core schema nothing merges, so the two entries are one key spelled
+// "<<" twice and the duplicate check answers. It did not, because the check
+// read the key's token where ast.KeyName reads the node: the "<<" carrying a
+// value reaches Parser.mapKeyIdentity as a StringNode over a token still typed
+// MergeKeyType, and token.KeyName has no case for that type, so it was recorded
+// "other/<<" where the bare one is "string/<<". A key's identity is its kind
+// and its name, so the two never met -- the document read as {"<<": null} with
+// the first entry's mapping gone and nothing reported. The StringNode arm of
+// mapKeyIdentity makes both "string/<<".
+//
+// Under "%YAML 1.1" the merge key requires its ':', so a "<<" written as a flow
+// entry's key alone is invalid merge syntax and the document is refused before
+// any duplicate question arises. Read as an ordinary key it put a "<<" named
+// nothing beside the entries a real merge had brought in, so the same two
+// characters resolved to the merge type in one entry and to a string in
+// another. parser.refuseMergeKeyAlone refuses it.
+//
+// The quoted spelling is the control and is untouched: `{"<<": {x: 1}, "<<"}`
+// is an ordinary repeated key at both versions and is refused as one. So is the
+// colon: write the second entry `<<: ` and every path refuses it, as it always
+// did.
+//
+// The ruling is the strictest of four answers. go.yaml.in/yaml/v3 v3.0.5
+// refuses both documents, libfyaml 1.0.0b1 reads them and drops an entry with
+// nothing reported, and this library used to read the 1.1 one and keep "<<" as
+// an ordinary key beside the merged entries -- which nobody else does.
+//
+// Found on 2026-09-07 when yamlcorpus's duplicateAKey landed on a merge key --
+// the merge axis made that reachable for the first time.
+func TestFixedAMergeKeyAloneInFlowIsRefused(t *testing.T) {
+	t.Run("an ordinary key alone is refused, and so are two merge keys with values", func(t *testing.T) {
+		for _, src := range []string{
+			"{a: 1, a}\n",
+			"{\"<<\": {x: 1}, \"<<\"}\n",
+			"{<<: {x: 1}, <<: {y: 2}}\n",
+			"b: &r {x: 1}\nd:\n  <<: *r\n  <<: *r\n",
+		} {
+			for _, full := range []string{src, "%YAML 1.1\n---\n" + src} {
+				var got any
+				assert.Errorf(t, codec.Unmarshal([]byte(full), &got), "%q", full)
+			}
+		}
+	})
+
+	t.Run("the core schema refuses the repeat", func(t *testing.T) {
+		for _, src := range []string{"{<<: {x: 1}, <<}\n", "{<<, <<: {x: 1}}\n"} {
+			var got any
+			err := codec.Unmarshal([]byte(src), &got)
+			require.Errorf(t, err, "%q", src)
+			assert.Containsf(t, err.Error(), `mapping key "<<" already defined`,
+				"and with the message an ordinary repeat gets: %q", src)
+		}
+
+		// The walk and the tree part on nothing now.
+		var typed map[string]any
+		assert.Error(t, codec.Unmarshal([]byte("{<<: {x: 1}, <<}\n"), &typed))
+	})
+
+	t.Run("and 1.1 refuses the syntax before the repeat", func(t *testing.T) {
+		for _, src := range []string{
+			"%YAML 1.1\n---\n{a: 1, <<}\n",
+			"%YAML 1.1\n---\n{<<}\n",
+			"%YAML 1.1\n---\n{<<: {x: 1}, <<}\n",
+		} {
+			var got any
+			err := codec.Unmarshal([]byte(src), &got)
+			require.Errorf(t, err, "%q", src)
+			assert.Containsf(t, err.Error(), "merge key requires a ':' and a value to merge", "%q", src)
+		}
+	})
+
+	t.Run("a bare merge key stays an ordinary key under the core schema", func(t *testing.T) {
+		// Nothing merges there, so "<<" is two characters like any other.
+		for _, tc := range []struct {
+			src  string
+			want map[string]any
+		}{
+			{src: "{a: 1, <<}\n", want: map[string]any{"a": uint64(1), "<<": nil}},
+			{src: "{<<}\n", want: map[string]any{"<<": nil}},
+		} {
+			var got any
+			require.NoErrorf(t, codec.Unmarshal([]byte(tc.src), &got), "%q", tc.src)
+			assert.Equalf(t, tc.want, got, "%q", tc.src)
+		}
+	})
+
+	t.Run("with the colon it is refused, which is the whole difference", func(t *testing.T) {
+		for _, src := range []string{
+			"{<<: {x: 1}, <<: }\n",
+			"%YAML 1.1\n---\n{<<: {x: 1}, <<: }\n",
+		} {
+			var got any
+			err := codec.Unmarshal([]byte(src), &got)
+			require.Errorf(t, err, "%q", src)
+			assert.Containsf(t, err.Error(), `mapping key "<<" already defined`, "%q", src)
+		}
+	})
+
+	t.Run("and AllowDuplicateMapKey reads it with the last entry winning", func(t *testing.T) {
+		var got any
+		require.NoError(t, codec.UnmarshalWithOptions(
+			[]byte("{<<: {x: 1}, <<}\n"), &got, codec.AllowDuplicateMapKey()))
+		assert.Equal(t, map[string]any{"<<": nil}, got,
+			"the empty entry stands rather than being dropped")
+	})
+}
