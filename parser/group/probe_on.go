@@ -3,7 +3,7 @@
 
 //go:build yamlprobe
 
-package arena
+package group
 
 import (
 	"fmt"
