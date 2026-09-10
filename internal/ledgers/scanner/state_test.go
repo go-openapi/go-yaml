@@ -69,12 +69,12 @@ var stateLedger = map[string]disagreement{ //nolint:gochecknoglobals // ok to st
 	// folds a line and dropping the tab that ends one, and no scan of the bytes tells those apart from content.
 	// 2 of 2,738 re-baselined 2026-09-10 after 16dd5be, from 2 of 2,744 the same day, 2 of 2,743 and 2 of 2,742 on
 	// 2026-09-09 and 3 of 1,348 on 2026-09-07. The ratio has held at 0.07% across all four.
-	"buf.notSpaceCharPos==trimmed/plain": {0, 317518},
-	"buf.notSpaceCharPos==trimmed/block": {2, 2734},
+	"buf.notSpaceCharPos==trimmed/plain": {0, 317551},
+	"buf.notSpaceCharPos==trimmed/block": {2, 2767},
 
 	// A mark past the end of the buffer made bufferedSrc slice a byte the last token wrote.
 	// Fixed; nothing may raise this.
-	"buf.notSpaceCharPos<=len(buf)": {0, 320252},
+	"buf.notSpaceCharPos<=len(buf)": {0, 320318},
 
 	// Both entries count a space opening a line where indentNum has stopped tracking the column. They have different
 	// causes, and only the second is a surprise.
@@ -118,6 +118,14 @@ var stateLedger = map[string]disagreement{ //nolint:gochecknoglobals // ok to st
 	// held its ratio to four figures while its denominator grew by about 0.05%. So the corpus moved and the
 	// scanner did not, which is the reading the fingerprint check exists to make available: it failed saying
 	// the corpus had moved rather than reporting seven regressions.
+	//
+	// Re-baselined on 2026-09-11 with the fingerprint HOLDING, which is the reading that says the scanner moved.
+	// be17078 ends a block scalar on a last line holding only spaces, where the source ends there; a document
+	// that used to be refused now completes. Three counts moved and they are exactly the buffer family the fix
+	// touches -- block-trimmed reads 2,734 -> 2,767, plain-trimmed 317,518 -> 317,551, buffer-length checks
+	// 320,252 -> 320,318 -- while indent.* and token.* held to the digit. A scanner change confined to the
+	// entries the changed code reaches is the shape a fix should have; one that moved the indent counts as well
+	// would have been reaching further than its diff.
 	//
 	// Re-baselined again the same day onto master's own regeneration -- the four ordered-map commits landed
 	// while this was in flight -- which moved four denominators by about 0.02% and left every count alone.

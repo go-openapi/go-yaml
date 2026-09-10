@@ -135,6 +135,9 @@ func TestJSONTokensRebuildWhatToJSONWrites(t *testing.T) {
 // renames every seed. Asserted the other way about -- a held-out document that
 // starts agreeing fails -- so the entry reports the fix instead of outliving it.
 var jsonTokenHoldOuts = map[string]string{
-	"a: &m !!omap [{x: 1}]\nb: *m\n": "defect 108: an alias to an anchored !!omap loses the tag, " +
-		"so the tokens write the sequence where ToJSON writes the object",
+	// Empty. Defect 108 was the one entry -- an alias to an anchored "!!omap"
+	// lost the tag, so the tokens wrote the sequence where ToJSON wrote the
+	// object -- and 92676c3 closed it. The map stays because the mechanism is
+	// the useful part: an entry asserts the disagreement, so a held-out
+	// document that starts agreeing fails and says which defect closed.
 }

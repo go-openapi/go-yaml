@@ -273,10 +273,16 @@ type placement struct {
 // holds nothing but spaces. All three new documents end on such a line, so
 // appending after it disturbs one, which took back from 187 to 190; front and
 // middle did not move.
+// Re-baselined on 2026-09-11: tested 1750 -> 1764, back 190 -> 191 disturbed,
+// front and middle 57 unreadable throughout. Two things moved it together --
+// be17078 lets three more render sources parse, and the "!!omap" corpus shapes
+// arrived. Read the ratios: 10.86% -> 10.83% disturbed at the back and 3.26% ->
+// 3.23% unreadable at the front, so both counts followed the corpus and the
+// placement stood still.
 var insertionCensus = map[string]placement{
-	"front":  {tested: 1750, unreadable: 59, disturbed: 0},
-	"middle": {tested: 1750, unreadable: 59, disturbed: 17},
-	"back":   {tested: 1750, unreadable: 13, disturbed: 190},
+	"front":  {tested: 1764, unreadable: 57, disturbed: 0},
+	"middle": {tested: 1764, unreadable: 57, disturbed: 17},
+	"back":   {tested: 1764, unreadable: 13, disturbed: 191},
 }
 
 // TestInsertingIntoTheCorpus puts one entry into every document the corpus holds
