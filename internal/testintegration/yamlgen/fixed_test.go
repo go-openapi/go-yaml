@@ -2824,7 +2824,7 @@ func TestFixedASecondCommentOnAnExplicitKeysColonLineIsKept(t *testing.T) {
 	t.Run("every comment reaches the rendered text, and it settles", func(t *testing.T) {
 		for src, renders := range map[string]string{
 			"? a\n: # c4\n  # c5\n  - 1\n":  "? a\n: # c4\n# c5\n- 1\n",
-			"? a\n: # c4\n  # c5\n  v\n":    "? a\n: # c4\n  v # c5\n",
+			"? a\n: # c4\n  # c5\n  v\n":    "? a\n: # c4\n  # c5\n  v\n",
 			"? a\n: # c4\n  # c5\n  b: 1\n": "? a\n: # c4\n  # c5\n  b: 1\n",
 		} {
 			wellFormed(t, src)
