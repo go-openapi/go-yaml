@@ -169,6 +169,40 @@ func (r *Renderer) render(n Node) rendered {
 		return rendered{}
 	}
 
+	return r.withHeadComment(n, r.renderNode(n))
+}
+
+// headCommented is a node carrying [BaseNode.HeadComment]. Every node type in
+// this package embeds BaseNode and so satisfies it; the assertion is here
+// rather than a method on [Node] so that the interface does not grow.
+type headCommented interface {
+	GetHeadComment() *CommentGroupNode
+}
+
+// withHeadComment puts what stands above a node back above it.
+//
+// [BaseNode.HeadComment] is written only where the node's other comment field
+// was already taken, which is what makes hoisting safe here: a node reaching
+// this carried two comments and used to render one. Hoisting every head comment
+// instead moved comments the older field already placed correctly, and a dozen
+// Test Suite documents stopped round-tripping.
+func (r *Renderer) withHeadComment(n Node, body rendered) rendered {
+	if !r.comments {
+		return body
+	}
+	carrier, ok := n.(headCommented)
+	if !ok {
+		return body
+	}
+	cm := carrier.GetHeadComment()
+	if cm == nil {
+		return body
+	}
+
+	return join(sepBreak, leaf(r.commentGroup(cm)), body)
+}
+
+func (r *Renderer) renderNode(n Node) rendered {
 	if alias, ok := n.(*AliasNode); ok && r.aliasTargets != nil {
 		return leaf(r.alias(alias))
 	}
@@ -834,12 +868,15 @@ func (r *Renderer) startsBlock(n Node) bool {
 func (r *Renderer) documentBody(n Node) rendered {
 	switch node := n.(type) {
 	case *LiteralNode:
-		return leaf(r.literalAt(node, true))
+		return r.withHeadComment(n, leaf(r.literalAt(node, true)))
 	case *AnchorNode:
-		return leaf(r.withOwnComment(node.Comment, r.prefixedAt("&"+r.String(node.Name), node.Value, true)))
+		return r.withHeadComment(n,
+			leaf(r.withOwnComment(node.Comment, r.prefixedAt("&"+r.String(node.Name), node.Value, true))))
 	case *TagNode:
-		return leaf(r.withOwnComment(node.Comment, r.prefixedAt(node.Start.Value, node.Value, true)))
+		return r.withHeadComment(n,
+			leaf(r.withOwnComment(node.Comment, r.prefixedAt(node.Start.Value, node.Value, true))))
 	default:
+		// render wraps it already.
 		return r.render(n)
 	}
 }

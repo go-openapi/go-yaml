@@ -30,7 +30,8 @@ import (
 //     The markers used to be here too -- "--- # c1\n" rendered as "---\n" --
 //     and DocumentNode.StartComment and EndComment now claim those.
 //   - written over. setHeadComment assigns, so a head comment landing where one
-//     already stands drops it.
+//     already stands used to drop it. It goes to ast.BaseNode.HeadComment when
+//     the node's other field is taken, and that count is zero.
 //
 // A ceiling rather than a ledger, and it is not allowed to rise. Refused
 // documents are not counted: a comment staged where the parse gave up means
@@ -41,7 +42,7 @@ import (
 // cannot say which of the two moved. It may not fall while the ceilings hold.
 const (
 	staleCommentCeiling  = 2
-	overwroteHeadCeiling = 7
+	overwroteHeadCeiling = 0
 
 	commentedDocuments = 6691
 )

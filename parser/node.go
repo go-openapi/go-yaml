@@ -354,6 +354,8 @@ func setHeadComment(cm *ast.CommentGroupNode, value ast.Node) error {
 	switch n := value.(type) {
 	case *ast.MappingNode:
 		if len(n.Values) != 0 && value.GetComment() == nil {
+			// The entry's own Comment means "above the entry", which is where
+			// this stands, and Renderer.mappingValue writes it there.
 			cm.SetPathNode(n.Values[0].GetPathNode())
 			return n.Values[0].SetComment(cm)
 		}
@@ -361,13 +363,46 @@ func setHeadComment(cm *ast.CommentGroupNode, value ast.Node) error {
 		cm.SetPathNode(n.GetPathNode())
 		return n.SetComment(cm)
 	}
+
 	cm.SetPathNode(value.GetPathNode())
+
+	// Where the node's one comment field is already taken, the head comment
+	// goes to the field that means "above" on every node. SetComment assigns,
+	// so this is exactly where a comment used to be destroyed: "# c1" over
+	// "831 # c2" kept "# c1" and lost the property comment.
+	//
+	// Only there. On most nodes Comment is where a head comment already
+	// renders correctly -- a mapping, a sequence, a block under a key -- and
+	// moving those would change documents that read and write correctly today.
+	// What is left is a node whose Comment means something else and is empty,
+	// such as the anchor of "# c1" over "&a q # c2": that one keeps both texts
+	// and renders them onto one line, which is the renderer's half of this and
+	// not the model's.
+	if head, ok := value.(headCommented); ok && value.GetComment() != nil {
+		return head.SetHeadComment(cm)
+	}
+
 	return value.SetComment(cm)
+}
+
+// headCommented is a node with somewhere to record what stands above it.
+type headCommented interface {
+	SetHeadComment(*ast.CommentGroupNode) error
+	GetHeadComment() *ast.CommentGroupNode
 }
 
 // headCommentTarget is the node setHeadComment writes to, for the probe that
 // counts how often it writes over a comment already there.
 func headCommentTarget(value ast.Node) ast.Node {
+	if _, ok := value.(headCommented); ok {
+		// Written to HeadComment, which nothing else writes, so there is
+		// nothing there to lose.
+		if _, mapping := value.(*ast.MappingNode); !mapping {
+			if _, entry := value.(*ast.MappingValueNode); !entry {
+				return nil
+			}
+		}
+	}
 	if mapping, ok := value.(*ast.MappingNode); ok {
 		if len(mapping.Values) != 0 && value.GetComment() == nil {
 			return mapping.Values[0]

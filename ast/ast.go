@@ -224,6 +224,42 @@ type ScalarNode interface {
 type BaseNode struct {
 	path    *PathNode
 	Comment *CommentGroupNode
+	// HeadComment is what stands above the node, on lines of its own, and it
+	// may hold several: a run of comment lines above one node is one group.
+	//
+	// Comment is the node's other one and does not mean the same thing for
+	// every node. On a MappingNode or a SequenceNode it is the head comment and
+	// the renderer writes it above; on an AnchorNode or a TagNode it is the
+	// comment written beside the property, which Renderer.withOwnComment puts
+	// back at the end of that line; on a bare scalar it is whatever was
+	// attached last. So a node outside a mapping or sequence entry had one
+	// field for two comments and the second write took the first: "# c1" over
+	// "831 # c2" rendered "831 # c1" with the property comment gone, and
+	// "# c1" over "&a q # c2" rendered both onto one line, which the scanner
+	// reads back as a single comment.
+	//
+	// This means one thing everywhere, and [Renderer] writes it above whatever
+	// the node is.
+	HeadComment *CommentGroupNode
+}
+
+// GetHeadComment returns what stands above the node. See [BaseNode.HeadComment].
+func (n *BaseNode) GetHeadComment() *CommentGroupNode {
+	if n == nil {
+		return nil
+	}
+
+	return n.HeadComment
+}
+
+// SetHeadComment records what stands above the node.
+func (n *BaseNode) SetHeadComment(node *CommentGroupNode) error {
+	if n == nil {
+		return nil
+	}
+	n.HeadComment = node
+
+	return nil
 }
 
 func addCommentString(base string, node *CommentGroupNode) string {

@@ -614,6 +614,8 @@ func (d *Decoder) setPathToCommentMap(node ast.Node) {
 }
 
 func (d *Decoder) addHeadOrLineCommentToMap(node ast.Node) {
+	d.addOwnHeadCommentToMap(node)
+
 	sequence, ok := node.(*ast.SequenceNode)
 	if ok {
 		d.addSequenceNodeCommentToMap(sequence)
@@ -653,6 +655,57 @@ func (d *Decoder) addHeadOrLineCommentToMap(node ast.Node) {
 	}
 }
 
+// addOwnHeadCommentToMap records what [ast.BaseNode.HeadComment] holds.
+//
+// The walk below reads GetComment, which does not mean the same thing for every
+// node -- head on a collection, beside the property on an anchor or a tag --
+// and tells the two apart by comparing line numbers. HeadComment means "above
+// this node" whatever the node is, so it needs no such test, and a comment that
+// moved there would otherwise vanish from the map: a sequence's head comment
+// did.
+func (d *Decoder) addOwnHeadCommentToMap(node ast.Node) {
+	if _, sequence := node.(*ast.SequenceNode); sequence {
+		// addSequenceNodeCommentToMap reads it, and against the first element
+		// rather than against the sequence.
+		return
+	}
+	carrier, ok := node.(interface {
+		GetHeadComment() *ast.CommentGroupNode
+	})
+	if !ok {
+		return
+	}
+	group := carrier.GetHeadComment()
+	if group == nil {
+		return
+	}
+
+	texts := make([]string, 0, len(group.Comments))
+	for _, comment := range group.Comments {
+		texts = append(texts, comment.Token.Value)
+	}
+	if len(texts) == 0 {
+		return
+	}
+
+	d.addCommentToMap(headCommentPath(node), HeadComment(texts...))
+}
+
+// headCommentPath is the path a head comment is keyed by: a collection's own
+// head comment belongs to its first key, as the walk below already records it.
+func headCommentPath(node ast.Node) string {
+	switch n := node.(type) {
+	case *ast.MappingNode:
+		if len(n.Values) != 0 {
+			return n.Values[0].Key.GetPath()
+		}
+	case *ast.MappingValueNode:
+		return n.Key.GetPath()
+	}
+
+	return node.GetPath()
+}
+
 // addEntryLineCommentToMap records the comment written on a mapping entry's own
 // ":" line.
 //
@@ -684,7 +737,14 @@ func (d *Decoder) addSequenceNodeCommentToMap(node *ast.SequenceNode) {
 			}
 		}
 	}
+	// A sequence's own comment is the first element's head comment, recorded
+	// against that element. It reaches HeadComment now, Comment having meant
+	// different things on different nodes, and the older field is still read
+	// for a tree built by hand.
 	firstElemHeadComment := node.GetComment()
+	if firstElemHeadComment == nil {
+		firstElemHeadComment = node.GetHeadComment()
+	}
 	if firstElemHeadComment != nil {
 		texts := make([]string, 0, len(firstElemHeadComment.Comments))
 		for _, comment := range firstElemHeadComment.Comments {

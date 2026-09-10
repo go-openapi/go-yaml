@@ -374,3 +374,53 @@ func TestFixedAMarkerKeepsTheCommentClosingItsLine(t *testing.T) {
 		assert.Equal(t, "---\nk: v\n", f.String())
 	})
 }
+
+// TestFixedARootNodeKeepsBothItsComments.
+//
+// A mapping entry and a sequence entry each have two comment fields, so a head
+// comment above one and a line comment after it both survive. A node with no
+// entry around it -- the whole document body -- had one, ast.BaseNode.Comment,
+// and setHeadComment assigns: "# c1" over "831 # c2" kept "# c1" and dropped
+// the property comment, and rendered what was left in the property comment's
+// place.
+//
+// ast.BaseNode.HeadComment means "above this node" for every node type, and
+// Renderer.withHeadComment writes it there. It is written only where Comment is
+// already taken, which is what makes it safe: Comment is where a head comment
+// already renders correctly on a mapping, on a sequence and on a block under a
+// key, and hoisting those moved comments the older field placed correctly.
+//
+// Over the Test Suite and the fuzz seeds, head comments written over fall from
+// 7 to 0 -- see TestNoCommentIsReadAndThenDropped.
+func TestFixedARootNodeKeepsBothItsComments(t *testing.T) {
+	for _, src := range []string{
+		"# c1\n831 # c2\n",
+		"---\n# c1\n831 # c2\n",
+		"# c1\n~ # c2\n",
+		"# c1\n[1, 2] # c2\n",
+		"# c1\n{a: 1} # c2\n",
+		// A head comment is a run of lines, and stays one.
+		"# head line 1\n# head line 2\nvalue # property comment\n",
+		"# head line 1\n# head line 2\n[1, 2] # property comment\n",
+	} {
+		f, err := parser.ParseBytes([]byte(src), parser.WithComments())
+		require.NoErrorf(t, err, "%q", src)
+		assert.Equalf(t, src, f.String(), "%q should render as it was written", src)
+
+		again, err := parser.ParseBytes([]byte(f.String()), parser.WithComments())
+		require.NoErrorf(t, err, "%q", src)
+		assert.Equalf(t, f.String(), again.String(), "%q should settle", src)
+	}
+
+	t.Run("and an entry was always fine", func(t *testing.T) {
+		for _, src := range []string{
+			"# c1\na: 1 # c2\n",
+			"# c1\n- x # c2\n",
+			"k:\n  # h1\n  # h2\n  value: ~ # p\n  ## t1\n  ## t2\n",
+		} {
+			f, err := parser.ParseBytes([]byte(src), parser.WithComments())
+			require.NoErrorf(t, err, "%q", src)
+			assert.Equalf(t, src, f.String(), "%q", src)
+		}
+	})
+}
