@@ -22,37 +22,22 @@ import (
 //
 // ⚠️ It counts one route out of several, and an earlier version of this comment
 // said it counted "the comments the parse read and attached to nothing", which
-// it does not. Twenty-two corpus documents come back from a rendering holding
-// fewer comments than they went in with; two of them show up here. The measure
-// of loss is TestRenderingKeepsTheCommentsItWasGiven in ast/, which counts what
-// comes back rather than how it went missing.
+// it does not.
 //
-// Closing the gap from this side is not possible today. comment.scanned counts
-// every comment read, but a foot comment and one written on a "---" are
-// attached through routes with no counter at all, so scanned minus the attach
-// counters reports four kept comments as lost for every real one. It would take
-// a counter on those two routes, which is parser code and not test code.
+// Twenty-three corpus documents come back from a rendering holding fewer
+// comments than they went in with. Two are here. The other twenty-one were
+// staged and taken, so the parse claimed them and put them on a node, and the
+// renderer does not write them -- a different fault in a different component,
+// correctly absent from a census of the parse. TestRenderingKeepsTheCommentsItWasGiven
+// in ast/ counts what comes back and is the measure of loss; this one says where
+// the parse dropped what it dropped.
 //
-// Two ways it happens, and the counters tell them apart:
-//
-//   - staged and never taken. A comment closing a line is staged against the
-//     token whose line it closes, and the parse takes it when it reaches the
-//     node that token belongs to. One shape is left where nothing does: a
-//     comment written before a flow mapping's ":", as in
-//     `{ "foo" # comment` over `  :bar }`, which renders as `{"foo": bar}`.
-//     The markers used to be here too -- "--- # c1\n" rendered as "---\n" --
-//     and DocumentNode.StartComment and EndComment now claim those.
-//   - written over. setHeadComment assigns, so a head comment landing where one
-//     already stands used to drop it. It goes to ast.BaseNode.HeadComment when
-//     the node's other field is taken, and that count is zero.
-//
-// A ceiling rather than a ledger, and it is not allowed to rise. Refused
-// documents are not counted: a comment staged where the parse gave up means
-// nothing, and counting them said 685 where the answer is 11.
-//
-// commentedDocuments is recorded with them. It follows the corpus and the
-// acceptance line, and the two losses follow the parse; a loss count on its own
-// cannot say which of the two moved. It may not fall while the ceilings hold.
+// comment.staged minus comment.taken separates kept from lost on every route
+// measured: a head comment, a line comment, a foot comment on a block or flow
+// collection, a comment on a "---", and a flow mapping's lead comment, which is
+// the one that is lost. Reaching for comment.scanned instead reports a comment
+// on a "---" as lost when it is kept.
+
 const (
 	staleCommentCeiling  = 2
 	overwroteHeadCeiling = 0
