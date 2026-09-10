@@ -2800,6 +2800,54 @@ func TestFixedAnExplicitKeyInsideAnExplicitKeyReads(t *testing.T) {
 	})
 }
 
+// TestFixedABlankLineBeforeACommentSettles: the first rendering keeps a blank
+// line written before a comment and so does the second.
+//
+// The comment landed in SequenceNode.FootComment, and the three places that
+// render a foot comment wrote it with no gap above it, so the blank the author
+// left went on the second pass. They read blankLineBefore now, as
+// Renderer.mappingValue already did for a head comment. Whether the comment is
+// the sequence's foot or the next entry's head turns on the sequence's
+// indentation, which is why one pass kept the blank and the next did not.
+//
+// Only the rendering ever wobbled -- the value was the same every time and no
+// comment was lost. Found on 2026-09-07 by Style.Chomping's padding, which
+// writes the blank lines a "-" or a clip indicator then discards.
+func TestFixedABlankLineBeforeACommentSettles(t *testing.T) {
+	const src = "a:\n - x\n\n# c\nb: 1\n"
+	wellFormed(t, src)
+
+	once := renderOnce(t, src)
+	assert.Equal(t, "a:\n- x\n\n# c\nb: 1\n", once, "the first rendering keeps the blank line")
+	assert.Equal(t, once, renderOnce(t, once), "and so does the second")
+
+	t.Run("the shapes that always settled still do", func(t *testing.T) {
+		for _, tc := range []struct{ name, src string }{
+			// Already at the renderer's own indentation.
+			{name: "an indentation the renderer does not use", src: "a:\n- x\n\n# c\nb: 1\n"},
+			// A mapping rather than a sequence.
+			{name: "a nested sequence", src: "a:\n b: 1\n\n# c\nc: 2\n"},
+			// Nothing after the comment.
+			{name: "an entry after the comment", src: "a:\n - x\n\n# c\n"},
+		} {
+			once := renderOnce(t, tc.src)
+			assert.Equalf(t, once, renderOnce(t, once), "%s: %q", tc.name, tc.src)
+		}
+	})
+
+	t.Run("the value survives every rendering", func(t *testing.T) {
+		want := map[string]any{"a": []any{"x"}, "b": uint64(1)}
+
+		text := src
+		for range 3 {
+			var got any
+			require.NoError(t, yaml.Unmarshal([]byte(text), &got))
+			assert.Equal(t, want, got)
+			text = renderOnce(t, text)
+		}
+	})
+}
+
 // TestFixedASecondCommentOnAnExplicitKeysColonLineIsKept: a comment on the ":"
 // line of the long form and a head comment under it, and both survive.
 //

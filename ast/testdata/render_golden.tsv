@@ -232,7 +232,7 @@ default	suite/spec-example-2-3-mapping-scalars-to-sequences	6c0a16d9284dde45
 default	suite/spec-example-2-4-sequence-of-mappings	dc0acfb941683276
 default	suite/spec-example-2-5-sequence-of-sequences	c755c7050716563c
 default	suite/spec-example-2-6-mapping-of-mappings	3cdd23fe1cfe37d0
-default	suite/spec-example-2-7-two-documents-in-a-stream	d73a9a9131bf37c7
+default	suite/spec-example-2-7-two-documents-in-a-stream	47d3dc2c2efc532a
 default	suite/spec-example-2-8-play-by-play-feed-from-a-game	ee45f7dd10a1df9d
 default	suite/spec-example-2-9-single-document-with-two-comments	73d5afbd3938a27d
 default	suite/spec-example-5-12-tabs-and-spaces	facb6e952e13158d
@@ -400,7 +400,7 @@ default	suite/yaml-directive-without-document-end-marker	refused
 default	suite/zero-indented-block-scalar	96d20ea23ff3d888
 default	suite/zero-indented-block-scalar-with-line-that-looks-like-a-comment	5cb40cfbe3ac00e8
 default	suite/zero-indented-sequences-in-explicit-mapping-keys	892393d883c8f837
-default	seeds-aggregate	2d45d67ac182ac4db3db0666779b2d81a33389c8feedbd1afc5a053b34b164a8
+default	seeds-aggregate	2d5663640448987e2c35f004c1fb283f6f6a9f10eff39fd363922d419c5b74ef
 nocomments	suite/aliases-in-block-sequence	c3257c52c7ceaed0
 nocomments	suite/aliases-in-explicit-block-mapping	fb58d00e3fefa58e
 nocomments	suite/aliases-in-flow-objects	3ea0a458126c1608
@@ -1038,7 +1038,7 @@ indent4	suite/spec-example-2-3-mapping-scalars-to-sequences	6c0a16d9284dde45
 indent4	suite/spec-example-2-4-sequence-of-mappings	e60a2fff407aeb94
 indent4	suite/spec-example-2-5-sequence-of-sequences	c755c7050716563c
 indent4	suite/spec-example-2-6-mapping-of-mappings	3cdd23fe1cfe37d0
-indent4	suite/spec-example-2-7-two-documents-in-a-stream	d73a9a9131bf37c7
+indent4	suite/spec-example-2-7-two-documents-in-a-stream	47d3dc2c2efc532a
 indent4	suite/spec-example-2-8-play-by-play-feed-from-a-game	ee45f7dd10a1df9d
 indent4	suite/spec-example-2-9-single-document-with-two-comments	73d5afbd3938a27d
 indent4	suite/spec-example-5-12-tabs-and-spaces	e6f355ed0e250a2e
@@ -1206,7 +1206,7 @@ indent4	suite/yaml-directive-without-document-end-marker	refused
 indent4	suite/zero-indented-block-scalar	b5b8de23ec2cc27e
 indent4	suite/zero-indented-block-scalar-with-line-that-looks-like-a-comment	62e85933f841e569
 indent4	suite/zero-indented-sequences-in-explicit-mapping-keys	185788c3e20ba49d
-indent4	seeds-aggregate	0a0eb31c6dbd5273d8aee28d1f37470d579afa3e74be346e49849ed0ec96f5b8
+indent4	seeds-aggregate	2804cbdf74fabfd63401a2ab52746521a9d0b15cf920427f1b8ef456666f1b04
 indentseq	suite/aliases-in-block-sequence	c3257c52c7ceaed0
 indentseq	suite/aliases-in-explicit-block-mapping	fb58d00e3fefa58e
 indentseq	suite/aliases-in-flow-objects	3ea0a458126c1608
@@ -1441,7 +1441,7 @@ indentseq	suite/spec-example-2-3-mapping-scalars-to-sequences	cd66f8736d80230b
 indentseq	suite/spec-example-2-4-sequence-of-mappings	dc0acfb941683276
 indentseq	suite/spec-example-2-5-sequence-of-sequences	c755c7050716563c
 indentseq	suite/spec-example-2-6-mapping-of-mappings	3cdd23fe1cfe37d0
-indentseq	suite/spec-example-2-7-two-documents-in-a-stream	d73a9a9131bf37c7
+indentseq	suite/spec-example-2-7-two-documents-in-a-stream	47d3dc2c2efc532a
 indentseq	suite/spec-example-2-8-play-by-play-feed-from-a-game	ee45f7dd10a1df9d
 indentseq	suite/spec-example-2-9-single-document-with-two-comments	f587bfd90b04dc2a
 indentseq	suite/spec-example-5-12-tabs-and-spaces	facb6e952e13158d
@@ -1609,4 +1609,4 @@ indentseq	suite/yaml-directive-without-document-end-marker	refused
 indentseq	suite/zero-indented-block-scalar	96d20ea23ff3d888
 indentseq	suite/zero-indented-block-scalar-with-line-that-looks-like-a-comment	5cb40cfbe3ac00e8
 indentseq	suite/zero-indented-sequences-in-explicit-mapping-keys	932337a2ed55ff89
-indentseq	seeds-aggregate	1239a5408a73f6a6e61a79b23f8575a426ca52dac64d52d217827b8bfaa5f494
+indentseq	seeds-aggregate	e7e905e812cb4cc031d3c7aa0a7524880f97169d483023c4e38deb7331f7b877

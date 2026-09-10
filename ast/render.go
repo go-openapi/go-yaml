@@ -357,7 +357,7 @@ func (r *Renderer) mapping(n *MappingNode) rendered {
 		lines = append(lines, r.render(value))
 	}
 	if r.comments && n.FootComment != nil {
-		lines = append(lines, r.render(n.FootComment))
+		lines = append(lines, join(sepNone, leaf(blankLineBefore(n.FootComment)), r.render(n.FootComment)))
 	}
 
 	return join(sepBreak, lines...)
@@ -811,7 +811,7 @@ func (r *Renderer) sequence(n *SequenceNode) rendered {
 		lines = append(lines, join(sepNone, leaf(blank+"- "), entry, leaf(comment)))
 	}
 	if r.comments && n.FootComment != nil {
-		lines = append(lines, r.render(n.FootComment))
+		lines = append(lines, join(sepNone, leaf(blankLineBefore(n.FootComment)), r.render(n.FootComment)))
 	}
 
 	return join(sepBreak, lines...)
@@ -1327,7 +1327,7 @@ func (r *Renderer) footComment(c *CommentGroupNode) rendered {
 		return rendered{}
 	}
 
-	return join(sepNone, leaf("\n"), r.render(c))
+	return join(sepNone, leaf("\n"+blankLineBefore(c)), r.render(c))
 }
 
 // blankLineBefore returns the blank line an author left above n, or "".

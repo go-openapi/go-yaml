@@ -58,47 +58,6 @@ func renderOnce(t *testing.T, src string) string {
 // reads, libfyaml 1.0.0b1 reads every one, the reference parser passes them,
 // and grammar.NewRecognizer accepts them.
 
-// TestDefectABlankLineBeforeACommentDoesNotSettle: the first rendering keeps a
-// blank line written before a comment and the second drops it.
-//
-// Only the rendering wobbles -- the value is the same every time and no comment
-// is lost. Found on 2026-09-07 by Style.Chomping's padding, which writes the
-// blank lines a "-" or a clip indicator then discards.
-func TestDefectABlankLineBeforeACommentDoesNotSettle(t *testing.T) {
-	const src = "a:\n - x\n\n# c\nb: 1\n"
-	wellFormed(t, src)
-
-	once := renderOnce(t, src)
-	assert.Equal(t, "a:\n- x\n\n# c\nb: 1\n", once, "the first rendering keeps the blank line")
-	assert.Equal(t, "a:\n- x\n# c\nb: 1\n", renderOnce(t, once), "and the second drops it")
-
-	t.Run("three things are needed", func(t *testing.T) {
-		for _, tc := range []struct{ name, src string }{
-			// Already at the renderer's own indentation.
-			{name: "an indentation the renderer does not use", src: "a:\n- x\n\n# c\nb: 1\n"},
-			// A mapping rather than a sequence.
-			{name: "a nested sequence", src: "a:\n b: 1\n\n# c\nc: 2\n"},
-			// Nothing after the comment.
-			{name: "an entry after the comment", src: "a:\n - x\n\n# c\n"},
-		} {
-			once := renderOnce(t, tc.src)
-			assert.Equalf(t, once, renderOnce(t, once), "without %s it settles: %q", tc.name, tc.src)
-		}
-	})
-
-	t.Run("the value survives every rendering", func(t *testing.T) {
-		want := map[string]any{"a": []any{"x"}, "b": uint64(1)}
-
-		text := src
-		for range 3 {
-			var got any
-			require.NoError(t, yaml.Unmarshal([]byte(text), &got))
-			assert.Equal(t, want, got)
-			text = renderOnce(t, text)
-		}
-	})
-}
-
 // TestDefectABlankLineBeforeASequenceEntryDoesNotSettle is the same wobble with
 // no comment in it, which is what widens the entry above.
 //

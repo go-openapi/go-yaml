@@ -279,25 +279,6 @@ var Ledger = []Divergence{
 		Property: Decode | DecodeTyped | Render,
 		Match:    writesATabBesideAMergeKey,
 	},
-	{
-		Name: "render/a-blank-line-before-a-comment-survives-one-rendering-and-not-the-next",
-		Pin:  "TestDefectABlankLineBeforeACommentDoesNotSettle",
-		Reason: "A blank line written before a comment is kept by the first rendering and dropped by " +
-			"the second, so the rendering never settles. `a:` over ` - x` over a blank line over " +
-			"`# c` over `b: 1` renders to `a:` over `- x` over a blank over `# c` over `b: 1`, and " +
-			"that renders again without the blank.\n\n" +
-			"Three things are needed. The nested sequence has to be written at an indentation the " +
-			"renderer does not use -- already at column 1 it settles on the first pass, dropping the " +
-			"blank straight away. A nested mapping in the same place settles, re-indented and blank " +
-			"kept. And an entry has to follow the comment: without `b: 1` it settles.\n\n" +
-			"Only the rendering wobbles: the value is the same every time, and no comment is lost -- " +
-			"just the blank line before one. So this claims Settle alone.\n\n" +
-			"The predicate is narrower than the defect: it matches the shape Style.Chomping's padding " +
-			"reaches, which is how it was found, and a document that writes a blank line some other " +
-			"way would fail the property rather than be excused. Widen it then.",
-		Property: Settle,
-		Match:    writesABlankLineBeforeAComment,
-	},
 }
 
 // writesAPropertiedKeyBeforeABlockScalar reports whether an entry writes a key
@@ -378,20 +359,6 @@ func writesAsABlockScalar(v Value, st Style) bool {
 	}
 
 	return false
-}
-
-// writesABlankLineBeforeAComment reports whether st pads a block scalar with
-// blank lines in a document that also writes comments above its entries.
-func writesABlankLineBeforeAComment(v Value, st Style) bool {
-	if st.Chomping != ChompPadded {
-		return false
-	}
-
-	if st.Comments != HeadComments && st.Comments != AllComments {
-		return false
-	}
-
-	return holdsAPaddedBlockScalar(v, st)
 }
 
 func holdsAPaddedBlockScalar(v Value, st Style) bool {
