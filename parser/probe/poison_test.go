@@ -19,8 +19,8 @@ import (
 // The two halves of this guard live in different builds and cannot check each
 // other, so each states its own value. See the yamlprobe half in
 // poison_on_test.go. Turning the probe on for everyone would cost the reuse
-// that [arena.Run] exists for -- the parser would allocate a fresh chunk per
-// mapping run -- so the default is worth failing on rather than reading.
+// [arena.Run] was built for: the parser would allocate a fresh chunk per
+// mapping run. Change the default and this test breaks.
 func TestReuseReleasedIsOnWithoutTheTag(t *testing.T) {
 	t.Parallel()
 

@@ -50,10 +50,10 @@ type keyLedger struct {
 	builtKeys []map[string]token.Position
 }
 
-// base is where the keys of the mapping opening now start.
+// base returns the index the keys of the mapping opening now start at.
 func (l *keyLedger) base() int { return l.keys.base() }
 
-// useJSONNames says a key is also compared under the name JSON gives it. See
+// useJSONNames compares a key under the name JSON gives it as well. See
 // [WithJSONCompatible].
 func (l *keyLedger) useJSONNames(on bool) { l.keys.jsonNames = on }
 

@@ -126,8 +126,8 @@ func (t *anchorTable) identityOf(name string) (string, bool) {
 	return at.identity, true
 }
 
-// identity is what an anchor's node resolved to, or the zero value where the
-// name is unknown.
+// identity returns what an anchor's node resolved to, and the zero value for a
+// name the table does not hold.
 func (t *anchorTable) identity(name string) anchorIdentity { return t.identities[name] }
 
 // target returns the node name stands for: what a document of this stream

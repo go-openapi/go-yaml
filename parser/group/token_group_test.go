@@ -139,7 +139,7 @@ func TestATokenGroupReadsItsFirstMember(t *testing.T) {
 }
 
 // TestAnEmptyTokenGroupAnswersZero checks the other end of the same accessors.
-// The grouper builds a group before it knows what goes in it.
+// The grouper builds a group before its members are read.
 func TestAnEmptyTokenGroupAnswersZero(t *testing.T) {
 	t.Parallel()
 

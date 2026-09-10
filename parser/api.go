@@ -33,9 +33,9 @@ type Parser struct {
 	// lineComments holds the comment closing a token's line, against that
 	// token. It is nil where the parse was not asked for comments.
 	lineComments map[*group.TapeToken]*token.Token
-	// opts is what the [Option] arguments to [New] wrote. Nothing changes it
-	// after that: a parse reads its settings, and what a document says about
-	// itself is held apart, in yamlVersion and tagHandles.
+	// opts holds what the [Option] arguments to [New] wrote, and nothing
+	// changes it after that. A document's own %YAML and %TAG declarations go to
+	// yamlVersion and tagHandles instead.
 	opts options
 
 	// yamlVersion is the version the document being read named. Where it names
@@ -45,8 +45,8 @@ type Parser struct {
 	// expands to.
 	tagHandles map[string]string
 
-	// keys says whether the mapping being read has already used a key, and
-	// notes the repeat on that mapping. See keys.go.
+	// keys records the keys of the mapping being read and notes a repeat on
+	// that mapping. See keys.go.
 	keys keyLedger
 
 	// walk is where a Walk stands, and nil for a parse that gathers a tree
@@ -57,9 +57,8 @@ type Parser struct {
 	// begins, innermost last. Anchors nest, so it is a stack.
 	anchorFrom []int32
 
-	// descent is where the parse stands in the document: the entries of the
-	// collections it has open, the entry it is reading, and whether it is
-	// inside a block scalar or a key. See descent.go.
+	// descent holds the collections the parse has open, the entry it is
+	// reading, and the two depths it counts. See descent.go.
 	descent descentState
 
 	// anchors holds the anchors of the document being read, and the aliases

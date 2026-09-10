@@ -104,8 +104,8 @@ func TestRawClearsTheGroup(t *testing.T) {
 	assert.Equal(t, int32(4), tk.Seq())
 }
 
-// TestAGroupAnswersBeforeTheRawToken checks the precedence the type comment
-// states: raw is what the token was read as, Group what it became.
+// TestAGroupAnswersBeforeTheRawToken checks the precedence [group.TapeToken]
+// documents: raw holds what the scanner read, Group what a pass made of it.
 func TestAGroupAnswersBeforeTheRawToken(t *testing.T) {
 	t.Parallel()
 
@@ -123,8 +123,8 @@ func TestAGroupAnswersBeforeTheRawToken(t *testing.T) {
 // TestSeqOfAGroupTokenIsWhereTheGroupBegins checks the fallback in Seq.
 //
 // A pass turns a token into a group by hanging the group on it, and a token the
-// grouping made rather than drew from the stream has no sequence of its own.
-// Its group's first member has one, and that is where the group begins.
+// grouping made instead of drawing from the stream has no sequence of its own.
+// Its group's first member has one, and the group begins there.
 func TestSeqOfAGroupTokenIsWhereTheGroupBegins(t *testing.T) {
 	t.Parallel()
 

@@ -31,13 +31,12 @@ func startsEntry(tk *group.TapeToken) bool {
 	return tk.Type() == token.SequenceEntryType
 }
 
-// descentState is where the parse stands in the document: the entries of the
-// collections it has open, the entry it is reading, and the two things it may
-// be inside.
+// descentState holds the collections the parse has open, the entry it is
+// reading, and the two depths it counts.
 //
 // Every field is a stack or a counter bounded by the document's nesting, and
-// each is pushed and popped by the step that owns it. Mapping, sequence and the
-// property rules all read it, so it is held by the Parser rather than passed
+// the step that owns it pushes and pops it. Mapping, sequence and the property
+// rules all read this state, so the Parser holds it and no step passes it
 // down.
 type descentState struct {
 	// entries holds the entries of every mapping open at this point in the
@@ -110,7 +109,7 @@ func (d *descentState) opensNextEntry(next *group.TapeToken, line int) bool {
 	return true
 }
 
-// entryBase is where the run of the mapping opening now starts.
+// entryBase returns the index the run of the mapping opening now starts at.
 func (d *descentState) entryBase() int { return len(d.entries) }
 
 // holdEntry keeps an entry for the mapping being read.
@@ -124,7 +123,7 @@ func (d *descentState) entriesFrom(base int) []*ast.MappingValueNode { return d.
 // dropEntries takes the run of the mapping that started at base off the stack.
 func (d *descentState) dropEntries(base int) { d.entries = d.entries[:base] }
 
-// seqBase is where the run of the sequence opening now starts.
+// seqBase returns the index the run of the sequence opening now starts at.
 func (d *descentState) seqBase() int { return len(d.seqEntries) }
 
 // holdSeqEntry keeps an entry for the sequence being read.

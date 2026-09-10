@@ -15,8 +15,9 @@ import (
 	"github.com/go-openapi/go-yaml/parser/probe"
 )
 
-// cell is what a Run hands out here. It holds a pointer so that a stale cell
-// read after release is visible as the wrong text, not as a zero int.
+// cell is the type these cases hand out. It carries a string so that a stale
+// read after release shows the wrong text, where a bare int would read as 0
+// whether it was stale or zeroed.
 type cell struct {
 	n    int
 	text string
@@ -50,7 +51,7 @@ func takeCases() iter.Seq[runTestCase] {
 }
 
 // testTakeIsDistinct writes two values through two cells and reads them back,
-// so a Run handing out the same cell twice fails here rather than in a parse.
+// so a Run handing out the same cell twice fails here instead of in a parse.
 func testTakeIsDistinct[T comparable](first, second T) func(*testing.T) {
 	return func(t *testing.T) {
 		t.Parallel()

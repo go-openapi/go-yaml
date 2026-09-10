@@ -8,12 +8,11 @@ import "github.com/go-openapi/go-yaml/ast"
 // Option represents parser's option.
 type Option func(p *Parser)
 
-// options is what the [Option] arguments to [New] wrote.
+// options holds what the [Option] arguments to [New] wrote.
 //
-// They are settings and not state: [Parser.Parse] and [Parser.Walk] read them
-// and never write them, so one parser may read document after document with the
-// same answers. What a document says about itself -- its %YAML version, its TAG
-// handles -- is held on the Parser instead.
+// [Parser.Parse] and [Parser.Walk] read these and never write them, so one
+// parser reads document after document with the same settings. A document's own
+// %YAML version and TAG handles go to the Parser instead.
 type options struct {
 	// onComplete is told about each node as it is finished. EXPERIMENT.
 	onComplete func(ast.Node)
