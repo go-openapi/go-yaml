@@ -5,6 +5,7 @@ package ast_test
 
 import (
 	"bytes"
+	"reflect"
 	"testing"
 
 	"github.com/go-openapi/testify/v2/require"
@@ -184,4 +185,99 @@ func claimsSource(n ast.Node) bool {
 	})
 
 	return found
+}
+
+// TestCloneCopiesEveryFieldThatPointsSomewhere walks a clone against what it
+// copied with reflection and fails on any field the two still share.
+//
+// Clone is written out by hand, one method per node type, so a type that grows a
+// field loses it silently: the struct copy carries the new pointer across and
+// the clone shares it. That happened the day after Clone landed --
+// BaseNode.HeadComment was added and cloneBase went on copying Comment alone,
+// and 17 of the corpus's nodes rendered differently from what they copied. The
+// render census found it; this finds it at the field, which is where the fix is.
+//
+// Three fields are shared on purpose, being references to nodes a clone does not
+// own. They are named here so that adding a fourth is a decision and not an
+// omission.
+func TestCloneCopiesEveryFieldThatPointsSomewhere(t *testing.T) {
+	t.Parallel()
+
+	shared := map[string]string{
+		"AliasNode":    "Target",
+		"DocumentNode": "Anchors",
+	}
+
+	var checked int
+	for _, src := range renderSources(t) {
+		file, err := parser.ParseBytes([]byte(src.text), parser.WithComments())
+		if err != nil {
+			continue
+		}
+		for _, doc := range file.Docs {
+			walkEveryNode(doc, func(n ast.Node) {
+				cloned := ast.Clone(n)
+				require.NotNil(t, cloned)
+				checked++
+
+				original := reflect.ValueOf(n).Elem()
+				copied := reflect.ValueOf(cloned).Elem()
+				require.Equal(t, original.Type(), copied.Type())
+
+				name := original.Type().Name()
+				for i := range original.NumField() {
+					field := original.Type().Field(i)
+					if !field.IsExported() || shared[name] == field.Name {
+						continue
+					}
+					if field.Name == "BaseNode" {
+						assertUnshared(t, src.name, name, original.Field(i), copied.Field(i), shared)
+
+						continue
+					}
+					assertFieldUnshared(t, src.name, name, field.Name, original.Field(i), copied.Field(i))
+				}
+			})
+		}
+	}
+	require.Positive(t, checked)
+	t.Logf("compared %d clones field by field", checked)
+}
+
+// assertUnshared walks an embedded struct's own fields.
+func assertUnshared(t *testing.T, doc, owner string, original, copied reflect.Value, shared map[string]string) {
+	t.Helper()
+
+	for i := range original.NumField() {
+		field := original.Type().Field(i)
+		if !field.IsExported() || shared[original.Type().Name()] == field.Name {
+			continue
+		}
+		assertFieldUnshared(t, doc, owner, field.Name, original.Field(i), copied.Field(i))
+	}
+}
+
+// assertFieldUnshared fails when a field of the clone points where the original
+// points. Anything that is not a reference is carried by the struct copy and is
+// nothing to check.
+func assertFieldUnshared(t *testing.T, doc, owner, field string, original, copied reflect.Value) {
+	t.Helper()
+
+	switch original.Kind() {
+	case reflect.Pointer:
+		if original.IsNil() {
+			return
+		}
+	case reflect.Map, reflect.Slice:
+		if original.IsNil() || original.Len() == 0 {
+			return
+		}
+	default:
+		// Anything else is carried by the struct copy and shares nothing.
+		return
+	}
+
+	require.NotEqualf(t, original.Pointer(), copied.Pointer(),
+		"%s: %s.%s is shared with what it was cloned from -- add it to Clone, or name it in the shared list with a reason",
+		doc, owner, field)
 }
