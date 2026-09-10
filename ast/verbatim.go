@@ -1654,8 +1654,17 @@ func sliceSiblings(values []Node) func(int) Node {
 // [CommentNode.Replace] and taken out with [CommentNode.Remove], both of which
 // keep the token saying which bytes of the source it stands on; assigning
 // another group over it throws that away, and [Node.SetComment] rejects it.
-// Setting a comment where the document wrote none adds one, which is written
-// above the node or at the end of its line by the slot it was put in.
+// Setting a comment where the document wrote none adds one, written above the
+// node or at the end of its line by the slot it was put in.
+//
+// An added comment is never dropped without a word, so expect two errors.
+// [Node.SetComment] refuses a slot that can hold nothing: a null standing for a
+// node the document does not hold, and a [CommentGroupNode], which holds
+// comments and carries none of its own. Where the source leaves no room -- the
+// node shares its line with a comment already, or begins partway along a line --
+// this returns an error naming the node. A tree that parsed cleanly can fail to
+// render once a caller has added a comment to it; [Renderer.Render] lays the
+// same tree out by depth and places the comment.
 //
 // A node the tree no longer holds is a different matter, and this does not see
 // it: the copy runs forward once and writes the nodes in the document's order,
