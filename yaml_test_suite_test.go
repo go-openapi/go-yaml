@@ -69,6 +69,9 @@ const (
 	// document spells it with, and the decoder reads it as the ordered map the
 	// tag names.
 	reasonOrderedMap = "an !!omap decodes to an ordered map, not to the array that spells it"
+	// The fixture keeps the line breaks RFC 2045 permits inside an encoded
+	// stream, and a Base64 writes the canonical text.
+	reasonBinaryCanonical = "a !!binary writes canonical base64, where the fixture keeps its line breaks"
 )
 
 // The two fixtures the decoder does not match, neither of them a defect.
@@ -150,6 +153,14 @@ var decodeLedger = map[string]string{
 	// McGwire":65,...}. JSON specifies no ordering, so neither spelling is the
 	// JSON of an ordered map and the tag's meaning decides which we write.
 	"spec-example-2-26-ordered-mappings": reasonOrderedMap,
+
+	// The value decodes to a codec.Base64, which holds the base64 the document
+	// wrote and writes it back with the line breaks taken out. in.json keeps
+	// them, so the two texts differ by four newlines and stand for the same
+	// bytes. ToJSON has written the canonical form all along --
+	// conformance/json_test.go records the same departure -- and this reads it
+	// through Base64.MarshalJSON, so the two agree with each other now.
+	"construct-binary": reasonBinaryCanonical,
 }
 
 // scoredReasons are the reasons that mean the decoder got something wrong. The

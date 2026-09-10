@@ -1435,6 +1435,13 @@ func (d *Decoder) canDecodeByUnmarshaler(dst reflect.Value) bool {
 	}
 	iface := ptrValue.Interface()
 	switch iface.(type) {
+	case *MapSlice, *MapSliceSeq, *MapItem, *Base64:
+		// Read by the decoder itself, ahead of any interface they satisfy.
+		// [UseJSONUnmarshaler] is the counterpart of [UseJSONMarshaler] and a
+		// last resort the same way: a document reaching a MapSlice through
+		// ToJSON would arrive with JSON's keys, which are strings, and lose
+		// every key this type exists to keep apart.
+		return false
 	case ContextUnmarshaler,
 		Unmarshaler,
 		ContextGoYAMLUnmarshaler,

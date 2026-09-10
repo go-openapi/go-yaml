@@ -6,6 +6,8 @@ package codec
 import (
 	"context"
 	"encoding/base64"
+	"encoding/json"
+	"fmt"
 	"reflect"
 	"strings"
 	"sync"
@@ -143,6 +145,34 @@ func (b Base64) Canonical() string {
 	}
 
 	return out.String()
+}
+
+// MarshalJSON writes the base64 text as a JSON string, in canonical form.
+//
+// JSON has no binary type and no tags, so a Base64 is its text -- which is what
+// [ToJSON] writes for the "!!binary" it came from, and what encoding/json
+// writes for a []byte. The line breaks RFC 2045 permits are taken out, so a
+// value carried through Go comes back on one line.
+func (b Base64) MarshalJSON() ([]byte, error) {
+	return appendJSONString(nil, b.Canonical()), nil
+}
+
+// UnmarshalJSON reads a JSON string as base64 text.
+//
+// The text is validated and not decoded: a Base64 holds the encoded form, and
+// [Base64.Bytes] is where the payload is read. A string that is not RFC 2045
+// base64 is refused here rather than at the first call to Bytes.
+func (b *Base64) UnmarshalJSON(data []byte) error {
+	var text string
+	if err := json.Unmarshal(data, &text); err != nil {
+		return err
+	}
+	if _, err := base64.StdEncoding.DecodeString(Base64(text).Canonical()); err != nil {
+		return fmt.Errorf("cannot read %q as base64: %w", text, err)
+	}
+	*b = Base64(text)
+
+	return nil
 }
 
 var (

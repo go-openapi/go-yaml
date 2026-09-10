@@ -4,8 +4,12 @@
 package codec
 
 import (
+	"bytes"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"iter"
+	"strconv"
 )
 
 // MapItem is one entry of a [MapSlice] or a [MapSliceSeq].
@@ -229,3 +233,156 @@ func (s MapSliceSeq) All() iter.Seq2[any, any] { return MapSlice(s).All() }
 
 // ToMap returns the entries as a Go map, dropping the order.
 func (s MapSliceSeq) ToMap() map[any]any { return MapSlice(s).ToMap() }
+
+// MarshalJSON writes the entries as a JSON object, in the order they stand.
+//
+// JSON specifies no ordering, so nothing carries the order to a reader that
+// takes the object apart into a map -- but the bytes hold it, which is what a
+// caller reading them in order, or diffing them, has. A MapSliceSeq writes the
+// same object: "!!omap" is a YAML tag and JSON has no spelling for it.
+//
+// The keys are named by the encoder in its JSON style, which is the same path
+// [MarshalWithOptions] with [JSON] takes, so a MapSlice and the document it was
+// read from write the same JSON. TestToJSONMatchesTheValueConverter holds that
+// path against [ToJSON] over the whole corpus.
+func (s MapSlice) MarshalJSON() ([]byte, error) {
+	out, err := MarshalWithOptions(s, JSON())
+	if err != nil {
+		return nil, err
+	}
+
+	// The encoder's JSON style writes a space after every ':' and ',', which
+	// encoding/json does not. Compacted here so a MapSlice inside a struct
+	// writes like everything around it.
+	var compact bytes.Buffer
+	if err := json.Compact(&compact, out); err != nil {
+		return nil, err
+	}
+
+	return compact.Bytes(), nil
+}
+
+// UnmarshalJSON reads a JSON object, keeping the order its members were written
+// in.
+//
+// encoding/json reads an object into a map and loses that order; this reads the
+// token stream instead. A nested object becomes a MapSlice too, so the order is
+// kept all the way down, and an array becomes a []any.
+//
+// Numbers resolve the way the YAML decoder resolves them -- uint64, int64 or
+// float64 -- and not encoding/json's float64 for everything. JSON has one
+// number type and YAML has integers, so a value read here and written back as
+// YAML keeps the type the YAML side gives it.
+func (s *MapSlice) UnmarshalJSON(b []byte) error {
+	dec := json.NewDecoder(bytes.NewReader(b))
+	dec.UseNumber()
+
+	v, err := jsonOrdered(dec)
+	if err != nil {
+		return err
+	}
+	m, isMap := v.(MapSlice)
+	if !isMap {
+		return fmt.Errorf("cannot read %s into a MapSlice: %w", jsonKindOf(v), ErrNotAJSONObject)
+	}
+	*s = m
+
+	return nil
+}
+
+// MarshalJSON writes the entries as a JSON object, as [MapSlice.MarshalJSON]
+// does: JSON has no spelling for the "!!omap" that tells the two types apart.
+func (s MapSliceSeq) MarshalJSON() ([]byte, error) { return MapSlice(s).MarshalJSON() }
+
+// UnmarshalJSON reads a JSON object, as [MapSlice.UnmarshalJSON] does.
+func (s *MapSliceSeq) UnmarshalJSON(b []byte) error { return (*MapSlice)(s).UnmarshalJSON(b) }
+
+// ErrNotAJSONObject reports JSON that is not an object handed to a type that
+// holds one.
+var ErrNotAJSONObject = errors.New("not a JSON object")
+
+// jsonOrdered reads one JSON value, building a MapSlice for every object.
+func jsonOrdered(dec *json.Decoder) (any, error) {
+	tk, err := dec.Token()
+	if err != nil {
+		return nil, err
+	}
+
+	delim, isDelim := tk.(json.Delim)
+	if !isDelim {
+		return jsonScalar(tk), nil
+	}
+
+	switch delim {
+	case '{':
+		var m MapSlice
+		for dec.More() {
+			key, err := dec.Token()
+			if err != nil {
+				return nil, err
+			}
+			value, err := jsonOrdered(dec)
+			if err != nil {
+				return nil, err
+			}
+			name, isString := key.(string)
+			if !isString {
+				return nil, fmt.Errorf("a JSON member name is a string: %w", ErrNotAJSONObject)
+			}
+			// A member written twice keeps the last value, where the first
+			// stands, as Set does everywhere else.
+			if err := m.Set(name, value); err != nil {
+				return nil, err
+			}
+		}
+		_, err := dec.Token() // the closing brace
+
+		return m, err
+	case '[':
+		list := []any{}
+		for dec.More() {
+			value, err := jsonOrdered(dec)
+			if err != nil {
+				return nil, err
+			}
+			list = append(list, value)
+		}
+		_, err := dec.Token() // the closing bracket
+
+		return list, err
+	default:
+		return nil, fmt.Errorf("unexpected %q: %w", delim, ErrNotAJSONObject)
+	}
+}
+
+// jsonScalar is what a JSON scalar token is worth, reading a number as the YAML
+// decoder reads one.
+func jsonScalar(tk json.Token) any {
+	number, isNumber := tk.(json.Number)
+	if !isNumber {
+		return tk
+	}
+	if u, err := strconv.ParseUint(number.String(), 10, 64); err == nil {
+		return u
+	}
+	if i, err := strconv.ParseInt(number.String(), 10, 64); err == nil {
+		return i
+	}
+	f, _ := strconv.ParseFloat(number.String(), 64)
+
+	return f
+}
+
+// jsonKindOf names what a JSON document holds, for the error that refuses it.
+func jsonKindOf(v any) string {
+	switch v.(type) {
+	case []any:
+		return "an array"
+	case string:
+		return "a string"
+	case nil:
+		return "null"
+	default:
+		return "a scalar"
+	}
+}
