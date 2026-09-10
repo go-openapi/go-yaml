@@ -6,6 +6,7 @@ package parser
 import (
 	"github.com/go-openapi/go-yaml/ast"
 	"github.com/go-openapi/go-yaml/internal/probe"
+	"github.com/go-openapi/go-yaml/parser/group"
 	"github.com/go-openapi/go-yaml/token"
 )
 
@@ -35,7 +36,7 @@ type context struct {
 	// lineComments holds the comment closing a token's line, against that
 	// token. It is nil where the parse was not asked for comments, and reading a
 	// nil map costs nothing.
-	lineComments map[*tapeToken]*token.Token
+	lineComments map[*group.TapeToken]*token.Token
 	// keyBase is where the keys of the mapping being parsed start in the
 	// parser's key stack. parseMap and parseFlowMap set it; every entry of
 	// that mapping is parsed under it, and a nested mapping raises it.
@@ -67,7 +68,7 @@ type tokenRef struct {
 	// two ref resets in parser.go. Nothing else moves the position. forget does
 	// not: it shifts base and the slice together, so the token at idx keeps its
 	// place and its pointer.
-	cur  *tapeToken
+	cur  *group.TapeToken
 	held bool
 	// drained says the stream behind pull has ended. It sits here to fill the
 	// padding held would leave.
@@ -76,13 +77,13 @@ type tokenRef struct {
 	// is never below base.
 	base int
 	// tokens is the run in hand, or as much of a stream as has been drawn.
-	tokens []*tapeToken
+	tokens []*group.TapeToken
 	// pair is where a group's two members are copied to, so that reading a
 	// group needs no slice of its own. tokens points into it.
-	pair [2]*tapeToken
+	pair [2]*group.TapeToken
 	// pull draws the next token of a stream, where the run is one. It is nil
 	// for a run already in hand.
-	pull func() (*tapeToken, bool)
+	pull func() (*group.TapeToken, bool)
 }
 
 // at returns the i'th token of the run, drawing from the stream where it has to
@@ -90,7 +91,7 @@ type tokenRef struct {
 //
 // The token at idx is answered from cur, which is where about seven of every
 // ten calls land.
-func (r *tokenRef) at(i int) *tapeToken {
+func (r *tokenRef) at(i int) *group.TapeToken {
 	if i == r.idx && r.held {
 		return r.cur
 	}
@@ -104,7 +105,7 @@ func (r *tokenRef) at(i int) *tapeToken {
 // The recording is here and not in at because at has to stay under the inliner's
 // budget: it is called about five times for every token of the document, and a
 // call it cannot avoid costs more than the walk it saves.
-func (r *tokenRef) draw(i int) *tapeToken {
+func (r *tokenRef) draw(i int) *group.TapeToken {
 	for r.pull != nil && !r.drained && i >= r.base+len(r.tokens) {
 		tk, ok := r.pull()
 		if !ok {
@@ -115,7 +116,7 @@ func (r *tokenRef) draw(i int) *tapeToken {
 		r.tokens = append(r.tokens, tk)
 	}
 
-	var tk *tapeToken
+	var tk *group.TapeToken
 	if i >= r.base && i-r.base < len(r.tokens) {
 		tk = r.tokens[i-r.base]
 	}
@@ -164,7 +165,7 @@ func (r *tokenRef) end() int {
 	return r.base + len(r.tokens)
 }
 
-func (c context) currentToken() *tapeToken {
+func (c context) currentToken() *group.TapeToken {
 	return c.tokenRef.at(c.tokenRef.idx)
 }
 
@@ -172,11 +173,11 @@ func (c context) isComment() bool {
 	return c.currentToken().Type() == token.CommentType
 }
 
-func (c context) nextToken() *tapeToken {
+func (c context) nextToken() *group.TapeToken {
 	return c.tokenRef.at(c.tokenRef.idx + 1)
 }
 
-func (c context) nextNotCommentToken() *tapeToken {
+func (c context) nextNotCommentToken() *group.TapeToken {
 	for i := c.tokenRef.idx + 1; ; i++ {
 		tk := c.tokenRef.at(i)
 		if tk == nil {
@@ -194,7 +195,7 @@ func (c context) isTokenNotFound() bool {
 	return c.currentToken() == nil
 }
 
-func (c context) withGroup(p *Parser, g *tokenGroup) context {
+func (c context) withGroup(p *Parser, g *group.TokenGroup) context {
 	c.depth++
 	c.tokenRef = p.tokenRefAt(c.depth, g)
 
@@ -203,7 +204,7 @@ func (c context) withGroup(p *Parser, g *tokenGroup) context {
 
 // withPull returns a context reading a run drawn one token at a time, rather
 // than one already in hand.
-func (c context) withPull(p *Parser, pull func() (*tapeToken, bool)) context {
+func (c context) withPull(p *Parser, pull func() (*group.TapeToken, bool)) context {
 	c.depth++
 	c.tokenRef = p.tokenRefFrom(c.depth, pull)
 	p.body = c.tokenRef
@@ -284,7 +285,7 @@ func (p *Parser) newContext() context {
 
 // lineComment returns the comment closing the line tk stands on, or nil where
 // there is none. A stream read without [WithComments] has none at all.
-func (c context) lineComment(tk *tapeToken) *token.Token {
+func (c context) lineComment(tk *group.TapeToken) *token.Token {
 	return c.lineComments[tk]
 }
 
@@ -295,7 +296,7 @@ func (c context) lineComment(tk *tapeToken) *token.Token {
 // reaches that node. Dropping it there releases the token it points at: left in
 // place, every commented token of the document stays reachable until the parse
 // ends, which on an annotated specification is one token in every fifty.
-func (c context) takeLineComment(tk *tapeToken) *token.Token {
+func (c context) takeLineComment(tk *group.TapeToken) *token.Token {
 	if tk == nil {
 		return nil
 	}
@@ -336,11 +337,11 @@ func (c context) next() bool {
 // The token is not put into the run. The descent reads forward from where it
 // stands and never asks for a token again, so the only reader of this one is
 // the node built from it, which holds it directly.
-func (c context) insertNullToken(tk *tapeToken) *tapeToken {
+func (c context) insertNullToken(tk *group.TapeToken) *group.TapeToken {
 	return c.createImplicitNullToken(tk)
 }
 
-func (c context) addNullValueToken(tk *tapeToken) *tapeToken {
+func (c context) addNullValueToken(tk *group.TapeToken) *group.TapeToken {
 	nullToken := c.createImplicitNullToken(tk)
 	rawTk := nullToken.RawToken()
 
@@ -353,15 +354,15 @@ func (c context) addNullValueToken(tk *tapeToken) *tapeToken {
 	return nullToken
 }
 
-func (c context) createImplicitNullToken(base *tapeToken) *tapeToken {
+func (c context) createImplicitNullToken(base *group.TapeToken) *group.TapeToken {
 	pos := base.RawToken().Position
 	pos.Column++
 	tk := token.New("null", " null", pos)
 	tk.Type = token.ImplicitNullType
-	return newSynthetic(tk)
+	return group.NewSynthetic(tk)
 }
 
-func (c context) addToken(tk *tapeToken) {
+func (c context) addToken(tk *group.TapeToken) {
 	ref := c.tokenRef
 	ref.end() // the token goes after everything the run holds
 	ref.tokens = append(ref.tokens, tk)

@@ -5,6 +5,8 @@ package parser_test
 
 import (
 	"fmt"
+	"iter"
+	"slices"
 	"strings"
 	"testing"
 
@@ -17,6 +19,8 @@ import (
 
 // TestAnchoredTargetSurvivesTheRewind reads [ast.AliasNode.Target] on a walk,
 // with the anchor and the alias moved further and further apart.
+
+// TODO: replace this wall of comment by more precisely target comments inside the test and just an example.
 //
 // ⚠️ The distance is the whole test. A walk hands an entry's cells out again
 // once the entry has gone over, so an anchored node read back without the pin
@@ -26,12 +30,9 @@ import (
 // "a: &x {k: 1, z: 9}" over "b: *x" reads correctly, and one line of filler
 // between them reads "{b: 0, z: 9}".
 func TestAnchoredTargetSurvivesTheRewind(t *testing.T) {
-	for _, anchored := range []struct{ name, text, want string }{
-		{"an integer", "&x 1", "1"},
-		{"a string", "&x hello", "hello"},
-		{"a flow sequence", "&x [1, 2]", "[1, 2]"},
-		{"a flow mapping", "&x {k: 1, z: 9}", "{k: 1, z: 9}"},
-	} {
+	t.Parallel()
+
+	for anchored := range anchoredTestCases() {
 		t.Run(anchored.name, func(t *testing.T) {
 			for _, entries := range []int{0, 1, 4, 64, 500} {
 				var got string
@@ -44,12 +45,25 @@ func TestAnchoredTargetSurvivesTheRewind(t *testing.T) {
 					got = target.String()
 				}}
 
-				_, err := parser.New(parser.WithOmitNodePaths()).Walk(betweenAnchorAndAlias(anchored.text, entries), &v)
+				p := parser.New(parser.WithOmitNodePaths())
+				_, err := p.Walk(betweenAnchorAndAlias(anchored.text, entries), &v)
 				require.NoError(t, err)
 				assert.Equalf(t, anchored.want, got, "%d entries between the anchor and the alias", entries)
+				// TODO: assert the node
 			}
 		})
 	}
+}
+
+type anchoredTestCase struct{ name, text, want string }
+
+func anchoredTestCases() iter.Seq[anchoredTestCase] {
+	return slices.Values([]anchoredTestCase{
+		{"an integer", "&x 1", "1"},
+		{"a string", "&x hello", "hello"},
+		{"a flow sequence", "&x [1, 2]", "[1, 2]"},
+		{"a flow mapping", "&x {k: 1, z: 9}", "{k: 1, z: 9}"},
+	})
 }
 
 // betweenAnchorAndAlias writes an anchor, then entries mapping entries whose
@@ -66,8 +80,7 @@ func betweenAnchorAndAlias(anchor string, entries int) []byte {
 	return []byte(b.String())
 }
 
-// aliasTargetReader hands every alias it is given to onAlias, as a consumer
-// expanding one would.
+// aliasTargetReader hands every alias it is given to onAlias, as a consumer expanding one would.
 type aliasTargetReader struct {
 	onAlias func(target ast.Node)
 }

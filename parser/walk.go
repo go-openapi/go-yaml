@@ -438,13 +438,13 @@ func (p *Parser) readTo(ctx context) {
 	p.tokens.SetTail(int(tk.Seq()))
 
 	if p.reader != nil {
-		p.reader.g.release(p.tokens.Released(), p.releasedByTape)
+		p.reader.g.Release(p.tokens.Released(), p.releasedByTape)
 	}
 }
 
 // releasedByTape answers whether the tape has given up the chunk holding seq.
 //
-// It stands in for the grouper's own liveness: a cell of its own belongs to a
+// It stands in for the group.Grouper's own liveness: a cell of its own belongs to a
 // run of the stream, and the tape knows what it still holds -- the tail it has
 // been given, what holdRun saved, and what an anchor pinned.
 func (p *Parser) releasedByTape(seq int32) bool {
@@ -453,6 +453,7 @@ func (p *Parser) releasedByTape(seq int32) bool {
 	return !held
 }
 
+/*
 // saveHere keeps the chunks holding [from, to] without holding the tape first,
 // for a run whose extent is already known.
 func (p *Parser) saveHere(from, to int32) {
@@ -461,6 +462,7 @@ func (p *Parser) saveHere(from, to int32) {
 	}
 	p.tokens.Save(int(from), int(to))
 }
+*/
 
 // holdRun keeps the chunk holding seq while a construct that began there is
 // read. releaseRun gives it back, and every caller defers one against the other.

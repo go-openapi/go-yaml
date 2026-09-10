@@ -1,9 +1,16 @@
 // SPDX-FileCopyrightText: Copyright 2025 go-swagger maintainers
 // SPDX-License-Identifier: Apache-2.0
 
-package parser
+package arena
 
-// runArena hands out cells of one type and takes a chunk back once nothing
+import "github.com/go-openapi/go-yaml/parser/probe"
+
+const (
+	MinGroupBlock = 16
+	MaxGroupBlock = 256
+)
+
+// Run hands out cells of one type and takes a chunk back once nothing
 // reads the tokens its cells stand for.
 //
 // The grouper mints a cell per mapping entry -- the leaf keyBefore displaces,
@@ -19,13 +26,13 @@ package parser
 //
 // ⚠️ Only a walk releases. A parse that gathers a tree holds every node it
 // builds, and a key node built through keyBefore points into a cell.
-type runArena[T any] struct {
+type Run[T any] struct {
 	// filling is the chunk being handed out of, full the chunks behind it in
 	// the order they were filled, and free what release took back.
 	filling *runChunk[T]
 	full    []*runChunk[T]
 	free    []*runChunk[T]
-	size    int
+	Size    int
 }
 
 // runChunk is one allocation of cells, and the newest token any of them stands
@@ -53,8 +60,8 @@ type runChunk[T any] struct {
 	unknown bool
 }
 
-// take returns a cell for the token standing at seq.
-func (a *runArena[T]) take(seq int32) *T {
+// Take returns a cell for the token standing at seq.
+func (a *Run[T]) Take(seq int32) *T {
 	if a.filling == nil || a.filling.used == len(a.filling.cells) {
 		a.advance()
 	}
@@ -75,11 +82,11 @@ func (a *runArena[T]) take(seq int32) *T {
 
 // advance retires the chunk in hand and takes the next, filling one release
 // gave back before allocating.
-func (a *runArena[T]) advance() {
+func (a *Run[T]) advance() {
 	if a.filling != nil {
 		a.full = append(a.full, a.filling)
 	}
-	if n := len(a.free); n > 0 && reuseReleased {
+	if n := len(a.free); n > 0 && probe.ReuseReleased { // TODO: defaut (no tag should actually be true and we should have an explicit probe section here
 		a.filling = a.free[n-1]
 		a.free = a.free[:n-1]
 		a.filling.used, a.filling.checked, a.filling.unknown = 0, 0, false
@@ -93,12 +100,12 @@ func (a *runArena[T]) advance() {
 	}
 }
 
-func (a *runArena[T]) blockSize() int {
-	if a.size <= 0 {
-		return minGroupBlock
+func (a *Run[T]) blockSize() int {
+	if a.Size <= 0 {
+		return MinGroupBlock
 	}
 
-	return a.size
+	return a.Size
 }
 
 // release takes back every chunk at the front that dead reports finished with,
@@ -108,7 +115,7 @@ func (a *runArena[T]) blockSize() int {
 // property of a chunk on its own, and the one chunk holding a cell whose
 // sequence could not be read would otherwise keep every chunk behind it. The
 // list is short once this is working, which is the point of it.
-func (a *runArena[T]) release(dead func(seq int32) bool, poison func([]T)) {
+func (a *Run[T]) Release(dead func(seq int32) bool, poison func([]T)) {
 	var kept int
 	for _, c := range a.full {
 		if c.unknown || !c.finished(dead) {

@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: Copyright 2025 go-swagger maintainers
 // SPDX-License-Identifier: Apache-2.0
 
-package parser
+package group
 
 import (
 	"reflect"
@@ -30,7 +30,7 @@ import (
 // stage reads what an earlier one made, so groupAnchorsWithScalarTags sees an
 // anchor group rather than the '&' that opened it.
 //
-// A stage hands a token on by calling [grouper.pass] with its own index, which
+// A stage hands a token on by calling [Grouper.pass] with its own index, which
 // is what keeps this a pipeline without a buffer between every pair of stages.
 
 // stage reads one token and hands on what it has settled, which may be nothing,
@@ -38,15 +38,15 @@ import (
 //
 // at is the stage's own place in the chain: to hand a token to the next stage
 // it calls g.pass(at, tk, out).
-type stage func(g *grouper, at int, tk *tapeToken, out []*tapeToken) []*tapeToken
+type stage func(g *Grouper, at int, tk *TapeToken, out []*TapeToken) []*TapeToken
 
 // flusher hands on whatever a stage still holds when the stream ends.
-type flusher func(g *grouper, at int, out []*tapeToken) []*tapeToken
+type flusher func(g *Grouper, at int, out []*TapeToken) []*TapeToken
 
 // stages is the chain, in the order the passes ran, and flushers matches it one
 // for one with a nil where a stage holds nothing.
 //
-// Both are filled in init: a stage hands on through grouper.pass, which reads
+// Both are filled in init: a stage hands on through Grouper.pass, which reads
 // stages, so naming them here directly is a cycle the compiler refuses.
 var (
 	stages   []stage
@@ -72,19 +72,19 @@ func init() {
 	}
 }
 
-// feed walks tk through the chain and appends what comes out the far end.
+// Feed walks tk through the chain and appends what comes out the far end.
 //
 // A token no stage is waiting for and no stage reads goes straight out. That is
 // the common case by a distance: a String, an Integer, a Float or a Bool means
 // nothing to any stage, and those are 53.8% of the tokens in the workloads.
 // Walking the chain to learn as much costs a call and a type test at every
 // stage; the table answers it once.
-func (g *grouper) feed(tk *tapeToken, out []*tapeToken) []*tapeToken {
+func (g *Grouper) Feed(tk *TapeToken, out []*TapeToken) []*TapeToken {
 	if g.settled() && !readsByAStage(tk.Type()) {
 		// stageLineComments notes every token it hands on, a comment closing a
 		// line attaching to whatever stood before it. Taking the short way
 		// still owes it that note.
-		g.lineComment = tk
+		g.LineComment = tk
 
 		return g.pass(alwaysLooking-1, tk, out)
 	}
@@ -110,10 +110,10 @@ const alwaysLooking = 3
 // one is still waiting the token has to walk the chain, whatever its type: it
 // may be what the waiting stage was waiting for.
 //
-// g.lineComment is not among them. It is not a token held back but a note of
+// g.LineComment is not among them. It is not a token held back but a note of
 // the one last handed on, so that a comment closing a line finds what it
 // closes; feed keeps it up to date on the short way.
-func (g *grouper) settled() bool {
+func (g *Grouper) settled() bool {
 	return g.blockHeader == nil &&
 		g.prop == propNone &&
 		g.explicit.key == nil && g.directive.head == nil
@@ -147,7 +147,7 @@ func readsByAStage(typ token.Type) bool {
 // it, and a token arriving from the scanner carries none.
 
 // pass hands tk to the stage after at, or to the output where at is the last.
-func (g *grouper) pass(at int, tk *tapeToken, out []*tapeToken) []*tapeToken {
+func (g *Grouper) pass(at int, tk *TapeToken, out []*TapeToken) []*TapeToken {
 	next := at + 1
 	if next >= len(stages) {
 		return append(out, tk)
@@ -156,8 +156,8 @@ func (g *grouper) pass(at int, tk *tapeToken, out []*tapeToken) []*tapeToken {
 	return stages[next](g, next, tk, out)
 }
 
-// finish empties the chain, each stage's leavings walking the stages after it.
-func (g *grouper) finish(out []*tapeToken) []*tapeToken {
+// Finish empties the chain, each stage's leavings walking the stages after it.
+func (g *Grouper) Finish(out []*TapeToken) []*TapeToken {
 	for i, flush := range flushers {
 		if flush != nil {
 			out = flush(g, i, out)
@@ -168,20 +168,20 @@ func (g *grouper) finish(out []*tapeToken) []*tapeToken {
 }
 
 // stageLineComments gives a comment closing a token's line to that token.
-func stageLineComments(g *grouper, at int, tk *tapeToken, out []*tapeToken) []*tapeToken {
-	if tk.Type() == token.CommentType && g.lineComment != nil && g.lineComment.Line() == tk.Line() {
-		g.setLineComment(g.lineComment, tk.RawToken())
+func stageLineComments(g *Grouper, at int, tk *TapeToken, out []*TapeToken) []*TapeToken {
+	if tk.Type() == token.CommentType && g.LineComment != nil && g.LineComment.Line() == tk.Line() {
+		g.setLineComment(g.LineComment, tk.RawToken())
 
 		return out
 	}
 
-	g.lineComment = tk
+	g.LineComment = tk
 
 	return g.pass(at, tk, out)
 }
 
 // stageBlockScalars joins a "|" or ">" header with the content that follows it.
-func stageBlockScalars(g *grouper, at int, tk *tapeToken, out []*tapeToken) []*tapeToken {
+func stageBlockScalars(g *Grouper, at int, tk *TapeToken, out []*TapeToken) []*TapeToken {
 	if g.blockHeader != nil {
 		// Whatever follows the header is its content, read as it stands: a
 		// second "|" is content, not another header.
@@ -207,7 +207,7 @@ func stageBlockScalars(g *grouper, at int, tk *tapeToken, out []*tapeToken) []*t
 
 // flushBlockScalars hands on a header that ended the stream, which has no
 // content and so is a group of one.
-func flushBlockScalars(g *grouper, at int, out []*tapeToken) []*tapeToken {
+func flushBlockScalars(g *Grouper, at int, out []*TapeToken) []*TapeToken {
 	if g.blockHeader == nil {
 		return out
 	}
@@ -223,7 +223,7 @@ func flushBlockScalars(g *grouper, at int, out []*tapeToken) []*tapeToken {
 // The body is read to its end and grouped on its own, which is the one place
 // the grouping re-enters itself: a body may hold a mapping, and a mapping's
 // keys are found by the stage after this one.
-func stageExplicitKeys(g *grouper, at int, tk *tapeToken, out []*tapeToken) []*tapeToken {
+func stageExplicitKeys(g *Grouper, at int, tk *TapeToken, out []*TapeToken) []*TapeToken {
 	if g.explicit.key != nil {
 		if !endsExplicitKeyBody(tk, g.explicit.keyColumn, g.explicit.keyInFlow,
 			g.explicit.body, &g.explicit.bodyDepth) {
@@ -280,7 +280,7 @@ func stageExplicitKeys(g *grouper, at int, tk *tapeToken, out []*tapeToken) []*t
 
 // buildExplicitKey groups the '?' with the body read for it, and clears the
 // state so the next '?' starts empty.
-func (g *grouper) buildExplicitKey() (*tapeToken, bool) {
+func (g *Grouper) buildExplicitKey() (*TapeToken, bool) {
 	grouped, err := g.groupExplicitKeyBody(g.explicit.body)
 	if err != nil {
 		g.fail(err)
@@ -292,7 +292,7 @@ func (g *grouper) buildExplicitKey() (*tapeToken, bool) {
 	// which is what a lone '?' on its line, and a '?' whose ':' is on the next
 	// one, are. The group holds the indicator alone and the parser supplies the
 	// null.
-	members := []*tapeToken{g.explicit.key}
+	members := []*TapeToken{g.explicit.key}
 	if len(grouped) == 0 {
 		members = append(members, g.implicitNullKeyToken(g.explicit.key))
 	}
@@ -304,7 +304,7 @@ func (g *grouper) buildExplicitKey() (*tapeToken, bool) {
 }
 
 // emitExplicitKey groups the '?' with the body read for it and hands it on.
-func (g *grouper) emitExplicitKey(at int, out []*tapeToken) ([]*tapeToken, bool) {
+func (g *Grouper) emitExplicitKey(at int, out []*TapeToken) ([]*TapeToken, bool) {
 	grouped, ok := g.buildExplicitKey()
 	if !ok {
 		return out, false
@@ -338,7 +338,7 @@ func (g *grouper) emitExplicitKey(at int, out []*tapeToken) ([]*tapeToken, bool)
 // and read them again at each level: 20,000 nested '?' took 4.05s that way and
 // take 180ms this way, and 100,000 take 693ms where the recursion would have
 // taken minutes.
-func (g *grouper) groupExplicitKeysIn(in []*tapeToken) []*tapeToken {
+func (g *Grouper) groupExplicitKeysIn(in []*TapeToken) []*TapeToken {
 	out := g.out(len(in))
 
 	// The stage's own state belongs to the '?' being read around this one, so
@@ -353,7 +353,7 @@ func (g *grouper) groupExplicitKeysIn(in []*tapeToken) []*tapeToken {
 
 	// hold gives tk to the innermost body still open, or to the output where
 	// none is.
-	hold := func(tk *tapeToken) {
+	hold := func(tk *TapeToken) {
 		if n := len(open); n > 0 {
 			open[n-1].body = append(open[n-1].body, tk)
 
@@ -461,7 +461,7 @@ func inFlowMapping(open []explicitKey, run explicitKey, flowDepth int) bool {
 }
 
 // flushExplicitKeys groups a '?' whose body ran to the end of the stream.
-func flushExplicitKeys(g *grouper, at int, out []*tapeToken) []*tapeToken {
+func flushExplicitKeys(g *Grouper, at int, out []*TapeToken) []*TapeToken {
 	if g.explicit.key == nil {
 		return out
 	}
@@ -477,7 +477,7 @@ func flushExplicitKeys(g *grouper, at int, out []*tapeToken) []*tapeToken {
 // make a key of. What may be handed on is handed on after every token, which is
 // keyWindow.release, and what may not is what a flow collection still open
 // reaches back over.
-func stageMapKeysByValue(g *grouper, at int, tk *tapeToken, out []*tapeToken) []*tapeToken {
+func stageMapKeysByValue(g *Grouper, at int, tk *TapeToken, out []*TapeToken) []*TapeToken {
 	w := &g.keys
 
 	switch tk.Type() {
@@ -499,15 +499,15 @@ func stageMapKeysByValue(g *grouper, at int, tk *tapeToken, out []*tapeToken) []
 		w.held = append(w.held, tk)
 	}
 
-	if len(w.held) > g.heldHigh {
-		g.heldHigh = len(w.held)
+	if len(w.held) > g.HeldHigh {
+		g.HeldHigh = len(w.held)
 	}
 
 	return g.releaseWindow(at, w, out)
 }
 
 // releaseWindow hands on what the window no longer needs to keep.
-func (g *grouper) releaseWindow(at int, w *keyWindow, out []*tapeToken) []*tapeToken {
+func (g *Grouper) releaseWindow(at int, w *keyWindow, out []*TapeToken) []*TapeToken {
 	keep := w.keepFrom()
 	if keep == 0 {
 		// Nothing may be handed on: a flow collection is open and may yet close
@@ -531,7 +531,7 @@ func (g *grouper) releaseWindow(at int, w *keyWindow, out []*tapeToken) []*tapeT
 
 // flushMapKeysByValue hands on the window: no ':' is coming to make a key of
 // any of it.
-func flushMapKeysByValue(g *grouper, at int, out []*tapeToken) []*tapeToken {
+func flushMapKeysByValue(g *Grouper, at int, out []*TapeToken) []*TapeToken {
 	w := &g.keys
 	for _, held := range w.held {
 		out = g.pass(at, held, out)
@@ -554,7 +554,7 @@ func stageNameAt(i int) string {
 
 // stageDirectives joins a '%' with the name and values on its line, and holds
 // the comments written under it until the '---' that ends the directives.
-func stageDirectives(g *grouper, at int, tk *tapeToken, out []*tapeToken) []*tapeToken {
+func stageDirectives(g *Grouper, at int, tk *TapeToken, out []*TapeToken) []*TapeToken {
 	d := &g.directive
 	if d.head != nil {
 		switch {
@@ -596,12 +596,12 @@ func stageDirectives(g *grouper, at int, tk *tapeToken, out []*tapeToken) []*tap
 }
 
 // emitDirective hands on the directive and the comments written under it.
-func (g *grouper) emitDirective(at int, out []*tapeToken) []*tapeToken {
+func (g *Grouper) emitDirective(at int, out []*TapeToken) []*TapeToken {
 	d := &g.directive
 
 	head := d.name
 	if len(d.values) != 0 {
-		head = g.group(TokenGroupDirective, append([]*tapeToken{d.name}, d.values...))
+		head = g.group(TokenGroupDirective, append([]*TapeToken{d.name}, d.values...))
 	}
 	out = g.pass(at, head, out)
 	for _, comment := range d.comments {
@@ -614,7 +614,7 @@ func (g *grouper) emitDirective(at int, out []*tapeToken) []*tapeToken {
 
 // flushDirectives refuses a directive the stream ended on: a directive names
 // what follows it, and nothing does.
-func flushDirectives(g *grouper, _ int, out []*tapeToken) []*tapeToken {
+func flushDirectives(g *Grouper, _ int, out []*TapeToken) []*TapeToken {
 	switch d := &g.directive; {
 	case d.head != nil && d.name == nil:
 		g.fail(yamlerrors.NewSyntax("undefined directive value", d.head.RawToken()))

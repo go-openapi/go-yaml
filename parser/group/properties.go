@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: Copyright 2025 go-swagger maintainers
 // SPDX-License-Identifier: Apache-2.0
 
-package parser
+package group
 
 import (
 	yamlerrors "github.com/go-openapi/go-yaml/errors"
@@ -80,7 +80,7 @@ func (s propState) String() string {
 // A state that cannot use the token hands on what it was holding and the token
 // is read again from propNone, which is the loop here rather than a fall
 // through a switch.
-func stageProperties(g *grouper, at int, tk *tapeToken, out []*tapeToken) []*tapeToken {
+func stageProperties(g *Grouper, at int, tk *TapeToken, out []*TapeToken) []*TapeToken {
 	for {
 		next, again := g.property(at, tk, out)
 		out = next
@@ -91,7 +91,7 @@ func stageProperties(g *grouper, at int, tk *tapeToken, out []*tapeToken) []*tap
 }
 
 // property takes one step, and says whether tk has still to be read.
-func (g *grouper) property(at int, tk *tapeToken, out []*tapeToken) ([]*tapeToken, bool) {
+func (g *Grouper) property(at int, tk *TapeToken, out []*TapeToken) ([]*TapeToken, bool) {
 	switch g.prop {
 	case propNone:
 		switch tk.Type() {
@@ -144,7 +144,7 @@ func (g *grouper) property(at int, tk *tapeToken, out []*tapeToken) ([]*tapeToke
 
 // tagOrLetGo joins a tag with what it tags, or hands the tag on where it tags
 // nothing -- a tag on its own line, or one before a flow indicator.
-func (g *grouper) tagOrLetGo(at int, tk *tapeToken, out []*tapeToken) ([]*tapeToken, bool) {
+func (g *Grouper) tagOrLetGo(at int, tk *TapeToken, out []*TapeToken) ([]*TapeToken, bool) {
 	if tk.Type() == token.SequenceEntryType && g.tag.Line() == tk.Line() {
 		// 8.2.1 keeps a block sequence off the line a node's properties are
 		// written on, which anchorNames says for an anchor. A tag was left to
@@ -182,7 +182,7 @@ func (g *grouper) tagOrLetGo(at int, tk *tapeToken, out []*tapeToken) ([]*tapeTo
 
 // anchorNames settles what an anchor names: a scalar on its line, a tag that
 // will name one, or nothing, in which case the anchor names the empty node.
-func (g *grouper) anchorNames(at int, tk *tapeToken, out []*tapeToken) ([]*tapeToken, bool) {
+func (g *Grouper) anchorNames(at int, tk *TapeToken, out []*TapeToken) ([]*TapeToken, bool) {
 	sameLine := g.name.Line() == tk.Line()
 
 	switch {
@@ -214,7 +214,7 @@ func (g *grouper) anchorNames(at int, tk *tapeToken, out []*tapeToken) ([]*tapeT
 
 // anchorNamesTagged settles an anchor and a tag standing together: the scalar
 // after them belongs to both.
-func (g *grouper) anchorNamesTagged(at int, tk *tapeToken, out []*tapeToken) ([]*tapeToken, bool) {
+func (g *Grouper) anchorNamesTagged(at int, tk *TapeToken, out []*TapeToken) ([]*TapeToken, bool) {
 	grouped, ok := g.taggedScalar(g.tag, tk)
 	if !ok {
 		return out, false
@@ -238,7 +238,7 @@ func (g *grouper) anchorNamesTagged(at int, tk *tapeToken, out []*tapeToken) ([]
 
 // taggedAnchorNames settles a tag standing before an anchor: the scalar after
 // them is what the anchor names, and the tag tags that.
-func (g *grouper) taggedAnchorNames(at int, tk *tapeToken, out []*tapeToken) ([]*tapeToken, bool) {
+func (g *Grouper) taggedAnchorNames(at int, tk *TapeToken, out []*TapeToken) ([]*TapeToken, bool) {
 	if g.name.Line() == tk.Line() && tk.Type() == token.SequenceEntryType {
 		// As when no tag stands before the anchor: what follows an anchor on
 		// its own line is what the anchor names, and a '-' opens an entry
@@ -279,7 +279,7 @@ func (g *grouper) taggedAnchorNames(at int, tk *tapeToken, out []*tapeToken) ([]
 }
 
 // flushProperties hands on what the stream ended in the middle of.
-func flushProperties(g *grouper, at int, out []*tapeToken) []*tapeToken {
+func flushProperties(g *Grouper, at int, out []*TapeToken) []*TapeToken {
 	switch g.prop {
 	case propSawAnchor:
 		g.fail(yamlerrors.NewSyntax("undefined anchor name", g.anchor.RawToken()))

@@ -11,6 +11,8 @@ import (
 	"testing"
 )
 
+// TODO: harness should be a shared internal testing package
+
 // corpusDir holds the workloads the measurements in this package read. They
 // belong to the analysis module, which cannot reach an unexported method here,
 // so the files are opened by path rather than through its loader.

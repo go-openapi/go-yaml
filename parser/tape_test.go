@@ -11,6 +11,7 @@ import (
 
 	"github.com/go-openapi/go-yaml/internal/scanner"
 	"github.com/go-openapi/go-yaml/internal/tokenarena"
+	"github.com/go-openapi/go-yaml/parser/group"
 	"github.com/go-openapi/go-yaml/token"
 )
 
@@ -28,25 +29,25 @@ func TestTokenArenaOnTheCorpus(t *testing.T) {
 	ordinary := readCorpus(t, corpusDir)
 	stress := readCorpus(t, filepath.Join(corpusDir, "stress"))
 
-	for _, group := range []struct {
+	for _, g := range []struct {
 		name string
 		set  []corpusDoc
 	}{
 		{"corpus", ordinary},
 		{"stress", stress},
 	} {
-		t.Logf("--- %s ---", group.name)
+		t.Logf("--- %s ---", g.name)
 		t.Logf("%-19s %8s %6s %8s %10s %10s %9s %8s",
 			"document", "tokens", "chunk", "lag", "allocated", "recycled", "live high", "held")
 
-		for _, w := range group.set {
+		for _, w := range g.set {
 			tokens := tokenize(t, string(w.data))
 			size := tokenarena.SizeFor(len(w.data))
 
 			for _, lag := range []int{64, 1024, 16384} {
-				arena := tokenarena.New[tapeToken](size)
+				arena := tokenarena.New[group.TapeToken](size)
 				for i, tk := range tokens {
-					held, _ := arena.Add(tapeToken{})
+					held, _ := arena.Add(group.TapeToken{})
 					held.Raw(*tk, i)
 					arena.SetTail(max(0, i-lag))
 				}
@@ -70,9 +71,9 @@ func TestTokenArenaHoldsTheLagAndNoMore(t *testing.T) {
 
 	const lag, size = 1024, 128
 
-	arena := tokenarena.New[tapeToken](size)
+	arena := tokenarena.New[group.TapeToken](size)
 	for i, tk := range tokens {
-		held, _ := arena.Add(tapeToken{})
+		held, _ := arena.Add(group.TapeToken{})
 		held.Raw(*tk, i)
 		arena.SetTail(max(0, i-lag))
 	}

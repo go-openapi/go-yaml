@@ -8,13 +8,19 @@ import (
 	"sort"
 	"testing"
 
+	"github.com/go-openapi/testify/v2/require"
+
 	"github.com/go-openapi/go-yaml/internal/scanner"
 	"github.com/go-openapi/go-yaml/internal/tokenarena"
+	"github.com/go-openapi/go-yaml/parser/group"
 )
 
-// TestGroupCensus counts what the grouper builds, by kind.
+// TestGroupCensus counts what the group.Grouper builds, by kind.
 //
-// grouper.nextGroup is 33.3% of a parse's churn and grouper.token another
+// TODO: explain what it does, not the result (probably outdated anyways).
+// EXPLAIN WHERE THE FILE IS or provide a standard file from the corpus.
+//
+// group.Grouper.nextGroup is 33.3% of a parse's churn and group.Grouper.token another
 // 17.1%, so the question that decides where to start is which groups those
 // bytes are. Set CENSUS_YAML to a document to run it.
 func TestGroupCensus(t *testing.T) {
@@ -23,19 +29,17 @@ func TestGroupCensus(t *testing.T) {
 		t.Skip("set CENSUS_YAML=<file> to run the census")
 	}
 	src, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	var s scanner.Scanner
 	s.Init(src)
 
-	raw := tokenarena.New[tapeToken](tokenarena.SizeFor(len(src)))
+	raw := tokenarena.New[group.TapeToken](tokenarena.SizeFor(len(src)))
 	raw.Pin()
 
 	r := newReader(&s, raw, len(src)/8, false)
 
-	var tks []*tapeToken
+	var tks []*group.TapeToken
 	for {
 		if _, ok, err := r.openDocument(); err != nil {
 			t.Fatal(err)
@@ -54,13 +58,13 @@ func TestGroupCensus(t *testing.T) {
 		}
 	}
 
-	byType := map[tokenGroupType]int{}
-	members := map[tokenGroupType]int{}
+	byType := map[group.TokenGroupType]int{}
+	members := map[group.TokenGroupType]int{}
 	var groups, wrappers int
 
-	var walk func(tk *tapeToken)
-	seen := map[*tokenGroup]bool{}
-	walk = func(tk *tapeToken) {
+	var walk func(tk *group.TapeToken)
+	seen := map[*group.TokenGroup]bool{}
+	walk = func(tk *group.TapeToken) {
 		if tk == nil {
 			return
 		}
@@ -73,7 +77,7 @@ func TestGroupCensus(t *testing.T) {
 		groups++
 		byType[g.Type]++
 
-		var pair [2]*tapeToken
+		var pair [2]*group.TapeToken
 		ms := g.Members(&pair)
 		members[g.Type] += len(ms)
 		for _, m := range ms {
@@ -84,7 +88,7 @@ func TestGroupCensus(t *testing.T) {
 		walk(tk)
 	}
 
-	kinds := make([]tokenGroupType, 0, len(byType))
+	kinds := make([]group.TokenGroupType, 0, len(byType))
 	for k := range byType {
 		kinds = append(kinds, k)
 	}

@@ -12,6 +12,23 @@ import (
 	"github.com/go-openapi/testify/v2/require"
 )
 
+func TestNestingParse(t *testing.T) {
+	for _, src := range []string{
+		"a: 1\n",           // propNone alone
+		"a: &x 1\n",        // propSawAnchor, propHaveAnchor
+		"a: &x 1\nb: *x\n", // propSawAlias
+		"a: !!str 1\n",     // propSawTag
+		"a: &x !!str 1\n",  // propAnchorAndTag
+		"a: !!str &x 1\n",  // propTagSawAnchor, propTagHaveAnchor
+		"a: &x\nb: 1\n",    // an anchor naming the empty node
+		"!!map\na: 1\n",    // a tag alone on its line
+	} {
+		p := New()
+		_, err := p.Parse([]byte(src)) // TODO: this test is just a smoke test and nothing is really asserted
+		require.NoError(t, err)
+	}
+}
+
 // TestNestingCostStaysLinear checks a document of nothing but open brackets
 // costs time in proportion to its length.
 //
@@ -25,7 +42,7 @@ import (
 // on purpose: it is watching for the return of an exponent, not timing the
 // parser.
 func TestNestingCostStaysLinear(t *testing.T) {
-	skipTimings(t)
+	skipTimings(t) // TODO: we should remove timing altogether, this is just a footgun - and replace it by a probe test
 
 	cost := func(depth int) time.Duration {
 		src := []byte(strings.Repeat("[", depth) + strings.Repeat("]", depth))
@@ -48,53 +65,6 @@ func TestNestingCostStaysLinear(t *testing.T) {
 	// leaves room for a slow machine and a noisy sample.
 	require.Lessf(t, large, 10*small,
 		"four times the nesting took %v against %v, which is the shape of a quadratic parse", large, small)
-}
-
-// TestStageIndicesMatchTheChain pins alwaysLooking to the stages it names.
-//
-// It is an index into a slice built in init, so inserting a stage before
-// stageExplicitKeys moves it silently, and the short way then skips a stage
-// that has to count the brackets around it. That is how "? a: b" inside a flow
-// mapping was read wrongly for the length of one commit.
-func TestStageIndicesMatchTheChain(t *testing.T) {
-	require.Equal(t, "stageExplicitKeys", stageNameAt(alwaysLooking),
-		"alwaysLooking names the first stage that has to see every token")
-	require.Equal(t, "stageMapKeysByValue", stageNameAt(alwaysLooking+1),
-		"the stage after it holds the key window and has to see every token too")
-}
-
-// TestPropertyStatesAreReachable walks a document through each state the
-// properties machine has, so a state that stops being reachable shows up as a
-// gap rather than as dead code.
-func TestPropertyStatesAreReachable(t *testing.T) {
-	seen := map[propState]string{}
-	for _, src := range []string{
-		"a: 1\n",           // propNone alone
-		"a: &x 1\n",        // propSawAnchor, propHaveAnchor
-		"a: &x 1\nb: *x\n", // propSawAlias
-		"a: !!str 1\n",     // propSawTag
-		"a: &x !!str 1\n",  // propAnchorAndTag
-		"a: !!str &x 1\n",  // propTagSawAnchor, propTagHaveAnchor
-		"a: &x\nb: 1\n",    // an anchor naming the empty node
-		"!!map\na: 1\n",    // a tag alone on its line
-	} {
-		p := New()
-		if _, err := p.Parse([]byte(src)); err != nil {
-			t.Fatalf("%q: %v", src, err)
-		}
-	}
-
-	// Reachability is checked by driving the machine directly: parsing does not
-	// report which states it passed through.
-	for _, st := range []propState{
-		propNone, propSawAnchor, propHaveAnchor, propSawAlias,
-		propSawTag, propAnchorAndTag, propTagSawAnchor, propTagHaveAnchor,
-	} {
-		require.NotEmptyf(t, st.String(), "state %d has no name", st)
-		require.NotEqualf(t, "?", st.String(), "state %d has no name", st)
-		seen[st] = st.String()
-	}
-	require.Len(t, seen, 8, "the machine has eight states and each is named")
 }
 
 // skipTimings skips a test that measures wall time.

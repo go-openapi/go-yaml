@@ -5,11 +5,14 @@ package parser_test
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 	"reflect"
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/go-openapi/testify/v2/require"
 
 	"github.com/go-openapi/go-yaml/ast"
 	"github.com/go-openapi/go-yaml/expressions"
@@ -1096,18 +1099,16 @@ func TestNewLineChar(t *testing.T) {
 		"cr.yml",
 		"crlf.yml",
 	} {
-		ast, err := parser.ParseFile(filepath.Join("testdata", f))
-		if err != nil {
-			t.Fatalf("%+v", err)
-		}
+		buf, err := os.ReadFile(filepath.Join("testdata", f))
+		require.NoError(t, err)
+		ast, err := parser.ParseBytes(buf)
+		require.NoError(t, err)
 		actual := fmt.Sprintf("%v", ast)
 		expect := `a: "a"
 
 b: 1
 `
-		if expect != actual {
-			t.Fatalf("unexpected result\nexpected:\n%s\ngot:\n%s", expect, actual)
-		}
+		require.Equalf(t, expect, actual, "unexpected result\nexpected:\n%s\ngot:\n%s", expect, actual)
 	}
 }
 

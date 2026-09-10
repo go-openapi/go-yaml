@@ -8,6 +8,8 @@ import (
 	"github.com/go-openapi/go-yaml/internal/probe"
 	"github.com/go-openapi/go-yaml/internal/scanner"
 	"github.com/go-openapi/go-yaml/internal/tokenarena"
+	runarena "github.com/go-openapi/go-yaml/parser/arena"
+	"github.com/go-openapi/go-yaml/parser/group"
 	"github.com/go-openapi/go-yaml/token"
 )
 
@@ -25,12 +27,12 @@ import (
 // says the document has run out, then [reader.closeDocument].
 type reader struct {
 	scan  *scanner.Scanner
-	arena *tokenarena.TokenArena[tapeToken]
-	g     grouper
+	arena *tokenarena.TokenArena[group.TapeToken]
+	g     group.Grouper
 
 	// out holds what the grouping has handed out and the descent has not yet
 	// taken, from at onward.
-	out []*tapeToken
+	out []*group.TapeToken
 	at  int
 
 	// seq is the place on the tape of the next token read.
@@ -44,7 +46,7 @@ type reader struct {
 
 	// afterHeader and afterEnd hold the marker just read, so the token after it
 	// can be held against the line the marker stands on.
-	afterHeader, afterEnd *tapeToken
+	afterHeader, afterEnd *group.TapeToken
 	// taken says a token was read at all, since an empty stream is one empty
 	// document and a "..." closing nothing is none. ended says the document
 	// being read has run out. tail says the empty document at the end of a
@@ -64,19 +66,19 @@ type reader struct {
 //
 // estimate is how many tokens the document is guessed to hold; it sizes the
 // grouping's own buffers and nothing else.
-func newReader(scan *scanner.Scanner, arena *tokenarena.TokenArena[tapeToken], estimate int, keepComments bool) *reader {
+func newReader(scan *scanner.Scanner, arena *tokenarena.TokenArena[group.TapeToken], estimate int, keepComments bool) *reader {
 	r := &reader{
 		scan:         scan,
 		arena:        arena,
-		g:            newGrouper(estimate),
-		out:          make([]*tapeToken, 0, minGroupBlock),
+		g:            group.NewGrouper(estimate),
+		out:          make([]*group.TapeToken, 0, runarena.MinGroupBlock),
 		keepComments: keepComments,
 	}
 	if keepComments {
 		// Taken here rather than where the first comment arrives, so that the
 		// parser may hold the same map from the start. A parse dropping
 		// comments takes none.
-		r.g.lineComments = make(map[*tapeToken]*token.Token)
+		r.g.LineComments = make(map[*group.TapeToken]*token.Token)
 	}
 
 	return r
@@ -84,7 +86,7 @@ func newReader(scan *scanner.Scanner, arena *tokenarena.TokenArena[tapeToken], e
 
 // peek returns the next grouped token without taking it, grouping another run
 // where it has none in hand.
-func (r *reader) peek() (*tapeToken, error) {
+func (r *reader) peek() (*group.TapeToken, error) {
 	for r.at >= len(r.out) {
 		if r.drained {
 			return nil, nil
@@ -98,7 +100,7 @@ func (r *reader) peek() (*tapeToken, error) {
 }
 
 // take returns the next grouped token and steps past it.
-func (r *reader) take() (*tapeToken, error) {
+func (r *reader) take() (*group.TapeToken, error) {
 	tk, err := r.peek()
 	if err != nil || tk == nil {
 		return nil, err
@@ -111,7 +113,7 @@ func (r *reader) take() (*tapeToken, error) {
 
 // openDocument begins the next document and returns the "---" that opened it,
 // where there is one. ok is false at the end of the stream.
-func (r *reader) openDocument() (*tapeToken, bool, error) {
+func (r *reader) openDocument() (*group.TapeToken, bool, error) {
 	// A "..." standing where nothing is open closes nothing: l-yaml-stream
 	// admits a run of suffixes and only the first closes anything.
 	for {
@@ -170,7 +172,7 @@ func (r *reader) openDocument() (*tapeToken, bool, error) {
 //
 // It is what the descent's run pulls from, so it answers with a token or
 // nothing and keeps a refusal in err for the parse to find.
-func (r *reader) bodyToken() (*tapeToken, bool) {
+func (r *reader) bodyToken() (*group.TapeToken, bool) {
 	if r.ended || r.err != nil {
 		return nil, false
 	}
@@ -222,9 +224,9 @@ func (r *reader) bodyToken() (*tapeToken, bool) {
 
 // isDirectiveToken reports whether tk is a directive, grouped with its values
 // or with its name alone.
-func isDirectiveToken(tk *tapeToken) bool {
+func isDirectiveToken(tk *group.TapeToken) bool {
 	switch tk.GroupType() {
-	case TokenGroupDirective, TokenGroupDirectiveName:
+	case group.TokenGroupDirective, group.TokenGroupDirectiveName:
 		return true
 	default:
 		return false
@@ -233,7 +235,7 @@ func isDirectiveToken(tk *tapeToken) bool {
 
 // closeDocument finishes the document being read and returns the "..." that
 // ended it, where there is one.
-func (r *reader) closeDocument() (*tapeToken, error) {
+func (r *reader) closeDocument() (*group.TapeToken, error) {
 	if r.err != nil {
 		return nil, r.err
 	}
@@ -266,7 +268,7 @@ func (r *reader) judgeNext() error {
 	switch {
 	case r.afterHeader != nil && r.afterHeader.Line() == tk.Line():
 		switch tk.GroupType() {
-		case TokenGroupMapKey, TokenGroupMapKeyValue:
+		case group.TokenGroupMapKey, group.TokenGroupMapKeyValue:
 			return yamlerrors.NewSyntax("value cannot be placed after document separator", tk.RawToken())
 		}
 		if tk.Type() == token.SequenceEntryType {
@@ -306,8 +308,8 @@ func (r *reader) fill() error {
 			if r.finished {
 				break
 			}
-			r.drained, r.finished, r.g.ending = true, true, true
-			r.out = r.g.finish(r.out)
+			r.drained, r.finished, r.g.Ending = true, true, true
+			r.out = r.g.Finish(r.out)
 
 			break
 		}
@@ -321,7 +323,7 @@ func (r *reader) fill() error {
 			continue
 		}
 
-		held, _ := r.arena.Add(tapeToken{})
+		held, _ := r.arena.Add(group.TapeToken{})
 		held.Raw(tk, r.seq)
 		r.seq++
 
@@ -337,12 +339,12 @@ func (r *reader) fill() error {
 			return yamlerrors.NewSyntax("found an invalid token", held.RawToken())
 		}
 
-		r.out = r.g.feed(held, r.out)
+		r.out = r.g.Feed(held, r.out)
 	}
 
 	if err := r.scan.Err(); err != nil {
 		return err
 	}
 
-	return r.g.err
+	return r.g.Err
 }

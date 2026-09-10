@@ -4,6 +4,8 @@
 package parser_test
 
 import (
+	"iter"
+	"slices"
 	"testing"
 
 	"github.com/go-openapi/testify/v2/assert"
@@ -26,10 +28,56 @@ import (
 // it belongs to document 1. codec.ToJSON counted the bodies it saw instead and
 // converted that mapping as though it were the first document.
 func TestStepDocumentNumbersTheStream(t *testing.T) {
-	for _, tc := range []struct {
-		name, src string
-		want      []int
-	}{
+	t.Parallel()
+
+	for tc := range walkDocumentTestCases() {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			v := &documentSpy{}
+			_, err := parser.New(parser.WithOmitNodePaths()).Walk([]byte(tc.src), v)
+			require.NoErrorf(t, err, "%q", tc.src)
+
+			assert.Equal(t, tc.want, v.bodies, "%q: the document each body belongs to", tc.src)
+		})
+	}
+
+	t.Run("the count indexes the documents the walk returns", func(t *testing.T) {
+		t.Parallel()
+
+		// Step.Document and File.Docs have to agree, or a caller holding both
+		// cannot line them up.
+		const src = "%YAML 1.2\n---\na: 1\n---\n---\nc: 3\n"
+
+		v := &documentSpy{}
+		f, err := parser.New(parser.WithOmitNodePaths()).Walk([]byte(src), v)
+		require.NoError(t, err)
+
+		assert.Len(t, f.Docs, 4, "a directive, its document, an empty one, and c")
+		assert.Equal(t, []int{0, 1, 3}, v.bodies, "the empty document hands over nothing")
+	})
+
+	t.Run("everything a document holds carries the document's own number", func(t *testing.T) {
+		t.Parallel()
+
+		v := &everyStep{}
+		_, err := parser.New(parser.WithOmitNodePaths()).Walk([]byte("---\n---\nb: [1, 2]\n"), v)
+		require.NoError(t, err)
+
+		require.NotEmpty(t, v.seen, "the mapping and what it holds went over")
+		for _, got := range v.seen {
+			assert.Equal(t, 1, got, "a node nested in document 1 belongs to document 1")
+		}
+	})
+}
+
+type walkDocumentTestCase struct {
+	name, src string
+	want      []int
+}
+
+func walkDocumentTestCases() iter.Seq[walkDocumentTestCase] {
+	return slices.Values([]walkDocumentTestCase{
 		{
 			name: "an empty first document still counts",
 			src:  "---\n---\nb: 2\n",
@@ -71,38 +119,6 @@ func TestStepDocumentNumbersTheStream(t *testing.T) {
 			src:  "a: 1\n",
 			want: []int{0},
 		},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			v := &documentSpy{}
-			_, err := parser.New(parser.WithOmitNodePaths()).Walk([]byte(tc.src), v)
-			require.NoErrorf(t, err, "%q", tc.src)
-
-			assert.Equal(t, tc.want, v.bodies, "%q: the document each body belongs to", tc.src)
-		})
-	}
-
-	t.Run("the count indexes the documents the walk returns", func(t *testing.T) {
-		// Step.Document and File.Docs have to agree, or a caller holding both
-		// cannot line them up.
-		const src = "%YAML 1.2\n---\na: 1\n---\n---\nc: 3\n"
-
-		v := &documentSpy{}
-		f, err := parser.New(parser.WithOmitNodePaths()).Walk([]byte(src), v)
-		require.NoError(t, err)
-
-		assert.Len(t, f.Docs, 4, "a directive, its document, an empty one, and c")
-		assert.Equal(t, []int{0, 1, 3}, v.bodies, "the empty document hands over nothing")
-	})
-
-	t.Run("everything a document holds carries the document's own number", func(t *testing.T) {
-		v := &everyStep{}
-		_, err := parser.New(parser.WithOmitNodePaths()).Walk([]byte("---\n---\nb: [1, 2]\n"), v)
-		require.NoError(t, err)
-
-		require.NotEmpty(t, v.seen, "the mapping and what it holds went over")
-		for _, got := range v.seen {
-			assert.Equal(t, 1, got, "a node nested in document 1 belongs to document 1")
-		}
 	})
 }
 

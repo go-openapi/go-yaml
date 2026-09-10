@@ -3,7 +3,7 @@
 
 //go:build yamlprobe
 
-package parser
+package arena
 
 import (
 	"fmt"
@@ -12,11 +12,6 @@ import (
 
 	"github.com/go-openapi/go-yaml/internal/probe"
 )
-
-// reuseReleased is false here: a released chunk is kept aside rather than
-// filled again, so a cell read after it went back still carries the stamp and
-// every read is reported, not only the ones that beat the reuse.
-const reuseReleased = false
 
 // deadSeq and deadGroup stamp a cell the grouper has handed back.
 //
@@ -31,7 +26,7 @@ const reuseReleased = false
 // with this type.
 const (
 	deadSeq   int32          = -0x0BAD
-	deadGroup tokenGroupType = 0xFF
+	deadGroup TokenGroupType = 0xFF
 )
 
 // readerOf names the parser frames that led to a read of a released cell. Only
@@ -56,15 +51,15 @@ func readerOf() string {
 	return b.String()
 }
 
-func poisonLeaves(cells []tapeToken) {
+func poisonLeaves(cells []TapeToken) {
 	probe.Count("grouper.leaf.released", int64(len(cells)))
 	for i := range cells {
 		cells[i].seq = deadSeq
 	}
 }
 
-func poisonGroups(cells []tokenGroup) {
-	probe.Count("grouper.group.released", int64(len(cells)))
+func poisonGroups(cells []TokenGroup) {
+	probe.Count("grouper.released", int64(len(cells)))
 	for i := range cells {
 		cells[i].Type = deadGroup
 	}
@@ -72,13 +67,13 @@ func poisonGroups(cells []tokenGroup) {
 
 // reviveLeaf and reviveGroup do nothing: take zeroes the cell it hands out, so
 // a cell in use again carries no stamp.
-func reviveLeaf(_ *tapeToken) {}
+func reviveLeaf(_ *TapeToken) {}
 
-func reviveGroup(_ *tokenGroup) {}
+func reviveGroup(_ *TokenGroup) {}
 
 // checkLive records that t was read after the grouper handed its cell back. at
 // names the accessor, so the report says what the read was after.
-func (t *tapeToken) checkLive(at string) {
+func (t *TapeToken) checkLive(at string) {
 	if t == nil || t.seq != deadSeq {
 		return
 	}
@@ -87,11 +82,11 @@ func (t *tapeToken) checkLive(at string) {
 	})
 }
 
-func (g *tokenGroup) checkLive(at string) {
+func (g *TokenGroup) checkLive(at string) {
 	if g == nil || g.Type != deadGroup {
 		return
 	}
-	probe.Check("grouper.group.live", false, func() string {
+	probe.Check("grouper.live", false, func() string {
 		var keyed int32
 		if g.a != nil {
 			keyed = g.a.seq

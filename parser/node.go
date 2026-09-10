@@ -6,6 +6,7 @@ package parser
 import (
 	"github.com/go-openapi/go-yaml/ast"
 	"github.com/go-openapi/go-yaml/internal/probe"
+	"github.com/go-openapi/go-yaml/parser/group"
 	"github.com/go-openapi/go-yaml/token"
 )
 
@@ -15,7 +16,7 @@ func newMappingNode(ctx context, tk *token.Token, isFlow bool, values []*ast.Map
 	return node, nil
 }
 
-func newMappingValueNode(ctx context, colonTk, entryTk *tapeToken, key ast.MapKeyNode, value ast.Node) (*ast.MappingValueNode, error) {
+func newMappingValueNode(ctx context, colonTk, entryTk *group.TapeToken, key ast.MapKeyNode, value ast.Node) (*ast.MappingValueNode, error) {
 	node := ctx.arena.MappingValue(colonTk.RawToken(), key, value)
 	node.SetPathNode(ctx.path)
 	node.CollectEntry = entryTk.RawToken()
@@ -64,7 +65,7 @@ func newMappingValueNode(ctx context, colonTk, entryTk *tapeToken, key ast.MapKe
 	return node, nil
 }
 
-func newMappingKeyNode(ctx context, tk *tapeToken) (*ast.MappingKeyNode, error) {
+func newMappingKeyNode(ctx context, tk *group.TapeToken) (*ast.MappingKeyNode, error) {
 	node := ast.MappingKey(tk.RawToken())
 	node.SetPathNode(ctx.path)
 
@@ -85,7 +86,7 @@ func newMappingKeyNode(ctx context, tk *tapeToken) (*ast.MappingKeyNode, error) 
 // A group reports the type it opens with, so a type test cannot tell the
 // wrapper from the '?' it wraps. Only the identity can, which is what the walk
 // down First() follows.
-func takeIndicatorComment(ctx context, tk *tapeToken) *token.Token {
+func takeIndicatorComment(ctx context, tk *group.TapeToken) *token.Token {
 	for tk != nil && tk.Group != nil && tk.Group.Len() > 0 {
 		first := tk.Group.First()
 		if first == tk || first.Type() != token.MappingKeyType {
@@ -106,7 +107,7 @@ func takeIndicatorComment(ctx context, tk *tapeToken) *token.Token {
 // and only pointer identity tells the two apart. The descent through First()
 // asks at each step; without it a flow mapping lost every comment written on
 // its opening line.
-func openerComment(ctx context, tk *tapeToken) *ast.CommentGroupNode {
+func openerComment(ctx context, tk *group.TapeToken) *ast.CommentGroupNode {
 	for tk != nil {
 		if cm := ctx.takeLineComment(tk); cm != nil {
 			comment := ast.CommentGroup([]*token.Token{cm})
@@ -127,7 +128,7 @@ func openerComment(ctx context, tk *tapeToken) *ast.CommentGroupNode {
 	return nil
 }
 
-func newAnchorNode(ctx context, tk *tapeToken) (*ast.AnchorNode, error) {
+func newAnchorNode(ctx context, tk *group.TapeToken) (*ast.AnchorNode, error) {
 	node := ast.Anchor(tk.RawToken())
 	node.SetPathNode(ctx.path)
 	if err := setLineComment(ctx, node, tk); err != nil {
@@ -136,7 +137,7 @@ func newAnchorNode(ctx context, tk *tapeToken) (*ast.AnchorNode, error) {
 	return node, nil
 }
 
-func newAliasNode(ctx context, tk *tapeToken) (*ast.AliasNode, error) {
+func newAliasNode(ctx context, tk *group.TapeToken) (*ast.AliasNode, error) {
 	node := ast.Alias(tk.RawToken())
 	node.SetPathNode(ctx.path)
 	if err := setLineComment(ctx, node, tk); err != nil {
@@ -145,7 +146,7 @@ func newAliasNode(ctx context, tk *tapeToken) (*ast.AliasNode, error) {
 	return node, nil
 }
 
-func newDirectiveNode(ctx context, tk *tapeToken) (*ast.DirectiveNode, error) {
+func newDirectiveNode(ctx context, tk *group.TapeToken) (*ast.DirectiveNode, error) {
 	node := ast.Directive(tk.RawToken())
 	node.SetPathNode(ctx.path)
 	if err := setLineComment(ctx, node, tk); err != nil {
@@ -154,7 +155,7 @@ func newDirectiveNode(ctx context, tk *tapeToken) (*ast.DirectiveNode, error) {
 	return node, nil
 }
 
-func newMergeKeyNode(ctx context, tk *tapeToken) (*ast.MergeKeyNode, error) {
+func newMergeKeyNode(ctx context, tk *group.TapeToken) (*ast.MergeKeyNode, error) {
 	node := ast.MergeKey(tk.RawToken())
 	node.SetPathNode(ctx.path)
 	if err := setLineComment(ctx, node, tk); err != nil {
@@ -163,7 +164,7 @@ func newMergeKeyNode(ctx context, tk *tapeToken) (*ast.MergeKeyNode, error) {
 	return node, nil
 }
 
-func newNullNode(ctx context, tk *tapeToken) (*ast.NullNode, error) {
+func newNullNode(ctx context, tk *group.TapeToken) (*ast.NullNode, error) {
 	node := ctx.arena.Null(tk.RawToken())
 	node.SetPathNode(ctx.path)
 	if err := setLineComment(ctx, node, tk); err != nil {
@@ -172,7 +173,7 @@ func newNullNode(ctx context, tk *tapeToken) (*ast.NullNode, error) {
 	return node, nil
 }
 
-func newBoolNode(ctx context, tk *tapeToken) (*ast.BoolNode, error) {
+func newBoolNode(ctx context, tk *group.TapeToken) (*ast.BoolNode, error) {
 	node := ctx.arena.Bool(tk.RawToken())
 	node.SetPathNode(ctx.path)
 	if err := setLineComment(ctx, node, tk); err != nil {
@@ -181,7 +182,7 @@ func newBoolNode(ctx context, tk *tapeToken) (*ast.BoolNode, error) {
 	return node, nil
 }
 
-func newIntegerNode(ctx context, tk *tapeToken) (*ast.IntegerNode, error) {
+func newIntegerNode(ctx context, tk *group.TapeToken) (*ast.IntegerNode, error) {
 	node := ctx.arena.Integer(tk.RawToken())
 	node.SetPathNode(ctx.path)
 	if err := setLineComment(ctx, node, tk); err != nil {
@@ -190,7 +191,7 @@ func newIntegerNode(ctx context, tk *tapeToken) (*ast.IntegerNode, error) {
 	return node, nil
 }
 
-func newFloatNode(ctx context, tk *tapeToken) (*ast.FloatNode, error) {
+func newFloatNode(ctx context, tk *group.TapeToken) (*ast.FloatNode, error) {
 	node := ctx.arena.Float(tk.RawToken())
 	node.SetPathNode(ctx.path)
 	if err := setLineComment(ctx, node, tk); err != nil {
@@ -199,7 +200,7 @@ func newFloatNode(ctx context, tk *tapeToken) (*ast.FloatNode, error) {
 	return node, nil
 }
 
-func newInfinityNode(ctx context, tk *tapeToken) (*ast.InfinityNode, error) {
+func newInfinityNode(ctx context, tk *group.TapeToken) (*ast.InfinityNode, error) {
 	node := ast.Infinity(tk.RawToken())
 	node.SetPathNode(ctx.path)
 	if err := setLineComment(ctx, node, tk); err != nil {
@@ -208,7 +209,7 @@ func newInfinityNode(ctx context, tk *tapeToken) (*ast.InfinityNode, error) {
 	return node, nil
 }
 
-func newNanNode(ctx context, tk *tapeToken) (*ast.NanNode, error) {
+func newNanNode(ctx context, tk *group.TapeToken) (*ast.NanNode, error) {
 	node := ast.Nan(tk.RawToken())
 	node.SetPathNode(ctx.path)
 	if err := setLineComment(ctx, node, tk); err != nil {
@@ -217,7 +218,7 @@ func newNanNode(ctx context, tk *tapeToken) (*ast.NanNode, error) {
 	return node, nil
 }
 
-func newStringNode(ctx context, tk *tapeToken) (*ast.StringNode, error) {
+func newStringNode(ctx context, tk *group.TapeToken) (*ast.StringNode, error) {
 	node := ctx.arena.String(tk.RawToken())
 	node.SetPathNode(ctx.path)
 	if err := setLineComment(ctx, node, tk); err != nil {
@@ -226,7 +227,7 @@ func newStringNode(ctx context, tk *tapeToken) (*ast.StringNode, error) {
 	return node, nil
 }
 
-func newLiteralNode(ctx context, tk *tapeToken) (*ast.LiteralNode, error) {
+func newLiteralNode(ctx context, tk *group.TapeToken) (*ast.LiteralNode, error) {
 	node := ast.Literal(tk.RawToken())
 	node.SetPathNode(ctx.path)
 	if err := setLineComment(ctx, node, tk); err != nil {
@@ -235,7 +236,7 @@ func newLiteralNode(ctx context, tk *tapeToken) (*ast.LiteralNode, error) {
 	return node, nil
 }
 
-func newTagNode(ctx context, tk *tapeToken) (*ast.TagNode, error) {
+func newTagNode(ctx context, tk *group.TapeToken) (*ast.TagNode, error) {
 	node := ast.Tag(tk.RawToken())
 	node.SetPathNode(ctx.path)
 	if err := setLineComment(ctx, node, tk); err != nil {
@@ -244,7 +245,7 @@ func newTagNode(ctx context, tk *tapeToken) (*ast.TagNode, error) {
 	return node, nil
 }
 
-func newSequenceNode(ctx context, tk *tapeToken, isFlow bool) (*ast.SequenceNode, error) {
+func newSequenceNode(ctx context, tk *group.TapeToken, isFlow bool) (*ast.SequenceNode, error) {
 	node := ctx.arena.Sequence(tk.RawToken(), isFlow)
 	node.SetPathNode(ctx.path)
 	if isFlow {
@@ -269,41 +270,41 @@ func newTagDefaultScalarValueNode(ctx context, uri string, tag *token.Token) (as
 	pos.Column++
 
 	var (
-		tk   *tapeToken
+		tk   *group.TapeToken
 		node ast.ScalarNode
 	)
 	tagged, _ := token.ReservedTagOf(uri)
 	switch tagged {
 	case token.IntegerTag:
-		tk = newSynthetic(token.New("0", "0", pos))
+		tk = group.NewSynthetic(token.New("0", "0", pos))
 		n, err := newIntegerNode(ctx, tk)
 		if err != nil {
 			return nil, err
 		}
 		node = n
 	case token.FloatTag:
-		tk = newSynthetic(token.New("0", "0", pos))
+		tk = group.NewSynthetic(token.New("0", "0", pos))
 		n, err := newFloatNode(ctx, tk)
 		if err != nil {
 			return nil, err
 		}
 		node = n
 	case token.StringTag, token.BinaryTag, token.TimestampTag:
-		tk = newSynthetic(token.New("", "", pos))
+		tk = group.NewSynthetic(token.New("", "", pos))
 		n, err := newStringNode(ctx, tk)
 		if err != nil {
 			return nil, err
 		}
 		node = n
 	case token.BooleanTag:
-		tk = newSynthetic(token.New("false", "false", pos))
+		tk = group.NewSynthetic(token.New("false", "false", pos))
 		n, err := newBoolNode(ctx, tk)
 		if err != nil {
 			return nil, err
 		}
 		node = n
 	case token.NullTag:
-		tk = newSynthetic(token.New("null", "null", pos))
+		tk = group.NewSynthetic(token.New("null", "null", pos))
 		n, err := newNullNode(ctx, tk)
 		if err != nil {
 			return nil, err
@@ -319,7 +320,7 @@ func newTagDefaultScalarValueNode(ctx context, uri string, tag *token.Token) (as
 		// held a null and "! null" holds "null".
 		nullTk := token.New("null", "null", pos)
 		nullTk.Type = token.ImplicitNullType
-		tk = newSynthetic(nullTk)
+		tk = group.NewSynthetic(nullTk)
 		n, err := newNullNode(ctx, tk)
 		if err != nil {
 			return nil, err
@@ -329,7 +330,7 @@ func newTagDefaultScalarValueNode(ctx context, uri string, tag *token.Token) (as
 	return node, nil
 }
 
-func setLineComment(ctx context, node ast.Node, tk *tapeToken) error {
+func setLineComment(ctx context, node ast.Node, tk *group.TapeToken) error {
 	if probe.Enabled {
 		if c := ctx.lineComment(tk); c != nil {
 			probe.Count("comment.line.attached", 1)
@@ -355,7 +356,7 @@ func setLineComment(ctx context, node ast.Node, tk *tapeToken) error {
 // the comment reaching the rendered text at all. Take this out with the
 // renderer change that writes LineComment after the ':' -- the two together are
 // what put the comment back on the line it was written on.
-func setEntryLineComment(ctx context, node *ast.MappingValueNode, tk *tapeToken) error {
+func setEntryLineComment(ctx context, node *ast.MappingValueNode, tk *group.TapeToken) error {
 	lineComment := ctx.takeLineComment(tk)
 	if lineComment == nil {
 		return nil
@@ -513,7 +514,7 @@ func countFootAttached(cm *ast.CommentGroupNode) {
 //
 // A marker is not a node, so nothing takes the comment staged against it and
 // the document has to ask.
-func markerComment(ctx context, tk *tapeToken) *ast.CommentGroupNode {
+func markerComment(ctx context, tk *group.TapeToken) *ast.CommentGroupNode {
 	if tk == nil {
 		return nil
 	}
