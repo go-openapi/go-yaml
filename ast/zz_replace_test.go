@@ -219,7 +219,7 @@ func setKey(t *testing.T, f *ast.File, i int, v any) {
 // It follows the corpus and the acceptance line; the three follow the renderer.
 // Zero failures over a set that quietly shrank is not the same result, and only
 // the denominator says which happened.
-const replacedDocuments = 1005
+const replacedDocuments = 1004
 
 func TestReplacingAValueAcrossTheCorpus(t *testing.T) {
 	t.Parallel()

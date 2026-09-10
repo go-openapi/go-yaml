@@ -31,7 +31,7 @@ import (
 //     the ledger. The renderer is the symptom there and not the fault.
 //
 // tested follows the parser and the corpus; changed follows the renderer.
-var renderedComments = struct{ changed, tested int }{changed: 25, tested: 6293}
+var renderedComments = struct{ changed, tested int }{changed: 22, tested: 6289}
 
 // TestRenderingKeepsTheCommentsItWasGiven counts the comment tokens a document
 // holds, renders it, and counts them again.

@@ -70,8 +70,6 @@ var extentLedger = map[string]string{
 	"1ae84972": "a String token ends 19 bytes past the document",
 	// seed/9615: a sequence entry holding a verbatim tag.
 	"59cf8381": "a String token ends 9 bytes past the document",
-	// seed/16038: comments and values separated by "\r" alone.
-	"889b2703": "a String token ends 9 bytes past the document",
 	// seed/9354: "- {}\r\n- null\r\n    - '-1'\r\n".
 	"a1258ce0": "a String token ends 11 bytes past the document",
 	// seed/17802: a flow mapping after a "%TAG" directive, with "\r\n" breaks.

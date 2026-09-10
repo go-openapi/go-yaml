@@ -19,6 +19,30 @@ import (
 // the block's width is reached and content after it, and a tab is refused in the first case and kept in the second.
 func (s *Scanner) scanMultiLine(ctx *Context, c rune) error {
 	state := ctx.getMultiLineState()
+
+	if state.isRawFolded && c == '#' && startsAComment(ctx) {
+		// A plain scalar ends here. ns-plain-char admits a '#' only where an
+		// ns-char stands immediately before it, so one following a space, a tab
+		// or a line break opens a comment wherever it is written -- the column
+		// decides nothing, and the scan was deciding by column: a '#' inside
+		// the continuation's indentation was taken as content and one outside
+		// it as a comment, so "?" over "  a" over "      - b" over "      # c"
+		// read the key "a - b # c" where every other implementation reads
+		// "a - b".
+		//
+		// Only a plain scalar. Inside a literal or a folded block the '#' is
+		// content whatever precedes it, which is what isRawFolded tells apart.
+		//
+		// Before addOriginBuf below: the '#' belongs to the comment that
+		// follows, and counting it here left the scalar's extent a byte long
+		// and overlapping the comment's.
+		ctx.breakMultiLine()
+		ctx.trimTrailingFold()
+		s.addBufferedTokenIfExists(ctx)
+
+		return nil
+	}
+
 	ctx.addOriginBuf(c)
 	c = s.normalizeMultiLineBreak(ctx, c)
 
@@ -567,4 +591,15 @@ func validateMultiLineHeaderOption(opt string) error {
 	}
 
 	return nil
+}
+
+// startsAComment reports whether the '#' at the cursor opens one.
+//
+// c-nb-comment-text is preceded by separation or starts a line, which is the
+// same test [Scanner.scanComment] makes; this one is asked before the multi-line
+// scan swallows the character as content.
+func startsAComment(ctx *Context) bool {
+	c := ctx.previousChar()
+
+	return c == rune(0) || c == ' ' || c == '\t' || isNewLineChar(c)
 }
