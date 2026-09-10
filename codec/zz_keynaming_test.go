@@ -127,10 +127,10 @@ func TestDefectATypedKeyIsNamedIntoTheStringsNamespace(t *testing.T) {
 			t.Run("an ordered map keeps both entries, under the keys they resolve to", func(t *testing.T) {
 				var got any
 				require.NoError(t, codec.UnmarshalWithOptions([]byte(tc.src), &got, codec.UseOrderedMap()))
-				assert.Equal(t, codec.MapSlice{
-					{Key: tc.resolved, Value: "x"},
-					{Key: tc.merged, Value: "y"},
-				}, got)
+				assert.Equal(t, mapSliceOf(
+					item(tc.resolved, "x"),
+					item(tc.merged, "y"),
+				), got)
 			})
 
 			t.Run("ToJSON refuses it rather than writing the name twice", func(t *testing.T) {

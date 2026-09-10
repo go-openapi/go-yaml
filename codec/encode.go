@@ -528,9 +528,6 @@ func (e *Encoder) encodeValue(ctx context.Context, v reflect.Value, column int) 
 	case reflect.Bool:
 		return e.encodeBool(v.Bool()), nil
 	case reflect.Slice:
-		if mapSlice, ok := v.Interface().(MapSlice); ok {
-			return e.encodeMapSlice(ctx, mapSlice, column)
-		}
 		if value := e.encodePtrAnchor(v, column); value != nil {
 			return value, nil
 		}
@@ -539,6 +536,9 @@ func (e *Encoder) encodeValue(ctx context.Context, v reflect.Value, column int) 
 		return e.encodeArray(ctx, v)
 	case reflect.Struct:
 		if v.CanInterface() {
+			if mapSlice, ok := reflect.TypeAssert[MapSlice](v); ok {
+				return e.encodeMapSlice(ctx, mapSlice, column)
+			}
 			if mapItem, ok := v.Interface().(MapItem); ok {
 				return e.encodeMapItem(ctx, mapItem, column)
 			}
@@ -719,7 +719,7 @@ func (e *Encoder) encodeMapItem(ctx context.Context, item MapItem, column int) (
 
 func (e *Encoder) encodeMapSlice(ctx context.Context, value MapSlice, column int) (*ast.MappingNode, error) {
 	node := ast.Mapping(token.New("", "", e.pos(column)), e.isFlowStyle)
-	for _, item := range value {
+	for _, item := range value.items {
 		encoded, err := e.encodeMapItem(ctx, item, column)
 		if err != nil {
 			return nil, err

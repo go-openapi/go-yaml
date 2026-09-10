@@ -331,11 +331,9 @@ func (d *Decoder) mapKeyNodeToString(ctx context.Context, node ast.MapKeyNode) (
 // one key, where 3.2.1.1 makes a string and a float two keys -- and a merge
 // then let one override the other, which is what defect 69 was.
 //
-// Two keys keep their text. [UseStringKeys] asks for it, and a collection key
-// has to have it: Go cannot hash a slice or a map, so a resolved one would
-// panic [MapSlice.ToMap] and read back into no Go map at all. That is the line
-// UseStringKeys already draws -- it "does not make a collection usable as a
-// key" -- and a MapSlice holds the rendered text for one, as it always has.
+// [UseStringKeys] asks for the text instead and gets it for every scalar. A
+// collection reaches mapKeyString either way, which refuses it: a MapSlice key
+// must be comparable, and Go hashes no slice or map.
 func (d *Decoder) mapKeyNodeToValue(ctx context.Context, node ast.MapKeyNode) (any, error) {
 	key, err := d.nodeToValue(ctx, node)
 	if err != nil {
@@ -353,19 +351,19 @@ func (d *Decoder) mapKeyNodeToValue(ctx context.Context, node ast.MapKeyNode) (a
 	return key, nil
 }
 
-// hashableKey reports whether a decoded key can stand as a Go map key, which a
-// slice and a map cannot.
+// hashableKey reports whether a decoded key can stand as a Go map key.
+//
+// reflect.Type.Comparable and not a switch on the kind: a slice, a map and a
+// func are the kinds Go cannot hash, but a struct or an array holding one of
+// them cannot be hashed either, and the kind alone reads "struct". A MapSlice
+// is such a struct, so a mapping keyed on a mapping read under UseOrderedMap
+// passed the switch and panicked comparing two of them.
 func hashableKey(key any) bool {
 	if key == nil {
 		return true
 	}
 
-	switch reflect.TypeOf(key).Kind() {
-	case reflect.Slice, reflect.Map, reflect.Func:
-		return false
-	default:
-		return true
-	}
+	return reflect.TypeOf(key).Comparable()
 }
 
 // mapKeyString is the text a decoded mapping key is addressed by.
@@ -401,9 +399,10 @@ func mapKeyString(node ast.Node, key any) (string, error) {
 
 // kindOfKey names the key the document wrote, for the message that refuses it.
 //
-// From the node and not from the value it decoded to: UseOrderedMap reads a
-// mapping into a MapSlice, which is a Go slice, so a mapping key was refused as
-// "a sequence".
+// From the node and not from the value it decoded to. The value a mapping key
+// decodes to is a Go map under one option and a MapSlice under another, so a
+// mapping key was refused as "a sequence" where the reading was taken off the
+// value.
 func kindOfKey(node ast.Node) string {
 	switch n := node.(type) {
 	case *ast.MappingNode, *ast.MappingValueNode:
@@ -514,14 +513,16 @@ func (d *Decoder) setToOrderedMapValue(ctx context.Context, node ast.Node, m *Ma
 			if err != nil {
 				return err
 			}
-			if merged && indexOfKey(*m, key) >= 0 {
+			if merged && m.index(key) >= 0 {
 				return nil
 			}
 			value, err := d.nodeToValue(ctx, n.Value)
 			if err != nil {
 				return err
 			}
-			*m = append(*m, MapItem{Key: key, Value: value})
+			if err := m.Set(key, value); err != nil {
+				return err
+			}
 		}
 	case *ast.MappingNode:
 		return eachEntryOwnFirst(n, func(value ast.Node, isMerge bool) error {
@@ -612,21 +613,6 @@ func mergeEntry(node ast.Node) bool {
 	n, ok := node.(*ast.MappingValueNode)
 
 	return ok && n.Key != nil && n.Key.IsMergeKey()
-}
-
-// indexOfKey is where key stands in m, or -1.
-//
-// Only a merged key is looked up, and only in a mapping that holds a "<<", so
-// a scan costs nothing on a document without one. Every key a MapSlice is
-// filled with here comes from mapKeyNodeToString and is a string.
-func indexOfKey(m MapSlice, key any) int {
-	for i := range m {
-		if sameMapKey(m[i].Key, key) {
-			return i
-		}
-	}
-
-	return -1
 }
 
 // sameMapKey reports whether two decoded keys are one key.
@@ -1010,7 +996,12 @@ func (d *Decoder) nodeToValue(ctx context.Context, node ast.Node) (any, error) {
 			if err != nil {
 				return nil, err
 			}
-			return MapSlice{{Key: key, Value: v}}, nil
+			var m MapSlice
+			if err := m.Set(key, v); err != nil {
+				return nil, err
+			}
+
+			return m, nil
 		}
 		key, err := d.mapKeyNodeToString(ctx, n.Key)
 		if err != nil {
@@ -1026,7 +1017,7 @@ func (d *Decoder) nodeToValue(ctx context.Context, node ast.Node) (any, error) {
 			return nil, err
 		}
 		if d.useOrderedMap {
-			m := make(MapSlice, 0, len(n.Values))
+			m := MapSlice{items: make([]MapItem, 0, len(n.Values))}
 			if err := eachEntryOwnFirst(n, func(value ast.Node, isMerge bool) error {
 				return d.setToOrderedMapValue(ctx, value, &m, isMerge)
 			}); err != nil {
@@ -1652,11 +1643,11 @@ func (d *Decoder) decodeValue(ctx context.Context, dst reflect.Value, src ast.No
 	case reflect.Array:
 		return d.decodeArray(ctx, dst, src)
 	case reflect.Slice:
+		return d.decodeSlice(ctx, dst, src)
+	case reflect.Struct:
 		if mapSlice, ok := dst.Addr().Interface().(*MapSlice); ok {
 			return d.decodeMapSlice(ctx, mapSlice, src)
 		}
-		return d.decodeSlice(ctx, dst, src)
-	case reflect.Struct:
 		if mapItem, ok := dst.Addr().Interface().(*MapItem); ok {
 			return d.decodeMapItem(ctx, mapItem, src)
 		}
@@ -2868,6 +2859,17 @@ func (d *Decoder) validateDuplicateKey(keyMap map[string]struct{}, key interface
 	return nil
 }
 
+// decodeMapSlice reads a mapping into dst.
+//
+// It reads it the way nodeToValue reads one under [UseOrderedMap], through
+// setToOrderedMapValue, so the two destinations agree about a merge. They did
+// not: this loop walked the entries in document order, appended each one, and
+// asked validateDuplicateKey whether the key had been seen -- which is true of
+// every key a "<<" overrides. So "x: 9" under a "<<: *a" that also writes x was
+// refused as a duplicate key here and read as 9 into an any, and a merge
+// sequence whose mappings share a key was refused on the name of the anchored
+// mapping. That is the fault defect 40 fixed for a Go map, on the fifth place a
+// merge is resolved.
 func (d *Decoder) decodeMapSlice(ctx context.Context, dst *MapSlice, src ast.Node) error {
 	d.stepIn()
 	defer d.stepOut()
@@ -2879,39 +2881,21 @@ func (d *Decoder) decodeMapSlice(ctx context.Context, dst *MapSlice, src ast.Nod
 	if err != nil {
 		return err
 	}
-	mapSlice := MapSlice{}
-	mapIter := mapNode.MapRange()
-	keyMap := map[string]struct{}{}
-	for mapIter.Next() {
-		key := mapIter.Key()
-		value := mapIter.Value()
-		if key.IsMergeKey() {
-			var m MapSlice
-			if err := d.decodeMapSlice(withMerge(ctx), &m, value); err != nil {
-				return err
-			}
-			for _, v := range m {
-				if err := d.validateDuplicateKey(keyMap, v.Key, value); err != nil {
-					return err
-				}
-				mapSlice = append(mapSlice, v)
-			}
-			continue
-		}
-		k, err := d.nodeToValue(ctx, key)
-		if err != nil {
+
+	var m MapSlice
+	switch n := mapNode.(type) {
+	case *ast.MappingNode:
+		m.items = make([]MapItem, 0, len(n.Values))
+		if err := d.setToOrderedMapValue(ctx, n, &m, isMerge(ctx)); err != nil {
 			return err
 		}
-		if err := d.validateDuplicateKey(keyMap, k, key); err != nil {
+	case *ast.MappingValueNode:
+		if err := d.setToOrderedMapValue(ctx, n, &m, isMerge(ctx)); err != nil {
 			return err
 		}
-		v, err := d.nodeToValue(ctx, value)
-		if err != nil {
-			return err
-		}
-		mapSlice = append(mapSlice, MapItem{Key: k, Value: v})
 	}
-	*dst = mapSlice
+	*dst = m
+
 	return nil
 }
 

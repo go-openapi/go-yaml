@@ -30,25 +30,22 @@ func TestAMapSliceKeyCarriesTheTypeItResolvesTo(t *testing.T) {
 		require.NoError(t, codec.UnmarshalWithOptions(
 			[]byte("1: a\n\"1.0\": b\n1.0: c\nnull: d\ntrue: e\n"), &got, codec.UseOrderedMap()))
 
-		assert.Equal(t, codec.MapSlice{
-			{Key: uint64(1), Value: "a"},
-			{Key: "1.0", Value: "b"},
-			{Key: float64(1), Value: "c"},
-			{Key: nil, Value: "d"},
-			{Key: true, Value: "e"},
-		}, got)
+		assert.Equal(t, mapSliceOf(
+			item(uint64(1), "a"),
+			item("1.0", "b"),
+			item(float64(1), "c"),
+			item(nil, "d"),
+			item(true, "e"),
+		), got)
 	})
 
-	// Go cannot hash a slice or a map, so a resolved collection key would panic
-	// MapSlice.ToMap and reach no Go map at all. It keeps its rendered text, as
-	// it always has, which is the line UseStringKeys already draws.
+	// Go cannot hash a slice or a map, so a collection key has no place in a
+	// MapSlice either: MapSlice.ToMap panicked on the one it used to hold.
 	t.Run("a collection key does not decode, here as anywhere", func(t *testing.T) {
-		// It used to hold the text Go prints, "[x]", so that ToMap could not
-		// panic on an unhashable key. That text named the value the decoder
-		// built rather than anything the document wrote, and a MapSlice was one
-		// of the three destinations that each answered differently. A
-		// collection has no text to name an entry by, so it is refused here as
-		// it is everywhere else, and ToMap has nothing unhashable to meet.
+		// It used to hold the text Go prints, "[x]". That text named the value
+		// the decoder built and not anything the document wrote, and the three
+		// destinations each answered differently. A collection is refused here
+		// as it is everywhere else, so ToMap meets nothing it cannot hash.
 		var got any
 		err := codec.UnmarshalWithOptions([]byte("? [x]\n: f\n1: a\n"), &got, codec.UseOrderedMap())
 		assert.Error(t, err, "read %v", got)
@@ -59,23 +56,23 @@ func TestAMapSliceKeyCarriesTheTypeItResolvesTo(t *testing.T) {
 		require.NoError(t, codec.UnmarshalWithOptions(
 			[]byte("1: a\n1.0: c\nnull: d\ntrue: e\n"), &got, codec.UseOrderedMap(), codec.UseStringKeys()))
 
-		assert.Equal(t, codec.MapSlice{
-			{Key: "1", Value: "a"},
-			{Key: "1.0", Value: "c"},
-			{Key: "null", Value: "d"},
-			{Key: "true", Value: "e"},
-		}, got)
+		assert.Equal(t, mapSliceOf(
+			item("1", "a"),
+			item("1.0", "c"),
+			item("null", "d"),
+			item("true", "e"),
+		), got)
 	})
 
 	// The encoder asserted a string on MapItem.Key, so it panicked on a
 	// MapSlice a caller built with any other key -- and would now panic on
 	// every one the decoder builds.
 	t.Run("a key of any type marshals", func(t *testing.T) {
-		out, err := codec.Marshal(codec.MapSlice{
-			{Key: 1, Value: "a"},
-			{Key: nil, Value: "b"},
-			{Key: 2.5, Value: "c"},
-		})
+		out, err := codec.Marshal(mapSliceOf(
+			item(1, "a"),
+			item(nil, "b"),
+			item(2.5, "c"),
+		))
 		require.NoError(t, err)
 		assert.Equal(t, "1: a\nnull: b\n2.5: c\n", string(out))
 	})
@@ -115,18 +112,13 @@ func TestFixedAMergeDoesNotOverrideAcrossATypeBoundary(t *testing.T) {
 	ordered, isOrdered := got.(codec.MapSlice)
 	require.True(t, isOrdered)
 
-	var b any
-	for _, item := range ordered {
-		if item.Key == "b" {
-			b = item.Value
-		}
-	}
+	b, _ := ordered.Get("b")
 
-	assert.Equal(t, codec.MapSlice{
-		{Key: float64(1), Value: "own"},
-		{Key: "1.0", Value: "from_merge"},
-		{Key: "extra", Value: "kept"},
-	}, b, "the own float and the merged string are two keys")
+	assert.Equal(t, mapSliceOf(
+		item(float64(1), "own"),
+		item("1.0", "from_merge"),
+		item("extra", "kept"),
+	), b, "the own float and the merged string are two keys")
 
 	t.Run("an own key still beats the merged one that resolves to it", func(t *testing.T) {
 		const same = "%YAML 1.1\n---\na: &m\n  1.0: from_merge\n  extra: kept\nb:\n  <<: *m\n  1.0: own\n"
@@ -134,16 +126,11 @@ func TestFixedAMergeDoesNotOverrideAcrossATypeBoundary(t *testing.T) {
 		var got any
 		require.NoError(t, codec.UnmarshalWithOptions([]byte(same), &got, codec.UseOrderedMap()))
 
-		var b any
-		for _, item := range got.(codec.MapSlice) {
-			if item.Key == "b" {
-				b = item.Value
-			}
-		}
+		b, _ := got.(codec.MapSlice).Get("b")
 
-		assert.Equal(t, codec.MapSlice{
-			{Key: float64(1), Value: "own"},
-			{Key: "extra", Value: "kept"},
-		}, b)
+		assert.Equal(t, mapSliceOf(
+			item(float64(1), "own"),
+			item("extra", "kept"),
+		), b)
 	})
 }

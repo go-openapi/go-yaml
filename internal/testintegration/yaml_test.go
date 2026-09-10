@@ -52,22 +52,27 @@ b: c
 type marshalTest struct{}
 
 func (t *marshalTest) MarshalYAML() ([]byte, error) {
-	return yaml.Marshal(codec.MapSlice{
-		{Key: "a", Value: 1},
-		{Key: "b", Value: "hello"},
-		{Key: "c", Value: true},
-		{Key: "d", Value: map[string]string{"x": "y"}},
-	})
+	m, err := codec.NewMapSlice(
+		codec.MapItem{Key: "a", Value: 1},
+		codec.MapItem{Key: "b", Value: "hello"},
+		codec.MapItem{Key: "c", Value: true},
+		codec.MapItem{Key: "d", Value: map[string]string{"x": "y"}},
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	return yaml.Marshal(m)
 }
 
 type marshalTest2 struct{}
 
 func (t *marshalTest2) MarshalYAML() (interface{}, error) {
-	return codec.MapSlice{
-		{Key: "a", Value: 2},
-		{Key: "b", Value: "world"},
-		{Key: "c", Value: true},
-	}, nil
+	return codec.NewMapSlice(
+		codec.MapItem{Key: "a", Value: 2},
+		codec.MapItem{Key: "b", Value: "world"},
+		codec.MapItem{Key: "c", Value: true},
+	)
 }
 
 func TestMarshalYAML(t *testing.T) {

@@ -693,9 +693,9 @@ merge:
  <<: [*a, *b]
 `,
 			value: map[string]codec.MapSlice{
-				"a":     {{Key: "foo", Value: 1}},
-				"b":     {{Key: "bar", Value: 2}},
-				"merge": {{Key: "foo", Value: 1}, {Key: "bar", Value: 2}},
+				"a":     mapSliceOf(item("foo", 1)),
+				"b":     mapSliceOf(item("bar", 2)),
+				"merge": mapSliceOf(item("foo", 1), item("bar", 2)),
 			},
 		},
 
@@ -845,11 +845,7 @@ merge:
 		},
 		{
 			source: "a: 1\nb: 2\nc: 3\n",
-			value: codec.MapSlice{
-				{Key: "a", Value: 1},
-				{Key: "b", Value: 2},
-				{Key: "c", Value: 3},
-			},
+			value:  mapSliceOf(item("a", 1), item("b", 2), item("c", 3)),
 		},
 		{
 			source: "v:\n- A\n- 1\n- B:\n  - 2\n  - 3\n",
@@ -3432,14 +3428,12 @@ steps:
 		t.Run(fmt.Sprintf("i=%d", i), func(t *testing.T) {
 			t.Parallel()
 			for i := 0; i < 10; i++ {
-				m := mappedSteps{
-					Steps: codec.MapSlice{},
-				}
+				var m mappedSteps
 				if err := yaml.Unmarshal([]byte(content), &m); err != nil {
 					t.Fatal(err)
 				}
-				for _, s := range m.Steps {
-					_, ok := s.Value.(map[string]interface{})
+				for v := range m.Steps.Values() {
+					_, ok := v.(map[string]any)
 					if !ok {
 						t.Fatal("unexpected error")
 					}

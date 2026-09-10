@@ -1845,11 +1845,11 @@ func (v SlowMarshaler) MarshalYAML() ([]byte, error) {
 }
 
 func (v FastMarshaler) MarshalYAML() (interface{}, error) {
-	return codec.MapSlice{
-		{Key: "tags", Value: []string{"fast-marshaler"}},
-		{Key: "a", Value: v.A},
-		{Key: "b", Value: v.B},
-	}, nil
+	return mapSliceOf(
+		item("tags", []string{"fast-marshaler"}),
+		item("a", v.A),
+		item("b", v.B),
+	), nil
 }
 
 func (t TextMarshaler) MarshalText() ([]byte, error) {
@@ -2067,17 +2067,14 @@ a:
 type customMapSliceOneItemMarshaler struct{}
 
 func (m *customMapSliceOneItemMarshaler) MarshalYAML() ([]byte, error) {
-	var v codec.MapSlice
-	v = append(v, codec.MapItem{Key: "a", Value: "b"})
+	v := mapSliceOf(item("a", "b"))
 	return yaml.Marshal(v)
 }
 
 type customMapSliceTwoItemMarshaler struct{}
 
 func (m *customMapSliceTwoItemMarshaler) MarshalYAML() ([]byte, error) {
-	var v codec.MapSlice
-	v = append(v, codec.MapItem{Key: "a", Value: "b"})
-	v = append(v, codec.MapItem{Key: "b", Value: "c"})
+	v := mapSliceOf(item("a", "b"), item("b", "c"))
 	return yaml.Marshal(v)
 }
 

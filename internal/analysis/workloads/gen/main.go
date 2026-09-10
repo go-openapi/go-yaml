@@ -121,7 +121,9 @@ func ordered(dec *json.Decoder) (any, error) {
 				if err != nil {
 					return nil, err
 				}
-				items = append(items, codec.MapItem{Key: key.(string), Value: value})
+				if err := items.Set(key.(string), value); err != nil {
+					return nil, err
+				}
 			}
 			_, err := dec.Token() // the closing brace
 

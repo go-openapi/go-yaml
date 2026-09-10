@@ -131,9 +131,9 @@ func TestAMergedKeyIsWrittenOnceIntoAMapSlice(t *testing.T) {
 		require.NoErrorf(t, codec.UnmarshalWithOptions([]byte(src), &got, codec.UseOrderedMap()), "%q", src)
 
 		m := mapSliceAt(t, got, "m")
-		require.Lenf(t, m, 1, "%q: the MapSlice holds %v", src, m)
-		assert.Equal(t, "x", m[0].Key, "%q", src)
-		assert.Equal(t, uint64(9), m[0].Value, "%q: the mapping's own value", src)
+		require.Equalf(t, 1, m.Len(), "%q: the MapSlice holds %v", src, m)
+		assert.Equal(t, "x", m.At(0).Key, "%q", src)
+		assert.Equal(t, uint64(9), m.At(0).Value, "%q: the mapping's own value", src)
 	}
 }
 
@@ -144,18 +144,18 @@ func mapSliceAt(t *testing.T, doc any, key string) codec.MapSlice {
 	root, ok := doc.(codec.MapSlice)
 	require.Truef(t, ok, "the document read as %T and not a MapSlice", doc)
 
-	for _, item := range root {
-		if item.Key != key {
+	for k, v := range root.All() {
+		if k != key {
 			continue
 		}
-		m, ok := item.Value.(codec.MapSlice)
-		require.Truef(t, ok, "%q holds %T and not a MapSlice", key, item.Value)
+		m, ok := v.(codec.MapSlice)
+		require.Truef(t, ok, "%q holds %T and not a MapSlice", key, v)
 
 		return m
 	}
 	require.Failf(t, "no entry", "the document holds no %q", key)
 
-	return nil
+	return codec.MapSlice{}
 }
 
 // orderedKeysOf is the keys of the MapSlice at key, in the order it holds them.
@@ -163,11 +163,46 @@ func orderedKeysOf(t *testing.T, doc any, key string) []string {
 	t.Helper()
 
 	var keys []string
-	for _, item := range mapSliceAt(t, doc, key) {
-		k, ok := item.Key.(string)
-		require.Truef(t, ok, "a key read as %T", item.Key)
+	for item := range mapSliceAt(t, doc, key).Keys() {
+		k, ok := item.(string)
+		require.Truef(t, ok, "a key read as %T", item)
 		keys = append(keys, k)
 	}
 
 	return keys
+}
+
+// TestFixedATypedMapSliceMergesLikeTheOrderedAny holds the fifth place a merge
+// is resolved to the answer the other four give.
+//
+// decodeMapSlice walked the entries in document order, appended each one, and
+// asked validateDuplicateKey whether the key had been seen -- which is true of
+// every key a "<<" overrides. So a mapping writing x under a "<<" that also
+// writes x was refused as *duplicate key "x"* into a codec.MapSlice field and
+// read as 9 into an any under UseOrderedMap, and a merge sequence whose
+// mappings share a key was refused on the name of the anchored mapping, two
+// lines away from the merge. It reads through setToOrderedMapValue now, so both
+// destinations answer from one implementation.
+func TestFixedATypedMapSliceMergesLikeTheOrderedAny(t *testing.T) {
+	for _, tc := range []struct {
+		src  string
+		want any
+	}{
+		{"m:\n  x: 9\n  <<: &a {x: 1}\n", uint64(9)},
+		{"m:\n  <<: &a {x: 1}\n  x: 9\n", uint64(9)},
+		{"a: &a {x: 1}\nb: &b {x: 2}\nm:\n  <<: [*a, *b]\n", uint64(1)},
+	} {
+		src := underEleven(tc.src)
+
+		var typed struct {
+			M codec.MapSlice `yaml:"m"`
+		}
+		require.NoErrorf(t, codec.Unmarshal([]byte(src), &typed), "%q", src)
+		require.Equalf(t, 1, typed.M.Len(), "%q holds %v", src, typed.M)
+		assert.Equalf(t, tc.want, typed.M.At(0).Value, "%q", src)
+
+		var walked any
+		require.NoErrorf(t, codec.UnmarshalWithOptions([]byte(src), &walked, codec.UseOrderedMap()), "%q", src)
+		assert.Equalf(t, typed.M, mapSliceAt(t, walked, "m"), "%q: the two destinations disagree", src)
+	}
 }

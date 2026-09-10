@@ -18,4 +18,10 @@ var (
 	// ErrExceededMaxDepth reports a document nested deeper than the decoder
 	// will follow.
 	ErrExceededMaxDepth = errors.New("exceeded max depth")
+	// ErrKeyNotComparable reports a key no map may hold: Go hashes no slice,
+	// map or function.
+	ErrKeyNotComparable = errors.New("key is not comparable")
+	// ErrDuplicateKey reports one key listed twice where each entry must
+	// address one.
+	ErrDuplicateKey = errors.New("duplicate key")
 )

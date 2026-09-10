@@ -164,10 +164,10 @@ func TestTwoCollectionKeysAreTwoKeys(t *testing.T) {
 
 	t.Run("an empty key of either spelling still reads", func(t *testing.T) {
 		for _, src := range []string{"{\"\": 1}\n", ": 1\n"} {
-			var got any
+			var got codec.MapSlice
 			require.NoErrorf(t,
 				codec.UnmarshalWithOptions([]byte(src), &got, codec.UseOrderedMap()), "%q", src)
-			assert.Lenf(t, got, 1, "%q", src)
+			assert.Equalf(t, 1, got.Len(), "%q", src)
 		}
 	})
 }

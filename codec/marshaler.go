@@ -92,28 +92,6 @@ type ContextNodeUnmarshaler interface {
 	UnmarshalYAML(context.Context, ast.Node) error
 }
 
-// MapItem is one entry of a [MapSlice].
-//
-// A decode fills Key with the value the key resolves to, as it fills a
-// map[any]any key: "1:" gives uint64(1), "1.0:" float64(1), "null:" nil,
-// "true:" true. So the string "1.0" and the float 1.0 are two entries, which
-// 3.2.1.1 makes them. Use [UseStringKeys] to read every key as text instead.
-//
-// A collection standing as a key is the exception and holds its rendered text,
-// "[x]" for "? [x]". Go cannot hash a slice or a map, so a resolved one would
-// panic [MapSlice.ToMap].
-type MapItem struct {
-	Key, Value interface{}
-}
-
-// MapSlice encodes and decodes as a YAML map, keeping the order the document
-// wrote and the keys a Go map cannot hold apart.
-//
-// It is the only destination that keeps both entries of "1: a" over "\"1\": b":
-// a map[string]any refuses the pair as a duplicate and a map[any]any keeps
-// both but loses the order.
-type MapSlice []MapItem
-
 // Base64 is the value a "!!binary" scalar decodes to: the base64 text the
 // document carries, with the bytes it stands for a method call away.
 //
@@ -165,18 +143,6 @@ func (b Base64) Canonical() string {
 	}
 
 	return out.String()
-}
-
-// ToMap returns the entries as a map, dropping the order.
-//
-// A repeated key keeps the last entry, so a MapSlice holding two keys a Go map
-// cannot tell apart comes back shorter than it went in.
-func (s MapSlice) ToMap() map[interface{}]interface{} {
-	v := map[interface{}]interface{}{}
-	for _, item := range s {
-		v[item.Key] = item.Value
-	}
-	return v
 }
 
 var (

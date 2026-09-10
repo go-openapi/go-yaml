@@ -193,9 +193,9 @@ func pinnedStrings(v any, src []byte) []string {
 				walk(e)
 			}
 		case MapSlice:
-			for _, item := range t {
-				walk(item.Key)
-				walk(item.Value)
+			for k, v := range t.All() {
+				walk(k)
+				walk(v)
 			}
 		case []any:
 			for _, e := range t {

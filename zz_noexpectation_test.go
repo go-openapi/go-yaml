@@ -55,46 +55,47 @@ var noExpectationPins = map[string]func(*testing.T, []byte){ //nolint:gochecknog
 	// fixture is for.
 	"empty-keys-in-block-and-flow-mapping": func(t *testing.T, src []byte) {
 		assert.Equal(t, []codec.MapSlice{
-			{{Key: "key", Value: "value"}, {Key: nil, Value: "empty key"}},
-			{{Key: "key", Value: "value"}, {Key: nil, Value: "empty key"}},
-			{{Key: nil, Value: nil}},
-			{{Key: nil, Value: nil}},
+			mapSliceOf(item("key", "value"), item(nil, "empty key")),
+			mapSliceOf(item("key", "value"), item(nil, "empty key")),
+			mapSliceOf(item(nil, nil)),
+			mapSliceOf(item(nil, nil)),
 		}, mapSlicesOf(t, src))
 	},
 
 	// ":\n\n\n". The blank lines end the document and add nothing to it.
 	"empty-lines-at-end-of-document": func(t *testing.T, src []byte) {
-		assert.Equal(t, []codec.MapSlice{{{Key: nil, Value: nil}}}, mapSlicesOf(t, src))
+		assert.Equal(t, []codec.MapSlice{mapSliceOf(item(nil, nil))}, mapSlicesOf(t, src))
 	},
 
 	// Example 7.3, Completely Empty Flow Nodes. The specification composes it
 	// to { "foo": null, null: "bar" }.
 	"spec-example-7-3-completely-empty-flow-nodes": func(t *testing.T, src []byte) {
 		assert.Equal(t, []codec.MapSlice{
-			{{Key: "foo", Value: nil}, {Key: nil, Value: "bar"}},
+			mapSliceOf(item("foo", nil), item(nil, "bar")),
 		}, mapSlicesOf(t, src))
 	},
 
 	// Example 8.18, Implicit Block Mapping Entries. The specification composes
 	// it to { "plain key": "in-line value", null: null, "quoted key": ["entry"] }.
 	"spec-example-8-18-implicit-block-mapping-entries": func(t *testing.T, src []byte) {
-		assert.Equal(t, []codec.MapSlice{{
-			{Key: "plain key", Value: "in-line value"},
-			{Key: nil, Value: nil},
-			{Key: "quoted key", Value: []any{"entry"}},
-		}}, mapSlicesOf(t, src))
+		assert.Equal(t, []codec.MapSlice{mapSliceOf(
+			item("plain key", "in-line value"),
+			item(nil, nil),
+			item("quoted key", []any{"entry"}),
+		)}, mapSlicesOf(t, src))
 	},
 
 	// Example 8.19, Compact Block Mappings. The specification composes it to
 	// [ { "sun": "yellow" }, { { "earth": "blue" }: { "moon": "white" } } ],
 	// so the second entry is a mapping keyed on a mapping.
 	"spec-example-8-19-compact-block-mappings": func(t *testing.T, src []byte) {
+		// The second document keys a mapping on a mapping, which no Go
+		// destination holds: a MapSlice took one until its keys had to be
+		// comparable, and it was the last that did.
 		var got []codec.MapSlice
-		require.NoError(t, codec.NewDecoder(bytes.NewReader(src)).Decode(&got))
-		assert.Equal(t, []codec.MapSlice{
-			{{Key: "sun", Value: "yellow"}},
-			{{Key: map[string]any{"earth": "blue"}, Value: map[string]any{"moon": "white"}}},
-		}, got)
+		err := codec.NewDecoder(bytes.NewReader(src)).Decode(&got)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "a mapping cannot be a key in a Go map")
 	},
 
 	// "- :\n". One sequence entry holding a mapping, its key and its value both
@@ -102,7 +103,7 @@ var noExpectationPins = map[string]func(*testing.T, []byte){ //nolint:gochecknog
 	"syntax-character-edge-cases/00": func(t *testing.T, src []byte) {
 		var got []codec.MapSlice
 		require.NoError(t, codec.NewDecoder(bytes.NewReader(src)).Decode(&got))
-		assert.Equal(t, []codec.MapSlice{{{Key: nil, Value: nil}}}, got)
+		assert.Equal(t, []codec.MapSlice{mapSliceOf(item(nil, nil))}, got)
 	},
 
 	// "!\n", the non-specific tag on the empty node. It denotes null, and the
@@ -121,9 +122,12 @@ var noExpectationPins = map[string]func(*testing.T, []byte){ //nolint:gochecknog
 	// "---\n?\n- a\n- b\n:\n- c\n- d\n". One entry, keyed on the sequence
 	// [a, b], valued [c, d].
 	"zero-indented-sequences-in-explicit-mapping-keys": func(t *testing.T, src []byte) {
-		assert.Equal(t, []codec.MapSlice{
-			{{Key: []any{"a", "b"}, Value: []any{"c", "d"}}},
-		}, mapSlicesOf(t, src))
+		// Keyed on the sequence [a, b], which a Go map cannot hold and a
+		// MapSlice no longer holds either.
+		var got codec.MapSlice
+		err := codec.NewDecoder(bytes.NewReader(src)).Decode(&got)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "a sequence cannot be a key in a Go map")
 	},
 }
 
