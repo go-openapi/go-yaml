@@ -4,6 +4,7 @@
 package group
 
 import (
+	"fmt"
 	"slices"
 	"strings"
 
@@ -629,6 +630,18 @@ type keyWindow struct {
 	// announced says a '?' opened the entry the collection stands in, which
 	// exempts it from the rules that bound an implicit key.
 	announced []bool
+	// bounded records that a collection was let go because it ran past
+	// implicitKeyLimit, so a ':' arriving to claim it as a key is refused with
+	// the reason rather than with "found an invalid key for this map".
+	bounded bool
+	// base is how many tokens the window has handed on. openers count from the
+	// start of the document, so releasing costs nothing per open collection: a
+	// document of 25,000 nested brackets would otherwise re-index all of them
+	// on every token and move 650 million elements.
+	base int
+	// dropped is how far held has re-sliced past the front of its allocation
+	// since it was last copied back to it.
+	dropped int
 
 	// valueNext says the next token begins the value of an entry whose key is
 	// settled, and valueLine is the line its ':' stands on. A collection
@@ -646,13 +659,26 @@ func (w *keyWindow) open(tk *TapeToken) {
 		announced = w.held[last].Type() == token.MappingKeyType
 	}
 
-	w.openers = append(w.openers, len(w.held))
+	w.openers = append(w.openers, w.base+len(w.held))
 	w.seq = append(w.seq, tk.Type() == token.SequenceStartType)
 	w.canKey = append(w.canKey, !w.opensAValue(tk))
 	w.announced = append(w.announced, announced)
 	w.valueNext = false
 	w.held = append(w.held, tk)
 }
+
+// implicitKeyLimit is how far a ':' may stand from the start of the key it
+// belongs to, in characters.
+//
+// 7.4.2: "the ':' indicator must appear at most 1024 Unicode characters beyond
+// the start of the key", so that a parser reading forward needs no more than
+// that much lookahead to tell a key from a value. Column counts characters and
+// an implicit key holds one line, so the distance is a subtraction.
+//
+// It bounds a collection only. A scalar of any length is one token, so the
+// window holds one pointer for it and there is no lookahead to limit -- bounding
+// it would refuse documents that cost nothing to read.
+const implicitKeyLimit = 1024
 
 // spanALine records that tk stands on a later line than a collection still open
 // started on, so that collection can no longer be an implicit key.
@@ -663,10 +689,21 @@ func (w *keyWindow) open(tk *TapeToken) {
 // is exempt: "? [a," over "  b]" over ": v" is a key, however many lines it
 // takes.
 func (w *keyWindow) spanALine(tk *TapeToken) {
-	line := tk.Line()
+	line, column := tk.Line(), tk.Column()
 	for i, at := range w.openers {
-		if w.canKey[i] && !w.announced[i] && w.held[at].Line() != line {
+		if !w.canKey[i] || w.announced[i] {
+			continue
+		}
+		open := w.held[at-w.base]
+		if open.Line() != line {
 			w.canKey[i] = false
+
+			continue
+		}
+		if column-open.Column() > implicitKeyLimit {
+			// Past the lookahead 7.4.2 allows. The collection is let go as a
+			// value, and a ':' arriving to claim it is refused by keyBefore.
+			w.canKey[i], w.bounded = false, true
 		}
 	}
 }
@@ -697,7 +734,7 @@ func (w *keyWindow) hold(tk *TapeToken) {
 
 // keyed records that a ':' has taken its key, so the value begins next.
 func (w *keyWindow) keyed(tk *TapeToken) {
-	w.valueNext, w.valueLine = true, tk.Line()
+	w.valueNext, w.valueLine, w.bounded = true, tk.Line(), false
 }
 
 // opensAValue reports whether tk stands where the value of an entry begins:
@@ -719,7 +756,7 @@ func (w *keyWindow) keepFrom() int {
 	// reaches past it to whatever is still undecided within.
 	for i, at := range w.openers {
 		if w.canKey[i] {
-			return withKeyProperties(w.held, at)
+			return withKeyProperties(w.held, at-w.base)
 		}
 	}
 
@@ -739,29 +776,78 @@ func (w *keyWindow) keepFrom() int {
 	return last
 }
 
-// release hands on what the window no longer has to keep, appending it to out.
-func (w *keyWindow) release(out []*TapeToken) []*TapeToken {
+// compactFloor is how much of held's allocation may sit unused in front of the
+// live window before it is copied back to the front.
+//
+// Handing tokens on re-slices held forward, which costs nothing, and the room
+// left behind is reused only by copying. Copying on every release would move
+// the whole window once per token -- 1,024 elements a token on a document of
+// nested brackets, where the window holds the lookahead 7.4.2 allows. Waiting
+// until the room left behind has grown past the live window, and past this
+// floor, spreads it to about one element a token and wastes at most this many
+// pointers on a document that holds almost nothing.
+const compactFloor = 256
+
+// shiftOut records the prefix handed on and moves the window past it.
+//
+// A small window is copied to the front of the room it already has, which costs
+// nothing when the window empties -- a block document hands on every token and
+// keeps two. A large one re-slices forward instead and is copied back only once
+// the room left behind has grown past it, because copying a window of the
+// lookahead 7.4.2 allows would move about a thousand elements a token on a
+// document of nested brackets.
+func (w *keyWindow) shiftOut(keep int) {
+	w.base += keep
+
+	if live := len(w.held) - keep; live > compactFloor {
+		w.held = w.held[keep:]
+		w.dropped += keep
+		if w.dropped <= live {
+			return
+		}
+		if probe.Enabled {
+			// The elements a copy moves. Summed over a parse it is the work the
+			// early return in releasable and this threshold exist to avoid, and
+			// it is a count, so it reads the same on any machine.
+			// TestWindowShiftStaysLinear holds it to a document's length.
+			probe.Count("grouper.keyWindow.shifted", int64(live))
+		}
+		w.held = append(make([]*TapeToken, 0, 2*live), w.held...)
+		w.dropped = 0
+
+		return
+	}
+
+	if probe.Enabled {
+		probe.Count("grouper.keyWindow.shifted", int64(len(w.held)-keep))
+	}
+	w.held = append(w.held[:0], w.held[keep:]...)
+	w.dropped = 0
+}
+
+// releasable is the prefix the window may hand on, and 0 where it must hold
+// everything.
+func (w *keyWindow) releasable() int {
 	keep := w.keepFrom()
 	if keep == 0 {
 		// Nothing may be handed on: a flow collection is open and may yet close
-		// and stand as a key. Copying the window onto itself and taking zero
-		// off every opener is what that used to cost, once per token, which
-		// made a document of nothing but "[" quadratic in its own length.
+		// and stand as a key. Copying the window onto itself is what that used
+		// to cost, once per token, which made a document of nothing but "["
+		// quadratic in its own length.
+		return 0
+	}
+
+	return keep
+}
+
+// release hands on what the window no longer has to keep, appending it to out.
+func (w *keyWindow) release(out []*TapeToken) []*TapeToken {
+	keep := w.releasable()
+	if keep == 0 {
 		return out
 	}
-	if probe.Enabled {
-		// The elements this call moves. Summed over a parse it is the work the
-		// early return above exists to avoid, and it is a count, so it reads
-		// the same on any machine. TestWindowShiftStaysLinear holds it to a
-		// document's length.
-		probe.Count("grouper.keyWindow.shifted", int64(len(w.held)-keep+len(w.openers)))
-	}
 	out = append(out, w.held[:keep]...)
-
-	w.held = append(w.held[:0], w.held[keep:]...)
-	for i := range w.openers {
-		w.openers[i] -= keep
-	}
+	w.shiftOut(keep)
 
 	return out
 }
@@ -825,7 +911,8 @@ func (g *Grouper) groupMapKeysByValue(in []*TapeToken) []*TapeToken {
 	}
 
 	out = append(out, w.held...)
-	w.held = w.held[:0]
+	w.base += len(w.held)
+	w.held, w.dropped = w.held[:0], 0
 
 	return out
 }
@@ -852,6 +939,13 @@ func (g *Grouper) keyBefore(w *keyWindow, tk *TapeToken) bool {
 		// ends it.
 		start := flowCollectionStart(w.held[:last+1])
 		if start < 0 {
+			if w.bounded {
+				g.fail(yamlerrors.NewSyntax(
+					fmt.Sprintf("a non-scalar key written without \"?\" is limited to %d characters -- announce it with \"?\" if it must be longer", implicitKeyLimit),
+					tk.RawToken()))
+
+				return false
+			}
 			g.fail(yamlerrors.NewSyntax("found an invalid key for this map", tk.RawToken()))
 
 			return false

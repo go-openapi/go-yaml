@@ -101,14 +101,16 @@ func TestAFlowCollectionReleasesWhereItCannotBeAKey(t *testing.T) {
 		"flow_nested holds its nesting depth, not its length")
 }
 
-// TestADocumentThatIsOneFlowStillHolds records what the two rules do not reach.
+// TestAFlowDocumentHoldsOnlyTheLookaheadTheSpecAllows checks that a flow
+// collection written as a whole document on one line stops being held at the
+// bound, not at its closer.
 //
-// A flow collection written as a whole document may still close and stand as a
-// key -- "[a, b]: v" is a mapping -- and one written on a single line never
-// crosses a break, so neither rule fires and the window holds it whole. The
-// 1024-character bound of 7.4.2 is what settles this shape, and it is not
-// implemented yet.
-func TestADocumentThatIsOneFlowStillHolds(t *testing.T) {
+// Such a collection may still close and stand as a key -- "[a, b]: v" is a
+// mapping -- and it never crosses a line break, so neither of the other rules
+// reaches it. 7.4.2 allows a ':' to stand at most 1024 characters past the
+// start of the key it belongs to, so past that the collection cannot be an
+// implicit key and the window lets it go.
+func TestAFlowDocumentHoldsOnlyTheLookaheadTheSpecAllows(t *testing.T) {
 	var b strings.Builder
 	b.WriteString("[")
 	for i := range 20000 {
@@ -123,8 +125,9 @@ func TestADocumentThatIsOneFlowStillHolds(t *testing.T) {
 	_, err := p.Parse([]byte(b.String()))
 	require.NoError(t, err)
 
-	require.Greater(t, p.groupingHeld(), 10_000,
-		"the window released inside a flow collection that could still be a key, which would be new")
+	held := p.groupingHeld()
 	t.Logf("a one-line flow document: %d tokens, the grouping holds %d of them at once",
-		p.tapeStats().Tokens, p.groupingHeld())
+		p.tapeStats().Tokens, held)
+	require.Less(t, held, 1000,
+		"the window holds the tokens of 1024 characters, not the document's 40,001")
 }

@@ -4,6 +4,8 @@
 package parser_test
 
 import (
+	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/go-openapi/testify/v2/assert"
@@ -293,6 +295,60 @@ func TestAnUnclosedFlowNamesTheReasonItEnded(t *testing.T) {
 			_, err := parser.ParseBytes([]byte(test.source))
 			require.Error(t, err)
 			assert.Contains(t, err.Error(), test.want)
+		})
+	}
+}
+
+// longFlowSeq writes a flow sequence of at least minChars characters, on one line.
+func longFlowSeq(minChars int) string {
+	var b strings.Builder
+	b.WriteString("[")
+	for i := 0; b.Len() < minChars; i++ {
+		if i > 0 {
+			b.WriteString(", ")
+		}
+		fmt.Fprintf(&b, "i%d", i)
+	}
+	b.WriteString("]")
+
+	return b.String()
+}
+
+// TestANonScalarKeyIsBoundedUnlessAnnounced holds the lookahead bound of 7.4.2:
+// "the ':' indicator must appear at most 1024 Unicode characters beyond the
+// start of the key. In addition, the key is restricted to a single line."
+//
+// It binds a collection used as a key and written without "?", which is the
+// shape the bound exists for: a reader has to buffer the whole collection
+// before the ':' tells it whether it read a key or a value. A "?" says so at
+// the first token, and a scalar of any length is one token, so neither costs
+// lookahead and neither is bounded -- go.yaml.in/yaml/v3 bounds a scalar key
+// too, and the reference parser and libfyaml bound nothing.
+//
+// A document past the bound keeps two ways to say what it means: "?", and an
+// anchor aliased into key position, which is one short token.
+func TestANonScalarKeyIsBoundedUnlessAnnounced(t *testing.T) {
+	long, short := longFlowSeq(1200), longFlowSeq(200)
+
+	t.Run("a collection key past the bound is refused", func(t *testing.T) {
+		_, err := parser.ParseBytes([]byte(long + ": v\n"))
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), `a non-scalar key written without "?" is limited to 1024 characters`)
+		assert.Contains(t, err.Error(), `announce it with "?" if it must be longer`)
+	})
+
+	for name, source := range map[string]string{
+		"a collection key within the bound":   short + ": v\n",
+		"announced with a '?'":                "? " + long + "\n: v\n",
+		"aliased into key position":           "anchor: &big " + long + "\n*big : v\n",
+		"the same collection as a value":      "k: " + long + "\n",
+		"the same collection as the document": long + "\n",
+		"a scalar key of the same length":     strings.Repeat("a", 1200) + ": v\n",
+		"a scalar key well past the bound":    strings.Repeat("a", 20000) + ": v\n",
+	} {
+		t.Run(name, func(t *testing.T) {
+			_, err := parser.ParseBytes([]byte(source))
+			require.NoError(t, err)
 		})
 	}
 }

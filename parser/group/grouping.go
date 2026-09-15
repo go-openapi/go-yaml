@@ -9,7 +9,6 @@ import (
 	"strings"
 
 	yamlerrors "github.com/go-openapi/go-yaml/errors"
-	"github.com/go-openapi/go-yaml/internal/probe"
 	"github.com/go-openapi/go-yaml/token"
 )
 
@@ -504,30 +503,15 @@ func stageMapKeysByValue(g *Grouper, at int, tk *TapeToken, out []*TapeToken) []
 
 // releaseWindow hands on what the window no longer needs to keep.
 func (g *Grouper) releaseWindow(at int, w *keyWindow, out []*TapeToken) []*TapeToken {
-	keep := w.keepFrom()
+	keep := w.releasable()
 	if keep == 0 {
-		// Nothing may be handed on: a flow collection is open and may yet close
-		// and stand as a key. Copying the window onto itself and taking zero
-		// off every opener is what that used to cost, once per token, which
-		// made a document of nothing but "[" quadratic in its own length.
 		return out
-	}
-	if probe.Enabled {
-		// The elements this call moves. Summed over a parse it is the work the
-		// early return above exists to avoid, and it is a count, so it reads
-		// the same on any machine. TestWindowShiftStaysLinear holds it to a
-		// document's length.
-		probe.Count("grouper.keyWindow.shifted", int64(len(w.held)-keep+len(w.openers)))
 	}
 
 	for _, held := range w.held[:keep] {
 		out = g.pass(at, held, out)
 	}
-
-	w.held = append(w.held[:0], w.held[keep:]...)
-	for i := range w.openers {
-		w.openers[i] -= keep
-	}
+	w.shiftOut(keep)
 
 	return out
 }
