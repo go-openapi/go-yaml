@@ -630,10 +630,10 @@ type keyWindow struct {
 	// announced says a '?' opened the entry the collection stands in, which
 	// exempts it from the rules that bound an implicit key.
 	announced []bool
-	// bounded records that a collection was let go because it ran past
-	// implicitKeyLimit, so a ':' arriving to claim it as a key is refused with
-	// the reason rather than with "found an invalid key for this map".
-	bounded bool
+	// letGo records why the window released a collection a ':' may still arrive
+	// to claim as a key. The tokens are gone by then, so keyBefore names the
+	// rule that let them go instead of reporting a key it cannot find.
+	letGo letGoReason
 	// base is how many tokens the window has handed on. openers count from the
 	// start of the document, so releasing costs nothing per open collection: a
 	// document of 25,000 nested brackets would otherwise re-index all of them
@@ -667,6 +667,19 @@ func (w *keyWindow) open(tk *TapeToken) {
 	w.held = append(w.held, tk)
 }
 
+// letGoReason says why the key window released a flow collection.
+type letGoReason uint8
+
+const (
+	// heldOn: no collection has been released for a reason a ':' could contradict.
+	heldOn letGoReason = iota
+	// spanningLines: the collection crossed a line break, and an implicit key
+	// holds one line.
+	spanningLines
+	// pastTheBound: the collection ran past implicitKeyLimit.
+	pastTheBound
+)
+
 // implicitKeyLimit is how far a ':' may stand from the start of the key it
 // belongs to, in characters.
 //
@@ -696,14 +709,14 @@ func (w *keyWindow) spanALine(tk *TapeToken) {
 		}
 		open := w.held[at-w.base]
 		if open.Line() != line {
-			w.canKey[i] = false
+			w.canKey[i], w.letGo = false, spanningLines
 
 			continue
 		}
 		if column-open.Column() > implicitKeyLimit {
 			// Past the lookahead 7.4.2 allows. The collection is let go as a
 			// value, and a ':' arriving to claim it is refused by keyBefore.
-			w.canKey[i], w.bounded = false, true
+			w.canKey[i], w.letGo = false, pastTheBound
 		}
 	}
 }
@@ -734,7 +747,7 @@ func (w *keyWindow) hold(tk *TapeToken) {
 
 // keyed records that a ':' has taken its key, so the value begins next.
 func (w *keyWindow) keyed(tk *TapeToken) {
-	w.valueNext, w.valueLine, w.bounded = true, tk.Line(), false
+	w.valueNext, w.valueLine, w.letGo = true, tk.Line(), heldOn
 }
 
 // opensAValue reports whether tk stands where the value of an entry begins:
@@ -939,14 +952,7 @@ func (g *Grouper) keyBefore(w *keyWindow, tk *TapeToken) bool {
 		// ends it.
 		start := flowCollectionStart(w.held[:last+1])
 		if start < 0 {
-			if w.bounded {
-				g.fail(yamlerrors.NewSyntax(
-					fmt.Sprintf("a non-scalar key written without \"?\" is limited to %d characters -- announce it with \"?\" if it must be longer", implicitKeyLimit),
-					tk.RawToken()))
-
-				return false
-			}
-			g.fail(yamlerrors.NewSyntax("found an invalid key for this map", tk.RawToken()))
+			g.fail(yamlerrors.NewSyntax(w.whyNoKey(), tk.RawToken()))
 
 			return false
 		}
@@ -987,6 +993,24 @@ func (g *Grouper) keyBefore(w *keyWindow, tk *TapeToken) bool {
 	key.Group = g.newGroup2(TokenGroupMapKey, held, tk)
 
 	return true
+}
+
+// whyNoKey names the rule that took the key this ':' is reaching back for.
+//
+// The window hands a collection on once it cannot be an implicit key, so the
+// tokens are gone by the time a ':' claims them. Reporting only that the key
+// cannot be found would name the symptom.
+func (w *keyWindow) whyNoKey() string {
+	switch w.letGo {
+	case spanningLines:
+		return "map key definition includes an implicit line break"
+	case pastTheBound:
+		return fmt.Sprintf(
+			"a non-scalar key written without %q is limited to %d characters -- announce it with %q if it must be longer",
+			"?", implicitKeyLimit, "?")
+	default:
+		return "found an invalid key for this map"
+	}
 }
 
 // hasNoKey reports whether the ':' has no key in front of it.

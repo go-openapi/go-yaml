@@ -352,3 +352,34 @@ func TestANonScalarKeyIsBoundedUnlessAnnounced(t *testing.T) {
 		})
 	}
 }
+
+// TestAReleasedKeyNamesTheRuleThatTookIt checks that a ':' reaching back for a
+// key the window has let go is refused by the rule that let it go.
+//
+// The window hands a flow collection on as soon as it cannot be an implicit
+// key, so its tokens are gone by the time a ':' claims them. Reporting only
+// that the key cannot be found names the symptom: "[a," over " b]: v" is
+// refused because an implicit key holds one line, and a collection past 1024
+// characters because that is the lookahead 7.4.2 allows.
+func TestAReleasedKeyNamesTheRuleThatTookIt(t *testing.T) {
+	for name, test := range map[string]struct{ source, want string }{
+		"across lines at the document level": {
+			source: "[a,\n b]: v\n",
+			want:   "map key definition includes an implicit line break",
+		},
+		"across lines inside a flow sequence": {
+			source: "[[a,\n  b]: c]\n",
+			want:   "map key definition includes an implicit line break",
+		},
+		"past the bound at the document level": {
+			source: longFlowSeq(1200) + ": v\n",
+			want:   `a non-scalar key written without "?" is limited to 1024 characters`,
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			_, err := parser.ParseBytes([]byte(test.source))
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), test.want)
+		})
+	}
+}
