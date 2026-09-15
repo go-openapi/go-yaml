@@ -3402,3 +3402,40 @@ func TestFixedAMergeKeyWrittenTheLongWayMerges(t *testing.T) {
 		assert.Equal(t, map[string]any{"<<": map[string]any{"x": uint64(1)}}, got["d"])
 	})
 }
+
+// TestFixedACollectionKeyWrittenAloneInFlow: a flow mapping holds a collection
+// as a key with no value, as it holds a scalar that way.
+//
+// "{[a]}" and "{{\"\": 0}}" were refused with "could not find flow map
+// content". 7.4.2 lets an entry of a flow mapping be a key with no value --
+// "{a, b}" is how a set is written in flow -- and lets that key be any flow
+// node. The reference parser reads all three, and the same key with a value,
+// "{{a: 0}: v}", always parsed here, so it was the missing value and nothing
+// else.
+//
+// parseFlowMap read a valueless key with parseScalarValue and required the
+// token after it to be a "," or a "}", which only a key of one token can
+// satisfy. The generator reached it through Style.FlowEmpty writing an entry
+// with no value over a collection key.
+func TestFixedACollectionKeyWrittenAloneInFlow(t *testing.T) {
+	for _, src := range []string{"{[a]}\n", "{{\"\": 0}}\n", "{[a,\n b]}\n"} {
+		file, err := parser.ParseBytes([]byte(src))
+		require.NoErrorf(t, err, "%q", src)
+
+		doc := file.Docs[0]
+		mapping, ok := doc.Body.(*ast.MappingNode)
+		require.Truef(t, ok, "%q gave %T", src, doc.Body)
+		require.Lenf(t, mapping.Values, 1, "%q", src)
+
+		entry := mapping.Values[0]
+		assert.IsTypef(t, &ast.NullNode{}, entry.Value, "%q: the value the entry leaves out", src)
+	}
+
+	// The same key with a value still parses, and still does not decode: a
+	// mapping cannot be a key in a Go map.
+	_, err := parser.ParseBytes([]byte("{{a: 0}: v}\n"))
+	require.NoError(t, err)
+
+	var got any
+	assert.Error(t, codec.Unmarshal([]byte("{{a: 0}: v}\n"), &got), "read %v", got)
+}

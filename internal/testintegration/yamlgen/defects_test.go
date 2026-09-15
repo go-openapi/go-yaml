@@ -244,35 +244,6 @@ func TestDefectAPropertiedEmptyKeyIsMishandled(t *testing.T) {
 	})
 }
 
-// TestDefectACollectionKeyWrittenAloneInFlowIsRefused pins it.
-//
-// 7.4.2 lets a flow mapping entry be a key with no value, and lets that key be
-// any flow node. `{{"": 0}}` is one entry whose key is the mapping {"": 0}.
-//
-// The same key with a value parses, so it is the missing value and not the
-// collection key. The whole measurement, including why libfyaml cannot answer,
-// is on yamlgen.Strict's entry of the same name.
-func TestDefectACollectionKeyWrittenAloneInFlowIsRefused(t *testing.T) {
-	t.Run("today a collection key alone is refused", func(t *testing.T) {
-		for _, src := range []string{"{{\"\": 0}}\n", "{[a]}\n"} {
-			var got any
-			err := codec.Unmarshal([]byte(src), &got)
-			require.Errorf(t, err, "%q", src)
-			assert.Containsf(t, err.Error(), "could not find flow map content", "%q", src)
-		}
-	})
-
-	t.Run("the same key with a value parses and does not decode", func(t *testing.T) {
-		// It read as {"map[a:0]": "v"} until the naming that invented that
-		// string went; a mapping cannot be a key in a Go map.
-		_, err := parser.ParseBytes([]byte("{{a: 0}: v}\n"))
-		require.NoError(t, err)
-
-		var got any
-		assert.Error(t, codec.Unmarshal([]byte("{{a: 0}: v}\n"), &got), "read %v", got)
-	})
-}
-
 // TestDefectTwoBareColonLinesInARowAreRefused pins it.
 //
 // 8.2.2 lets an explicit entry's value be the empty node and lets an entry's key

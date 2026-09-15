@@ -120,6 +120,21 @@ func (p *Parser) parseFlowMap(ctx context) (*ast.MappingNode, error) {
 				p.holdFlowEntry(node, mapValue)
 			}
 		default:
+			if opensAFlowCollection(mapKeyTk) {
+				// A collection written as an entry of a flow mapping is a key
+				// with no value: "{[a, b]}" holds the one entry [a, b]: null,
+				// as "{a}" holds a: null. It takes more than one token, so the
+				// ',' or '}' follows its closer and not the token that opens
+				// it, and the branch below -- which reads a key of one token --
+				// cannot reach it.
+				entry, err := p.flowCollectionKeyAlone(ctx, mapKeyTk, entryTk)
+				if err != nil {
+					return nil, err
+				}
+				p.holdFlowEntry(node, entry)
+
+				break
+			}
 			if !p.isFlowMapDelim(ctx.nextToken()) {
 				errTk := mapKeyTk
 				if errTk == nil {
@@ -210,6 +225,55 @@ func (p *Parser) unclosed(fallback string, at *token.Token) error {
 	}
 
 	return yamlerrors.NewSyntax(fallback, at)
+}
+
+// opensAFlowCollection reports whether tk is a '[' or a '{'.
+func opensAFlowCollection(tk *group.TapeToken) bool {
+	switch tk.Type() {
+	case token.SequenceStartType, token.MappingStartType:
+		return true
+	default:
+		return false
+	}
+}
+
+// flowCollectionKeyAlone reads a flow collection standing as an entry of a flow
+// mapping, and gives it the null value the entry leaves out.
+//
+// The reference parser reads "{[a, b]}" as one entry keyed on the sequence,
+// and "{[a," over " b]}" as the same: an entry of a flow mapping is a key
+// whether a ':' follows it or not, so it carries neither the single-line
+// restriction nor the character bound an implicit key carries elsewhere.
+func (p *Parser) flowCollectionKeyAlone(ctx context, keyTk, entryTk *group.TapeToken) (*ast.MappingValueNode, error) {
+	p.markKey()
+	collection, err := p.parseToken(ctx, keyTk)
+	if err != nil {
+		return nil, err
+	}
+
+	key, ok := collection.(ast.MapKeyNode)
+	if !ok {
+		return nil, yamlerrors.NewSyntax("found an invalid key for this map", keyTk.RawToken())
+	}
+	p.handKey(ctx, key)
+
+	name, kind := p.mapKeyIdentity(key)
+	p.recordKeyOnce(ctx, key.GetToken(), name, kind)
+
+	// The entry and its null stand where the value would be written, after the
+	// collection's closer, as an entry with a value stands on its ':'. Standing
+	// them on the '[' puts them in front of the key's own tokens, and the
+	// verbatim descent then reads a document that goes backwards.
+	at := ctx.currentToken()
+	if at == nil {
+		at = keyTk
+	}
+	value, err := p.handNull(ctx, ctx.insertNullToken(at))
+	if err != nil {
+		return nil, err
+	}
+
+	return p.mappingValue(ctx, at, entryTk, key, value)
 }
 
 func (p *Parser) isFlowMapDelim(tk *group.TapeToken) bool {

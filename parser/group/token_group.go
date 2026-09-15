@@ -627,9 +627,16 @@ type keyWindow struct {
 	// stand as a mapping key. One that cannot pins nothing, so the window
 	// reaches past it and hands its tokens on as they settle.
 	canKey []bool
-	// announced says a '?' opened the entry the collection stands in, which
-	// exempts it from the rules that bound an implicit key.
-	announced []bool
+	// exempt says the collection is a key whatever follows it, so the rules
+	// that bound an implicit key do not reach it.
+	//
+	// Two things exempt one. A '?' names the key separately, so no lookahead
+	// tells a key from a value. And an entry of a flow mapping is a key whether
+	// a ':' follows or not -- "{a, b}" holds two of them, with null values --
+	// so there is nothing to decide there either. The reference parser reads
+	// "{[a," over " b]: v}" and "{[a," over " b]}", and refuses both inside a
+	// flow sequence.
+	exempt []bool
 	// letGo records why the window released a collection a ':' may still arrive
 	// to claim as a key. The tokens are gone by then, so keyBefore names the
 	// rule that let them go instead of reporting a key it cannot find.
@@ -650,19 +657,25 @@ type keyWindow struct {
 	valueLine int
 }
 
+// insideAFlowMapping reports whether the collection now opening stands directly
+// inside a flow mapping, where every entry is a key.
+func (w *keyWindow) insideAFlowMapping() bool {
+	return len(w.seq) > 0 && !w.seq[len(w.seq)-1]
+}
+
 // open records a flow collection the window has entered.
 func (w *keyWindow) open(tk *TapeToken) {
 	w.spanALine(tk)
 
-	announced := false
-	if last := lastContentIndex(w.held); last >= 0 {
-		announced = w.held[last].Type() == token.MappingKeyType
+	exempt := w.insideAFlowMapping()
+	if last := lastContentIndex(w.held); !exempt && last >= 0 {
+		exempt = w.held[last].Type() == token.MappingKeyType
 	}
 
 	w.openers = append(w.openers, w.base+len(w.held))
 	w.seq = append(w.seq, tk.Type() == token.SequenceStartType)
 	w.canKey = append(w.canKey, !w.opensAValue(tk))
-	w.announced = append(w.announced, announced)
+	w.exempt = append(w.exempt, exempt)
 	w.valueNext = false
 	w.held = append(w.held, tk)
 }
@@ -704,7 +717,7 @@ const implicitKeyLimit = 1024
 func (w *keyWindow) spanALine(tk *TapeToken) {
 	line, column := tk.Line(), tk.Column()
 	for i, at := range w.openers {
-		if !w.canKey[i] || w.announced[i] {
+		if !w.canKey[i] || w.exempt[i] {
 			continue
 		}
 		open := w.held[at-w.base]
@@ -728,7 +741,7 @@ func (w *keyWindow) close(tk *TapeToken) {
 		w.openers = w.openers[:len(w.openers)-1]
 		w.seq = w.seq[:len(w.seq)-1]
 		w.canKey = w.canKey[:len(w.canKey)-1]
-		w.announced = w.announced[:len(w.announced)-1]
+		w.exempt = w.exempt[:len(w.exempt)-1]
 	}
 	w.valueNext = false
 	w.held = append(w.held, tk)
@@ -957,9 +970,11 @@ func (g *Grouper) keyBefore(w *keyWindow, tk *TapeToken) bool {
 			return false
 		}
 		start = withKeyProperties(w.held, start)
-		if w.held[start].Line() != key.Line() {
+		if !w.insideAFlowMapping() && w.held[start].Line() != key.Line() {
 			// An implicit key has to be a single-line node, so a collection
-			// spanning lines cannot be one.
+			// spanning lines cannot be one. An entry of a flow mapping is a key
+			// whatever follows it, so it needs no lookahead and carries no such
+			// restriction: the reference parser reads "{[a," over " b]: v}".
 			g.fail(yamlerrors.NewSyntax("map key definition includes an implicit line break", tk.RawToken()))
 
 			return false

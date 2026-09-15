@@ -187,26 +187,6 @@ var Ledger = []Divergence{
 		Match:    writesTwoBareColonLinesInARow,
 	},
 	{
-		Name: "parse/a-collection-key-written-alone-in-flow-is-refused",
-		Pin:  "TestDefectACollectionKeyWrittenAloneInFlowIsRefused",
-		Reason: "`{{\"\": 0}}` is refused with `could not find flow map content`. 7.4.2 lets a flow " +
-			"mapping entry be a key with no value, and lets that key be any flow node -- a mapping " +
-			"or a sequence included.\n\n" +
-			"`{{a: 0}: v}`, the same key with a value, parses here and reads {map[a:0]: v}, so it " +
-			"is the missing value and nothing else.\n\n" +
-			"⚠️ libfyaml 1.0.0b1 cannot answer: it refuses all three of `{{\"\": 0}}`, `{[a]}` and " +
-			"`{{a: 0}: v}` with a Python traceback, and the last is a document this library reads " +
-			"correctly -- the binding cannot hash a collection as a dict key. A traceback after a " +
-			"parse is a construction refusal, not a verdict on the syntax. So the two " +
-			"grammar-derived oracles answer and both accept.\n\n" +
-			"The one-document record with the whole measurement is yamlgen.Strict's entry of the " +
-			"same name; this is what excuses the drawn documents.\n\n" +
-			"Found on 2026-09-07, when Keys began drawing a collection: Style.FlowEmpty writes an " +
-			"entry with no value and a collection key under it is this document.",
-		Property: Parses | Decode | Render | Settle | CommentsKept | RenderValid | DecodeTyped,
-		Match:    writesACollectionKeyAloneInFlow,
-	},
-	{
 		Name: "parse/a-propertied-key-refuses-a-block-scalar-value",
 		Pin:  "TestDefectAPropertiedKeyRefusesABlockScalarValue",
 		Reason: "An entry whose key carries an anchor or a tag and whose value is a block scalar is " +
@@ -418,16 +398,6 @@ func holdsACollectionKey(v Value) bool {
 	}
 
 	return false
-}
-
-// writesACollectionKeyAloneInFlow reports whether a flow entry with no value
-// carries a collection as its key.
-//
-// Three halves, and all three are needed: the style has to write a flow
-// collection at all, it has to spell an empty value as the key alone, and the
-// value has to hold a collection key for there to be one.
-func writesACollectionKeyAloneInFlow(v Value, st Style) bool {
-	return st.Flow && st.FlowEmpty == FlowNullKeyAlone && holdsACollectionKey(v)
 }
 
 // writesTwoBareColonLinesInARow reports whether the document can put one bare

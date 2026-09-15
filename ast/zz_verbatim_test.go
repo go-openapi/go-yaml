@@ -93,7 +93,15 @@ func TestTheVerbatimDescentFollowsTheDocument(t *testing.T) {
 // token read out of order was already written with an earlier one. They matter
 // when a node the source does not reach interrupts the copy, which is what the
 // insertion case does.
-const descentCeiling = 20
+//
+// 20 -> 30 on 2026-09-15, on a corpus that stood still. What moved is what the
+// parser accepts: a flow mapping may now hold a collection key with no value,
+// as "{[a, b]}" writes it, so ten seeds that were refused are read. All ten are
+// one family -- "!!map {&a1 \"1_000\", &a2 8.0: *a1, [\"\"], null}" and nine
+// mutations of it -- and every one opens with an anchored scalar written as a
+// key with no value, which is the second shape above: "{&a1 \"x\"}" alone reads
+// backwards here and on the commit before the change. No new shape arrived.
+const descentCeiling = 30
 
 // TestVerbatimWritesANodeBack checks the per-node half: a node writes the
 // stretch of source it covers, and nothing of its neighbors.

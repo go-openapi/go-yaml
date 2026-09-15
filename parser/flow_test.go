@@ -12,6 +12,7 @@ import (
 	"github.com/go-openapi/testify/v2/require"
 
 	"github.com/go-openapi/go-yaml"
+	"github.com/go-openapi/go-yaml/ast"
 	"github.com/go-openapi/go-yaml/parser"
 )
 
@@ -382,4 +383,47 @@ func TestAReleasedKeyNamesTheRuleThatTookIt(t *testing.T) {
 			assert.Contains(t, err.Error(), test.want)
 		})
 	}
+}
+
+// TestAFlowMappingEntryIsAKeyWhateverFollowsIt holds the rules an entry of a
+// flow mapping does not carry.
+//
+// "{a, b}" is two entries with null values, which is how a set is written in
+// flow, so an entry of a flow mapping is a key whether a ':' follows it or not.
+// No lookahead tells a key from a value there, and the restrictions that bound
+// an implicit key exist to bound lookahead -- so neither the single line of
+// 7.4.2 nor its 1024 characters reaches inside a flow mapping. The reference
+// parser reads every document below; inside a flow sequence, and at the
+// document level, it refuses the same shapes and so do we.
+func TestAFlowMappingEntryIsAKeyWhateverFollowsIt(t *testing.T) {
+	long := longFlowSeq(1200)
+
+	for name, source := range map[string]string{
+		"a collection key with no value":        "{[a]}\n",
+		"a mapping as a collection key":         "{{\"\": 0}}\n",
+		"a collection key across lines":         "{[a,\n b]}\n",
+		"a collection key across lines, valued": "{[a,\n b]: v}\n",
+		"a collection key past the bound":       "{" + long + ": v}\n",
+		"a collection key past the bound alone": "{" + long + "}\n",
+		"a scalar key with no value":            "{a}\n",
+	} {
+		t.Run(name, func(t *testing.T) {
+			_, err := parser.ParseBytes([]byte(source))
+			require.NoError(t, err)
+		})
+	}
+
+	t.Run("a collection key alone holds the null the entry leaves out", func(t *testing.T) {
+		file, err := parser.ParseBytes([]byte("{[a, b]}\n"))
+		require.NoError(t, err)
+
+		mapping, ok := file.Docs[0].Body.(*ast.MappingNode)
+		require.True(t, ok)
+		require.Len(t, mapping.Values, 1)
+
+		key, ok := mapping.Values[0].Key.(*ast.SequenceNode)
+		require.True(t, ok, "the key is the sequence")
+		assert.Len(t, key.Values, 2, "with both its entries")
+		assert.IsType(t, &ast.NullNode{}, mapping.Values[0].Value)
+	})
 }
