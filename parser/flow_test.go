@@ -256,3 +256,43 @@ func TestParseEmptyNodeInAFlowCollection(t *testing.T) {
 		})
 	}
 }
+
+// TestAnUnclosedFlowNamesTheReasonItEnded checks that a flow collection the
+// scanner refused is reported by the scanner's complaint, not by the missing
+// closer the descent runs into afterwards.
+//
+// The key window hands a flow collection on as it reads one that cannot stand
+// as a mapping key, so the descent now reaches the end of the tokens before the
+// scanner has refused the badly indented line. Both complaints are true; the
+// scanner's names the line at fault, which is where libfyaml points too, and
+// the descent's names only the "[" it started from.
+func TestAnUnclosedFlowNamesTheReasonItEnded(t *testing.T) {
+	for name, test := range map[string]struct{ source, want string }{
+		"sequence continued at the parent's indent": {
+			source: "flow: [a,\nb,\nc]\n",
+			want:   "a flow collection continues on a line that is not indented past the one it started on",
+		},
+		"mapping continued at the parent's indent": {
+			source: "flow: {a: 1,\nb: 2}\n",
+			want:   "a flow collection continues on a line that is not indented past the one it started on",
+		},
+		"nested, continued at the parent's indent": {
+			source: "a:\n  flow: [x,\n  y]\n",
+			want:   "a flow collection continues on a line that is not indented past the one it started on",
+		},
+		"sequence that simply ends": {
+			source: "[a, b\n",
+			want:   "sequence end token ']' not found",
+		},
+		"mapping that simply ends": {
+			source: "{a: 1\n",
+			want:   "could not find flow mapping end token '}'",
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			_, err := parser.ParseBytes([]byte(test.source))
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), test.want)
+		})
+	}
+}

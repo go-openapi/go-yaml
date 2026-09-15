@@ -186,7 +186,7 @@ func (p *Parser) parseFlowMap(ctx context) (*ast.MappingNode, error) {
 		isFirst = false
 	}
 	if node.End == nil {
-		return nil, yamlerrors.NewSyntax("could not find flow mapping end token '}'", node.Start)
+		return nil, p.unclosed("could not find flow mapping end token '}'", node.Start)
 	}
 
 	// The comment closing the "}" line, as in "} # comment".
@@ -195,6 +195,21 @@ func (p *Parser) parseFlowMap(ctx context) (*ast.MappingNode, error) {
 	}
 	ctx.goNext() // Skip the '}'.
 	return node, nil
+}
+
+// unclosed names why a flow collection ran out of tokens before its closer.
+//
+// The scanner refuses a continuation line that is not indented past the line the
+// collection opened on, and the reader keeps that error where the descent's pull
+// cannot return it. The descent sees only that no token followed, so without
+// this the document is reported as a missing "]" or "}" at the opener, where
+// libfyaml and this scanner both name the badly indented line instead.
+func (p *Parser) unclosed(fallback string, at *token.Token) error {
+	if p.reader != nil && p.reader.err != nil {
+		return p.reader.err
+	}
+
+	return yamlerrors.NewSyntax(fallback, at)
 }
 
 func (p *Parser) isFlowMapDelim(tk *group.TapeToken) bool {
@@ -309,7 +324,7 @@ func (p *Parser) parseFlowSequence(ctx context) (*ast.SequenceNode, error) {
 		isFirst = false
 	}
 	if node.End == nil {
-		return nil, yamlerrors.NewSyntax("sequence end token ']' not found", node.Start)
+		return nil, p.unclosed("sequence end token ']' not found", node.Start)
 	}
 
 	// The comment closing the "]" line, as in "] # comment".

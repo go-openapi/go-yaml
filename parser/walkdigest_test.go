@@ -104,7 +104,13 @@ func TestTheWalkHandsOverTheSameTree(t *testing.T) {
 //
 // And once more when a plain scalar continued by a "- " line began to start where its text does. One source moved,
 // suite/sequence-entry-that-looks-like-two-with-wrong-indentation, whose token now stands on line 1.
-const fixedWalkDigest = "28c3ff4f7de18d47c4aab95f9087f7ce653e06af5c50ff40278cf0b9a8c6969d"
+//
+// Re-baselined on 2026-09-15 when the key window began releasing a flow collection that cannot stand as a key. One
+// source moved, suite/wrong-indented-flow-sequence, and only in what the walk sees before the document is refused:
+// the grouping used to hold the whole sequence, so the visitor received a null for "flow:" and then the error, and
+// it now receives the sequence and the "a" the parse did read. The complaint is unchanged -- "[2:1] a flow
+// collection continues on a line that is not indented past the one it started on" -- and so is every other source.
+const fixedWalkDigest = "d269cc4da95606027d0ac1050dca62463bec3f16f5d6f76057f40cbb8ebad237"
 
 // digestVisitor writes each node it is handed, so a node the walk reads from a reused cell changes the digest.
 type digestVisitor struct {

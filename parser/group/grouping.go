@@ -483,21 +483,16 @@ func stageMapKeysByValue(g *Grouper, at int, tk *TapeToken, out []*TapeToken) []
 
 	switch tk.Type() {
 	case token.MappingStartType, token.SequenceStartType:
-		w.openers = append(w.openers, len(w.held))
-		w.seq = append(w.seq, tk.Type() == token.SequenceStartType)
-		w.held = append(w.held, tk)
+		w.open(tk)
 	case token.MappingEndType, token.SequenceEndType:
-		if len(w.openers) > 0 {
-			w.openers = w.openers[:len(w.openers)-1]
-			w.seq = w.seq[:len(w.seq)-1]
-		}
-		w.held = append(w.held, tk)
+		w.close(tk)
 	case token.MappingValueType:
 		if !g.keyBefore(w, tk) {
 			return out
 		}
+		w.keyed(tk)
 	default:
-		w.held = append(w.held, tk)
+		w.hold(tk)
 	}
 
 	if len(w.held) > g.HeldHigh {

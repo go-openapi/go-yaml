@@ -622,14 +622,105 @@ type keyWindow struct {
 	// with its ':'; inside a mapping the same pair may span lines.
 	openers []int
 	seq     []bool
+	// canKey says, for each open collection, whether it could still close and
+	// stand as a mapping key. One that cannot pins nothing, so the window
+	// reaches past it and hands its tokens on as they settle.
+	canKey []bool
+	// announced says a '?' opened the entry the collection stands in, which
+	// exempts it from the rules that bound an implicit key.
+	announced []bool
+
+	// valueNext says the next token begins the value of an entry whose key is
+	// settled, and valueLine is the line its ':' stands on. A collection
+	// opening there is that value and can never be a key.
+	valueNext bool
+	valueLine int
+}
+
+// open records a flow collection the window has entered.
+func (w *keyWindow) open(tk *TapeToken) {
+	w.spanALine(tk)
+
+	announced := false
+	if last := lastContentIndex(w.held); last >= 0 {
+		announced = w.held[last].Type() == token.MappingKeyType
+	}
+
+	w.openers = append(w.openers, len(w.held))
+	w.seq = append(w.seq, tk.Type() == token.SequenceStartType)
+	w.canKey = append(w.canKey, !w.opensAValue(tk))
+	w.announced = append(w.announced, announced)
+	w.valueNext = false
+	w.held = append(w.held, tk)
+}
+
+// spanALine records that tk stands on a later line than a collection still open
+// started on, so that collection can no longer be an implicit key.
+//
+// 7.4.2 restricts an implicit key to a single line, and keyBefore already
+// refuses one that spans lines -- but it refuses at the ':', long after the
+// window could have let the tokens go. A '?' announces the key separately and
+// is exempt: "? [a," over "  b]" over ": v" is a key, however many lines it
+// takes.
+func (w *keyWindow) spanALine(tk *TapeToken) {
+	line := tk.Line()
+	for i, at := range w.openers {
+		if w.canKey[i] && !w.announced[i] && w.held[at].Line() != line {
+			w.canKey[i] = false
+		}
+	}
+}
+
+// close records the collection that just ended.
+func (w *keyWindow) close(tk *TapeToken) {
+	w.spanALine(tk)
+	if len(w.openers) > 0 {
+		w.openers = w.openers[:len(w.openers)-1]
+		w.seq = w.seq[:len(w.seq)-1]
+		w.canKey = w.canKey[:len(w.canKey)-1]
+		w.announced = w.announced[:len(w.announced)-1]
+	}
+	w.valueNext = false
+	w.held = append(w.held, tk)
+}
+
+// hold keeps a token the window may still need for a key.
+func (w *keyWindow) hold(tk *TapeToken) {
+	w.spanALine(tk)
+	if tk.Type() != token.CommentType {
+		// A comment may sit between a ':' and its value without parting them,
+		// as it may between a key and its ':'.
+		w.valueNext = false
+	}
+	w.held = append(w.held, tk)
+}
+
+// keyed records that a ':' has taken its key, so the value begins next.
+func (w *keyWindow) keyed(tk *TapeToken) {
+	w.valueNext, w.valueLine = true, tk.Line()
+}
+
+// opensAValue reports whether tk stands where the value of an entry begins:
+// straight after a ':' that already has its key, on that ':'s own line.
+//
+// The line has to match. A ':' followed by a break decides nothing -- "k:" over
+// "  [a, b]: v" is a nested block mapping whose key is the sequence, which both
+// this parser and the reference parser read.
+func (w *keyWindow) opensAValue(tk *TapeToken) bool {
+	return w.valueNext && tk.Line() == w.valueLine
 }
 
 // keepFrom is where the window has to start for a ':' arriving next to find its
 // key. Everything before it can be handed on.
 func (w *keyWindow) keepFrom() int {
-	if len(w.openers) > 0 {
-		// A collection still open may yet close and stand as a key.
-		return withKeyProperties(w.held, w.openers[0])
+	// The outermost collection that could still close and stand as a key pins
+	// the whole window, because every token inside it would belong to that key.
+	// A collection that opened in value position cannot be a key, so the window
+	// reaches past it to whatever is still undecided within.
+	for i, at := range w.openers {
+		if w.canKey[i] {
+			return withKeyProperties(w.held, at)
+		}
 	}
 
 	last := lastContentIndex(w.held)
@@ -708,21 +799,16 @@ func (g *Grouper) groupMapKeysByValue(in []*TapeToken) []*TapeToken {
 	for _, tk := range in {
 		switch tk.Type() {
 		case token.MappingStartType, token.SequenceStartType:
-			w.openers = append(w.openers, len(w.held))
-			w.seq = append(w.seq, tk.Type() == token.SequenceStartType)
-			w.held = append(w.held, tk)
+			w.open(tk)
 		case token.MappingEndType, token.SequenceEndType:
-			if len(w.openers) > 0 {
-				w.openers = w.openers[:len(w.openers)-1]
-				w.seq = w.seq[:len(w.seq)-1]
-			}
-			w.held = append(w.held, tk)
+			w.close(tk)
 		case token.MappingValueType:
 			if !g.keyBefore(w, tk) {
 				return out
 			}
+			w.keyed(tk)
 		default:
-			w.held = append(w.held, tk)
+			w.hold(tk)
 		}
 
 		if len(w.held) > g.HeldHigh {
