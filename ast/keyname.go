@@ -9,8 +9,23 @@ import (
 	"github.com/go-openapi/go-yaml/token"
 )
 
-// KeyName is the text a mapping key addresses an entry by, and the type it
-// resolved to.
+// KeyName is the name a mapping key is identified by, and the type it resolved
+// to.
+//
+// ⚠️ It answers "is this the same key?", not "how is this key written". Two keys
+// with one name are one key, and 3.2.1.1 makes that an error. Nothing here
+// renders a document: for the characters a key is written with, call the node's
+// String, or build a [Renderer] with [NewRenderer].
+//
+// Three callers read it, and two of the three want a different form:
+//
+//   - the parser's duplicate check compares keys, so it reads [ComparedKeyName],
+//     which folds this name through [CanonicalKeyName]. The two differ only for
+//     a timestamp, which compares as its instant in UTC.
+//   - codec names a Go map entry or a JSON member by this name and not the
+//     compared one, so a timestamp key keeps the zone the document wrote it in.
+//   - [KeyIdentity] names the keys this one leaves unnamed, which are the
+//     collections.
 //
 // [token.KeyName] holds the rule for a scalar's own spelling -- "7" and "007"
 // are one integer written two ways, "1" and "1.0" are an integer and a float --
@@ -33,11 +48,9 @@ import (
 //
 // An alias is named as the node its anchor named, through [AliasNode.Target].
 //
-// Three packages named a key from a node before this: ast for [KeyIdentity],
-// the parser for its duplicate check, and codec for the string a Go map or a
-// JSON member is keyed by. Only the last left out the tag and the alias, so
-// "!!float 1.0: x" came back keyed "1" -- a float in the integers' namespace,
-// where an entry keyed "1" then displaces it.
+// Those three named a key from a node separately before this, and only codec
+// left out the tag and the alias, so "!!float 1.0: x" came back keyed "1" -- a
+// float in the integers' namespace, where an entry keyed "1" then displaces it.
 func KeyName(n Node) (string, token.KeyKind) {
 	name, kind, named := ScalarKeyName(n, aliasTarget)
 	if !named {
@@ -72,6 +85,8 @@ type KeyAlias func(*AliasNode) (string, token.KeyKind, bool)
 // parser's duplicate check all read it, so a rule for one kind of key reaches
 // all three.
 //
+// It names a key to tell it from another, not to write it out. See [KeyName].
+//
 // It looks through an explicit "?", an anchor and a tag that names no type. A
 // tag that names one says what the key is, through [TaggedKeyName]. A quoted
 // key is named by what its escapes resolved to, a block scalar by its string
@@ -85,6 +100,9 @@ func ScalarKeyName(n Node, alias KeyAlias) (string, token.KeyKind, bool) {
 
 // ComparedKeyName is [ScalarKeyName] in the form two keys are compared by,
 // which [CanonicalKeyName] gives.
+//
+// Use it to compare two keys. [KeyName] gives the same string except for a
+// timestamp, which this one writes as its instant in UTC.
 func ComparedKeyName(n Node, alias KeyAlias) (string, token.KeyKind, bool) {
 	name, kind, named := ScalarKeyName(n, alias)
 	if !named {
