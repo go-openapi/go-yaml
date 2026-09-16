@@ -34,7 +34,7 @@ func (v *counting) Enter(node ast.Node, _ Cursor) error {
 	return nil
 }
 
-func (v *counting) Leave(ast.Node, Cursor) error { return nil }
+func (v *counting) Leave(ast.Node, Closing) error { return nil }
 
 // TestWalkLetsTheTapeGo checks that a walk returns the tape's chunks as it reads.
 //

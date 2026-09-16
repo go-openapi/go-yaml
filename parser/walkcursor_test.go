@@ -45,7 +45,7 @@ func (s *cursorSpy) Enter(node ast.Node, at parser.Cursor) error {
 	return nil
 }
 
-func (s *cursorSpy) Leave(node ast.Node, at parser.Cursor) error {
+func (s *cursorSpy) Leave(node ast.Node, at parser.Closing) error {
 	answer := s.read(node, at)
 	entered := s.open[len(s.open)-1]
 	s.open = s.open[:len(s.open)-1]

@@ -109,12 +109,11 @@ func (t *jsonTokener) collectRun(write func()) {
 // earlier merge beats a later one, so the runs are read in the order they were
 // collected and the first writer of a name wins. JSON has no way to name a
 // member twice.
-func (t *jsonTokener) closeMapping(at parser.Cursor, end *token.Token) {
+func (t *jsonTokener) closeMapping(at parser.Closing, end *token.Token) {
 	if f := &t.maps[len(t.maps)-1]; f.hasPending {
 		// A key whose value never began. Every entry has one, a null at least,
 		// so this only guards the order the tokens go over in.
 		f.hasPending = false
-		f.keys = append(f.keys, f.pending.Value)
 		t.emit(f.pending)
 	}
 	frame := t.maps[len(t.maps)-1]
@@ -122,10 +121,13 @@ func (t *jsonTokener) closeMapping(at parser.Cursor, end *token.Token) {
 
 	for _, run := range frame.merged {
 		for _, member := range mergedMembers(run) {
-			if slices.Contains(frame.keys, member.key) {
+			// An own key beats a merged one whatever their order in the document, and an earlier
+			// merge beats a later one. at.HoldsKey answers the first from the parse's own key
+			// ledger; brought answers the second, which the parse never saw.
+			if at.HoldsKey(member.key) || slices.Contains(frame.brought, member.key) {
 				continue
 			}
-			frame.keys = append(frame.keys, member.key)
+			frame.brought = append(frame.brought, member.key)
 			for _, tok := range run[member.from:member.to] {
 				t.emit(tok)
 			}

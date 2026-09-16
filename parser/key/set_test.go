@@ -328,3 +328,58 @@ func TestSetCloseClearsBothIndexEntriesUnderJSONNames(t *testing.T) {
 	assert.False(t, got.repeat, "the mapping that used the integer 1 has closed")
 	assert.False(t, got.jsonOnly)
 }
+
+// TestSetHoldsAnswersByNameAndNotByNode checks the question a JSON writer asks, on both paths.
+//
+// Record compares a key by its name and the node it resolves to, since 3.2.1.1 makes "7" and "007" one key
+// and "1" and "1.0" two. Holds compares the name alone, which is what a JSON member is named by:
+// "1: a" and "\"1\": b" resolve to an integer and a string and write one member.
+//
+// codec.ToJSONTokens asks it as a mapping closes, to leave out what a "<<" brings in under a name the
+// mapping writes itself.
+func TestSetHoldsAnswersByNameAndNotByNode(t *testing.T) {
+	t.Parallel()
+
+	for _, spilled := range []bool{false, true} {
+		t.Run(fmt.Sprintf("spilled=%v", spilled), func(t *testing.T) {
+			t.Parallel()
+
+			var s key.Set
+			s.UseJSONNames(true)
+			base := s.Base()
+			require.False(t, s.Holds(base, "1"), "an empty mapping holds no name")
+
+			record(&s, base, "1", token.KeyInt, 1)
+			if spilled {
+				// Past the threshold the index answers instead of the scan, and both must agree.
+				pad(t, &s, base)
+			}
+
+			assert.True(t, s.Holds(base, "1"), "the integer key 1 writes the member 1")
+			assert.False(t, s.Holds(base, "1.0"), "a float is a member of its own")
+			assert.False(t, s.Holds(base, "2"), "a name the mapping never wrote")
+
+			// The mapping never recorded a string "1", and the name is what Holds answers on.
+			first, jsonOnly, repeat := s.Record(base, "1", token.KeyString, at(2))
+			assert.True(t, jsonOnly, "Record reads the two as one JSON member and two YAML keys")
+			assert.True(t, repeat, "and as a repeat under UseJSONNames")
+			assert.Equal(t, at(1), first)
+		})
+	}
+
+	t.Run("one mapping's names stay its own", func(t *testing.T) {
+		t.Parallel()
+
+		var s key.Set
+		s.UseJSONNames(true)
+		outer := s.Base()
+		record(&s, outer, "a", token.KeyString, 1)
+
+		inner := s.Base()
+		require.False(t, s.Holds(inner, "a"), "the mapping inside has not written a")
+
+		record(&s, inner, "b", token.KeyString, 2)
+		assert.True(t, s.Holds(inner, "b"))
+		assert.True(t, s.Holds(outer, "a"), "and the outer one still holds its own")
+	})
+}

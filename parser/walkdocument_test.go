@@ -128,7 +128,7 @@ func (d *documentSpy) Enter(_ ast.Node, at parser.Cursor) error {
 	return nil
 }
 
-func (d *documentSpy) Leave(ast.Node, parser.Cursor) error { return nil }
+func (d *documentSpy) Leave(ast.Node, parser.Closing) error { return nil }
 
 // everyStep records the document of every node handed over, at any depth.
 type everyStep struct {
@@ -141,4 +141,4 @@ func (e *everyStep) Enter(_ ast.Node, at parser.Cursor) error {
 	return nil
 }
 
-func (e *everyStep) Leave(ast.Node, parser.Cursor) error { return nil }
+func (e *everyStep) Leave(ast.Node, parser.Closing) error { return nil }

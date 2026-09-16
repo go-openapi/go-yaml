@@ -165,6 +165,10 @@ func (l *Ledger) AllowRepeats(on bool) { l.allowRepeats = on }
 // Base returns the index the keys of the mapping opening now start at.
 func (l *Ledger) Base() int { return l.keys.Base() }
 
+// Holds reports whether the mapping starting at base has written the name text itself.
+// See [Set.Holds] for which of the two key questions it answers.
+func (l *Ledger) Holds(base int, text string) bool { return l.keys.Holds(base, text) }
+
 // UseJSONNames compares a key under the name JSON gives it as well as under the
 // node it resolves to. The parser sets it from its WithJSONCompatible option.
 func (l *Ledger) UseJSONNames(on bool) { l.keys.UseJSONNames(on) }

@@ -175,7 +175,7 @@ func (wk *walker) Enter(node ast.Node, at parser.Cursor) error {
 // And the parse reuses a node's cells once the walk moves past it, so a piece
 // carrying a node has to reach the transform while the node is still the one
 // the walk named -- Leave is the last moment that holds.
-func (wk *walker) Leave(node ast.Node, at parser.Cursor) error {
+func (wk *walker) Leave(node ast.Node, at parser.Closing) error {
 	if wk.err != nil || node == nil {
 		return wk.err
 	}

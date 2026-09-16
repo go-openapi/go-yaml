@@ -7,6 +7,7 @@ import (
 	"errors"
 
 	"github.com/go-openapi/go-yaml/ast"
+	"github.com/go-openapi/go-yaml/parser/key"
 )
 
 // Kind names what encloses a node handed to a [Visitor]: a collection, or the anchor, tag or "?" written on the node.
@@ -92,6 +93,24 @@ type Cursor interface {
 	Document() int
 }
 
+// Closing answers what only a node the walk has finished reading can answer.
+// [Visitor.Leave] receives one, and it answers everything a [Cursor] does.
+type Closing interface {
+	Cursor
+	// HoldsKey reports whether the mapping being left wrote name as a key itself.
+	//
+	// It answers for the mapping the Leave is closing, and false for every other node.
+	//
+	// The name is the one [ast.KeyName] gives, which the parse already computed for its duplicate check:
+	// an integer key is named in decimal whatever base the document wrote it in, so "7" and "007" are one
+	// name, and a float by its value, so "1" and "1.0" are two.
+	//
+	// ⚠️ HoldsKey compares the name and not the node, so two keys YAML tells apart may share one:
+	// "1: a" and "\"1\": b" resolve to an integer and a string and both answer "1". A writer that names a
+	// member once asks this. A reader that compares keys as 3.2.1.1 does reads ast.MappingNode.Duplicates.
+	HoldsKey(name string) bool
+}
+
 // SkipNode tells [Parser.Walk] not to hand the node's content over. Return it from [Visitor.Enter].
 //
 // Leave is not called for a node whose Enter skipped it, and the parse reads the content all the same:
@@ -135,7 +154,7 @@ type Visitor interface {
 	// Leave is called after the node's content has been visited, and the Cursor answers as it did for Enter.
 	//
 	// Return an error to stop the walk.
-	Leave(node ast.Node, at Cursor) error
+	Leave(node ast.Node, at Closing) error
 }
 
 // walkState holds the state of a walk.
@@ -165,6 +184,10 @@ type walkState struct {
 	stopped bool
 	// curKey is IsKey for the node being handed over, set just before each call.
 	curKey bool
+	// keys answers HoldsKey, and keyBase indexes the first key of the mapping being left in it.
+	// keyBase is -1 outside a mapping's own Leave.
+	keys    *key.Ledger
+	keyBase int
 }
 
 // walkState answers the [Cursor] for the node it is handing over.
@@ -185,6 +208,14 @@ func (w *walkState) IsRoot() bool { return len(w.in) == 0 }
 func (w *walkState) IsKey() bool { return w.curKey }
 
 func (w *walkState) Document() int { return w.document }
+
+func (w *walkState) HoldsKey(name string) bool {
+	if w.keys == nil || w.keyBase < 0 {
+		return false
+	}
+
+	return w.keys.Holds(w.keyBase, name)
+}
 
 // fail records the first error a visitor returned, and reads [StopWalk] as a stop with no error.
 func (w *walkState) fail(err error) {
@@ -228,7 +259,7 @@ func (p *Parser) Walk(src []byte, v Visitor) (*ast.File, error) {
 		return nil, ErrParserReused
 	}
 	p.used = true
-	p.walk = &walkState{visitor: v}
+	p.walk = &walkState{visitor: v, keys: &p.keys, keyBase: -1}
 	defer func() { p.walk = nil }()
 
 	p.begin(src)
@@ -376,12 +407,19 @@ func (p *Parser) leave(ctx context, node ast.Node) {
 	p.walk.index = p.walk.index[:len(p.walk.index)-1]
 	p.walk.curKey = p.walk.key[len(p.walk.key)-1]
 	p.walk.key = p.walk.key[:len(p.walk.key)-1]
+	// The mapping's keys are still on the ledger here: parseMapping registers the walk's leave after
+	// keys.Open's close, so this runs first. keyBase is the mapping's own base, from ctx.withMapping.
+	p.walk.keyBase = -1
+	if _, isMapping := node.(*ast.MappingNode); isMapping {
+		p.walk.keyBase = ctx.keyBase
+	}
 	// The stacks are popped above whatever happens, so a node opened before the stop still closes level.
 	if !p.walk.done() {
 		if err := p.walk.visitor.Leave(node, p.walk); err != nil {
 			p.walk.fail(err)
 		}
 	}
+	p.walk.keyBase = -1
 	p.count()
 	p.readTo(ctx)
 }
@@ -434,6 +472,7 @@ func (p *Parser) handAs(ctx context, node ast.Node, key bool) {
 	}
 
 	p.walk.curKey = key
+	p.walk.keyBase = -1
 	// A node with no content: SkipNode has nothing to skip, and only drops the Leave.
 	switch err := p.walk.visitor.Enter(node, p.walk); {
 	case err == nil:

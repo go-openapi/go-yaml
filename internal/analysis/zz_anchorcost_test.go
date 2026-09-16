@@ -95,8 +95,8 @@ func walkBytes(t *testing.T, src []byte) uint64 {
 
 type nopVisitor struct{}
 
-func (nopVisitor) Enter(ast.Node, parser.Cursor) error { return nil }
-func (nopVisitor) Leave(ast.Node, parser.Cursor) error { return nil }
+func (nopVisitor) Enter(ast.Node, parser.Cursor) error  { return nil }
+func (nopVisitor) Leave(ast.Node, parser.Closing) error { return nil }
 
 // allocatedBytes reports what run allocates, read off the runtime's counters.
 func allocatedBytes(run func()) uint64 {

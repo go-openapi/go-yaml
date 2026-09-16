@@ -107,4 +107,4 @@ func (r *aliasTargetReader) Enter(node ast.Node, _ parser.Cursor) error {
 	return nil
 }
 
-func (r *aliasTargetReader) Leave(ast.Node, parser.Cursor) error { return nil }
+func (r *aliasTargetReader) Leave(ast.Node, parser.Closing) error { return nil }

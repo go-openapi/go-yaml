@@ -130,6 +130,31 @@ func (k *Set) Record(base int, text string, kind token.KeyKind, pos token.Positi
 	return token.Position{}, false, false
 }
 
+// Holds reports whether the mapping starting at base has used the name text, whatever node that key
+// resolved to. Record answers the other question, where "1: a" and "\"1\": b" are two keys.
+//
+// A JSON member is named once, so a reader writing JSON asks this one: "1" and "\"1\"" write one member.
+// The scan compares the name out of the filter the set already holds, shifting the kind out of the low byte.
+//
+// ⚠️ The index answers only under UseJSONNames, which is what records the second entry per key; without it
+// the scan answers, and entries holds every key whether or not the mapping has spilled.
+func (k *Set) Holds(base int, text string) bool {
+	if k.jsonNames && k.index != nil && len(k.entries)-base >= spillAt {
+		_, held := k.index[mapKeyRef{base: int32(base), kind: anyKind, text: text}]
+
+		return held
+	}
+
+	name := keyFilter(text, 0) >> 8
+	for i := base; i < len(k.entries); i++ {
+		if k.filter[i]>>8 == name && k.entries[i].text == text {
+			return true
+		}
+	}
+
+	return false
+}
+
 // push adds one key to the stack.
 func (k *Set) push(text string, pos token.Position, f uint32) {
 	k.filter = append(k.filter, f)

@@ -78,15 +78,19 @@ func holdsAnything(v reflect.Value) bool {
 	return v.Kind() == reflect.Interface && v.Type().NumMethod() == 0
 }
 
-// forward hands a node to the nested value builder and closes the subtree once
-// the builder has finished one.
-func (b *typedBuilder) forward(node ast.Node, at parser.Cursor, entering bool) error {
-	var err error
-	if entering {
-		err = b.values.Enter(node, at)
-	} else {
-		err = b.values.Leave(node, at)
-	}
+// forwardEnter and forwardLeave hand a node to the nested value builder and close the
+// subtree once the builder has finished one. They are two methods because Leave receives
+// a parser.Closing and Enter a parser.Cursor, which answers less.
+func (b *typedBuilder) forwardEnter(node ast.Node, at parser.Cursor) error {
+	return b.forwarded(b.values.Enter(node, at))
+}
+
+func (b *typedBuilder) forwardLeave(node ast.Node, at parser.Closing) error {
+	return b.forwarded(b.values.Leave(node, at))
+}
+
+// forwarded reports what the nested builder made of the node it was handed.
+func (b *typedBuilder) forwarded(err error) error {
 	// Read before closeAny, which drops the builder once it has made a value.
 	if b.values.err != nil {
 		return b.fail(b.values.err)
@@ -183,7 +187,7 @@ func (b *typedBuilder) Enter(node ast.Node, at parser.Cursor) error {
 	}
 
 	if b.values != nil {
-		return b.forward(node, at, true)
+		return b.forwardEnter(node, at)
 	}
 
 	// A key names the entry that follows rather than being a value, so it is
@@ -199,7 +203,7 @@ func (b *typedBuilder) Enter(node ast.Node, at parser.Cursor) error {
 		b.anyInto = dst
 		b.values = &valueBuilder{share: b.share, budget: b.budget}
 
-		return b.forward(node, at, true)
+		return b.forwardEnter(node, at)
 	}
 
 	switch n := node.(type) {
@@ -507,13 +511,13 @@ func scalarNumber(node ast.Node) any {
 	}
 }
 
-func (b *typedBuilder) Leave(node ast.Node, at parser.Cursor) error {
+func (b *typedBuilder) Leave(node ast.Node, at parser.Closing) error {
 	if b.err != nil {
 		// The walk hands nothing more over once a visitor has failed, and still leaves the nodes it had open.
 		return b.err
 	}
 	if b.values != nil {
-		return b.forward(node, at, false)
+		return b.forwardLeave(node, at)
 	}
 	switch node.(type) {
 	case *ast.MappingNode, *ast.SequenceNode:

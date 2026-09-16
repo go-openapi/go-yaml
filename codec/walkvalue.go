@@ -160,7 +160,7 @@ func (b *valueBuilder) Enter(node ast.Node, at parser.Cursor) error {
 }
 
 // Leave is called once everything a node holds has been.
-func (b *valueBuilder) Leave(node ast.Node, at parser.Cursor) error {
+func (b *valueBuilder) Leave(node ast.Node, at parser.Closing) error {
 	if b.err != nil {
 		// The walk hands nothing more over once a visitor has failed, and still leaves the nodes it had open.
 		// The frames below stay as they were, since nothing reads them again.

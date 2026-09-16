@@ -48,4 +48,4 @@ func (c *frontierCounter) Enter(_ ast.Node, _ parser.Cursor) error {
 	return nil
 }
 
-func (c *frontierCounter) Leave(_ ast.Node, _ parser.Cursor) error { c.open--; return nil }
+func (c *frontierCounter) Leave(_ ast.Node, _ parser.Closing) error { c.open--; return nil }

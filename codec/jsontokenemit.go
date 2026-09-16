@@ -36,9 +36,6 @@ func (t *jsonTokener) emitKeyNamed(name string, at token.Position) {
 
 		return
 	}
-	if frame != nil {
-		frame.keys = append(frame.keys, name)
-	}
 	t.emit(tok)
 }
 

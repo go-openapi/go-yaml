@@ -70,5 +70,5 @@ func TestGrouperCellsOutliveTheirReaders(t *testing.T) {
 
 type silentVisitor struct{}
 
-func (silentVisitor) Enter(ast.Node, parser.Cursor) error { return nil }
-func (silentVisitor) Leave(ast.Node, parser.Cursor) error { return nil }
+func (silentVisitor) Enter(ast.Node, parser.Cursor) error  { return nil }
+func (silentVisitor) Leave(ast.Node, parser.Closing) error { return nil }

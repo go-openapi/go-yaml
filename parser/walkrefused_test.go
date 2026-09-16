@@ -31,7 +31,7 @@ func (s *balanceSpy) Enter(node ast.Node, at parser.Cursor) error {
 	return nil
 }
 
-func (s *balanceSpy) Leave(node ast.Node, at parser.Cursor) error {
+func (s *balanceSpy) Leave(node ast.Node, at parser.Closing) error {
 	want := fmt.Sprintf("%s@%d", node.Type(), at.Depth())
 	if len(s.open) == 0 {
 		s.extra = append(s.extra, want)

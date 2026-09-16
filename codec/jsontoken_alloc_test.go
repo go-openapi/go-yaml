@@ -81,4 +81,4 @@ type discardVisitor struct{}
 
 func (discardVisitor) Enter(ast.Node, parser.Cursor) error { return nil }
 
-func (discardVisitor) Leave(ast.Node, parser.Cursor) error { return nil }
+func (discardVisitor) Leave(ast.Node, parser.Closing) error { return nil }

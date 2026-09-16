@@ -40,7 +40,7 @@ func (s *stopSpy) Enter(node ast.Node, _ parser.Cursor) error {
 	return nil
 }
 
-func (s *stopSpy) Leave(node ast.Node, _ parser.Cursor) error {
+func (s *stopSpy) Leave(node ast.Node, _ parser.Closing) error {
 	s.log = append(s.log, "leave "+node.Type().String())
 	if s.atLeave && node.Type() == s.on {
 		s.answered = len(s.log)

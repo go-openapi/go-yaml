@@ -135,7 +135,7 @@ func (d *digestVisitor) Enter(node ast.Node, at parser.Cursor) error {
 	return nil
 }
 
-func (d *digestVisitor) Leave(node ast.Node, at parser.Cursor) error {
+func (d *digestVisitor) Leave(node ast.Node, at parser.Closing) error {
 	d.write("leave", node, at)
 	return nil
 }
@@ -233,4 +233,4 @@ func (c *countingVisitor) Enter(n ast.Node, _ parser.Cursor) error {
 	return nil
 }
 
-func (c *countingVisitor) Leave(ast.Node, parser.Cursor) error { return nil }
+func (c *countingVisitor) Leave(ast.Node, parser.Closing) error { return nil }

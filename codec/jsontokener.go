@@ -79,16 +79,15 @@ type jsonTokener struct {
 }
 
 // pushMap opens the frame of a mapping being handed over, reusing the room the
-// last frame at that depth grew for its keys.
+// last frame at that depth grew for the names its merges brought in.
 //
-// Every mapping grew a keys slice from nothing, which was a third of what the
-// conversion allocated. A popped frame is not read again: closeMapping copies it
-// before popping it, and nothing it calls opens another mapping.
+// A popped frame is not read again: closeMapping copies it before popping it,
+// and nothing it calls opens another mapping.
 func (t *jsonTokener) pushMap(n *ast.MappingNode) {
 	if len(t.maps) < cap(t.maps) {
 		t.maps = t.maps[:len(t.maps)+1]
 		frame := &t.maps[len(t.maps)-1]
-		*frame = tokenMapFrame{keys: frame.keys[:0], mergeSeq: -1, node: n}
+		*frame = tokenMapFrame{brought: frame.brought[:0], mergeSeq: -1, node: n}
 
 		return
 	}
@@ -97,9 +96,11 @@ func (t *jsonTokener) pushMap(n *ast.MappingNode) {
 
 // tokenMapFrame is one mapping being handed over.
 type tokenMapFrame struct {
-	// keys are the keys the mapping has written itself, for the merge to be
-	// answered against when it closes.
-	keys []string
+	// brought are the names earlier "<<" runs put into this mapping, for a later
+	// run to be answered against. The mapping's own keys are not here: the parse
+	// recorded them for its duplicate check and parser.Closing.HoldsKey answers
+	// for them, so a mapping with no "<<" records nothing at all.
+	brought []string
 	// merged holds what each "<<" of this mapping brings in, earliest first.
 	merged [][]JSONToken
 	// mergeValue says the next node handed over belongs to a "<<" and is to be
@@ -136,7 +137,6 @@ func (t *jsonTokener) settleEntry(frame *tokenMapFrame) bool {
 	if repeat {
 		return true
 	}
-	frame.keys = append(frame.keys, tok.Value)
 	t.emit(tok)
 
 	return false
@@ -272,7 +272,7 @@ func (t *jsonTokener) Enter(node ast.Node, at parser.Cursor) error {
 	return t.halted()
 }
 
-func (t *jsonTokener) Leave(node ast.Node, at parser.Cursor) error {
+func (t *jsonTokener) Leave(node ast.Node, at parser.Closing) error {
 	if t.stopped {
 		return t.halted()
 	}
