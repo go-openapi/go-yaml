@@ -45,8 +45,9 @@ func Copy(w io.Writer, p Piece) error {
 type Option func(*config)
 
 type config struct {
-	version parser.YAMLVersion
-	parse   []parser.Option
+	version   parser.YAMLVersion
+	parse     []parser.Option
+	nodePaths bool
 }
 
 // WithYAMLVersion says which version of the specification the document is read
@@ -60,12 +61,25 @@ func WithYAMLVersion(v parser.YAMLVersion) Option {
 	return func(c *config) { c.version = v }
 }
 
+// WithNodePaths records each node's path in the document, so a [Transformer] can read
+// [ast.Node.GetPath] on [Piece.Node].
+//
+// It is off by default. The path trie grows with the document's length, where everything else a
+// transform holds grows with its depth: a flat document of 10,000 keys pays 370 KB for it, a tenth
+// of what the whole transform allocates, and nothing in this module reads a path.
+func WithNodePaths() Option {
+	return func(c *config) { c.nodePaths = true }
+}
+
 // WithParserOptions passes options on to the parse.
 //
 // ⚠️ [parser.WithComments] is not one to pass: a comment reaches a transform as
 // a piece of its own whatever the parse does with it, and asking the parse to
 // keep comments changes nothing here except to make a directive standing after
 // one go over twice.
+//
+// [parser.WithOmitNodePaths] is not one either: Walk passes it already. Use
+// [WithNodePaths] to have the paths recorded instead.
 func WithParserOptions(opts ...parser.Option) Option {
 	return func(c *config) { c.parse = append(c.parse, opts...) }
 }
@@ -90,6 +104,11 @@ func Walk(w io.Writer, src []byte, t Transformer, opts ...Option) error {
 	wk.scan.SetSchema(cfg.version.Schema())
 
 	parse := append([]parser.Option{parser.WithYAMLVersion(cfg.version)}, cfg.parse...)
+	if !cfg.nodePaths {
+		// The paths cost memory that grows with the document, and a piece is named by its own token.
+		// See [WithNodePaths] for a caller that wants them.
+		parse = append(parse, parser.WithOmitNodePaths())
+	}
 	if _, err := parser.New(parse...).Walk(src, wk); err != nil {
 		return err
 	}

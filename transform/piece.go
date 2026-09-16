@@ -48,6 +48,10 @@ type Piece struct {
 	// the text -- [ast.IntegerType] for a plain "1", [ast.StringType] for a
 	// quoted one -- which is more than the token type says.
 	//
+	// [ast.Node.GetPath] returns "" unless the walk was given [WithNodePaths]:
+	// recording a path for every node costs memory that grows with the document,
+	// and a piece is named by its own token.
+	//
 	// ⚠️ Read it during the call and do not keep it. The node belongs to the
 	// parse, which reclaims its cells as the walk moves past; a node kept for
 	// one more piece reads whichever node was built over it. The walk writes
