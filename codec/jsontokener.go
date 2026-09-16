@@ -183,8 +183,8 @@ func (t *jsonTokener) Enter(node ast.Node, at parser.Cursor) error {
 		// one it applies to. It holds no value, so the document to convert is
 		// the next one along -- guarded on nothing having gone over yet, since
 		// a directive arriving after that is not opening it.
-		if at.Document() == t.firstDoc && t.handed == 0 {
-			t.firstDoc = at.Document() + 1
+		if doc := at.Document(); doc == t.firstDoc && t.handed == 0 {
+			t.firstDoc = doc + 1
 		}
 
 		return parser.SkipNode
@@ -210,11 +210,12 @@ func (t *jsonTokener) Enter(node ast.Node, at parser.Cursor) error {
 	// this converter cannot read is refused rather than half-answered, and emit
 	// hands none of it over. The budget bounds each document on its own, so a
 	// later one counts its tokens from nothing.
-	if at.Document() != t.doc {
-		t.doc, t.count = at.Document(), 0
+	doc := at.Document()
+	if doc != t.doc {
+		t.doc, t.count = doc, 0
 	}
-	t.ended = at.Document() != t.firstDoc
-	if t.ended && t.state.oneDocument && at.Document() > t.firstDoc {
+	t.ended = doc != t.firstDoc
+	if t.ended && t.state.oneDocument && doc > t.firstDoc {
 		t.fail(yamlerrors.NewNotJSON("a stream of several documents has no single JSON root", node.GetToken()))
 
 		return t.halted()
