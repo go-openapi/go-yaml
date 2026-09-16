@@ -218,6 +218,9 @@ func (p *Parser) parseMap(ctx context) (*ast.MappingNode, error) {
 	mapNode.SetPathNode(ctx.path)
 	defer p.keys.Open(mapNode)()
 	p.enter(ctx, mapNode, KindMapping)
+	// Registered here and not past the entries, so a document the parse refuses still leaves the mapping.
+	// Four returns stand between this and the end of the loop below.
+	defer p.leave(ctx, mapNode)
 
 	// markNodes records the arena's position before each entry.
 	// A walk keeps nothing of an entry once it is handed over, so rewindNodes reuses its cells for the next one.
@@ -278,7 +281,6 @@ func (p *Parser) parseMap(ctx context) (*ast.MappingNode, error) {
 	if !p.walking() || !p.keepsNothing() {
 		mapNode.Values = ctx.arena.MappingRun(p.descent.entriesFrom(entryBase))
 	}
-	defer p.leave(ctx, mapNode)
 
 	if ctx.isComment() {
 		if keyTk.Column() <= ctx.currentToken().Column() {

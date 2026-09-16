@@ -110,7 +110,13 @@ func TestTheWalkHandsOverTheSameTree(t *testing.T) {
 // the grouping used to hold the whole sequence, so the visitor received a null for "flow:" and then the error, and
 // it now receives the sequence and the "a" the parse did read. The complaint is unchanged -- "[2:1] a flow
 // collection continues on a line that is not indented past the one it started on" -- and so is every other source.
-const fixedWalkDigest = "d269cc4da95606027d0ac1050dca62463bec3f16f5d6f76057f40cbb8ebad237"
+//
+// Re-baselined on 2026-09-16 when a mapping the walk entered began to be left on a document the parse refuses.
+// 26 of the 418 sources moved and the parse refuses every one of them; no accepted document changed. The added
+// lines are all "leave", and the leaves that already ran now report their own depth: a sequence holding a mapping
+// that was never left reported the mapping's depth, because leave pops one level off a stack the missing call had
+// left too deep.
+const fixedWalkDigest = "104b37e0d2e1aa3035c3752025417b6a103cfbb61e8ee3cd3dcd44a46e87d80e"
 
 // digestVisitor writes each node it is handed, so a node the walk reads from a reused cell changes the digest.
 type digestVisitor struct {
