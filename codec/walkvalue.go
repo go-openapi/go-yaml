@@ -65,7 +65,9 @@ const (
 
 type buildFrame struct {
 	kind frameKind
-	at   parser.Step
+	// asKey records whether the node this frame stands for arrived as a mapping key,
+	// since its Leave delivers what it built and the walk has moved on by then.
+	asKey bool
 
 	// mapping
 	//
@@ -108,8 +110,8 @@ type buildFrame struct {
 }
 
 // Enter is called before anything a node holds.
-func (b *valueBuilder) Enter(node ast.Node, at parser.Step) error {
-	if at.Depth == 0 && at.In == parser.KindNone {
+func (b *valueBuilder) Enter(node ast.Node, at parser.Cursor) error {
+	if at.IsRoot() {
 		if _, isDirective := node.(*ast.DirectiveNode); isDirective {
 			// A directive opens a document of its own and holds no value.
 			return parser.SkipNode
@@ -129,19 +131,20 @@ func (b *valueBuilder) Enter(node ast.Node, at parser.Step) error {
 
 	switch n := node.(type) {
 	case *ast.MappingNode:
-		b.stack = append(b.stack, buildFrame{kind: frameMapping, at: at, m: map[string]any{}})
+		b.stack = append(b.stack, buildFrame{kind: frameMapping, asKey: at.IsKey(), m: map[string]any{}})
 	case *ast.SequenceNode:
 		// An empty sequence is an empty slice and not a nil one, which is what
 		// the tree-walking decoder gives and what a caller comparing against
 		// "[]any{}" expects.
-		b.stack = append(b.stack, buildFrame{kind: frameSequence, at: at, seq: []any{}, mergeSource: b.mergingValue(at)})
+		b.stack = append(b.stack,
+			buildFrame{kind: frameSequence, asKey: at.IsKey(), seq: []any{}, mergeSource: b.mergingValue(at.IsKey())})
 	case *ast.AnchorNode:
 		b.open = append(b.open, anchorName(n.Name))
-		b.stack = append(b.stack, buildFrame{kind: frameProperty, at: at, node: node})
+		b.stack = append(b.stack, buildFrame{kind: frameProperty, asKey: at.IsKey(), node: node})
 	case *ast.TagNode, *ast.MappingKeyNode:
-		b.stack = append(b.stack, buildFrame{kind: frameProperty, at: at, node: node})
+		b.stack = append(b.stack, buildFrame{kind: frameProperty, asKey: at.IsKey(), node: node})
 	case *ast.AliasNode:
-		b.deliver(b.aliasValue(n), node, at)
+		b.deliver(b.aliasValue(n), node, at.IsKey())
 	case *ast.CommentGroupNode:
 		return parser.SkipNode
 	default:
@@ -149,7 +152,7 @@ func (b *valueBuilder) Enter(node ast.Node, at parser.Step) error {
 		if err != nil {
 			return b.fail(err)
 		}
-		b.deliver(v, node, at)
+		b.deliver(v, node, at.IsKey())
 	}
 
 	// aliasValue and copyValue record their own refusals, so the walk is told here.
@@ -157,7 +160,7 @@ func (b *valueBuilder) Enter(node ast.Node, at parser.Step) error {
 }
 
 // Leave is called once everything a node holds has been.
-func (b *valueBuilder) Leave(node ast.Node, at parser.Step) error {
+func (b *valueBuilder) Leave(node ast.Node, at parser.Cursor) error {
 	if b.err != nil {
 		// The walk hands nothing more over once a visitor has failed, and still leaves the nodes it had open.
 		// The frames below stay as they were, since nothing reads them again.
@@ -183,15 +186,15 @@ func (b *valueBuilder) Leave(node ast.Node, at parser.Step) error {
 		if frame.keyErr != nil {
 			return b.fail(frame.keyErr)
 		}
-		b.deliver(frame.value(), node, frame.at)
+		b.deliver(frame.value(), node, frame.asKey)
 	case frameSequence:
-		b.deliver(frame.seq, node, frame.at)
+		b.deliver(frame.seq, node, frame.asKey)
 	case frameProperty:
 		v, err := b.closeProperty(frame)
 		if err != nil {
 			return b.fail(err)
 		}
-		b.deliver(v, node, frame.at)
+		b.deliver(v, node, frame.asKey)
 	}
 
 	return b.err
@@ -352,7 +355,7 @@ func (b *valueBuilder) copyValue(v any, at ast.Node) any {
 }
 
 // deliver puts a value where the node that built it belongs.
-func (b *valueBuilder) deliver(v any, node ast.Node, at parser.Step) {
+func (b *valueBuilder) deliver(v any, node ast.Node, key bool) {
 	if n := len(b.stack); n > 0 {
 		top := &b.stack[n-1]
 		switch top.kind {
@@ -361,7 +364,7 @@ func (b *valueBuilder) deliver(v any, node ast.Node, at parser.Step) {
 
 			return
 		case frameMapping:
-			if at.Key {
+			if key {
 				// Named from the node and not from the value, so that the type
 				// spells it: mapKeyString writes an integer in decimal and a
 				// float with the point that tells it from one.
@@ -563,10 +566,10 @@ func (f *buildFrame) refuseMerge(err error) {
 }
 
 // mergingValue reports whether the node entering at at is the value of a "<<".
-func (b *valueBuilder) mergingValue(at parser.Step) bool {
+func (b *valueBuilder) mergingValue(key bool) bool {
 	n := len(b.stack)
 
-	return n > 0 && b.stack[n-1].kind == frameMapping && b.stack[n-1].merging && !at.Key
+	return n > 0 && b.stack[n-1].kind == frameMapping && b.stack[n-1].merging && !key
 }
 
 // isMapValue reports whether v is a mapping the walk built.

@@ -25,14 +25,14 @@ type balanceSpy struct {
 	extra []string
 }
 
-func (s *balanceSpy) Enter(node ast.Node, at parser.Step) error {
-	s.open = append(s.open, fmt.Sprintf("%s@%d", node.Type(), at.Depth))
+func (s *balanceSpy) Enter(node ast.Node, at parser.Cursor) error {
+	s.open = append(s.open, fmt.Sprintf("%s@%d", node.Type(), at.Depth()))
 
 	return nil
 }
 
-func (s *balanceSpy) Leave(node ast.Node, at parser.Step) error {
-	want := fmt.Sprintf("%s@%d", node.Type(), at.Depth)
+func (s *balanceSpy) Leave(node ast.Node, at parser.Cursor) error {
+	want := fmt.Sprintf("%s@%d", node.Type(), at.Depth())
 	if len(s.open) == 0 {
 		s.extra = append(s.extra, want)
 

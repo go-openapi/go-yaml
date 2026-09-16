@@ -79,6 +79,6 @@ func scalarSequence(n int) string {
 // discardVisitor is handed a walk's nodes and does nothing with them.
 type discardVisitor struct{}
 
-func (discardVisitor) Enter(ast.Node, parser.Step) error { return nil }
+func (discardVisitor) Enter(ast.Node, parser.Cursor) error { return nil }
 
-func (discardVisitor) Leave(ast.Node, parser.Step) error { return nil }
+func (discardVisitor) Leave(ast.Node, parser.Cursor) error { return nil }

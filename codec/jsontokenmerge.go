@@ -19,7 +19,7 @@ import (
 // hands a mapping's entries over rather than the entry. What it brings in goes
 // over at the end of the mapping, where the keys the mapping writes itself are
 // known: an own key beats a merged one whatever their order in the document.
-func (t *jsonTokener) collectMerge(node ast.Node, at parser.Step) error {
+func (t *jsonTokener) collectMerge(node ast.Node, at parser.Cursor) error {
 	frame := t.frame()
 
 	switch n := node.(type) {
@@ -33,7 +33,7 @@ func (t *jsonTokener) collectMerge(node ast.Node, at parser.Step) error {
 		}
 		// "<<: [*a, *b]" merges each in turn, earliest first, so the flag
 		// stands until the sequence closes.
-		frame.mergeSeq = at.Depth
+		frame.mergeSeq = at.Depth()
 
 		return nil
 	case *ast.AliasNode:
@@ -49,7 +49,7 @@ func (t *jsonTokener) collectMerge(node ast.Node, at parser.Step) error {
 		t.collectRun(func() {
 			name := anchorName(n.Value)
 			t.expanding = append(t.expanding, name)
-			t.emitTree(target, at.At)
+			t.emitTree(target, nodeAt(n))
 			t.expanding = t.expanding[:len(t.expanding)-1]
 		})
 
@@ -62,9 +62,9 @@ func (t *jsonTokener) collectMerge(node ast.Node, at parser.Step) error {
 			frame.mergeValue = false
 		}
 		t.buffer = new([]JSONToken)
-		t.bufDepth = at.Depth
+		t.bufDepth = at.Depth()
 		t.bufOwner = len(t.maps) - 1
-		t.open(JSONObjectStart, at.At)
+		t.open(JSONObjectStart, nodeAt(n))
 		t.pushMap(nil)
 
 		return nil
@@ -109,7 +109,7 @@ func (t *jsonTokener) collectRun(write func()) {
 // earlier merge beats a later one, so the runs are read in the order they were
 // collected and the first writer of a name wins. JSON has no way to name a
 // member twice.
-func (t *jsonTokener) closeMapping(at parser.Step, end *token.Token) {
+func (t *jsonTokener) closeMapping(at parser.Cursor, end *token.Token) {
 	if f := &t.maps[len(t.maps)-1]; f.hasPending {
 		// A key whose value never began. Every entry has one, a null at least,
 		// so this only guards the order the tokens go over in.
@@ -134,7 +134,7 @@ func (t *jsonTokener) closeMapping(at parser.Step, end *token.Token) {
 
 	t.close(JSONObjectEnd, t.closeAt(end))
 
-	if t.buffer != nil && at.Depth == t.bufDepth {
+	if t.buffer != nil && at.Depth() == t.bufDepth {
 		run := *t.buffer
 		t.buffer = nil
 		if t.bufOwner >= 0 && t.bufOwner < len(t.maps) && !t.stopped {

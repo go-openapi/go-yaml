@@ -80,7 +80,7 @@ func holdsAnything(v reflect.Value) bool {
 
 // forward hands a node to the nested value builder and closes the subtree once
 // the builder has finished one.
-func (b *typedBuilder) forward(node ast.Node, at parser.Step, entering bool) error {
+func (b *typedBuilder) forward(node ast.Node, at parser.Cursor, entering bool) error {
 	var err error
 	if entering {
 		err = b.values.Enter(node, at)
@@ -171,7 +171,7 @@ func (b *typedBuilder) settle(v reflect.Value) {
 	top.target = reflect.Value{}
 }
 
-func (b *typedBuilder) Enter(node ast.Node, at parser.Step) error {
+func (b *typedBuilder) Enter(node ast.Node, at parser.Cursor) error {
 	switch node.(type) {
 	case *ast.AnchorNode, *ast.AliasNode, *ast.TagNode, *ast.MappingKeyNode:
 		// A property or an alias, inside an "any" subtree or out of one. The
@@ -188,7 +188,7 @@ func (b *typedBuilder) Enter(node ast.Node, at parser.Step) error {
 
 	// A key names the entry that follows rather than being a value, so it is
 	// read before the destination is looked at.
-	if at.Key && len(b.stack) > 0 {
+	if at.IsKey() && len(b.stack) > 0 {
 		return b.openEntry(&b.stack[len(b.stack)-1], node)
 	}
 
@@ -507,7 +507,7 @@ func scalarNumber(node ast.Node) any {
 	}
 }
 
-func (b *typedBuilder) Leave(node ast.Node, at parser.Step) error {
+func (b *typedBuilder) Leave(node ast.Node, at parser.Cursor) error {
 	if b.err != nil {
 		// The walk hands nothing more over once a visitor has failed, and still leaves the nodes it had open.
 		return b.err

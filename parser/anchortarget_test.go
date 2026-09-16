@@ -99,7 +99,7 @@ type aliasTargetReader struct {
 	onAlias func(target ast.Node)
 }
 
-func (r *aliasTargetReader) Enter(node ast.Node, _ parser.Step) error {
+func (r *aliasTargetReader) Enter(node ast.Node, _ parser.Cursor) error {
 	if alias, ok := node.(*ast.AliasNode); ok {
 		r.onAlias(alias.Target)
 	}
@@ -107,4 +107,4 @@ func (r *aliasTargetReader) Enter(node ast.Node, _ parser.Step) error {
 	return nil
 }
 
-func (r *aliasTargetReader) Leave(ast.Node, parser.Step) error { return nil }
+func (r *aliasTargetReader) Leave(ast.Node, parser.Cursor) error { return nil }

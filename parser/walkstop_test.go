@@ -29,7 +29,7 @@ type stopSpy struct {
 	answered int
 }
 
-func (s *stopSpy) Enter(node ast.Node, _ parser.Step) error {
+func (s *stopSpy) Enter(node ast.Node, _ parser.Cursor) error {
 	s.log = append(s.log, "enter "+node.Type().String())
 	if !s.atLeave && node.Type() == s.on {
 		s.answered = len(s.log)
@@ -40,7 +40,7 @@ func (s *stopSpy) Enter(node ast.Node, _ parser.Step) error {
 	return nil
 }
 
-func (s *stopSpy) Leave(node ast.Node, _ parser.Step) error {
+func (s *stopSpy) Leave(node ast.Node, _ parser.Cursor) error {
 	s.log = append(s.log, "leave "+node.Type().String())
 	if s.atLeave && node.Type() == s.on {
 		s.answered = len(s.log)

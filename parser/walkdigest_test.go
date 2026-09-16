@@ -116,34 +116,42 @@ func TestTheWalkHandsOverTheSameTree(t *testing.T) {
 // lines are all "leave", and the leaves that already ran now report their own depth: a sequence holding a mapping
 // that was never left reported the mapping's depth, because leave pops one level off a stack the missing call had
 // left too deep.
-const fixedWalkDigest = "104b37e0d2e1aa3035c3752025417b6a103cfbb61e8ee3cd3dcd44a46e87d80e"
+//
+// Re-baselined on 2026-09-16 when Step became the Cursor interface, which moves the digest because
+// digestVisitor prints different fields and not because the walk changed: it drops idx, which Cursor no
+// longer answers, adds root and doc, and reads the position from the node instead of from the step.
+// The walk itself hands over exactly what it did -- a dump of every handover in the fields common to both,
+// 242,506 lines over 19,842 sources, compares byte for byte against the run before the change.
+const fixedWalkDigest = "f812871aad59fb68a6440868cc0333253a8b4a8b8ea605644fce14bbc82fc16b"
 
 // digestVisitor writes each node it is handed, so a node the walk reads from a reused cell changes the digest.
 type digestVisitor struct {
 	out interface{ Write([]byte) (int, error) }
 }
 
-func (d *digestVisitor) Enter(node ast.Node, at parser.Step) error {
+func (d *digestVisitor) Enter(node ast.Node, at parser.Cursor) error {
 	d.write("enter", node, at)
 
 	return nil
 }
 
-func (d *digestVisitor) Leave(node ast.Node, at parser.Step) error {
+func (d *digestVisitor) Leave(node ast.Node, at parser.Cursor) error {
 	d.write("leave", node, at)
 	return nil
 }
 
-func (d *digestVisitor) write(what string, node ast.Node, at parser.Step) {
+func (d *digestVisitor) write(what string, node ast.Node, at parser.Cursor) {
 	tk := node.GetToken()
 	value := ""
 	var offset, end int32
+	var line, column int32
 	if tk != nil {
 		value, offset, end = tk.Value, tk.Position.Offset(), tk.EndOffset()
+		line, column = tk.Position.Line, tk.Position.Column
 	}
-	fmt.Fprintf(d.out, "%s %v in=%v depth=%d idx=%d key=%v at=%d:%d span=%d:%d value=%q\n",
-		what, node.Type(), at.In, at.Depth, at.Index, at.Key,
-		at.At.Line, at.At.Column, offset, end, value)
+	fmt.Fprintf(d.out, "%s %v in=%v depth=%d key=%v root=%v doc=%d at=%d:%d span=%d:%d value=%q\n",
+		what, node.Type(), at.In(), at.Depth(), at.IsKey(), at.IsRoot(), at.Document(),
+		line, column, offset, end, value)
 }
 
 type walkSource struct{ name, text string }
@@ -219,10 +227,10 @@ func walkTypeCounts(t *testing.T, src string) map[string]int {
 
 type countingVisitor struct{ counts map[string]int }
 
-func (c *countingVisitor) Enter(n ast.Node, _ parser.Step) error {
+func (c *countingVisitor) Enter(n ast.Node, _ parser.Cursor) error {
 	c.counts[fmt.Sprintf("%T", n)]++
 
 	return nil
 }
 
-func (c *countingVisitor) Leave(ast.Node, parser.Step) error { return nil }
+func (c *countingVisitor) Leave(ast.Node, parser.Cursor) error { return nil }

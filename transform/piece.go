@@ -5,7 +5,6 @@ package transform
 
 import (
 	"github.com/go-openapi/go-yaml/ast"
-	"github.com/go-openapi/go-yaml/parser"
 	"github.com/go-openapi/go-yaml/token"
 )
 
@@ -62,9 +61,18 @@ type Piece struct {
 	// node stands. A colorizer switches on it.
 	Role Role
 
-	// Step records where the walk stood when the parse opened Node. It is the
-	// zero Step where Node is nil.
-	Step parser.Step
+	// Depth counts the nodes enclosing Node: collections, and the anchors, tags
+	// and "?" keys written on them. A document's own body is at depth 0, and so
+	// is a piece no node stands on.
+	//
+	// Use it to indent: a transform that rewrites a collection knows how deep it
+	// sits without keeping a stack of its own.
+	Depth int
+
+	// Key reports that Node is a mapping key, so Role is RoleKey. A key and its
+	// value are two pieces of one entry, and nothing on the node tells them
+	// apart.
+	Key bool
 }
 
 // Trimmed returns Text without the run of spaces and line breaks at its end.
@@ -180,8 +188,8 @@ func roleOfToken(t token.Type) Role {
 }
 
 // roleOfNode names a piece by the node standing on it.
-func roleOfNode(n ast.Node, at parser.Step) Role {
-	if at.Key {
+func roleOfNode(n ast.Node, key bool) Role {
+	if key {
 		return RoleKey
 	}
 

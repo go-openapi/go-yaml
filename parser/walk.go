@@ -7,7 +7,6 @@ import (
 	"errors"
 
 	"github.com/go-openapi/go-yaml/ast"
-	"github.com/go-openapi/go-yaml/token"
 )
 
 // Kind names what encloses a node handed to a [Visitor]: a collection, or the anchor, tag or "?" written on the node.
@@ -46,71 +45,43 @@ func (k Kind) String() string {
 	}
 }
 
-// Step locates a node handed to a [Visitor].
+// Cursor answers where the walk stands, for the node being handed to a [Visitor].
 //
-// The walk computes it from the nodes it holds open, so a consumer does not keep that stack itself.
-// Leave receives the Step that Enter received, except for At on a block mapping.
+// ⚠️ Read it during the call. It reports the walk's own position and moves on to the next node,
+// so a consumer that wants an answer later copies it out.
 //
-// The consumers in this module read these fields, and the note on each field explains what for:
+// The walk computes each answer from the nodes it holds open, so a consumer does not keep that stack itself.
+// Leave receives the same answers Enter received for the node.
 //
-//   - [github.com/go-openapi/go-yaml/codec.ToJSON] reads Key, Document, Depth, In and Index;
-//   - [github.com/go-openapi/go-yaml/codec.ToJSONTokens] reads Key, Document, Depth, In and At;
-//   - the decoder's walk, behind [github.com/go-openapi/go-yaml/codec.WalkValues] and
-//     [github.com/go-openapi/go-yaml/codec.Decoder], reads Key, and Depth with In to find a document's root;
-//   - [github.com/go-openapi/go-yaml/transform.Walk] reads Key to give a piece its role,
-//     and copies the whole Step into [github.com/go-openapi/go-yaml/transform.Piece], where nothing reads it yet.
-type Step struct {
+// Where a node stands in the source is not here: read [ast.Node.GetToken] and its Position.
+// A block mapping's token is its first key until the parse reads that key's ':', and the ':' after that,
+// so the node reports two positions over its own Enter and Leave and the walk adds nothing to that.
+type Cursor interface {
+	// Depth counts the nodes enclosing the node: collections, and the anchors, tags and "?" keys written on
+	// them, each of which adds a level. A document's root is at depth 0.
+	//
+	// Match a Leave to its Enter on the depth and not on the node: the parse hands its cells out again behind
+	// the descent, so two nodes of one document are frequently the same pointer.
+	Depth() int
 	// In names the node enclosing this one: a mapping, a sequence, or the anchor, tag or "?" written on it.
-	// It is KindNone for a document's root.
 	//
 	// A node under an anchor, a tag or a "?" has that property as In, not the collection around the property.
-	// The walk never records KindNone for an open node, so In is KindNone exactly when Depth is 0.
+	// It is [KindNone] for a document's root, which IsRoot reports directly.
+	In() Kind
+	// IsRoot reports the body of a document, which nothing encloses.
 	//
-	// codec.ToJSON switches on In to write a separator: a comma or a colon in a mapping, a comma in a sequence,
-	// and nothing inside an anchor or a tag, whose own handover wrote it. codec.ToJSON, codec.ToJSONTokens
-	// and the decoder test Depth == 0 together with In == KindNone to find a document's root,
-	// where the second test repeats the first.
-	In Kind
-	// Depth counts the nodes enclosing the node: collections, and the anchors, tags and "?" keys written on them,
-	// each of which adds a level. A document's root is at depth 0.
-	//
-	// codec.ToJSON, codec.ToJSONTokens and the decoder read Depth == 0 to find a document's root.
-	// The two JSON converters also record the depth where a "<<" value or a buffered key opened,
-	// to match the Leave that closes it.
-	Depth int
-	// Index counts the handovers in In before this one, from 0.
-	// In a mapping a key and its value are two handovers, so the first key is at 0, its value at 1,
-	// and the next key at 2. The node inside an anchor, a tag or a "?" is at 0,
-	// and every root of a document is at 0.
-	//
-	// A "<<" and the value it merges take two indices like any entry, although they write no member of their own,
-	// and "&!" hands two values over for one key (see [Visitor]). A writer's count of members therefore falls
-	// behind Index. codec.ToJSON reads Index only in a sequence, to put a comma before every element but the first,
-	// and keeps its own count in a mapping.
-	Index int
-	// Key reports that the node is a mapping key, and that its value is the next handover in the same mapping.
+	// The walk hands no DocumentNode over, so a consumer reads this and Document to see one document end
+	// and the next begin.
+	IsRoot() bool
+	// IsKey reports that the node is a mapping key, and that its value is the next handover in the same mapping.
 	// A key and its value are two handovers of one entry, and nothing on the node tells them apart.
 	//
-	// Key marks the outermost node standing for the key: the "?" of an explicit key, or the anchor or tag written on
-	// a key. The node inside arrives with Key false, and with In set to KindKey, KindAnchor or KindTag,
-	// so a consumer that names a key by its content tracks the enclosing key itself, as codec.ToJSON does.
-	// A tagged scalar key is not handed over on its own: "!!str 1: v" hands over the tag, marked Key, then "v".
-	//
-	// Every consumer in this module reads Key: the JSON converters to write a member name,
-	// the decoder to fill a map entry or choose a struct field, and transform.Walk to give a piece RoleKey.
-	Key bool
-	// At is node.GetToken().Position at the time of the call, and the zero Position when the node has no token.
-	//
-	// A block mapping's token is its first key until the parse reads that key's ':', and the ':' after that,
-	// so Enter and Leave give a block mapping two positions: the first key's, then the ':' after it.
-	// Every other node has the same At on Enter and on Leave.
-	//
-	// codec.ToJSONTokens reads it to give each JSON token its source position. No other consumer reads At,
-	// and a consumer holding the node can read the same position from it.
-	At token.Position
+	// It marks the outermost node standing for the key: the "?" of an explicit key, or the anchor or tag
+	// written on a key. The node inside arrives with IsKey false and In set to [KindKey], [KindAnchor] or
+	// [KindTag], so a consumer that names a key by its content tracks the enclosing key itself.
+	// A tagged scalar key is not handed over on its own: "!!str 1: v" hands over the tag, marked a key, then "v".
+	IsKey() bool
 	// Document indexes the node's document in the Docs of the [ast.File] that [Parser.Walk] returns.
-	// The walk never hands a DocumentNode over, so a consumer reads Document to see one document end
-	// and the next begin. An anchor and a "%YAML" directive each apply to one document.
 	//
 	// An empty document hands over no node, and the count still moves past it:
 	// "---" over "---" over "b: 2" hands over one mapping, at Document 1.
@@ -118,11 +89,7 @@ type Step struct {
 	// Each "%YAML" or "%TAG" line counts as a document of its own, ahead of the one it applies to.
 	// "%YAML 1.2" over "---" over "a: 1" puts the mapping at Document 1, and two directive lines put it at 2.
 	// To find the nth document a reader sees, skip the documents whose node is an [ast.DirectiveNode].
-	//
-	// codec.ToJSON and codec.ToJSONTokens read Document to convert the first document that is not a directive line.
-	// codec.ToJSONTokens also reads it to reject a second document under
-	// [github.com/go-openapi/go-yaml/codec.JSONTokens.OneDocument]. The decoder and transform.Walk do not read it.
-	Document int
+	Document() int
 }
 
 // SkipNode tells [Parser.Walk] not to hand the node's content over. Return it from [Visitor.Enter].
@@ -164,12 +131,11 @@ type Visitor interface {
 	//
 	// Return nil to receive the content, [SkipNode] to skip it, and any other error to stop the walk.
 	// Leave is not called for a node Enter skipped or failed on.
-	Enter(node ast.Node, at Step) error
-	// Leave is called after the node's content has been visited, with the Step that Enter received,
-	// except for At on a block mapping (see [Step.At]).
+	Enter(node ast.Node, at Cursor) error
+	// Leave is called after the node's content has been visited, and the Cursor answers as it did for Enter.
 	//
 	// Return an error to stop the walk.
-	Leave(node ast.Node, at Step) error
+	Leave(node ast.Node, at Cursor) error
 }
 
 // walkState holds the state of a walk.
@@ -197,7 +163,28 @@ type walkState struct {
 	err error
 	// stopped records a visitor returning [StopWalk]. Nothing more is handed over and Walk returns no error.
 	stopped bool
+	// curKey is IsKey for the node being handed over, set just before each call.
+	curKey bool
 }
+
+// walkState answers the [Cursor] for the node it is handing over.
+// The methods read the stacks above, so nothing is computed for a consumer that does not ask.
+
+func (w *walkState) Depth() int { return len(w.in) }
+
+func (w *walkState) In() Kind {
+	if n := len(w.in); n > 0 {
+		return w.in[n-1]
+	}
+
+	return KindNone
+}
+
+func (w *walkState) IsRoot() bool { return len(w.in) == 0 }
+
+func (w *walkState) IsKey() bool { return w.curKey }
+
+func (w *walkState) Document() int { return w.document }
 
 // fail records the first error a visitor returned, and reads [StopWalk] as a stop with no error.
 func (w *walkState) fail(err error) {
@@ -300,7 +287,7 @@ func (p *Parser) closeAnchor(ctx context) {
 }
 
 // openWalkDocument records the index of the document the walk is about to read,
-// so [Step.Document] tells the nodes of one document from those of the next.
+// so [Cursor.Document] tells the nodes of one document from those of the next.
 //
 // It counts here, not at a document's first node, because an empty document has no node:
 // "---" over "---" over "b: 2" hands over only the mapping, and it belongs to document 1.
@@ -356,9 +343,8 @@ func (p *Parser) enterAs(ctx context, node ast.Node, in Kind, key bool) bool {
 		key = true
 	}
 
-	at := p.step(node)
-	at.Key = key
-	if err := p.walk.visitor.Enter(node, at); err != nil {
+	p.walk.curKey = key
+	if err := p.walk.visitor.Enter(node, p.walk); err != nil {
 		if !errors.Is(err, SkipNode) {
 			p.walk.fail(err)
 		}
@@ -388,12 +374,11 @@ func (p *Parser) leave(ctx context, node ast.Node) {
 
 	p.walk.in = p.walk.in[:len(p.walk.in)-1]
 	p.walk.index = p.walk.index[:len(p.walk.index)-1]
-	at := p.step(node)
-	at.Key = p.walk.key[len(p.walk.key)-1]
+	p.walk.curKey = p.walk.key[len(p.walk.key)-1]
 	p.walk.key = p.walk.key[:len(p.walk.key)-1]
 	// The stacks are popped above whatever happens, so a node opened before the stop still closes level.
 	if !p.walk.done() {
-		if err := p.walk.visitor.Leave(node, at); err != nil {
+		if err := p.walk.visitor.Leave(node, p.walk); err != nil {
 			p.walk.fail(err)
 		}
 	}
@@ -448,12 +433,11 @@ func (p *Parser) handAs(ctx context, node ast.Node, key bool) {
 		key = true
 	}
 
-	at := p.step(node)
-	at.Key = key
+	p.walk.curKey = key
 	// A node with no content: SkipNode has nothing to skip, and only drops the Leave.
-	switch err := p.walk.visitor.Enter(node, at); {
+	switch err := p.walk.visitor.Enter(node, p.walk); {
 	case err == nil:
-		if err := p.walk.visitor.Leave(node, at); err != nil {
+		if err := p.walk.visitor.Leave(node, p.walk); err != nil {
 			p.walk.fail(err)
 		}
 	case !errors.Is(err, SkipNode):
@@ -468,19 +452,6 @@ func (p *Parser) count() {
 	if n := len(p.walk.index); n > 0 {
 		p.walk.index[n-1]++
 	}
-}
-
-// step returns the [Step] for a node about to be handed over.
-func (p *Parser) step(node ast.Node) Step {
-	at := Step{Depth: len(p.walk.in), Document: p.walk.document}
-	if n := len(p.walk.in); n > 0 {
-		at.In, at.Index = p.walk.in[n-1], p.walk.index[n-1]
-	}
-	if tk := node.GetToken(); tk != nil {
-		at.At = tk.Position
-	}
-
-	return at
 }
 
 // quiet stops a node's content from being handed over on its own,

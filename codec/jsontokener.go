@@ -173,24 +173,24 @@ type tokenTagMark struct {
 	heldSet bool
 }
 
-func (t *jsonTokener) Enter(node ast.Node, at parser.Step) error {
+func (t *jsonTokener) Enter(node ast.Node, at parser.Cursor) error {
 	if t.stopped {
 		return t.halted()
 	}
 
-	if _, isDirective := node.(*ast.DirectiveNode); isDirective && at.Depth == 0 && at.In == parser.KindNone {
+	if _, isDirective := node.(*ast.DirectiveNode); isDirective && at.IsRoot() {
 		// A "%YAML" or "%TAG" line opens a document of its own, ahead of the
 		// one it applies to. It holds no value, so the document to convert is
 		// the next one along -- guarded on nothing having gone over yet, since
 		// a directive arriving after that is not opening it.
-		if at.Document == t.firstDoc && t.handed == 0 {
-			t.firstDoc = at.Document + 1
+		if at.Document() == t.firstDoc && t.handed == 0 {
+			t.firstDoc = at.Document() + 1
 		}
 
 		return parser.SkipNode
 	}
 
-	if at.Depth == 0 && at.In == parser.KindNone && at.Document == t.firstDoc {
+	if at.IsRoot() && at.Document() == t.firstDoc {
 		// A JSON document holds one value. A walk hands a second root over for
 		// a document the parse read as two nodes -- "&!" is an anchor named "!"
 		// standing on nothing, and the walk hands over the anchor's null and
@@ -210,11 +210,11 @@ func (t *jsonTokener) Enter(node ast.Node, at parser.Step) error {
 	// this converter cannot read is refused rather than half-answered, and emit
 	// hands none of it over. The budget bounds each document on its own, so a
 	// later one counts its tokens from nothing.
-	if at.Document != t.doc {
-		t.doc, t.count = at.Document, 0
+	if at.Document() != t.doc {
+		t.doc, t.count = at.Document(), 0
 	}
-	t.ended = at.Document != t.firstDoc
-	if t.ended && t.state.oneDocument && at.Document > t.firstDoc {
+	t.ended = at.Document() != t.firstDoc
+	if t.ended && t.state.oneDocument && at.Document() > t.firstDoc {
 		t.fail(yamlerrors.NewNotJSON("a stream of several documents has no single JSON root", node.GetToken()))
 
 		return t.halted()
@@ -240,22 +240,22 @@ func (t *jsonTokener) Enter(node ast.Node, at parser.Step) error {
 		return parser.SkipNode
 	}
 
-	if at.In == parser.KindMapping && !at.Key {
+	if at.In() == parser.KindMapping && !at.IsKey() {
 		if frame := t.frame(); frame != nil && t.settleEntry(frame) {
 			return t.skipped()
 		}
 	}
 
-	if at.Key {
+	if at.IsKey() {
 		return t.enterKey(node, at)
 	}
 
 	switch n := node.(type) {
 	case *ast.MappingNode:
-		t.open(JSONObjectStart, at.At)
+		t.open(JSONObjectStart, nodeAt(n))
 		t.pushMap(n)
 	case *ast.SequenceNode:
-		t.open(JSONArrayStart, at.At)
+		t.open(JSONArrayStart, nodeAt(n))
 	case *ast.AnchorNode:
 		// An anchor stands around the node it names, which goes over on its
 		// own. Nothing is recorded: an alias reads ast.AliasNode.Target.
@@ -266,13 +266,13 @@ func (t *jsonTokener) Enter(node ast.Node, at parser.Step) error {
 	case *ast.TagNode:
 		t.openTag(n, false)
 	default:
-		t.emitScalarNode(node, at.At)
+		t.emitScalarNode(node, nodeAt(node))
 	}
 
 	return t.halted()
 }
 
-func (t *jsonTokener) Leave(node ast.Node, at parser.Step) error {
+func (t *jsonTokener) Leave(node ast.Node, at parser.Cursor) error {
 	if t.stopped {
 		return t.halted()
 	}
@@ -290,7 +290,7 @@ func (t *jsonTokener) Leave(node ast.Node, at parser.Step) error {
 		}
 		t.closeMapping(at, n.End)
 	case *ast.SequenceNode:
-		if frame := t.frame(); frame != nil && frame.mergeSeq == at.Depth {
+		if frame := t.frame(); frame != nil && frame.mergeSeq == at.Depth() {
 			frame.mergeSeq, frame.mergeValue = -1, false
 
 			return t.halted()
@@ -301,6 +301,22 @@ func (t *jsonTokener) Leave(node ast.Node, at parser.Step) error {
 	}
 
 	return t.halted()
+}
+
+// nodeAt is where a node stands in the source, and the zero Position where it carries no token.
+//
+// The walk hands over a Cursor and not a position: a node answers this itself, and a block collection
+// answers differently on its Enter and its Leave because the parse moves its token to the ':' it reads.
+func nodeAt(n ast.Node) token.Position {
+	if n == nil {
+		return token.Position{}
+	}
+	tk := n.GetToken()
+	if tk == nil {
+		return token.Position{}
+	}
+
+	return tk.Position
 }
 
 // frame is the mapping being handed over, and nil outside one.

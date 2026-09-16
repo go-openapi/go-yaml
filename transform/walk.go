@@ -106,8 +106,11 @@ func Walk(w io.Writer, src []byte, t Transformer, opts ...Option) error {
 // role is set where the node alone does not give the right one: an anchor's
 // name is a plain string node and belongs to the anchor.
 type label struct {
-	node  ast.Node
-	at    parser.Step
+	node ast.Node
+	// depth and key are the cursor's answers for node, copied out: the walk moves its cursor on
+	// to the next node, and a label is read once the piece it names reaches the transform.
+	depth int
+	key   bool
 	role  Role
 	fixed bool
 }
@@ -141,7 +144,7 @@ type walker struct {
 }
 
 // Enter labels the token the node opens on and writes out everything before it.
-func (wk *walker) Enter(node ast.Node, at parser.Step) error {
+func (wk *walker) Enter(node ast.Node, at parser.Cursor) error {
 	if wk.err != nil {
 		return wk.err
 	}
@@ -159,7 +162,7 @@ func (wk *walker) Enter(node ast.Node, at parser.Step) error {
 	}
 
 	wk.flush(from)
-	wk.labels[from] = label{node: node, at: at}
+	wk.labels[from] = label{node: node, depth: at.Depth(), key: at.IsKey()}
 	wk.labelParts(node, at)
 
 	return wk.err
@@ -172,7 +175,7 @@ func (wk *walker) Enter(node ast.Node, at parser.Step) error {
 // And the parse reuses a node's cells once the walk moves past it, so a piece
 // carrying a node has to reach the transform while the node is still the one
 // the walk named -- Leave is the last moment that holds.
-func (wk *walker) Leave(node ast.Node, at parser.Step) error {
+func (wk *walker) Leave(node ast.Node, at parser.Cursor) error {
 	if wk.err != nil || node == nil {
 		return wk.err
 	}
@@ -229,7 +232,7 @@ func (wk *walker) emitLabeled(node ast.Node) {
 // It runs on Enter and again on Leave, since a tag's value is parsed between
 // the two. labelPart takes the first label offered for an offset and skips what
 // has been written, so the second run adds and never overwrites.
-func (wk *walker) labelParts(node ast.Node, at parser.Step) {
+func (wk *walker) labelParts(node ast.Node, at parser.Cursor) {
 	switch n := node.(type) {
 	case *ast.AnchorNode:
 		wk.labelPart(n.Name, at, RoleAnchor)
@@ -247,7 +250,7 @@ func (wk *walker) labelParts(node ast.Node, at parser.Step) {
 	}
 }
 
-func (wk *walker) labelPart(part ast.Node, at parser.Step, role Role) {
+func (wk *walker) labelPart(part ast.Node, at parser.Cursor, role Role) {
 	if part == nil {
 		return
 	}
@@ -262,7 +265,7 @@ func (wk *walker) labelPart(part ast.Node, at parser.Step, role Role) {
 	if _, taken := wk.labels[from]; taken {
 		return
 	}
-	wk.labels[from] = label{node: part, at: at, role: role, fixed: true}
+	wk.labels[from] = label{node: part, depth: at.Depth(), key: at.IsKey(), role: role, fixed: true}
 
 	// A part is nobody's Enter and nobody's Leave, so nothing later writes it
 	// out while it is still the node the walk named -- the arena reclaims a
@@ -402,7 +405,7 @@ func (wk *walker) emit() {
 	}
 	if l, named := wk.labels[from]; named {
 		delete(wk.labels, from)
-		p.Node, p.Step = l.node, l.at
+		p.Node, p.Depth, p.Key = l.node, l.depth, l.key
 		switch {
 		case l.fixed:
 			p.Role = l.role
@@ -412,7 +415,7 @@ func (wk *walker) emit() {
 			// is the ":" the document wrote, so it stays an indicator.
 			p.Role = RoleIndicator
 		default:
-			p.Role = roleOfNode(l.node, l.at)
+			p.Role = roleOfNode(l.node, l.key)
 		}
 	}
 	wk.prev = end

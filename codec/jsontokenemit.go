@@ -120,7 +120,7 @@ func (t *jsonTokener) emitScalarNode(node ast.Node, at token.Position) {
 // What the tag stands on went over already where the tag names a kind, so there
 // is nothing left to do. Where it names a scalar type, openTag held that back
 // and the value goes over here, read from the tag rather than from the node.
-func (t *jsonTokener) closeTag(n *ast.TagNode, at parser.Step) {
+func (t *jsonTokener) closeTag(n *ast.TagNode, at parser.Cursor) {
 	mark := t.tags[len(t.tags)-1]
 	t.tags = t.tags[:len(t.tags)-1]
 	if mark.suppressed {
@@ -153,7 +153,7 @@ func (t *jsonTokener) closeTag(n *ast.TagNode, at parser.Step) {
 		if ok {
 			name = resolved.name()
 		}
-		t.emitKeyNamed(name, t.keyAt(n.Value, at.At))
+		t.emitKeyNamed(name, t.keyAt(n.Value, nodeAt(n)))
 
 		return
 	}
@@ -162,7 +162,7 @@ func (t *jsonTokener) closeTag(n *ast.TagNode, at parser.Step) {
 	case ok:
 		// The tag says what the value is whatever its node wrote, so what was
 		// held back is dropped.
-		resolved.At = at.At
+		resolved.At = nodeAt(n)
 		t.emit(resolved)
 	case mark.heldSet:
 		// The tag names a kind and its node is a scalar, which stands as it is.
@@ -170,7 +170,7 @@ func (t *jsonTokener) closeTag(n *ast.TagNode, at parser.Step) {
 	case mark.suppressed && t.count == mark.at:
 		// A tag standing on a scalar the walk did not reach.
 		tok := valueToken(jsonScalarOf(n.Value))
-		tok.At = at.At
+		tok.At = nodeAt(n)
 		t.emit(tok)
 	}
 }
@@ -207,7 +207,7 @@ func (t *jsonTokener) aliasTarget(n *ast.AliasNode) (ast.Node, error) {
 // reads and the arena keeps for the document -- so an alias is answered from
 // the one anchor table the parser owns rather than from a record this converter
 // keeps of what it wrote.
-func (t *jsonTokener) emitAlias(n *ast.AliasNode, at parser.Step) {
+func (t *jsonTokener) emitAlias(n *ast.AliasNode, at parser.Cursor) {
 	target, err := t.aliasTarget(n)
 	if err != nil {
 		t.fail(err)
@@ -217,7 +217,7 @@ func (t *jsonTokener) emitAlias(n *ast.AliasNode, at parser.Step) {
 
 	name := anchorName(n.Value)
 	t.expanding = append(t.expanding, name)
-	t.emitTree(target, at.At)
+	t.emitTree(target, nodeAt(n))
 	t.expanding = t.expanding[:len(t.expanding)-1]
 }
 
@@ -340,10 +340,10 @@ func (t *jsonTokener) emitTreeMapping(n *ast.MappingNode, at token.Position) {
 // parsed, so none of them can be named here. The walk goes into them with
 // nothing going over on its own, and the name is taken when the wrapper closes
 // -- a key is one token whatever it holds.
-func (t *jsonTokener) enterKey(node ast.Node, at parser.Step) error {
+func (t *jsonTokener) enterKey(node ast.Node, at parser.Cursor) error {
 	switch n := node.(type) {
 	case *ast.MappingKeyNode, *ast.AnchorNode:
-		t.keys = append(t.keys, tokenKeyMark{node: node, depth: at.Depth})
+		t.keys = append(t.keys, tokenKeyMark{node: node, depth: at.Depth()})
 		t.suppress++
 
 		return nil
@@ -357,21 +357,21 @@ func (t *jsonTokener) enterKey(node ast.Node, at parser.Step) error {
 		// An alias names the entry by what its anchor wrote as a value, which
 		// is what ToJSON holds to a string here -- not the canonical spelling
 		// [ast.KeyName] gives.
-		t.emitKeyNamed(t.wrappedKeyName(node), at.At)
+		t.emitKeyNamed(t.wrappedKeyName(node), nodeAt(node))
 
 		return t.skipped()
 	}
 
-	t.emitKey(node, at.At)
+	t.emitKey(node, nodeAt(node))
 
 	return t.skipped()
 }
 
 // closeKey names the entry a wrapper stands as the key of, and reports whether
 // the node was one.
-func (t *jsonTokener) closeKey(node ast.Node, at parser.Step) bool {
+func (t *jsonTokener) closeKey(node ast.Node, at parser.Cursor) bool {
 	n := len(t.keys)
-	if n == 0 || t.keys[n-1].depth != at.Depth {
+	if n == 0 || t.keys[n-1].depth != at.Depth() {
 		return false
 	}
 	mark := t.keys[n-1]
@@ -385,7 +385,7 @@ func (t *jsonTokener) closeKey(node ast.Node, at parser.Step) bool {
 		// keeps the digits the document wrote.
 		name = t.wrappedKeyName(mark.node)
 	}
-	t.emitKeyNamed(name, t.keyAt(mark.node, at.At))
+	t.emitKeyNamed(name, t.keyAt(mark.node, nodeAt(node)))
 
 	return true
 }

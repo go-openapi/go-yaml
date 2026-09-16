@@ -25,7 +25,7 @@ type counting struct {
 	anchorName string
 }
 
-func (v *counting) Enter(node ast.Node, _ Step) error {
+func (v *counting) Enter(node ast.Node, _ Cursor) error {
 	v.nodes++
 	if anchor, ok := node.(*ast.AnchorNode); ok && v.anchor == nil {
 		v.anchor, v.anchorName = anchor, anchor.GetToken().Value
@@ -34,7 +34,7 @@ func (v *counting) Enter(node ast.Node, _ Step) error {
 	return nil
 }
 
-func (v *counting) Leave(ast.Node, Step) error { return nil }
+func (v *counting) Leave(ast.Node, Cursor) error { return nil }
 
 // TestWalkLetsTheTapeGo checks that a walk returns the tape's chunks as it reads.
 //
