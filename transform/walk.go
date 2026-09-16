@@ -8,7 +8,6 @@ import (
 	"io"
 
 	"github.com/go-openapi/go-yaml/ast"
-	"github.com/go-openapi/go-yaml/internal/scanner"
 	"github.com/go-openapi/go-yaml/parser"
 	"github.com/go-openapi/go-yaml/token"
 )
@@ -54,9 +53,7 @@ type config struct {
 // as where it names none itself. See [parser.WithYAMLVersion]; it decides how a
 // plain scalar resolves, and so which [ast.NodeType] a piece carries.
 //
-// It is set on the scan and on the parse together. Passing
-// [parser.WithYAMLVersion] through [WithParserOptions] sets only the parse, and
-// the two then disagree about what a plain scalar is.
+// Walk passes it to the parse, whose scanner is the one the tokens come from.
 func WithYAMLVersion(v parser.YAMLVersion) Option {
 	return func(c *config) { c.version = v }
 }
@@ -100,10 +97,11 @@ func Walk(w io.Writer, src []byte, t Transformer, opts ...Option) error {
 	}
 
 	wk := &walker{src: src, out: w, t: t, labels: make(map[int]label)}
-	wk.scan.Init(src)
-	wk.scan.SetSchema(cfg.version.Schema())
 
-	parse := append([]parser.Option{parser.WithYAMLVersion(cfg.version)}, cfg.parse...)
+	parse := append([]parser.Option{
+		parser.WithYAMLVersion(cfg.version),
+		parser.WithTokens(wk.take),
+	}, cfg.parse...)
 	if !cfg.nodePaths {
 		// The paths cost memory that grows with the document, and a piece is named by its own token.
 		// See [WithNodePaths] for a caller that wants them.
@@ -112,6 +110,7 @@ func Walk(w io.Writer, src []byte, t Transformer, opts ...Option) error {
 	if _, err := parser.New(parse...).Walk(src, wk); err != nil {
 		return err
 	}
+	wk.parsed = true
 	if wk.err != nil {
 		return wk.err
 	}
@@ -140,18 +139,29 @@ type label struct {
 // over does -- and the nodes say what the parse made of the ones it opened on.
 // So the tokens drive the output and a node only labels one.
 //
-// The walk holds one token at a time. A node arriving at offset X flushes every
-// token before X and leaves the one at X held, because a node deeper in the
-// document may open on the same token and is the better label for it: a mapping
-// opens on its first key, and the key opens on it too.
+// Both streams come from one parse: [parser.WithTokens] hands over each token
+// the scanner cuts and [parser.Parser.Walk] hands over each node. Scanning the
+// source a second time was a tenth of what a transform cost.
+//
+// A node arriving at offset X flushes every token before X and leaves the one at
+// X held, because a node deeper in the document may open on the same token and
+// is the better label for it: a mapping opens on its first key, and the key
+// opens on it too.
 type walker struct {
-	src  []byte
-	out  io.Writer
-	t    Transformer
-	scan scanner.Scanner
+	src []byte
+	out io.Writer
+	t   Transformer
 
-	// held is the token scanned and not yet written, and holding says whether
-	// there is one. done says the scan has run out.
+	// queue holds the tokens the parse has handed over and the transform has not written, from qat on.
+	// The scanner runs ahead of the descent, so a token arrives before the node standing on it: over the
+	// corpus the queue reached 67 tokens, and take restarts it whenever the transform catches up.
+	queue []token.Token
+	qat   int
+	// parsed says the parse is over, so an empty queue is the end of the document and not a wait.
+	parsed bool
+
+	// held is the token taken from the queue and not yet written, and holding
+	// says whether there is one. done says the tokens have run out.
 	held    token.Token
 	holding bool
 	done    bool
@@ -328,9 +338,6 @@ func (wk *walker) finish() error {
 	if wk.err != nil {
 		return wk.err
 	}
-	if err := wk.scan.Err(); err != nil {
-		return err
-	}
 	if wk.prev >= len(wk.src) {
 		return nil
 	}
@@ -383,21 +390,40 @@ func (wk *walker) extent(tk *token.Token) (int, int, bool) {
 	return from, end, true
 }
 
+// compactAt is how many written tokens the queue holds before it moves the rest to the front.
+//
+// Restarting only where the transform has caught up exactly is not enough: it runs a few tokens behind
+// almost always -- 5 at the high-water mark over a flat 10,000-key document -- so the restart never fired
+// and the slice grew to hold every token of the document.
+const compactAt = 32
+
+// take receives one token from the parse. It is [parser.WithTokens]'s hook.
+func (wk *walker) take(tk token.Token) {
+	switch {
+	case wk.qat == len(wk.queue):
+		wk.queue, wk.qat = wk.queue[:0], 0
+	case wk.qat >= compactAt:
+		wk.queue = append(wk.queue[:0], wk.queue[wk.qat:]...)
+		wk.qat = 0
+	}
+	wk.queue = append(wk.queue, tk)
+}
+
 // peek reads the next token, holding it until emit writes it.
+//
+// An empty queue during the parse is not the end: the transform only ever asks for a token inside a node
+// the walk has already handed over, and the parse read that token before it built the node.
 func (wk *walker) peek() (*token.Token, bool) {
 	if wk.holding {
 		return &wk.held, true
 	}
-	if wk.done {
-		return nil, false
-	}
-	tk, ok := wk.scan.NextToken()
-	if !ok {
-		wk.done = true
+	if wk.done || wk.qat >= len(wk.queue) {
+		wk.done = wk.parsed
 
 		return nil, false
 	}
-	wk.held, wk.holding = tk, true
+	wk.held, wk.holding = wk.queue[wk.qat], true
+	wk.qat++
 
 	return &wk.held, true
 }
