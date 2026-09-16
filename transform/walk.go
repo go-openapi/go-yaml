@@ -141,28 +141,28 @@ type walker struct {
 }
 
 // Enter labels the token the node opens on and writes out everything before it.
-func (wk *walker) Enter(node ast.Node, at parser.Step) bool {
+func (wk *walker) Enter(node ast.Node, at parser.Step) error {
 	if wk.err != nil {
-		return false
+		return wk.err
 	}
 
 	tk := node.GetToken()
 	if tk == nil {
-		return true
+		return nil
 	}
 	from := int(tk.Position.Offset())
 	if from < wk.prev {
 		// The parse reads a construct's own tokens again after everything
 		// under it, so a node may open behind where the output stands. It was
 		// written, and cannot be labeled now.
-		return true
+		return nil
 	}
 
 	wk.flush(from)
 	wk.labels[from] = label{node: node, at: at}
 	wk.labelParts(node, at)
 
-	return wk.err == nil
+	return wk.err
 }
 
 // Leave labels what the node holds and writes the node's own piece out.
@@ -172,12 +172,14 @@ func (wk *walker) Enter(node ast.Node, at parser.Step) bool {
 // And the parse reuses a node's cells once the walk moves past it, so a piece
 // carrying a node has to reach the transform while the node is still the one
 // the walk named -- Leave is the last moment that holds.
-func (wk *walker) Leave(node ast.Node, at parser.Step) {
+func (wk *walker) Leave(node ast.Node, at parser.Step) error {
 	if wk.err != nil || node == nil {
-		return
+		return wk.err
 	}
 	wk.labelParts(node, at)
 	wk.emitLabeled(node)
+
+	return wk.err
 }
 
 // emitLabeled writes the piece node labeled, while node is still live.

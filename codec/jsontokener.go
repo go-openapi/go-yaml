@@ -173,9 +173,9 @@ type tokenTagMark struct {
 	heldSet bool
 }
 
-func (t *jsonTokener) Enter(node ast.Node, at parser.Step) bool {
+func (t *jsonTokener) Enter(node ast.Node, at parser.Step) error {
 	if t.stopped {
-		return false
+		return t.halted()
 	}
 
 	if _, isDirective := node.(*ast.DirectiveNode); isDirective && at.Depth == 0 && at.In == parser.KindNone {
@@ -187,7 +187,7 @@ func (t *jsonTokener) Enter(node ast.Node, at parser.Step) bool {
 			t.firstDoc = at.Document + 1
 		}
 
-		return false
+		return parser.SkipNode
 	}
 
 	if at.Depth == 0 && at.In == parser.KindNone && at.Document == t.firstDoc {
@@ -217,7 +217,7 @@ func (t *jsonTokener) Enter(node ast.Node, at parser.Step) bool {
 	if t.ended && t.state.oneDocument && at.Document > t.firstDoc {
 		t.fail(yamlerrors.NewNotJSON("a stream of several documents has no single JSON root", node.GetToken()))
 
-		return false
+		return t.halted()
 	}
 
 	if frame := t.frame(); frame != nil && frame.mergeValue {
@@ -237,12 +237,12 @@ func (t *jsonTokener) Enter(node ast.Node, at parser.Step) bool {
 			}
 		}
 
-		return false
+		return parser.SkipNode
 	}
 
 	if at.In == parser.KindMapping && !at.Key {
 		if frame := t.frame(); frame != nil && t.settleEntry(frame) {
-			return false
+			return t.skipped()
 		}
 	}
 
@@ -262,23 +262,23 @@ func (t *jsonTokener) Enter(node ast.Node, at parser.Step) bool {
 	case *ast.AliasNode:
 		t.emitAlias(n, at)
 
-		return false
+		return t.skipped()
 	case *ast.TagNode:
 		t.openTag(n, false)
 	default:
 		t.emitScalarNode(node, at.At)
 	}
 
-	return !t.stopped
+	return t.halted()
 }
 
-func (t *jsonTokener) Leave(node ast.Node, at parser.Step) {
+func (t *jsonTokener) Leave(node ast.Node, at parser.Step) error {
 	if t.stopped {
-		return
+		return t.halted()
 	}
 
 	if t.closeKey(node, at) {
-		return
+		return t.halted()
 	}
 
 	switch n := node.(type) {
@@ -286,20 +286,21 @@ func (t *jsonTokener) Leave(node ast.Node, at parser.Step) {
 		if err := refuseDuplicateKeys(n); err != nil {
 			t.fail(err)
 
-			return
+			return t.halted()
 		}
 		t.closeMapping(at, n.End)
 	case *ast.SequenceNode:
 		if frame := t.frame(); frame != nil && frame.mergeSeq == at.Depth {
 			frame.mergeSeq, frame.mergeValue = -1, false
 
-			return
+			return t.halted()
 		}
 		t.close(JSONArrayEnd, t.closeAt(n.End))
 	case *ast.TagNode:
 		t.closeTag(n, at)
 	}
 
+	return t.halted()
 }
 
 // frame is the mapping being handed over, and nil outside one.
@@ -572,4 +573,26 @@ func (t *jsonTokener) fail(err error) {
 		t.state.err = err
 	}
 	t.stopped = true
+}
+
+// halted is what the walk is told once this converter has stopped: the conversion's error where it
+// failed, and parser.StopWalk where the range body broke out of the loop, which is no error at all.
+func (t *jsonTokener) halted() error {
+	if t.state.err != nil {
+		return t.state.err
+	}
+	if t.stopped {
+		return parser.StopWalk
+	}
+
+	return nil
+}
+
+// skipped asks the walk not to hand the node's content over, or stops it where this converter has halted.
+func (t *jsonTokener) skipped() error {
+	if err := t.halted(); err != nil {
+		return err
+	}
+
+	return parser.SkipNode
 }

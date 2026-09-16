@@ -25,20 +25,22 @@ type balanceSpy struct {
 	extra []string
 }
 
-func (s *balanceSpy) Enter(node ast.Node, at parser.Step) bool {
+func (s *balanceSpy) Enter(node ast.Node, at parser.Step) error {
 	s.open = append(s.open, fmt.Sprintf("%s@%d", node.Type(), at.Depth))
 
-	return true
+	return nil
 }
 
-func (s *balanceSpy) Leave(node ast.Node, at parser.Step) {
+func (s *balanceSpy) Leave(node ast.Node, at parser.Step) error {
 	want := fmt.Sprintf("%s@%d", node.Type(), at.Depth)
 	if len(s.open) == 0 {
 		s.extra = append(s.extra, want)
 
-		return
+		return nil
 	}
 	s.open = s.open[:len(s.open)-1]
+
+	return nil
 }
 
 // TestARefusedDocumentLeavesEveryNodeItEntered checks that a walk closes what it opened

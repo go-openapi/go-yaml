@@ -19,7 +19,7 @@ import (
 // hands a mapping's entries over rather than the entry. What it brings in goes
 // over at the end of the mapping, where the keys the mapping writes itself are
 // known: an own key beats a merged one whatever their order in the document.
-func (t *jsonTokener) collectMerge(node ast.Node, at parser.Step) bool {
+func (t *jsonTokener) collectMerge(node ast.Node, at parser.Step) error {
 	frame := t.frame()
 
 	switch n := node.(type) {
@@ -29,19 +29,19 @@ func (t *jsonTokener) collectMerge(node ast.Node, at parser.Step) bool {
 			// mappings, and the entries of both were handed over as one.
 			t.failMerge(frame, yamlerrors.NewUnexpectedNodeType(n.Type(), ast.MappingType, n.GetToken()))
 
-			return false
+			return t.halted()
 		}
 		// "<<: [*a, *b]" merges each in turn, earliest first, so the flag
 		// stands until the sequence closes.
 		frame.mergeSeq = at.Depth
 
-		return true
+		return nil
 	case *ast.AliasNode:
 		target, err := t.aliasTarget(n)
 		if err != nil {
 			t.fail(err)
 
-			return false
+			return t.halted()
 		}
 		if frame.mergeSeq < 0 {
 			frame.mergeValue = false
@@ -53,7 +53,7 @@ func (t *jsonTokener) collectMerge(node ast.Node, at parser.Step) bool {
 			t.expanding = t.expanding[:len(t.expanding)-1]
 		})
 
-		return false
+		return t.skipped()
 	case *ast.MappingNode:
 		// "<<: {a: 1}" merges a mapping written out. The walk hands its entries
 		// over one at a time and the tree holds none of them, so it is read by
@@ -67,11 +67,11 @@ func (t *jsonTokener) collectMerge(node ast.Node, at parser.Step) bool {
 		t.open(JSONObjectStart, at.At)
 		t.pushMap(nil)
 
-		return true
+		return nil
 	default:
 		t.failMerge(frame, yamlerrors.NewUnexpectedNodeType(node.Type(), ast.MappingType, node.GetToken()))
 
-		return false
+		return t.halted()
 	}
 }
 

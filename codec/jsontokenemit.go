@@ -340,17 +340,17 @@ func (t *jsonTokener) emitTreeMapping(n *ast.MappingNode, at token.Position) {
 // parsed, so none of them can be named here. The walk goes into them with
 // nothing going over on its own, and the name is taken when the wrapper closes
 // -- a key is one token whatever it holds.
-func (t *jsonTokener) enterKey(node ast.Node, at parser.Step) bool {
+func (t *jsonTokener) enterKey(node ast.Node, at parser.Step) error {
 	switch n := node.(type) {
 	case *ast.MappingKeyNode, *ast.AnchorNode:
 		t.keys = append(t.keys, tokenKeyMark{node: node, depth: at.Depth})
 		t.suppress++
 
-		return true
+		return nil
 	case *ast.TagNode:
 		t.openTag(n, true)
 
-		return true
+		return nil
 	}
 
 	if _, aliased := node.(*ast.AliasNode); aliased {
@@ -359,12 +359,12 @@ func (t *jsonTokener) enterKey(node ast.Node, at parser.Step) bool {
 		// [ast.KeyName] gives.
 		t.emitKeyNamed(t.wrappedKeyName(node), at.At)
 
-		return false
+		return t.skipped()
 	}
 
 	t.emitKey(node, at.At)
 
-	return false
+	return t.skipped()
 }
 
 // closeKey names the entry a wrapper stands as the key of, and reports whether

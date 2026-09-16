@@ -108,15 +108,11 @@ type buildFrame struct {
 }
 
 // Enter is called before anything a node holds.
-func (b *valueBuilder) Enter(node ast.Node, at parser.Step) bool {
-	if b.err != nil {
-		return false
-	}
-
+func (b *valueBuilder) Enter(node ast.Node, at parser.Step) error {
 	if at.Depth == 0 && at.In == parser.KindNone {
 		if _, isDirective := node.(*ast.DirectiveNode); isDirective {
 			// A directive opens a document of its own and holds no value.
-			return false
+			return parser.SkipNode
 		}
 		b.named = nil
 	}
@@ -128,7 +124,7 @@ func (b *valueBuilder) Enter(node ast.Node, at parser.Step) bool {
 			b.stack[n-1].merging = true
 		}
 
-		return false
+		return parser.SkipNode
 	}
 
 	switch n := node.(type) {
@@ -147,30 +143,31 @@ func (b *valueBuilder) Enter(node ast.Node, at parser.Step) bool {
 	case *ast.AliasNode:
 		b.deliver(b.aliasValue(n), node, at)
 	case *ast.CommentGroupNode:
-		return false
+		return parser.SkipNode
 	default:
 		v, err := b.scalarValue(node)
 		if err != nil {
-			b.fail(err)
-
-			return false
+			return b.fail(err)
 		}
 		b.deliver(v, node, at)
 	}
 
-	return true
+	// aliasValue and copyValue record their own refusals, so the walk is told here.
+	return b.err
 }
 
 // Leave is called once everything a node holds has been.
-func (b *valueBuilder) Leave(node ast.Node, at parser.Step) {
+func (b *valueBuilder) Leave(node ast.Node, at parser.Step) error {
 	if b.err != nil {
-		return
+		// The walk hands nothing more over once a visitor has failed, and still leaves the nodes it had open.
+		// The frames below stay as they were, since nothing reads them again.
+		return b.err
 	}
 
 	switch node.(type) {
 	case *ast.MappingNode, *ast.SequenceNode, *ast.AnchorNode, *ast.TagNode, *ast.MappingKeyNode:
 	default:
-		return
+		return nil
 	}
 
 	frame := b.stack[len(b.stack)-1]
@@ -181,14 +178,10 @@ func (b *valueBuilder) Leave(node ast.Node, at parser.Step) {
 		// The parser hangs the repeats on the mapping as it closes, so they are
 		// read here rather than as it opened.
 		if err := refuseDuplicateKeys(node); err != nil {
-			b.fail(err)
-
-			return
+			return b.fail(err)
 		}
 		if frame.keyErr != nil {
-			b.fail(frame.keyErr)
-
-			return
+			return b.fail(frame.keyErr)
 		}
 		b.deliver(frame.value(), node, frame.at)
 	case frameSequence:
@@ -196,12 +189,12 @@ func (b *valueBuilder) Leave(node ast.Node, at parser.Step) {
 	case frameProperty:
 		v, err := b.closeProperty(frame)
 		if err != nil {
-			b.fail(err)
-
-			return
+			return b.fail(err)
 		}
 		b.deliver(v, node, frame.at)
 	}
+
+	return b.err
 }
 
 // closeProperty turns what a property's node built into what the property makes
@@ -586,10 +579,13 @@ func isMapValue(v any) bool {
 	}
 }
 
-func (b *valueBuilder) fail(err error) {
+// fail keeps the first error and returns it, so a caller can return it to the walk in one line.
+func (b *valueBuilder) fail(err error) error {
 	if b.err == nil {
 		b.err = err
 	}
+
+	return b.err
 }
 
 // scalarValue reads the Go value a scalar node denotes.

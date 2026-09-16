@@ -123,13 +123,16 @@ type digestVisitor struct {
 	out interface{ Write([]byte) (int, error) }
 }
 
-func (d *digestVisitor) Enter(node ast.Node, at parser.Step) bool {
+func (d *digestVisitor) Enter(node ast.Node, at parser.Step) error {
 	d.write("enter", node, at)
 
-	return true
+	return nil
 }
 
-func (d *digestVisitor) Leave(node ast.Node, at parser.Step) { d.write("leave", node, at) }
+func (d *digestVisitor) Leave(node ast.Node, at parser.Step) error {
+	d.write("leave", node, at)
+	return nil
+}
 
 func (d *digestVisitor) write(what string, node ast.Node, at parser.Step) {
 	tk := node.GetToken()
@@ -216,10 +219,10 @@ func walkTypeCounts(t *testing.T, src string) map[string]int {
 
 type countingVisitor struct{ counts map[string]int }
 
-func (c *countingVisitor) Enter(n ast.Node, _ parser.Step) bool {
+func (c *countingVisitor) Enter(n ast.Node, _ parser.Step) error {
 	c.counts[fmt.Sprintf("%T", n)]++
 
-	return true
+	return nil
 }
 
-func (c *countingVisitor) Leave(ast.Node, parser.Step) {}
+func (c *countingVisitor) Leave(ast.Node, parser.Step) error { return nil }

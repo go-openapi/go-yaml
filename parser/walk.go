@@ -4,6 +4,8 @@
 package parser
 
 import (
+	"errors"
+
 	"github.com/go-openapi/go-yaml/ast"
 	"github.com/go-openapi/go-yaml/token"
 )
@@ -123,6 +125,23 @@ type Step struct {
 	Document int
 }
 
+// SkipNode tells [Parser.Walk] not to hand the node's content over. Return it from [Visitor.Enter].
+//
+// Leave is not called for a node whose Enter skipped it, and the parse reads the content all the same:
+// the descent builds the whole document whatever a visitor asks for, and SkipNode stops the handovers below.
+//
+// Returned from [Visitor.Leave] it has no meaning and stops the walk, as any other error does.
+var SkipNode = errors.New("skip this node's content") //nolint:staticcheck,errname // a control signal, named as io/fs names SkipDir and SkipAll
+
+// StopWalk stops the walk with no error. Return it from [Visitor.Enter] or [Visitor.Leave].
+//
+// Nothing more is handed over, not even the Leave of a node already open, and [Parser.Walk] returns
+// the file and a nil error. Use it where the consumer is done and the document is not at fault:
+// [github.com/go-openapi/go-yaml/codec.JSONTokens.Tokens] returns it when the range body breaks.
+//
+// The parse still reads the rest of the stream, so a document it refuses after this is still refused.
+var StopWalk = errors.New("stop the walk") //nolint:staticcheck,errname // a control signal, named as io/fs names SkipDir and SkipAll
+
 // Visitor receives each node of a document as [Parser.Walk] reaches it.
 //
 // Enter comes before the node's content and Leave after it,
@@ -142,11 +161,15 @@ type Step struct {
 // Do not assume a mapping alternates key and value.
 type Visitor interface {
 	// Enter is called before the node's content.
-	// Returning false skips the content, and Leave is not called for the node.
-	Enter(node ast.Node, at Step) bool
+	//
+	// Return nil to receive the content, [SkipNode] to skip it, and any other error to stop the walk.
+	// Leave is not called for a node Enter skipped or failed on.
+	Enter(node ast.Node, at Step) error
 	// Leave is called after the node's content has been visited, with the Step that Enter received,
 	// except for At on a block mapping (see [Step.At]).
-	Leave(node ast.Node, at Step)
+	//
+	// Return an error to stop the walk.
+	Leave(node ast.Node, at Step) error
 }
 
 // walkState holds the state of a walk.
@@ -169,9 +192,27 @@ type walkState struct {
 	quiet int
 	// document is the index of the stream's document being walked, counted from 0.
 	document int
-	// err holds the first error of the walk.
+	// err holds the first error a visitor returned. Once it is set nothing more is handed over,
+	// and [Parser.Walk] returns it.
 	err error
+	// stopped records a visitor returning [StopWalk]. Nothing more is handed over and Walk returns no error.
+	stopped bool
 }
+
+// fail records the first error a visitor returned, and reads [StopWalk] as a stop with no error.
+func (w *walkState) fail(err error) {
+	if errors.Is(err, StopWalk) {
+		w.stopped = true
+
+		return
+	}
+	if w.err == nil {
+		w.err = err
+	}
+}
+
+// done reports whether the walk has stopped handing nodes over.
+func (w *walkState) done() bool { return w.err != nil || w.stopped }
 
 // Walk reads the YAML stream src and hands each node to v as the parse reaches it.
 //
@@ -188,6 +229,11 @@ type walkState struct {
 //
 // An anchor is handed over before the node it names and left after it, with [KindAnchor] as the step's In,
 // so a writer has the anchor open while it writes the node.
+//
+// A visitor that returns an error stops the walk: nothing more is handed over and Walk returns that error.
+// The parse still reads the rest of the stream, so a document it refuses after the visitor gave up is
+// returned as the refusal it is, and the visitor's error is dropped. Keep the error in the visitor to read
+// it back in that case, as every consumer in this module does.
 //
 // Walk returns [ErrParserReused] when p has already read a stream since [New] or the last [Parser.Reset].
 func (p *Parser) Walk(src []byte, v Visitor) (*ast.File, error) {
@@ -294,9 +340,9 @@ func (p *Parser) enterAs(ctx context, node ast.Node, in Kind, key bool) bool {
 
 		return true
 	}
-	if p.walk.quiet > 0 {
-		// The node reads its content back through the descent, so nothing inside it is handed over on its own.
-		// leave unwinds the skip.
+	if p.walk.quiet > 0 || p.walk.done() {
+		// Nothing inside this node is handed over on its own: either the node reads its content back through
+		// the descent, or a visitor has already failed. leave unwinds the skip.
 		p.walk.skip = 1
 
 		return true
@@ -312,7 +358,11 @@ func (p *Parser) enterAs(ctx context, node ast.Node, in Kind, key bool) bool {
 
 	at := p.step(node)
 	at.Key = key
-	if !p.walk.visitor.Enter(node, at) {
+	if err := p.walk.visitor.Enter(node, at); err != nil {
+		if !errors.Is(err, SkipNode) {
+			p.walk.fail(err)
+		}
+		// The node's own leave unwinds this, so the next node the descent reaches starts level.
 		p.walk.skip = 1
 
 		return false
@@ -341,7 +391,12 @@ func (p *Parser) leave(ctx context, node ast.Node) {
 	at := p.step(node)
 	at.Key = p.walk.key[len(p.walk.key)-1]
 	p.walk.key = p.walk.key[:len(p.walk.key)-1]
-	p.walk.visitor.Leave(node, at)
+	// The stacks are popped above whatever happens, so a node opened before the stop still closes level.
+	if !p.walk.done() {
+		if err := p.walk.visitor.Leave(node, at); err != nil {
+			p.walk.fail(err)
+		}
+	}
 	p.count()
 	p.readTo(ctx)
 }
@@ -384,7 +439,7 @@ func (p *Parser) hand(ctx context, node ast.Node) {
 }
 
 func (p *Parser) handAs(ctx context, node ast.Node, key bool) {
-	if p.walk == nil || node == nil || p.walk.skip > 0 || p.walk.quiet > 0 {
+	if p.walk == nil || node == nil || p.walk.skip > 0 || p.walk.quiet > 0 || p.walk.done() {
 		return
 	}
 	// takeKey is called whatever key is, so the flag is always cleared.
@@ -395,8 +450,14 @@ func (p *Parser) handAs(ctx context, node ast.Node, key bool) {
 
 	at := p.step(node)
 	at.Key = key
-	if p.walk.visitor.Enter(node, at) {
-		p.walk.visitor.Leave(node, at)
+	// A node with no content: SkipNode has nothing to skip, and only drops the Leave.
+	switch err := p.walk.visitor.Enter(node, at); {
+	case err == nil:
+		if err := p.walk.visitor.Leave(node, at); err != nil {
+			p.walk.fail(err)
+		}
+	case !errors.Is(err, SkipNode):
+		p.walk.fail(err)
 	}
 	p.count()
 	p.readTo(ctx)

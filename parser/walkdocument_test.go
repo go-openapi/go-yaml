@@ -120,25 +120,25 @@ type documentSpy struct {
 	bodies []int
 }
 
-func (d *documentSpy) Enter(_ ast.Node, at parser.Step) bool {
+func (d *documentSpy) Enter(_ ast.Node, at parser.Step) error {
 	if at.Depth == 0 && at.In == parser.KindNone {
 		d.bodies = append(d.bodies, at.Document)
 	}
 
-	return true
+	return nil
 }
 
-func (d *documentSpy) Leave(ast.Node, parser.Step) {}
+func (d *documentSpy) Leave(ast.Node, parser.Step) error { return nil }
 
 // everyStep records the document of every node handed over, at any depth.
 type everyStep struct {
 	seen []int
 }
 
-func (e *everyStep) Enter(_ ast.Node, at parser.Step) bool {
+func (e *everyStep) Enter(_ ast.Node, at parser.Step) error {
 	e.seen = append(e.seen, at.Document)
 
-	return true
+	return nil
 }
 
-func (e *everyStep) Leave(ast.Node, parser.Step) {}
+func (e *everyStep) Leave(ast.Node, parser.Step) error { return nil }

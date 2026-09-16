@@ -38,14 +38,14 @@ func TestNodeFrontier(t *testing.T) {
 // frontierCounter counts the nodes entered and not yet left.
 type frontierCounter struct{ open, peak, total int }
 
-func (c *frontierCounter) Enter(_ ast.Node, _ parser.Step) bool {
+func (c *frontierCounter) Enter(_ ast.Node, _ parser.Step) error {
 	c.open++
 	c.total++
 	if c.open > c.peak {
 		c.peak = c.open
 	}
 
-	return true
+	return nil
 }
 
-func (c *frontierCounter) Leave(_ ast.Node, _ parser.Step) { c.open-- }
+func (c *frontierCounter) Leave(_ ast.Node, _ parser.Step) error { c.open--; return nil }

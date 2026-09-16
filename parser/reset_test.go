@@ -151,5 +151,5 @@ func digestWalk(p *parser.Parser, src []byte) string {
 // discardVisitor visits every node and keeps nothing.
 type discardVisitor struct{}
 
-func (discardVisitor) Enter(ast.Node, parser.Step) bool { return true }
-func (discardVisitor) Leave(ast.Node, parser.Step)      {}
+func (discardVisitor) Enter(ast.Node, parser.Step) error { return nil }
+func (discardVisitor) Leave(ast.Node, parser.Step) error { return nil }

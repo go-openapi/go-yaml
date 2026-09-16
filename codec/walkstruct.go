@@ -80,21 +80,20 @@ func holdsAnything(v reflect.Value) bool {
 
 // forward hands a node to the nested value builder and closes the subtree once
 // the builder has finished one.
-func (b *typedBuilder) forward(node ast.Node, at parser.Step, entering bool) bool {
-	var proceed bool
+func (b *typedBuilder) forward(node ast.Node, at parser.Step, entering bool) error {
+	var err error
 	if entering {
-		proceed = b.values.Enter(node, at)
+		err = b.values.Enter(node, at)
 	} else {
-		b.values.Leave(node, at)
+		err = b.values.Leave(node, at)
 	}
+	// Read before closeAny, which drops the builder once it has made a value.
 	if b.values.err != nil {
-		b.fail(b.values.err)
-
-		return false
+		return b.fail(b.values.err)
 	}
 	b.closeAny()
 
-	return proceed
+	return err
 }
 
 // closeAny writes what the nested builder made into the destination that asked
@@ -118,10 +117,13 @@ func (b *typedBuilder) closeAny() {
 	b.settle(dst)
 }
 
-func (b *typedBuilder) fail(err error) {
+// fail keeps the first error and returns it, so a caller can return it to the walk in one line.
+func (b *typedBuilder) fail(err error) error {
 	if b.err == nil {
 		b.err = err
 	}
+
+	return b.err
 }
 
 // destination returns where the node being handed over goes, and false where it
@@ -169,21 +171,15 @@ func (b *typedBuilder) settle(v reflect.Value) {
 	top.target = reflect.Value{}
 }
 
-func (b *typedBuilder) Enter(node ast.Node, at parser.Step) bool {
-	if b.err != nil {
-		return false
-	}
-
+func (b *typedBuilder) Enter(node ast.Node, at parser.Step) error {
 	switch node.(type) {
 	case *ast.AnchorNode, *ast.AliasNode, *ast.TagNode, *ast.MappingKeyNode:
 		// A property or an alias, inside an "any" subtree or out of one. The
 		// nested builder reads anchors of its own and would answer for the
 		// document's, so both go to the tree together.
-		b.fail(errNeedsTheTree)
-
-		return false
+		return b.fail(errNeedsTheTree)
 	case *ast.CommentGroupNode:
-		return false
+		return parser.SkipNode
 	}
 
 	if b.values != nil {
@@ -216,68 +212,56 @@ func (b *typedBuilder) Enter(node ast.Node, at parser.Step) bool {
 	}
 }
 
-func (b *typedBuilder) openMapping(dst reflect.Value, wanted bool) bool {
+func (b *typedBuilder) openMapping(dst reflect.Value, wanted bool) error {
 	if !wanted {
 		// Inside an entry no field claims. Read the mapping and drop it.
 		b.stack = append(b.stack, typedFrame{kind: typedStruct, dropped: true})
 
-		return true
+		return nil
 	}
 
 	out := dst
 	dst = b.indirect(dst)
 	if b.handled(dst) {
-		b.fail(errNeedsTheTree)
-
-		return false
+		return b.fail(errNeedsTheTree)
 	}
 	switch dst.Kind() {
 	case reflect.Struct:
 		b.stack = append(b.stack, typedFrame{kind: typedStruct, dst: dst, out: out})
 
-		return true
+		return nil
 	case reflect.Map:
 		if dst.Type().Key().Kind() != reflect.String {
-			b.fail(errNeedsTheTree)
-
-			return false
+			return b.fail(errNeedsTheTree)
 		}
 		if dst.IsNil() {
 			if !dst.CanSet() {
-				b.fail(errNeedsTheTree)
-
-				return false
+				return b.fail(errNeedsTheTree)
 			}
 			dst.Set(reflect.MakeMap(dst.Type()))
 		}
 		b.stack = append(b.stack, typedFrame{kind: typedMap, dst: dst, out: out})
 
-		return true
+		return nil
 	default:
-		b.fail(errNeedsTheTree)
-
-		return false
+		return b.fail(errNeedsTheTree)
 	}
 }
 
-func (b *typedBuilder) openSequence(dst reflect.Value, wanted bool) bool {
+func (b *typedBuilder) openSequence(dst reflect.Value, wanted bool) error {
 	if !wanted {
 		b.stack = append(b.stack, typedFrame{kind: typedSlice, dropped: true})
 
-		return true
+		return nil
 	}
 
 	out := dst
 	dst = b.indirect(dst)
 	if b.handled(dst) {
-		b.fail(errNeedsTheTree)
-
-		return false
+		return b.fail(errNeedsTheTree)
 	}
 	if dst.Kind() != reflect.Slice || !dst.CanSet() {
-		b.fail(errNeedsTheTree)
-
-		return false
+		return b.fail(errNeedsTheTree)
 	}
 	// An empty sequence is an empty slice and not a nil one, which is what the
 	// tree decoder gives and what a caller comparing against "[]T{}" expects.
@@ -288,7 +272,7 @@ func (b *typedBuilder) openSequence(dst reflect.Value, wanted bool) bool {
 	}
 	b.stack = append(b.stack, typedFrame{kind: typedSlice, dst: dst, out: out})
 
-	return true
+	return nil
 }
 
 // indirect follows and allocates the pointers between a destination and the
@@ -309,26 +293,25 @@ func (b *typedBuilder) indirect(v reflect.Value) reflect.Value {
 
 // scalar reads a leaf: a mapping's key names the entry that follows, and
 // anything else is a value to write.
-func (b *typedBuilder) scalar(node ast.Node, dst reflect.Value, wanted bool) bool {
+func (b *typedBuilder) scalar(node ast.Node, dst reflect.Value, wanted bool) error {
 	if !wanted {
 		b.settle(reflect.Value{})
 
-		return false
+		return parser.SkipNode
 	}
 	if err := b.setScalar(dst, node); err != nil {
-		b.fail(err)
-
-		return false
+		return b.fail(err)
 	}
 	b.settle(dst)
 
-	return false
+	// A leaf holds nothing to descend into, and Leave has nothing to close.
+	return parser.SkipNode
 }
 
 // openEntry names the entry a key opens, and says where its value goes.
-func (b *typedBuilder) openEntry(top *typedFrame, keyNode ast.Node) bool {
+func (b *typedBuilder) openEntry(top *typedFrame, keyNode ast.Node) error {
 	if top.dropped {
-		return false
+		return parser.SkipNode
 	}
 
 	if key, isKey := keyNode.(ast.MapKeyNode); isKey && key.IsMergeKey() {
@@ -336,49 +319,41 @@ func (b *typedBuilder) openEntry(top *typedFrame, keyNode ast.Node) bool {
 		// does not do yet. A merge written as an alias gives up on the alias;
 		// one written in place -- "<<: {a: 1}" -- has nothing else to give up
 		// on, and was read as a key no field claims and dropped.
-		b.fail(errNeedsTheTree)
-
-		return false
+		return b.fail(errNeedsTheTree)
 	}
 
 	name, named := entryText(keyNode)
 	if !named {
 		if top.kind == typedMap {
-			b.fail(errNeedsTheTree)
-
-			return false
+			return b.fail(errNeedsTheTree)
 		}
 		// No field can be named after it.
 		top.skip = true
 
-		return false
+		return parser.SkipNode
 	}
 
 	switch top.kind {
 	case typedStruct:
 		fields, err := structFields(top.dst.Type(), b.dec.tagMode())
 		if err != nil {
-			b.fail(err)
-
-			return false
+			return b.fail(err)
 		}
 		sf, at, _, known := fields.lookup(name)
 		if !known {
 			top.skip, top.target = true, reflect.Value{}
 
-			return false
+			return parser.SkipNode
 		}
 		if at != nil {
 			// The type embeds another, and the name reaches a field of it.
 			field, err := fieldAt(top.dst, at)
 			if err != nil {
-				b.fail(err)
-
-				return false
+				return b.fail(err)
 			}
 			top.skip, top.target = false, field
 
-			return false
+			return parser.SkipNode
 		}
 		top.skip = false
 		top.target = top.dst.Field(sf.Index)
@@ -387,12 +362,11 @@ func (b *typedBuilder) openEntry(top *typedFrame, keyNode ast.Node) bool {
 		top.key = reflect.ValueOf(b.strs.clone(name)).Convert(top.dst.Type().Key())
 		top.target = reflect.New(top.dst.Type().Elem()).Elem()
 	case typedSlice:
-		b.fail(errNeedsTheTree)
-
-		return false
+		return b.fail(errNeedsTheTree)
 	}
 
-	return false
+	// A key names the entry and holds nothing the walk descends into.
+	return parser.SkipNode
 }
 
 // fieldAt walks the index path an embedded field stands at, making the pointers
@@ -533,28 +507,25 @@ func scalarNumber(node ast.Node) any {
 	}
 }
 
-func (b *typedBuilder) Leave(node ast.Node, at parser.Step) {
+func (b *typedBuilder) Leave(node ast.Node, at parser.Step) error {
 	if b.err != nil {
-		return
+		// The walk hands nothing more over once a visitor has failed, and still leaves the nodes it had open.
+		return b.err
 	}
 	if b.values != nil {
-		b.forward(node, at, false)
-
-		return
+		return b.forward(node, at, false)
 	}
 	switch node.(type) {
 	case *ast.MappingNode, *ast.SequenceNode:
 	default:
-		return
+		return nil
 	}
 
 	if _, isMapping := node.(*ast.MappingNode); isMapping {
 		// The parser hangs the repeats on the mapping as it closes, so they are
 		// read here rather than as it opened.
 		if err := refuseDuplicateKeys(node); err != nil {
-			b.fail(err)
-
-			return
+			return b.fail(err)
 		}
 	}
 
@@ -563,9 +534,11 @@ func (b *typedBuilder) Leave(node ast.Node, at parser.Step) {
 	if frame.dropped {
 		b.settle(reflect.Value{})
 
-		return
+		return nil
 	}
 	b.settle(frame.out)
+
+	return nil
 }
 
 // handled reports a destination the tree decoder reads for itself: a custom
