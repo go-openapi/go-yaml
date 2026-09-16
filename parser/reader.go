@@ -39,6 +39,9 @@ type reader struct {
 	// keepComments is set under WithComments.
 	// Without it, comments are dropped as they arrive and never reach the grouping.
 	keepComments bool
+	// onToken receives every token the scanner cuts, before the comment drop and before the grouping.
+	// See [WithTokens].
+	onToken func(token.Token)
 
 	// afterHeader and afterEnd hold the marker just read,
 	// so that the token after it can be checked against the marker's line.
@@ -59,13 +62,20 @@ type reader struct {
 // newReader returns a reader over the tokens of scan.
 //
 // estimate is a guess at the document's token count. It sizes the grouping's buffers and nothing else.
-func newReader(scan *scanner.Scanner, arena *tokenarena.TokenArena[group.TapeToken], estimate int, keepComments bool) *reader {
+func newReader(
+	scan *scanner.Scanner,
+	arena *tokenarena.TokenArena[group.TapeToken],
+	estimate int,
+	keepComments bool,
+	onToken func(token.Token),
+) *reader {
 	r := &reader{
 		scan:         scan,
 		arena:        arena,
 		g:            group.NewGrouper(estimate),
 		out:          make([]*group.TapeToken, 0, runarena.MinGroupBlock),
 		keepComments: keepComments,
+		onToken:      onToken,
 	}
 	if keepComments {
 		// The map is made here, before the first comment arrives, so the parser can hold the same map from the start.
@@ -77,10 +87,10 @@ func newReader(scan *scanner.Scanner, arena *tokenarena.TokenArena[group.TapeTok
 }
 
 // reset prepares r for another stream over arena, and keeps the grouper's cells and the room r's buffers have grown.
-func (r *reader) reset(arena *tokenarena.TokenArena[group.TapeToken], keepComments bool) {
+func (r *reader) reset(arena *tokenarena.TokenArena[group.TapeToken], keepComments bool, onToken func(token.Token)) {
 	r.g.Reset()
 	clear(r.out[:cap(r.out)])
-	*r = reader{scan: r.scan, arena: arena, g: r.g, out: r.out[:0], keepComments: keepComments}
+	*r = reader{scan: r.scan, arena: arena, g: r.g, out: r.out[:0], keepComments: keepComments, onToken: onToken}
 
 	switch {
 	case !keepComments:
@@ -298,6 +308,11 @@ func (r *reader) fill() error {
 			r.out = r.g.Finish(r.out)
 
 			break
+		}
+		if r.onToken != nil {
+			// Before the comment drop, so a consumer tiling the source sees every token the document wrote,
+			// and before the grouping, which is where a token stops standing for itself.
+			r.onToken(tk)
 		}
 		if tk.Type == token.CommentType && probe.Enabled {
 			probe.Count("comment.scanned", 1)

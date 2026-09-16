@@ -47,9 +47,9 @@ func (p *Parser) begin(src []byte) {
 	// It sizes buffers and nothing else.
 	estimate := max(len(src)/8, 16)
 	if p.reader == nil {
-		p.reader = newReader(&p.scan, p.tokens, estimate, p.opts.keepComments)
+		p.reader = newReader(&p.scan, p.tokens, estimate, p.opts.keepComments, p.opts.onToken)
 	} else {
-		p.reader.reset(p.tokens, p.opts.keepComments)
+		p.reader.reset(p.tokens, p.opts.keepComments, p.opts.onToken)
 	}
 	p.lineComments = p.reader.g.LineComments
 }

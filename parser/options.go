@@ -3,7 +3,10 @@
 
 package parser
 
-import "github.com/go-openapi/go-yaml/ast"
+import (
+	"github.com/go-openapi/go-yaml/ast"
+	"github.com/go-openapi/go-yaml/token"
+)
 
 // Option configures a [Parser]. Pass options to [New] or [ParseBytes].
 type Option func(p *Parser)
@@ -15,6 +18,8 @@ type Option func(p *Parser)
 type options struct {
 	// onComplete receives each node as the parser finishes it. See [WithOnComplete].
 	onComplete func(ast.Node)
+	// onToken receives every token the scanner cuts. See [WithTokens].
+	onToken func(token.Token)
 
 	// chunkSize is the number of tokens in one chunk of the token arena.
 	chunkSize int
@@ -71,6 +76,28 @@ func WithOmitNodePaths() Option {
 func WithOnComplete(fn func(ast.Node)) Option {
 	return func(p *Parser) {
 		p.opts.onComplete = fn
+	}
+}
+
+// WithTokens calls fn for every token the scanner cuts, in the order the document writes them.
+//
+// The tokens tile the source and the nodes do not, so a consumer that rewrites a document reads these and
+// names them with the nodes [Parser.Walk] hands over.
+// [github.com/go-openapi/go-yaml/transform.Walk] is the worked case: without this it scanned the source a
+// second time, which was a tenth of what a transform cost.
+//
+// fn sees every token, including the comments a parse without [WithComments] drops, and an invalid token
+// just before the parse refuses the document.
+//
+// The token is a copy and outlives the call: its Value and Origin are the source's own bytes, which the
+// caller handed in. Nothing here points into the arena the parse recycles.
+//
+// ⚠️ The scanner runs ahead of the descent, so a token reaches fn before the node standing on it reaches a
+// [Visitor]. The distance is what the grouping holds, which follows the document's depth and the key window
+// and not its length.
+func WithTokens(fn func(token.Token)) Option {
+	return func(p *Parser) {
+		p.opts.onToken = fn
 	}
 }
 
