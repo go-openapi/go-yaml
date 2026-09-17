@@ -59,9 +59,13 @@ func (t *jsonTokener) keyName(node ast.Node) string {
 
 // throughAlias is the node an alias standing as a key names, reached through
 // the "?" and the anchor a key may open with, and nil where the key is not an
-// alias. [ast.KeyName] leaves an alias unnamed -- it reads the document and an
-// alias is a name for something written elsewhere -- so the node it names is
-// what the entry is named after.
+// alias.
+//
+// [ast.KeyName] names an alias through [ast.AliasNode.Target] too, but returns
+// no name for a missing target and no node at all. keyName needs the node: it
+// refuses a missing or cyclic target through aliasTarget, writes "null" for a
+// target standing on nothing, and hands the target to jsonScalarOf when
+// KeyName gives no name.
 func (t *jsonTokener) throughAlias(node ast.Node) ast.Node {
 	switch n := node.(type) {
 	case *ast.AliasNode:
