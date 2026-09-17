@@ -192,8 +192,6 @@ type Node interface {
 	GetPathNode() *PathNode
 	// SetPathNode records the step of the path trie this node ends
 	SetPathNode(*PathNode)
-	// MarshalYAML
-	MarshalYAML() ([]byte, error)
 }
 
 // MapKeyNode type for map key node
@@ -655,11 +653,6 @@ func (d *DocumentNode) String() string {
 	return defaultRenderer.String(d)
 }
 
-// MarshalYAML encodes to a YAML text
-func (d *DocumentNode) MarshalYAML() ([]byte, error) {
-	return []byte(d.String()), nil
-}
-
 // NullNode type of null node
 type NullNode struct {
 	BaseNode
@@ -710,11 +703,6 @@ func (n *NullNode) stringWithoutComment() string {
 	// Every other scalar node already renders from its token: "!!str True"
 	// keeps its capital T and "!!str .INF" its capitals.
 	return n.Token.Value
-}
-
-// MarshalYAML encodes to a YAML text
-func (n *NullNode) MarshalYAML() ([]byte, error) {
-	return []byte(n.String()), nil
 }
 
 // IsMergeKey returns whether it is a MergeKey node.
@@ -775,11 +763,6 @@ func (n *IntegerNode) stringWithoutComment() string {
 	return n.Token.Value
 }
 
-// MarshalYAML encodes to a YAML text
-func (n *IntegerNode) MarshalYAML() ([]byte, error) {
-	return []byte(n.String()), nil
-}
-
 // IsMergeKey returns whether it is a MergeKey node.
 func (n *IntegerNode) IsMergeKey() bool {
 	return false
@@ -836,11 +819,6 @@ func (n *FloatNode) String() string {
 
 func (n *FloatNode) stringWithoutComment() string {
 	return n.Token.Value
-}
-
-// MarshalYAML encodes to a YAML text
-func (n *FloatNode) MarshalYAML() ([]byte, error) {
-	return []byte(n.String()), nil
 }
 
 // IsMergeKey returns whether it is a MergeKey node.
@@ -984,11 +962,6 @@ func (n *StringNode) stringWithoutComment() string {
 	return n.Value
 }
 
-// MarshalYAML encodes to a YAML text
-func (n *StringNode) MarshalYAML() ([]byte, error) {
-	return []byte(n.String()), nil
-}
-
 // LiteralNode type of literal node
 type LiteralNode struct {
 	BaseNode
@@ -1029,11 +1002,6 @@ func (n *LiteralNode) stringWithoutComment() string {
 	return bareRenderer.String(n)
 }
 
-// MarshalYAML encodes to a YAML text
-func (n *LiteralNode) MarshalYAML() ([]byte, error) {
-	return []byte(n.String()), nil
-}
-
 // IsMergeKey returns whether it is a MergeKey node.
 func (n *LiteralNode) IsMergeKey() bool {
 	return false
@@ -1065,11 +1033,6 @@ func (n *MergeKeyNode) String() string {
 
 func (n *MergeKeyNode) stringWithoutComment() string {
 	return n.Token.Value
-}
-
-// MarshalYAML encodes to a YAML text
-func (n *MergeKeyNode) MarshalYAML() ([]byte, error) {
-	return []byte(n.String()), nil
 }
 
 // IsMergeKey returns whether it is a MergeKey node.
@@ -1109,11 +1072,6 @@ func (n *BoolNode) stringWithoutComment() string {
 	return n.Token.Value
 }
 
-// MarshalYAML encodes to a YAML text
-func (n *BoolNode) MarshalYAML() ([]byte, error) {
-	return []byte(n.String()), nil
-}
-
 // IsMergeKey returns whether it is a MergeKey node.
 func (n *BoolNode) IsMergeKey() bool {
 	return false
@@ -1151,11 +1109,6 @@ func (n *InfinityNode) stringWithoutComment() string {
 	return n.Token.Value
 }
 
-// MarshalYAML encodes to a YAML text
-func (n *InfinityNode) MarshalYAML() ([]byte, error) {
-	return []byte(n.String()), nil
-}
-
 // IsMergeKey returns whether it is a MergeKey node.
 func (n *InfinityNode) IsMergeKey() bool {
 	return false
@@ -1190,11 +1143,6 @@ func (n *NanNode) String() string {
 
 func (n *NanNode) stringWithoutComment() string {
 	return n.Token.Value
-}
-
-// MarshalYAML encodes to a YAML text
-func (n *NanNode) MarshalYAML() ([]byte, error) {
-	return []byte(n.String()), nil
 }
 
 // IsMergeKey returns whether it is a MergeKey node.
@@ -1360,11 +1308,6 @@ func (n *MappingNode) MapRange() *MapNodeIter {
 	}
 }
 
-// MarshalYAML encodes to a YAML text
-func (n *MappingNode) MarshalYAML() ([]byte, error) {
-	return []byte(n.String()), nil
-}
-
 // MappingKeyNode type of tag node
 type MappingKeyNode struct {
 	BaseNode
@@ -1387,11 +1330,6 @@ func (n *MappingKeyNode) String() string {
 
 func (n *MappingKeyNode) stringWithoutComment() string {
 	return bareRenderer.String(n)
-}
-
-// MarshalYAML encodes to a YAML text
-func (n *MappingKeyNode) MarshalYAML() ([]byte, error) {
-	return []byte(n.String()), nil
 }
 
 // IsMergeKey returns whether it is a MergeKey node.
@@ -1473,11 +1411,6 @@ func (n *MappingValueNode) MapRange() *MapNodeIter {
 		idx:    startRangeIndex,
 		values: []*MappingValueNode{n},
 	}
-}
-
-// MarshalYAML encodes to a YAML text
-func (n *MappingValueNode) MarshalYAML() ([]byte, error) {
-	return []byte(n.String()), nil
 }
 
 // ArrayNode interface of SequenceNode
@@ -1605,11 +1538,6 @@ func (n *SequenceNode) ArrayRange() *ArrayNodeIter {
 	}
 }
 
-// MarshalYAML encodes to a YAML text
-func (n *SequenceNode) MarshalYAML() ([]byte, error) {
-	return []byte(n.String()), nil
-}
-
 // SequenceEntryNode is the sequence entry.
 type SequenceEntryNode struct {
 	BaseNode
@@ -1643,11 +1571,6 @@ func (n *SequenceEntryNode) SetComment(cm *CommentGroupNode) error {
 // Comment returns comment token instance
 func (n *SequenceEntryNode) GetComment() *CommentGroupNode {
 	return n.LineComment
-}
-
-// MarshalYAML
-func (n *SequenceEntryNode) MarshalYAML() ([]byte, error) {
-	return []byte(n.String()), nil
 }
 
 // SequenceEntry creates SequenceEntryNode instance.
@@ -1722,11 +1645,6 @@ func (n *AnchorNode) String() string {
 	return defaultRenderer.String(n)
 }
 
-// MarshalYAML encodes to a YAML text
-func (n *AnchorNode) MarshalYAML() ([]byte, error) {
-	return []byte(n.String()), nil
-}
-
 // IsMergeKey returns whether it is a MergeKey node.
 func (n *AnchorNode) IsMergeKey() bool {
 	if n.Value == nil {
@@ -1798,11 +1716,6 @@ func (n *AliasNode) String() string {
 	return fmt.Sprintf("*%s", n.Value.String())
 }
 
-// MarshalYAML encodes to a YAML text
-func (n *AliasNode) MarshalYAML() ([]byte, error) {
-	return []byte(n.String()), nil
-}
-
 // IsMergeKey returns whether it is a MergeKey node.
 func (n *AliasNode) IsMergeKey() bool {
 	return false
@@ -1834,11 +1747,6 @@ func (n *DirectiveNode) String() string {
 		values = append(values, val.String())
 	}
 	return strings.Join(append([]string{"%" + n.Name.String()}, values...), " ")
-}
-
-// MarshalYAML encodes to a YAML text
-func (n *DirectiveNode) MarshalYAML() ([]byte, error) {
-	return []byte(n.String()), nil
 }
 
 // TagNode type of tag node
@@ -1917,11 +1825,6 @@ func (n *TagNode) GetToken() *token.Token {
 // String tag to text
 func (n *TagNode) String() string {
 	return defaultRenderer.String(n)
-}
-
-// MarshalYAML encodes to a YAML text
-func (n *TagNode) MarshalYAML() ([]byte, error) {
-	return []byte(n.String()), nil
 }
 
 // IsMergeKey returns whether it is a MergeKey node.
@@ -2050,11 +1953,6 @@ func (n *CommentNode) String() string {
 	return "#" + n.Text()
 }
 
-// MarshalYAML encodes to a YAML text
-func (n *CommentNode) MarshalYAML() ([]byte, error) {
-	return []byte(n.String()), nil
-}
-
 // CommentGroupNode type of comment node
 type CommentGroupNode struct {
 	BaseNode
@@ -2156,11 +2054,6 @@ func (n *CommentGroupNode) String() string {
 	}
 
 	return strings.Join(values, "\n")
-}
-
-// MarshalYAML encodes to a YAML text
-func (n *CommentGroupNode) MarshalYAML() ([]byte, error) {
-	return []byte(n.String()), nil
 }
 
 // Visitor has Visit method that is invokded for each node encountered by Walk.
