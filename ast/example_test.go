@@ -6,7 +6,6 @@ package ast_test
 import (
 	"fmt"
 	"os"
-	"strconv"
 
 	"github.com/go-openapi/go-yaml/ast"
 	"github.com/go-openapi/go-yaml/parser"
@@ -15,33 +14,18 @@ import (
 
 // Build a configuration file from nothing.
 //
-// Every node stands on a token, and token.New types the token from its text. A string whose text reads as
-// another type -- "8080", "null", "a: b" -- is written as that text, so quote it first.
+// ast.Text quotes a string whose text would read back as something else, so the version below stays a
+// string and the port stays a number.
 func Example_buildADocument() {
-	at := token.Position{}
-	str := func(s string) *ast.StringNode {
-		if token.IsNeedQuoted(s) {
-			s = strconv.Quote(s)
-		}
-
-		return ast.String(token.New(s, s, at))
-	}
-	entry := func(key string, value ast.Node) *ast.MappingValueNode {
-		return ast.MappingValue(token.New(":", ":", at), str(key), value)
-	}
-
-	tags := ast.Sequence(token.New("-", "-", at), false)
-	tags.Values = append(tags.Values, str("web"), str("api"))
-
-	config := ast.Mapping(token.New(":", ":", at), false,
-		entry("name", str("my-service")),
-		entry("version", str("8080")),
-		entry("port", ast.Integer(token.New("8080", "8080", at))),
-		entry("debug", ast.Bool(token.New("false", "false", at))),
-		entry("tags", tags),
-		entry("database", ast.Mapping(token.New(":", ":", at), false,
-			entry("host", str("localhost")),
-			entry("port", ast.Integer(token.New("5432", "5432", at))),
+	config := ast.Map(
+		ast.Entry("name", ast.Text("my-service")),
+		ast.Entry("version", ast.Text("8080")),
+		ast.Entry("port", ast.Integer(token.New("8080", "8080", token.Position{}))),
+		ast.Entry("debug", ast.Bool(token.New("false", "false", token.Position{}))),
+		ast.Entry("tags", ast.Seq(ast.Text("web"), ast.Text("api"))),
+		ast.Entry("database", ast.Map(
+			ast.Entry("host", ast.Text("localhost")),
+			ast.Entry("port", ast.Integer(token.New("5432", "5432", token.Position{}))),
 		)),
 	)
 
@@ -81,17 +65,12 @@ debug: false
 		return ast.CommentGroup([]*token.Token{token.Comment(text, "#"+text, token.Position{})})
 	}
 
-	root, _ := file.Docs[0].Body.(*ast.MappingNode)
-	for _, entry := range root.Values {
-		if name, _ := ast.KeyName(entry.Key); name != "debug" {
-			continue
-		}
-		if err := entry.SetHeadComment(comment(" Turn on for local runs only.")); err != nil {
-			fmt.Println(err)
-		}
-		if err := entry.Value.SetComment(comment(" off in production")); err != nil {
-			fmt.Println(err)
-		}
+	debug := ast.Lookup(file.Docs[0].Body, "debug")
+	if err := debug.SetHeadComment(comment(" Turn on for local runs only.")); err != nil {
+		fmt.Println(err)
+	}
+	if err := debug.Value.SetComment(comment(" off in production")); err != nil {
+		fmt.Println(err)
 	}
 
 	if err := ast.NewRenderer(ast.WithSource(src)).VerbatimFile(os.Stdout, file); err != nil {
@@ -144,6 +123,55 @@ flags:
 	//   - safe
 }
 
+// Read a key a "<<" brings in, and one an alias stands for.
+//
+// ast.Lookup reads what a mapping itself writes, through the anchor, tag or alias in front of it.
+// ast.LookupMerged reads the merged mappings too, and the merge type gives the mapping's own keys
+// precedence, so "host" below is the one development writes and not the one defaults holds.
+func Example_lookupThroughAMerge() {
+	src := []byte(`defaults: &defaults
+  adapter: postgres
+  host: localhost
+  pool: 5
+development:
+  <<: *defaults
+  database: dev_db
+  host: 127.0.0.1
+production: *defaults
+`)
+	file, err := parser.ParseBytes(src, parser.WithMergeKeys())
+	if err != nil {
+		fmt.Println(err)
+
+		return
+	}
+	root := file.Docs[0].Body
+
+	development := ast.Lookup(root, "development").Value
+	for _, key := range []string{"host", "adapter", "absent"} {
+		fmt.Printf("development.%-7s own %-9v merged %v\n", key,
+			held(ast.Lookup(development, key)), held(ast.LookupMerged(development, key)))
+	}
+
+	// production is an alias, and Lookup follows it to the mapping its anchor names.
+	fmt.Println("production.adapter", held(ast.Lookup(ast.Lookup(root, "production").Value, "adapter")))
+
+	// Output:
+	// development.host    own 127.0.0.1 merged 127.0.0.1
+	// development.adapter own <none>    merged postgres
+	// development.absent  own <none>    merged <none>
+	// production.adapter postgres
+}
+
+// held is the value an entry holds, for an example that prints what a lookup found.
+func held(entry *ast.MappingValueNode) string {
+	if entry == nil {
+		return "<none>"
+	}
+
+	return entry.Value.String()
+}
+
 // Resolve a custom tag: GitLab CI's !reference names another part of the document by its keys, and a
 // reference in a sequence is replaced by the values of the sequence it names.
 //
@@ -167,20 +195,6 @@ test:
 	}
 	root := file.Docs[0].Body
 
-	lookup := func(node ast.Node, key string) ast.Node {
-		mapping, _ := node.(*ast.MappingNode)
-		if mapping == nil {
-			return nil
-		}
-		for _, entry := range mapping.Values {
-			if name, _ := ast.KeyName(entry.Key); name == key {
-				return entry.Value
-			}
-		}
-
-		return nil
-	}
-
 	for _, node := range ast.Filter(ast.TagType, root) {
 		tag, _ := node.(*ast.TagNode)
 		if tag.URI != "!reference" {
@@ -190,7 +204,11 @@ test:
 		target := root
 		for _, step := range tag.Value.(*ast.SequenceNode).Values {
 			name, _ := ast.KeyName(step)
-			target = lookup(target, name)
+			entry := ast.Lookup(target, name)
+			if entry == nil {
+				break
+			}
+			target = entry.Value
 		}
 		named, _ := target.(*ast.SequenceNode)
 		parent, _ := ast.Parent(root, tag).(*ast.SequenceNode)
