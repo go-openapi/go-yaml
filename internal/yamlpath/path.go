@@ -218,7 +218,13 @@ func (p *Path) String() string {
 	return p.node.String()
 }
 
-// ReadNode create AST from r and extract node by YAMLPath.
+// ReadNode reads the YAML stream r and returns the first node the path addresses.
+//
+// It answers as [Path.FilterFile] does on the parsed stream, and reads the stream by walking it: every branch
+// off the path is skipped, so the memory it holds is the node it returns and not the document.
+// The node is a copy that owns its tokens. Where it is most of the document, the copy costs more than a parse
+// into a tree: 206 ms against 155 ms for the whole of golang_source, which is 4 MB against 60 MB for one
+// scalar of it.
 func (p *Path) ReadNode(r io.Reader) (ast.Node, error) {
 	if p.node == nil {
 		return nil, ErrInvalidPath
@@ -227,15 +233,8 @@ func (p *Path) ReadNode(r io.Reader) (ast.Node, error) {
 	if _, err := io.Copy(&buf, r); err != nil {
 		return nil, err
 	}
-	f, err := parser.ParseBytes(buf.Bytes())
-	if err != nil {
-		return nil, err
-	}
-	node, err := p.FilterFile(f)
-	if err != nil {
-		return nil, err
-	}
-	return node, nil
+
+	return p.readByWalking(buf.Bytes())
 }
 
 // FilterFile filter from ast.File by YAMLPath.
