@@ -117,6 +117,8 @@ func TestSetPathOverridesTheRecordedPath(t *testing.T) {
 	node := f.Docs[0].Body
 	require.Equal(t, "$", node.GetPath())
 
-	node.SetPath("$.anywhere['at all']")
+	path := &ast.PathNode{}
+	path.Literal("$.anywhere['at all']")
+	node.SetPathNode(path)
 	assert.Equal(t, "$.anywhere['at all']", node.GetPath())
 }

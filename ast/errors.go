@@ -3,25 +3,7 @@
 
 package ast
 
-import (
-	"errors"
-	"fmt"
-)
-
-// IsInvalidTokenTypeError reports whether err is [ErrInvalidTokenType].
-func IsInvalidTokenTypeError(err error) bool {
-	return errors.Is(err, ErrInvalidTokenType)
-}
-
-// IsInvalidAnchorNameError reports whether err is [ErrInvalidAnchorName].
-func IsInvalidAnchorNameError(err error) bool {
-	return errors.Is(err, ErrInvalidAnchorName)
-}
-
-// IsInvalidAliasNameError reports whether err is [ErrInvalidAliasName].
-func IsInvalidAliasNameError(err error) bool {
-	return errors.Is(err, ErrInvalidAliasName)
-}
+import "fmt"
 
 // The three errors below report a comment that cannot be placed where it was
 // asked to go.

@@ -17,7 +17,7 @@ const (
 	// pathIndex steps into a sequence by position.
 	pathIndex
 	// pathLiteral holds a whole path already written out. The root "$" is one,
-	// and so is anything [BaseNode.SetPath] is handed.
+	// and so is anything [PathNode.Literal] is handed.
 	pathLiteral
 )
 

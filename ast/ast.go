@@ -188,8 +188,6 @@ type Node interface {
 	GetComment() *CommentGroupNode
 	// GetPath returns YAMLPath for the current node
 	GetPath() string
-	// SetPath set YAMLPath for the current node
-	SetPath(string)
 	// GetPathNode returns the step of the path trie this node ends
 	GetPathNode() *PathNode
 	// SetPathNode records the step of the path trie this node ends
@@ -279,16 +277,6 @@ func (n *BaseNode) GetPath() string {
 		return ""
 	}
 	return n.path.String()
-}
-
-// SetPath set YAMLPath for the current node.
-func (n *BaseNode) SetPath(path string) {
-	if n == nil {
-		return
-	}
-	p := &PathNode{}
-	p.Literal(path)
-	n.path = p
 }
 
 // GetPathNode returns the step of the path trie this node ends.
@@ -2167,19 +2155,6 @@ func (n *CommentGroupNode) String() string {
 		values = append(values, comment.String())
 	}
 
-	return strings.Join(values, "\n")
-}
-
-func (n *CommentGroupNode) StringWithSpace(col int) string {
-	values := []string{}
-	space := strings.Repeat(" ", col)
-	for _, comment := range n.Visible() {
-		space := space
-		if comment.Token != nil && comment.Token.BlankLineAbove() {
-			space = fmt.Sprintf("%s%s", "\n", space)
-		}
-		values = append(values, space+comment.String())
-	}
 	return strings.Join(values, "\n")
 }
 
