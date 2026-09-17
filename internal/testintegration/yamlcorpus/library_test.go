@@ -152,7 +152,7 @@ func TestTheCycleIsRefusedRatherThanNilled(t *testing.T) {
 			t.Errorf("%s: the cycle decoded to %#v, and it should be refused", src, v)
 			continue
 		}
-		if !strings.Contains(err.Error(), "names an anchor that is not resolved yet") {
+		if !strings.Contains(err.Error(), "stands inside its own anchor") {
 			t.Errorf("%s: refused for the wrong reason: %v", src, err)
 		}
 	}

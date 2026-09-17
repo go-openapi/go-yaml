@@ -4123,8 +4123,8 @@ service: &service
 	})
 
 	t.Run("self recursion is refused", func(t *testing.T) {
-		// An alias standing inside the node its own anchor names has nothing to
-		// resolve to. It used to decode to nil, which reported a mapping with a
+		// An alias standing inside the node its own anchor names makes a cycle,
+		// which a Go value cannot hold. It used to decode to nil, which reported a mapping with a
 		// null in it and no error at all; libfyaml and go.yaml.in/yaml/v3 both
 		// refuse the document.
 		yml := `
@@ -4136,7 +4136,7 @@ a: &a
 		if err == nil {
 			t.Fatalf("a self-recursive alias should be refused, decoded to: %v", result)
 		}
-		if !strings.Contains(err.Error(), `alias "a" names an anchor that is not resolved yet`) {
+		if !strings.Contains(err.Error(), `alias "a" stands inside its own anchor`) {
 			t.Fatalf("unexpected error: %v", err)
 		}
 	})

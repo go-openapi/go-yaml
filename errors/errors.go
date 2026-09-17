@@ -77,8 +77,9 @@ var (
 	// declared later, or in another document, is not one this alias can name.
 	ErrUnknownAnchor = stderrors.New("unknown anchor")
 	// ErrRecursiveAlias reports an alias standing inside the node its own
-	// anchor names, directly or through another anchor. The node is not
-	// resolved yet, so there is nothing for the alias to stand for.
+	// anchor names, directly or through another anchor. The parser accepts
+	// the document and its tree holds the cycle, but a Go value is built by
+	// walking and has nowhere to put one.
 	ErrRecursiveAlias = stderrors.New("recursive alias")
 	// ErrExcessiveAliasing reports a document whose aliases build far more than
 	// the document could hold written out. An alias names a node and the value
@@ -182,12 +183,15 @@ func NewExcessiveAliasing(built, budget int, tk *token.Token) *Error {
 	}
 }
 
-// NewRecursiveAlias reports the alias name as standing inside what its own
+// NewRecursiveAlias reports the alias name as standing inside the node its own
 // anchor names, at tk.
+//
+// The alias is resolved: the message names a cycle, not a missing anchor. See
+// [NewUnknownAnchor] for that.
 func NewRecursiveAlias(name string, tk *token.Token) *Error {
 	return &Error{
 		kind:  ErrRecursiveAlias,
-		msg:   fmt.Sprintf("alias %q names an anchor that is not resolved yet", name),
+		msg:   fmt.Sprintf("alias %q stands inside its own anchor, and a Go value cannot hold the cycle", name),
 		token: tk,
 	}
 }

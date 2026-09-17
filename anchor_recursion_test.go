@@ -12,8 +12,9 @@ import (
 	"github.com/go-openapi/go-yaml"
 )
 
-// TestAliasInsideItsOwnAnchor holds the rule that an anchor is only usable once
-// the node it names is resolved.
+// TestAliasInsideItsOwnAnchor holds the rule that a decode refuses a cycle.
+//
+// The parser resolves the alias and the tree holds the cycle, but a Go value has nowhere to put one.
 //
 // The alias used to decode to nil, which reported a mapping with a null in it
 // and no error at all. libfyaml and go.yaml.in/yaml/v3 both refuse the
@@ -26,9 +27,9 @@ func TestAliasInsideItsOwnAnchor(t *testing.T) {
 		src  string
 		want string
 	}{
-		{name: "directly", src: "a: &x\n  b: *x\n", want: `alias "x" names an anchor that is not resolved yet`},
-		{name: "through another anchor", src: "a: &p\n  q: &r\n    s: *p\n", want: `alias "p" names an anchor that is not resolved yet`},
-		{name: "in a sequence", src: "a: &x\n  - *x\n", want: `alias "x" names an anchor that is not resolved yet`},
+		{name: "directly", src: "a: &x\n  b: *x\n", want: `alias "x" stands inside its own anchor`},
+		{name: "through another anchor", src: "a: &p\n  q: &r\n    s: *p\n", want: `alias "p" stands inside its own anchor`},
+		{name: "in a sequence", src: "a: &x\n  - *x\n", want: `alias "x" stands inside its own anchor`},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
