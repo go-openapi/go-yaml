@@ -136,6 +136,12 @@ var StopWalk = errors.New("stop the walk") //nolint:staticcheck,errname // a con
 //
 // A node is valid until its Leave returns.
 // The parse reuses the tokens and the node cells behind the walk, so copy what is needed before then.
+// Use [ast.Clone] to keep a scalar: the copy owns its tokens.
+//
+// A mapping or a sequence reaches Leave without its entries: they were handed over one by one and not kept,
+// so its Values are empty and it renders as "{}" or "[]". Build what you need from the entries as they arrive.
+// The exceptions are a collection standing as a mapping key or under an anchor, which the parse keeps whole
+// to name the key or to answer an alias.
 //
 // Do not key a map on the node pointer.
 // Because the parse reuses node cells, two different nodes of one document often share a pointer.
@@ -245,8 +251,8 @@ func (w *walkState) done() bool { return w.err != nil || w.stopped }
 //
 // A node is valid until its Leave returns, as [Visitor] describes.
 //
-// An anchor is handed over before the node it names and left after it, with [KindAnchor] as the step's In,
-// so a writer has the anchor open while it writes the node.
+// An anchor is handed over before the node it names and left after it, and [Cursor.In] answers [KindAnchor]
+// for that node, so a writer has the anchor open while it writes the node.
 //
 // A visitor that returns an error stops the walk: nothing more is handed over and Walk returns that error.
 // The parse still reads the rest of the stream, so a document it refuses after the visitor gave up is
