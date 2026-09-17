@@ -340,6 +340,16 @@ func (e *Encoder) marshalerFromCustomMarshalerMap(t reflect.Type) (func(context.
 	return nil, false
 }
 
+// heldNode is the node v holds, for a caller encoding a parsed or built tree.
+//
+// The node is written where it stands, so a document keeps its comments, its anchors and its tags.
+func (e *Encoder) heldNode(v reflect.Value) (ast.Node, bool) {
+	if !v.CanInterface() {
+		return nil, false
+	}
+	return reflect.TypeAssert[ast.Node](v)
+}
+
 func (e *Encoder) canEncodeByMarshaler(v reflect.Value) bool {
 	if !v.CanInterface() {
 		return false
@@ -349,6 +359,12 @@ func (e *Encoder) canEncodeByMarshaler(v reflect.Value) bool {
 	}
 	iface := v.Interface()
 	switch iface.(type) {
+	case ast.Node:
+		// A parsed node is written as it stands, by encodeNode. Through a
+		// marshaler it went out as its own text and was parsed again, which
+		// cost a round trip and left the node's comments to be read back from
+		// what it rendered.
+		return false
 	case MapSlice, MapSliceSeq, MapItem, Base64:
 		// Written by the encoder itself, ahead of any interface they satisfy.
 		// [UseJSONMarshaler] is a last resort -- a route for a type the encoder
@@ -501,6 +517,9 @@ func (e *Encoder) encodeValue(ctx context.Context, v reflect.Value, column int) 
 		if t, held := e.heldTime(v.Elem()); held {
 			return e.encodeTaggedTime(t, column), nil
 		}
+	}
+	if node, isNode := e.heldNode(v); isNode {
+		return node, nil
 	}
 	if e.canEncodeByMarshaler(v) {
 		node, err := e.encodeByMarshaler(ctx, v, column)
