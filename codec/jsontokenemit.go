@@ -190,6 +190,12 @@ func (t *jsonTokener) taggedValue(n *ast.TagNode, key bool) (JSONToken, bool) {
 }
 
 // aliasTarget is the node an alias names.
+//
+// Within the stream neither refusal fires: the parse runs under
+// parser.WithJSONCompatible, which sets every Target and rejects a cycle before
+// the alias is handed over. Both guard parser.WithAnchors, whose nodes come from
+// another parse: a nil entry leaves Target nil, and a node holding a cycle
+// reaches this alias again while it is being written out.
 func (t *jsonTokener) aliasTarget(n *ast.AliasNode) (ast.Node, error) {
 	name := anchorName(n.Value)
 	if n.Target == nil {
