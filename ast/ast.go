@@ -2353,11 +2353,14 @@ type Visitor interface {
 	Visit(Node) Visitor
 }
 
-// Walk traverses an AST in depth-first order: It starts by calling v.Visit(node); node must not be nil.
-// If the visitor w returned by v.Visit(node) is not nil,
-// Walk is invoked recursively with visitor w for each of the non-nil children of node,
-// followed by a call of w.Visit(nil).
+// Walk traverses an AST in depth-first order: it calls v.Visit(node), and where the visitor it returns is not
+// nil, walks each child of node with that visitor.
+//
+// A nil node and a nil child are passed over, so a document with no body is walked without a call for it.
 func Walk(v Visitor, node Node) {
+	if node == nil {
+		return
+	}
 	if v = v.Visit(node); v == nil {
 		return
 	}
