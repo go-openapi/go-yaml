@@ -6,8 +6,12 @@ package yamlgen_test
 import (
 	"math"
 	"math/big"
+	"testing"
 
 	"github.com/go-openapi/testify/v2/assert"
+	"github.com/go-openapi/testify/v2/require"
+
+	"github.com/go-openapi/go-yaml/codec"
 )
 
 // sameValue is ObjectsAreEqual with NaN equal to itself.
@@ -120,7 +124,52 @@ func sameValue(want, got any) bool {
 		}
 
 		return true
+	case codec.MapSliceSeq:
+		// An "!!omap" holds its values out of reach of the cases above, so
+		// without this a *big.Float inside one was compared Accuracy and all.
+		g, ok := got.(codec.MapSliceSeq)
+
+		return ok && sameItems(codec.MapSlice(w), codec.MapSlice(g))
+	case codec.MapSlice:
+		g, ok := got.(codec.MapSlice)
+
+		return ok && sameItems(w, g)
 	default:
 		return assert.ObjectsAreEqual(want, got)
 	}
+}
+
+// sameItems compares two ordered mappings entry by entry, in order.
+func sameItems(want, got codec.MapSlice) bool {
+	if want.Len() != got.Len() {
+		return false
+	}
+
+	for i := range want.Len() {
+		w, g := want.At(i), got.At(i)
+		if !sameValue(w.Key, g.Key) || !sameValue(w.Value, g.Value) {
+			return false
+		}
+	}
+
+	return true
+}
+
+// TestSameValueLooksInsideAnOrderedMap holds sameValue to its big.Float rule inside an "!!omap".
+func TestSameValueLooksInsideAnOrderedMap(t *testing.T) {
+	rounded, _, err := big.ParseFloat("0.1", 10, 64, big.ToNearestEven)
+	require.NoError(t, err)
+	copied := new(big.Float).Set(rounded)
+	require.NotEqual(t, rounded.Acc(), copied.Acc(), "the fixture needs two Accuracy values for one number")
+
+	omap := func(v any) codec.MapSliceSeq {
+		seq, err := codec.NewMapSliceSeq(codec.MapItem{Key: "k", Value: v})
+		require.NoError(t, err)
+
+		return seq
+	}
+
+	assert.True(t, sameValue(omap(rounded), omap(copied)), "one number, two Accuracy values")
+	assert.False(t, sameValue(omap(rounded), omap(big.NewFloat(0.2))), "two numbers")
+	assert.False(t, sameValue(omap(rounded), omap("0.1")), "a float and a string")
 }
