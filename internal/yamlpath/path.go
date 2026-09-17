@@ -253,7 +253,12 @@ func (p *Path) FilterFile(f *ast.File) (ast.Node, error) {
 			return node, nil
 		}
 	}
-	return nil, fmt.Errorf("failed to find path ( %s ): %w", p.node, ErrNotFoundNode)
+	return nil, p.errNotFound()
+}
+
+// errNotFound refuses a path that addresses no node of any document.
+func (p *Path) errNotFound() error {
+	return fmt.Errorf("failed to find path ( %s ): %w", p.node, ErrNotFoundNode)
 }
 
 // FilterNode filter from node by YAMLPath.
@@ -505,27 +510,13 @@ func newSelectorNode(selector string) *selectorNode {
 }
 
 func (n *selectorNode) filter(node ast.Node) (ast.Node, error) {
-	selector := n.selector
-	if len(selector) > 1 && selector[0] == '\'' && selector[len(selector)-1] == '\'' {
-		selector = selector[1 : len(selector)-1]
-	}
+	selector := n.name()
 	switch node.Type() {
 	case ast.MappingType:
 		for _, value := range node.(*ast.MappingNode).Values {
-			key := value.Key.GetToken().Value
-			if len(key) > 0 {
-				switch key[0] {
-				case '"':
-					var err error
-					key, err = strconv.Unquote(key)
-					if err != nil {
-						return nil, err
-					}
-				case '\'':
-					if len(key) > 1 && key[len(key)-1] == '\'' {
-						key = key[1 : len(key)-1]
-					}
-				}
+			key, err := selectorKey(value.Key.GetToken().Value)
+			if err != nil {
+				return nil, err
 			}
 			if key == selector {
 				if n.child == nil {
@@ -552,9 +543,50 @@ func (n *selectorNode) filter(node ast.Node) (ast.Node, error) {
 			return filtered, nil
 		}
 	default:
-		return nil, fmt.Errorf("expected node type is map or map value. but got %s: %w", node.Type(), ErrInvalidQuery)
+		return nil, errNotAMapping(node.Type())
 	}
 	return nil, nil
+}
+
+// name is the key the selector matches, without the quotes a reserved character needs.
+func (n *selectorNode) name() string {
+	selector := n.selector
+	if len(selector) > 1 && selector[0] == '\'' && selector[len(selector)-1] == '\'' {
+		selector = selector[1 : len(selector)-1]
+	}
+
+	return selector
+}
+
+// selectorKey is the text a key's token is compared to a selector by, with its quotes taken off.
+func selectorKey(key string) (string, error) {
+	if len(key) == 0 {
+		return key, nil
+	}
+	switch key[0] {
+	case '"':
+		return strconv.Unquote(key)
+	case '\'':
+		if len(key) > 1 && key[len(key)-1] == '\'' {
+			return key[1 : len(key)-1], nil
+		}
+	}
+
+	return key, nil
+}
+
+// errNotAMapping, errNotASequence and errOutOfRange are the refusals a step gives the node it cannot read.
+// The tree filter and the walk share them.
+func errNotAMapping(got ast.NodeType) error {
+	return fmt.Errorf("expected node type is map or map value. but got %s: %w", got, ErrInvalidQuery)
+}
+
+func errNotASequence(got ast.NodeType) error {
+	return fmt.Errorf("expected sequence type node. but got %s: %w", got, ErrInvalidQuery)
+}
+
+func errOutOfRange(index uint, length int) error {
+	return fmt.Errorf("expected index is %d. but got sequences has %d items: %w", index, length, ErrInvalidQuery)
 }
 
 func (n *selectorNode) replaceMapValue(value *ast.MappingValueNode, target ast.Node) error {
@@ -617,11 +649,11 @@ func newIndexNode(selector uint) *indexNode {
 
 func (n *indexNode) filter(node ast.Node) (ast.Node, error) {
 	if node.Type() != ast.SequenceType {
-		return nil, fmt.Errorf("expected sequence type node. but got %s: %w", node.Type(), ErrInvalidQuery)
+		return nil, errNotASequence(node.Type())
 	}
 	sequence, _ := node.(*ast.SequenceNode)
 	if n.selector >= uint(len(sequence.Values)) {
-		return nil, fmt.Errorf("expected index is %d. but got sequences has %d items: %w", n.selector, len(sequence.Values), ErrInvalidQuery)
+		return nil, errOutOfRange(n.selector, len(sequence.Values))
 	}
 	value := sequence.Values[n.selector]
 	if n.child == nil {
@@ -682,7 +714,7 @@ func (n *indexAllNode) String() string {
 
 func (n *indexAllNode) filter(node ast.Node) (ast.Node, error) {
 	if node.Type() != ast.SequenceType {
-		return nil, fmt.Errorf("expected sequence type node. but got %s: %w", node.Type(), ErrInvalidQuery)
+		return nil, errNotASequence(node.Type())
 	}
 	sequence, _ := node.(*ast.SequenceNode)
 	if n.child == nil {
