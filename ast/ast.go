@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -2357,6 +2358,11 @@ type Visitor interface {
 // nil, walks each child of node with that visitor.
 //
 // A nil node and a nil child are passed over, so a document with no body is walked without a call for it.
+//
+// The children include every comment group the node holds -- the head comment, the line comment, a
+// mapping's or a sequence's foot and start comment, a document's start and end comment -- each visited once,
+// in the order they stand in the document. Walk does not look inside a comment group, and it does not follow
+// [AliasNode.Target].
 func Walk(v Visitor, node Node) {
 	if node == nil {
 		return
@@ -2366,73 +2372,118 @@ func Walk(v Visitor, node Node) {
 	}
 
 	switch n := node.(type) {
-	case *CommentNode:
+	case *CommentGroupNode, *CommentNode:
 	case *NullNode:
-		walkComment(v, &n.BaseNode)
+		walkBase(v, &n.BaseNode)
 	case *IntegerNode:
-		walkComment(v, &n.BaseNode)
+		walkBase(v, &n.BaseNode)
 	case *FloatNode:
-		walkComment(v, &n.BaseNode)
+		walkBase(v, &n.BaseNode)
 	case *StringNode:
-		walkComment(v, &n.BaseNode)
+		walkBase(v, &n.BaseNode)
 	case *MergeKeyNode:
-		walkComment(v, &n.BaseNode)
+		walkBase(v, &n.BaseNode)
 	case *BoolNode:
-		walkComment(v, &n.BaseNode)
+		walkBase(v, &n.BaseNode)
 	case *InfinityNode:
-		walkComment(v, &n.BaseNode)
+		walkBase(v, &n.BaseNode)
 	case *NanNode:
-		walkComment(v, &n.BaseNode)
+		walkBase(v, &n.BaseNode)
 	case *LiteralNode:
-		walkComment(v, &n.BaseNode)
-		Walk(v, n.Value)
+		walkBase(v, &n.BaseNode)
+		walkChild(v, n.Value)
 	case *DirectiveNode:
-		walkComment(v, &n.BaseNode)
-		Walk(v, n.Name)
+		walkBase(v, &n.BaseNode)
+		walkChild(v, n.Name)
 		for _, value := range n.Values {
-			Walk(v, value)
+			walkChild(v, value)
 		}
 	case *TagNode:
-		walkComment(v, &n.BaseNode)
-		Walk(v, n.Value)
+		walkBase(v, &n.BaseNode)
+		walkChild(v, n.Value)
 	case *DocumentNode:
-		walkComment(v, &n.BaseNode)
-		Walk(v, n.Body)
+		walkGroups(v, n.StartComment)
+		walkBase(v, &n.BaseNode)
+		walkChild(v, n.Body)
+		walkGroups(v, n.EndComment)
 	case *MappingNode:
-		walkComment(v, &n.BaseNode)
+		walkBase(v, &n.BaseNode)
+		walkGroups(v, n.StartComment)
 		for _, value := range n.Values {
-			Walk(v, value)
+			walkChild(v, value)
 		}
+		walkGroups(v, n.FootComment)
 	case *MappingKeyNode:
-		walkComment(v, &n.BaseNode)
-		Walk(v, n.Value)
+		walkBase(v, &n.BaseNode)
+		walkChild(v, n.Value)
 	case *MappingValueNode:
-		walkComment(v, &n.BaseNode)
-		Walk(v, n.Key)
-		Walk(v, n.Value)
+		walkBase(v, &n.BaseNode)
+		walkChild(v, n.Key)
+		walkGroups(v, n.LineComment)
+		walkChild(v, n.Value)
+		walkGroups(v, n.FootComment)
 	case *SequenceNode:
-		walkComment(v, &n.BaseNode)
-		for _, value := range n.Values {
-			Walk(v, value)
+		walkBase(v, &n.BaseNode)
+		walkGroups(v, n.StartComment)
+		for i, value := range n.Values {
+			walkSequenceEntry(v, n, i)
+			walkChild(v, value)
 		}
+		walkGroups(v, n.FootComment)
 	case *AnchorNode:
-		walkComment(v, &n.BaseNode)
-		Walk(v, n.Name)
-		Walk(v, n.Value)
+		walkBase(v, &n.BaseNode)
+		walkChild(v, n.Name)
+		walkChild(v, n.Value)
 	case *AliasNode:
-		walkComment(v, &n.BaseNode)
-		Walk(v, n.Value)
+		walkBase(v, &n.BaseNode)
+		walkChild(v, n.Value)
 	}
 }
 
-func walkComment(v Visitor, base *BaseNode) {
+// walkChild walks a child the node may leave nil.
+func walkChild(v Visitor, child Node) {
+	if child == nil {
+		return
+	}
+	Walk(v, child)
+}
+
+// walkBase walks the comments every node carries, the one above it first.
+func walkBase(v Visitor, base *BaseNode) {
 	if base == nil {
 		return
 	}
-	if base.Comment == nil {
+	walkGroups(v, base.HeadComment, base.Comment)
+}
+
+// walkSequenceEntry walks the comments standing on entry i of a sequence, ahead of its value.
+//
+// The entry's own node holds its head comment a second time, since the parser hands the one group to both.
+func walkSequenceEntry(v Visitor, n *SequenceNode, i int) {
+	var head *CommentGroupNode
+	if i < len(n.ValueHeadComments) {
+		head = n.ValueHeadComments[i]
+	}
+	var entry *SequenceEntryNode
+	if i < len(n.Entries) {
+		entry = n.Entries[i]
+	}
+	if entry == nil {
+		walkGroups(v, head)
+
 		return
 	}
-	Walk(v, base.Comment)
+	walkGroups(v, head, entry.HeadComment, entry.BaseNode.HeadComment, entry.Comment, entry.LineComment)
+}
+
+// walkGroups walks each comment group that is set, once, in order.
+func walkGroups(v Visitor, groups ...*CommentGroupNode) {
+	for i, group := range groups {
+		if group == nil || slices.Contains(groups[:i], group) {
+			continue
+		}
+		Walk(v, group)
+	}
 }
 
 type filterWalker struct {
