@@ -10,6 +10,8 @@ import (
 	"testing"
 
 	yamlerrors "github.com/go-openapi/go-yaml/errors"
+	"github.com/go-openapi/go-yaml/parser"
+	"github.com/go-openapi/go-yaml/token"
 )
 
 // aliasBomb writes levels of aliases, each naming the one below it width times,
@@ -121,4 +123,49 @@ func TestBudgetLeavesRealDocumentsAlone(t *testing.T) {
 	if len(dst) != 2000 {
 		t.Errorf("read %d entries, want 2000", len(dst))
 	}
+}
+
+// TestARefusedExpansionNamesAnAlias holds every decode path to naming an alias when the budget runs out.
+//
+// The walk names the alias it was copying. The tree named the node it had reached, which sat inside an
+// anchored tree, or in another document's source for an anchor passed with parser.WithAnchors.
+func TestARefusedExpansionNamesAnAlias(t *testing.T) {
+	refusedAt := func(t *testing.T, err error) *token.Token {
+		t.Helper()
+		var refusal *yamlerrors.Error
+		if !errors.As(err, &refusal) || !errors.Is(err, yamlerrors.ErrExcessiveAliasing) {
+			t.Fatalf("refused as %v, want ErrExcessiveAliasing", err)
+		}
+		tk := refusal.GetToken()
+		if tk == nil || tk.Type != token.AliasType {
+			t.Fatalf("the refusal names %v, want an alias", tk)
+		}
+
+		return tk
+	}
+
+	t.Run("an alias bomb", func(t *testing.T) {
+		src := []byte(aliasBomb(5, 8))
+		for _, dst := range []any{new(any), new(map[string]any), new(bombDestination)} {
+			t.Run(fmt.Sprintf("%T", dst), func(t *testing.T) {
+				refusedAt(t, Unmarshal(src, dst))
+			})
+		}
+	})
+
+	t.Run("an anchor passed with WithAnchors", func(t *testing.T) {
+		declared, err := parser.ParseBytes([]byte("base: &x [" + strings.Repeat("1, ", 2000) + "1]\n"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		opt := WithParserOptions(parser.WithAnchors(declared.Docs[0].Anchors))
+		for _, dst := range []any{new(any), new(map[string]any)} {
+			t.Run(fmt.Sprintf("%T", dst), func(t *testing.T) {
+				tk := refusedAt(t, UnmarshalWithOptions([]byte("a: *x\n"), dst, opt))
+				if tk.Position.Line != 1 || tk.Position.Column != 4 {
+					t.Errorf("the refusal names %d:%d, want the alias at 1:4", tk.Position.Line, tk.Position.Column)
+				}
+			})
+		}
+	})
 }

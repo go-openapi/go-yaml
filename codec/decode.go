@@ -84,9 +84,12 @@ type Decoder struct {
 	// the document so that the values outlive it.
 	strs arena
 	// built counts what this decode has made, and budget bounds it. See
-	// aliasBudget.
+	// aliasBudget. expanding is the outermost alias being read through, and
+	// expanded the last one, which a refusal names.
 	built       int
 	budget      int
+	expanding   *ast.AliasNode
+	expanded    *ast.AliasNode
 	src         []byte
 	parsedFile  *ast.File
 	streamIndex int
@@ -160,7 +163,23 @@ func (d *Decoder) isOverBudget() bool {
 }
 
 // refuseOverBudget returns the error to stop a decode that has run away.
+//
+// It names an alias, as the walk does: only an alias builds more than the
+// document holds, and the node in hand when the count runs out sits somewhere
+// in an anchored tree, which may belong to another document. That alias is the
+// outermost one being read through, or else the last one read.
+//
+// The walk counts only what it copies for an alias, so it always runs out
+// inside one. This counts every node, so it can run out on the first node after
+// an alias, and names that alias. Counting only under an alias would miss the
+// aliases getMapNode and getArrayNode follow, which do not set expanding.
 func (d *Decoder) refuseOverBudget(at ast.Node) error {
+	switch {
+	case d.expanding != nil:
+		at = d.expanding
+	case d.expanded != nil:
+		at = d.expanded
+	}
 	var tk *token.Token
 	if at != nil {
 		tk = at.GetToken()
@@ -1084,6 +1103,11 @@ func (d *Decoder) nodeToValue(ctx context.Context, node ast.Node) (any, error) {
 			// and each alias decoded the node afresh.
 			//
 			// aliasBudget bounds what this costs.
+			if d.expanding == nil {
+				d.expanding, d.expanded = n, n
+				defer func() { d.expanding = nil }()
+			}
+
 			return d.nodeToValue(ctx, target)
 		}
 		if v, exists := d.anchorValueMap[text]; exists {
@@ -1957,6 +1981,10 @@ func (d *Decoder) createDecodedNewValue(
 	ctx context.Context, typ reflect.Type, defaultVal reflect.Value, node ast.Node,
 ) (reflect.Value, error) {
 	if alias, aliased := node.(*ast.AliasNode); aliased {
+		if d.expanding == nil {
+			d.expanding, d.expanded = alias, alias
+			defer func() { d.expanding = nil }()
+		}
 		target, name := d.aliasTarget(alias)
 		if value := d.anchorValueMap[name]; d.shareAliases && value.IsValid() {
 			v, err := d.castToAssignableValue(value, typ, node)
@@ -3702,6 +3730,7 @@ func (d *Decoder) decodeInit(ctx context.Context, v reflect.Value) error {
 	d.source = yamlerrors.Source{Text: nocopy.String(src), FirstLine: 1}
 	d.src = src
 	d.built, d.budget = 0, aliasBudget(len(src))
+	d.expanding, d.expanded = nil, nil
 
 	if d.canWalk(v) {
 		walked, err := walkValues(src, d.shareAliases, d.parserOptions()...)
