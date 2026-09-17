@@ -5,6 +5,7 @@ package codec
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"math/big"
 	"slices"
@@ -35,6 +36,11 @@ type valueBuilder struct {
 	// named holds what each anchor of the document named, for an alias to name
 	// again. It is emptied at each document, since an anchor belongs to one.
 	named map[string]any
+	// declared holds the anchors parser.WithAnchors passed, which the walk
+	// never hands over, and declaredValues the value each one built the first
+	// time an alias named it. Both serve every document of the stream.
+	declared       map[string]ast.Node
+	declaredValues map[string]any
 	// strs holds the text of every string this builds, copied out of the
 	// document so that the values outlive it.
 	strs arena
@@ -281,8 +287,9 @@ func (b *valueBuilder) propertyValue(n ast.Node) (any, error) {
 	return b.scalarValue(inner)
 }
 
-// aliasValue returns what an alias names, which the anchor recorded as it
-// closed.
+// aliasValue returns what an alias names: the value the document's anchor
+// recorded as it closed, or else the value of an anchor parser.WithAnchors
+// declared.
 func (b *valueBuilder) aliasValue(n *ast.AliasNode) any {
 	name := anchorName(n.Value)
 	if v, named := b.named[name]; named {
@@ -307,9 +314,54 @@ func (b *valueBuilder) aliasValue(n *ast.AliasNode) any {
 		return nil
 	}
 
+	if node, declared := b.declared[name]; declared {
+		v, err := b.declaredValue(name, node, n)
+		if err != nil {
+			// Enter returns b.err once this returns.
+			_ = b.fail(err)
+
+			return nil
+		}
+		if b.share {
+			return v
+		}
+
+		return b.copyValue(v, n)
+	}
+
 	b.fail(yamlerrors.NewUnknownAnchor(name, n.GetToken()))
 
 	return nil
+}
+
+// declaredValue returns the value a declared anchor names, built once from the
+// tree the caller passed.
+//
+// The tree comes from another parse and is whole, so the tree decoder reads it.
+// Built once, every alias of the anchor gets the same value under ShareAliases,
+// as it does for an anchor of the document.
+func (b *valueBuilder) declaredValue(name string, node ast.Node, alias *ast.AliasNode) (any, error) {
+	if v, built := b.declaredValues[name]; built {
+		return v, nil
+	}
+	if node == nil {
+		// The parser takes a nil entry as a declaration, and ToJSON refuses it
+		// the same way.
+		return nil, yamlerrors.NewUnknownAnchor(name, alias.GetToken())
+	}
+
+	dec := NewDecoder(nil)
+	dec.shareAliases = b.share
+	v, err := dec.nodeToValue(context.Background(), node)
+	if err != nil {
+		return nil, err
+	}
+	if b.declaredValues == nil {
+		b.declaredValues = map[string]any{}
+	}
+	b.declaredValues[name] = v
+
+	return v, nil
 }
 
 // copyValue returns v with nothing shared with it: a map and a slice are built
@@ -757,10 +809,11 @@ func WalkValues(src []byte, opts ...parser.Option) ([]any, error) {
 }
 
 func walkValues(src []byte, share bool, opts ...parser.Option) ([]any, error) {
-	b := &valueBuilder{share: share, budget: aliasBudget(len(src))}
 	opts = append(opts, parser.WithOmitNodePaths())
+	p := parser.New(opts...)
+	b := &valueBuilder{share: share, budget: aliasBudget(len(src)), declared: p.DeclaredAnchors()}
 
-	file, err := parser.New(opts...).Walk(src, b)
+	file, err := p.Walk(src, b)
 	if err != nil {
 		return nil, err
 	}

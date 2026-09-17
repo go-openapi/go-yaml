@@ -125,3 +125,60 @@ func TestWithParserOptionsReachesTheParser(t *testing.T) {
 		assert.Equal(t, map[string]any{"a": false}, got, "the repeat is allowed and 1.1 reads both")
 	})
 }
+
+// TestADeclaredAnchorReachesTheWalk holds an alias to an anchor passed with parser.WithAnchors to the value the
+// anchor names, when the document is read by walking.
+//
+// The walk hands over only the stream's own nodes, and the walk into an `any` looked the alias up among the
+// anchors it had built. It refused an alias the parser, ToJSON and the tree decode all accept.
+func TestADeclaredAnchorReachesTheWalk(t *testing.T) {
+	declared, err := parser.ParseBytes([]byte("base: &x {k: v}\nname: &n given\n"))
+	require.NoError(t, err)
+	anchors := declared.Docs[0].Anchors
+
+	const src = "a: *x\nb: *x\nc: *n\n"
+	want := map[string]any{"a": map[string]any{"k": "v"}, "b": map[string]any{"k": "v"}, "c": "given"}
+
+	t.Run("WalkValues", func(t *testing.T) {
+		docs, err := codec.WalkValues([]byte(src), parser.WithAnchors(anchors))
+		require.NoError(t, err)
+		require.Len(t, docs, 1)
+		assert.Equal(t, want, docs[0])
+	})
+
+	decode := func(t *testing.T, opts ...codec.DecodeOption) map[string]any {
+		t.Helper()
+		var got any
+		opts = append(opts, codec.WithParserOptions(parser.WithAnchors(anchors)))
+		require.NoError(t, codec.UnmarshalWithOptions([]byte(src), &got, opts...))
+		require.Equal(t, want, got)
+		m, ok := got.(map[string]any)
+		require.True(t, ok)
+
+		return m
+	}
+
+	t.Run("each alias is its own value by default", func(t *testing.T) {
+		got := decode(t)
+		got["a"].(map[string]any)["k"] = "changed"
+		assert.Equal(t, "v", got["b"].(map[string]any)["k"])
+	})
+
+	t.Run("ShareAliases shares one value", func(t *testing.T) {
+		got := decode(t, codec.ShareAliases())
+		got["a"].(map[string]any)["k"] = "changed"
+		assert.Equal(t, "changed", got["b"].(map[string]any)["k"])
+	})
+
+	t.Run("the document's own anchor hides the declared one", func(t *testing.T) {
+		docs, err := codec.WalkValues([]byte("own: &x 1\na: *x\n"), parser.WithAnchors(anchors))
+		require.NoError(t, err)
+		assert.Equal(t, map[string]any{"own": uint64(1), "a": uint64(1)}, docs[0])
+	})
+
+	t.Run("every document of the stream reaches it", func(t *testing.T) {
+		docs, err := codec.WalkValues([]byte("a: *n\n---\nb: *n\n"), parser.WithAnchors(anchors))
+		require.NoError(t, err)
+		assert.Equal(t, []any{map[string]any{"a": "given"}, map[string]any{"b": "given"}}, docs)
+	})
+}
