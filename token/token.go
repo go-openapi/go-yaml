@@ -1897,14 +1897,6 @@ func (t *Token) Bytes() []byte {
 	return TextBytes(t.Value)
 }
 
-// AddColumn append column number to current position of column
-func (t *Token) AddColumn(col int) {
-	if t == nil {
-		return
-	}
-	t.Position.Column += int32(col)
-}
-
 // Detached returns a copy of t that claims no document.
 //
 // A token cut from a source carries the offsets it was read at, and a verbatim

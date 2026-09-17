@@ -182,8 +182,6 @@ type Node interface {
 	GetToken() *token.Token
 	// Type returns type of node
 	Type() NodeType
-	// AddColumn add column number to child nodes recursively
-	AddColumn(int)
 	// SetComment set comment token to node
 	SetComment(*CommentGroupNode) error
 	// Comment returns comment token instance
@@ -664,13 +662,6 @@ func (d *DocumentNode) GetToken() *token.Token {
 	return d.Body.GetToken()
 }
 
-// AddColumn add column number to child nodes recursively
-func (d *DocumentNode) AddColumn(col int) {
-	if d.Body != nil {
-		d.Body.AddColumn(col)
-	}
-}
-
 // String document to text
 func (d *DocumentNode) String() string {
 	return defaultRenderer.String(d)
@@ -693,11 +684,6 @@ func (n *NullNode) Type() NodeType { return NullType }
 // GetToken returns token instance
 func (n *NullNode) GetToken() *token.Token {
 	return n.Token
-}
-
-// AddColumn add column number to child nodes recursively
-func (n *NullNode) AddColumn(col int) {
-	n.Token.AddColumn(col)
 }
 
 // GetValue returns nil value
@@ -760,11 +746,6 @@ func (n *IntegerNode) Type() NodeType { return IntegerType }
 // GetToken returns token instance
 func (n *IntegerNode) GetToken() *token.Token {
 	return n.Token
-}
-
-// AddColumn add column number to child nodes recursively
-func (n *IntegerNode) AddColumn(col int) {
-	n.Token.AddColumn(col)
 }
 
 // GetValue reads the integer and returns it as an int64 where the document
@@ -830,11 +811,6 @@ func (n *FloatNode) GetToken() *token.Token {
 	return n.Token
 }
 
-// AddColumn add column number to child nodes recursively
-func (n *FloatNode) AddColumn(col int) {
-	n.Token.AddColumn(col)
-}
-
 // GetValue reads the float and returns it as a float64, as a [big.Float] where
 // the number reaches past what a float64 holds, or 0 where the text is not a
 // float after all. A float whose decimal exponent is past ±1000 is an infinity
@@ -897,11 +873,6 @@ func (n *StringNode) Type() NodeType { return StringType }
 // GetToken returns token instance
 func (n *StringNode) GetToken() *token.Token {
 	return n.Token
-}
-
-// AddColumn add column number to child nodes recursively
-func (n *StringNode) AddColumn(col int) {
-	n.Token.AddColumn(col)
 }
 
 // GetValue returns string value
@@ -1056,14 +1027,6 @@ func (n *LiteralNode) GetToken() *token.Token {
 	return n.Start
 }
 
-// AddColumn add column number to child nodes recursively
-func (n *LiteralNode) AddColumn(col int) {
-	n.Start.AddColumn(col)
-	if n.Value != nil {
-		n.Value.AddColumn(col)
-	}
-}
-
 // GetValue returns string value
 func (n *LiteralNode) GetValue() interface{} {
 	return n.String()
@@ -1116,11 +1079,6 @@ func (n *MergeKeyNode) stringWithoutComment() string {
 	return n.Token.Value
 }
 
-// AddColumn add column number to child nodes recursively
-func (n *MergeKeyNode) AddColumn(col int) {
-	n.Token.AddColumn(col)
-}
-
 // MarshalYAML encodes to a YAML text
 func (n *MergeKeyNode) MarshalYAML() ([]byte, error) {
 	return []byte(n.String()), nil
@@ -1144,11 +1102,6 @@ func (n *BoolNode) Type() NodeType { return BoolType }
 // GetToken returns token instance
 func (n *BoolNode) GetToken() *token.Token {
 	return n.Token
-}
-
-// AddColumn add column number to child nodes recursively
-func (n *BoolNode) AddColumn(col int) {
-	n.Token.AddColumn(col)
 }
 
 // GetValue returns boolean value
@@ -1193,11 +1146,6 @@ func (n *InfinityNode) GetToken() *token.Token {
 	return n.Token
 }
 
-// AddColumn add column number to child nodes recursively
-func (n *InfinityNode) AddColumn(col int) {
-	n.Token.AddColumn(col)
-}
-
 // GetValue returns math.Inf(0) or math.Inf(-1)
 func (n *InfinityNode) GetValue() interface{} {
 	return n.Value
@@ -1237,11 +1185,6 @@ func (n *NanNode) Type() NodeType { return NanType }
 // GetToken returns token instance
 func (n *NanNode) GetToken() *token.Token {
 	return n.Token
-}
-
-// AddColumn add column number to child nodes recursively
-func (n *NanNode) AddColumn(col int) {
-	n.Token.AddColumn(col)
 }
 
 // GetValue returns math.NaN()
@@ -1379,8 +1322,6 @@ func (n *MappingNode) Merge(target *MappingNode) {
 		key := value.Key.String()
 		keyToMapValueMap[key] = value
 	}
-	column := n.startPos().Column - target.startPos().Column
-	target.AddColumn(int(column))
 	for _, value := range target.Values {
 		mapValue, exists := keyToMapValueMap[value.Key.String()]
 		if exists {
@@ -1405,15 +1346,6 @@ func (n *MappingNode) Type() NodeType { return MappingType }
 // GetToken returns token instance
 func (n *MappingNode) GetToken() *token.Token {
 	return n.Start
-}
-
-// AddColumn add column number to child nodes recursively
-func (n *MappingNode) AddColumn(col int) {
-	n.Start.AddColumn(col)
-	n.End.AddColumn(col)
-	for _, value := range n.Values {
-		value.AddColumn(col)
-	}
 }
 
 // String mapping values to text
@@ -1458,14 +1390,6 @@ func (n *MappingKeyNode) Type() NodeType { return MappingKeyType }
 // GetToken returns token instance
 func (n *MappingKeyNode) GetToken() *token.Token {
 	return n.Start
-}
-
-// AddColumn add column number to child nodes recursively
-func (n *MappingKeyNode) AddColumn(col int) {
-	n.Start.AddColumn(col)
-	if n.Value != nil {
-		n.Value.AddColumn(col)
-	}
 }
 
 // String tag to text
@@ -1525,8 +1449,6 @@ type MappingValueNode struct {
 
 // Replace replace value node.
 func (n *MappingValueNode) Replace(value Node) error {
-	column := n.Value.GetToken().Position.Column - value.GetToken().Position.Column
-	value.AddColumn(int(column))
 	n.Value = value
 	return nil
 }
@@ -1537,17 +1459,6 @@ func (n *MappingValueNode) Type() NodeType { return MappingValueType }
 // GetToken returns token instance
 func (n *MappingValueNode) GetToken() *token.Token {
 	return n.Start
-}
-
-// AddColumn add column number to child nodes recursively
-func (n *MappingValueNode) AddColumn(col int) {
-	n.Start.AddColumn(col)
-	if n.Key != nil {
-		n.Key.AddColumn(col)
-	}
-	if n.Value != nil {
-		n.Value.AddColumn(col)
-	}
 }
 
 // SetIsFlowStyle set value to IsFlowStyle field recursively.
@@ -1645,16 +1556,12 @@ func (n *SequenceNode) Replace(idx int, value Node) error {
 			len(n.Values), idx,
 		)
 	}
-	column := n.Values[idx].GetToken().Position.Column - value.GetToken().Position.Column
-	value.AddColumn(int(column))
 	n.Values[idx] = value
 	return nil
 }
 
 // Merge merge sequence value.
 func (n *SequenceNode) Merge(target *SequenceNode) {
-	column := n.Start.Position.Column - target.Start.Position.Column
-	target.AddColumn(int(column))
 	n.Values = append(n.Values, target.Values...)
 	if len(target.ValueHeadComments) == 0 {
 		n.ValueHeadComments = append(n.ValueHeadComments, make([]*CommentGroupNode, len(target.Values))...)
@@ -1684,15 +1591,6 @@ func (n *SequenceNode) Type() NodeType { return SequenceType }
 // GetToken returns token instance
 func (n *SequenceNode) GetToken() *token.Token {
 	return n.Start
-}
-
-// AddColumn add column number to child nodes recursively
-func (n *SequenceNode) AddColumn(col int) {
-	n.Start.AddColumn(col)
-	n.End.AddColumn(col)
-	for _, value := range n.Values {
-		value.AddColumn(col)
-	}
 }
 
 // String sequence to text
@@ -1746,11 +1644,6 @@ func (n *SequenceEntryNode) GetToken() *token.Token {
 // Type returns type of node
 func (n *SequenceEntryNode) Type() NodeType {
 	return SequenceEntryType
-}
-
-// AddColumn add column number to child nodes recursively
-func (n *SequenceEntryNode) AddColumn(col int) {
-	n.Start.AddColumn(col)
 }
 
 // SetComment set line comment.
@@ -1836,17 +1729,6 @@ func (n *AnchorNode) GetValue() any {
 	return n.Value.GetToken().Value
 }
 
-// AddColumn add column number to child nodes recursively
-func (n *AnchorNode) AddColumn(col int) {
-	n.Start.AddColumn(col)
-	if n.Name != nil {
-		n.Name.AddColumn(col)
-	}
-	if n.Value != nil {
-		n.Value.AddColumn(col)
-	}
-}
-
 // String anchor to text
 func (n *AnchorNode) String() string {
 	return defaultRenderer.String(n)
@@ -1923,14 +1805,6 @@ func (n *AliasNode) GetValue() any {
 	return n.Value.GetToken().Value
 }
 
-// AddColumn add column number to child nodes recursively
-func (n *AliasNode) AddColumn(col int) {
-	n.Start.AddColumn(col)
-	if n.Value != nil {
-		n.Value.AddColumn(col)
-	}
-}
-
 // String alias to text
 func (n *AliasNode) String() string {
 	return fmt.Sprintf("*%s", n.Value.String())
@@ -1963,16 +1837,6 @@ func (n *DirectiveNode) Type() NodeType { return DirectiveType }
 // GetToken returns token instance
 func (n *DirectiveNode) GetToken() *token.Token {
 	return n.Start
-}
-
-// AddColumn add column number to child nodes recursively
-func (n *DirectiveNode) AddColumn(col int) {
-	if n.Name != nil {
-		n.Name.AddColumn(col)
-	}
-	for _, value := range n.Values {
-		value.AddColumn(col)
-	}
 }
 
 // String directive to text
@@ -2060,14 +1924,6 @@ func (n *TagNode) Type() NodeType { return TagType }
 // GetToken returns token instance
 func (n *TagNode) GetToken() *token.Token {
 	return n.Start
-}
-
-// AddColumn add column number to child nodes recursively
-func (n *TagNode) AddColumn(col int) {
-	n.Start.AddColumn(col)
-	if n.Value != nil {
-		n.Value.AddColumn(col)
-	}
 }
 
 // String tag to text
@@ -2197,14 +2053,6 @@ func (n *CommentNode) Type() NodeType { return CommentType }
 // GetToken returns token instance
 func (n *CommentNode) GetToken() *token.Token { return n.Token }
 
-// AddColumn add column number to child nodes recursively
-func (n *CommentNode) AddColumn(col int) {
-	if n.Token == nil {
-		return
-	}
-	n.Token.AddColumn(col)
-}
-
 // String comment to text
 func (n *CommentNode) String() string {
 	if n.Removed() {
@@ -2309,13 +2157,6 @@ func (n *CommentGroupNode) Remove() {
 	}
 	for _, comment := range n.Comments {
 		comment.Remove()
-	}
-}
-
-// AddColumn add column number to child nodes recursively
-func (n *CommentGroupNode) AddColumn(col int) {
-	for _, comment := range n.Comments {
-		comment.AddColumn(col)
 	}
 }
 
