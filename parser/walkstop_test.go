@@ -13,6 +13,7 @@ import (
 	"github.com/go-openapi/go-yaml/ast"
 	"github.com/go-openapi/go-yaml/internal/corpus"
 	"github.com/go-openapi/go-yaml/parser"
+	"github.com/go-openapi/go-yaml/token"
 )
 
 // stopSpy answers each node with what answers[node type] holds, and records every handover.
@@ -111,6 +112,32 @@ func TestAVisitorStopsTheWalk(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, file, "the file still comes back, holding the documents without their bodies")
 		assert.Empty(t, s.after(), "not even the Leave of a node the walk had open")
+	})
+
+	t.Run("StopWalk stops the parse", func(t *testing.T) {
+		t.Parallel()
+
+		// The walk stops at the first integer, and the stream goes on to an invalid document.
+		// The parse reads no further, so nothing refuses it.
+		var tokens int
+		s := &stopSpy{on: ast.IntegerType, answer: parser.StopWalk}
+		file, err := parser.New(parser.WithTokens(func(token.Token) { tokens++ })).
+			Walk([]byte("a: 1\nb: 2\n---\nc: 3\n---\n- d\ne: 4\n"), s)
+
+		require.NoError(t, err)
+		require.NotNil(t, file)
+		assert.Empty(t, file.Docs, "the walk stopped inside the first document, which is not finished")
+		assert.Less(t, tokens, 8, "the scanner read on past the stop")
+	})
+
+	t.Run("a visitor that skips to the end reads the whole stream", func(t *testing.T) {
+		t.Parallel()
+
+		// The control for the case above: the same stop made by answering SkipNode to everything.
+		s := &stopSpy{on: ast.MappingType, answer: parser.SkipNode}
+		_, err := parser.New().Walk([]byte("a: 1\nb: 2\n---\nc: 3\n---\n- d\ne: 4\n"), s)
+
+		require.Error(t, err, "the third document is refused")
 	})
 
 	t.Run("SkipNode drops the content and the node's own Leave", func(t *testing.T) {

@@ -135,11 +135,14 @@ var KeepNode = errors.New("keep this node whole") //nolint:staticcheck,errname /
 
 // StopWalk stops the walk with no error. Return it from [Visitor.Enter] or [Visitor.Leave].
 //
-// Nothing more is handed over, not even the Leave of a node already open, and [Parser.Walk] returns
-// the file and a nil error. Use it where the consumer is done and the document is not at fault:
-// [github.com/go-openapi/go-yaml/codec.JSONTokens.Tokens] returns it when the range body breaks.
+// Nothing more is handed over, not even the Leave of a node already open, and the parse reads no further.
+// [Parser.Walk] returns a nil error and a file holding the documents read before the one the walk stopped in.
+// Use it where the consumer has what it wants: a document the parse would refuse later in the stream is not
+// read, and so not refused. [github.com/go-openapi/go-yaml/codec.JSONTokens.Tokens] returns it when the range
+// body breaks.
 //
-// The parse still reads the rest of the stream, so a document it refuses after this is still refused.
+// A visitor that stops by answering [SkipNode] to everything reads the whole stream, and still receives the
+// Leave of every node it had open.
 var StopWalk = errors.New("stop the walk") //nolint:staticcheck,errname // a control signal, named as io/fs names SkipDir and SkipAll
 
 // Visitor receives each node of a document as [Parser.Walk] reaches it.
@@ -207,6 +210,8 @@ type walkState struct {
 	err error
 	// stopped records a visitor returning [StopWalk]. Nothing more is handed over and Walk returns no error.
 	stopped bool
+	// file is the file the parse is filling, which Walk returns when a visitor stops it.
+	file *ast.File
 	// curKey is IsKey for the node being handed over, set just before each call.
 	curKey bool
 	// keys answers HoldsKey, and keyBase indexes the first key of the mapping being left in it.
@@ -243,16 +248,23 @@ func (w *walkState) HoldsKey(name string) bool {
 }
 
 // fail records the first error a visitor returned, and reads [StopWalk] as a stop with no error.
+//
+// A stop unwinds the descent at once with a walkStopped panic, which Walk recovers. The alternative, an error
+// value, would have to pass every error path of the descent unchanged to tell a stop from a refusal.
+// Deferred cleanup still runs on the way out, and leave hands nothing more over once stopped is set,
+// so nothing panics twice.
 func (w *walkState) fail(err error) {
 	if errors.Is(err, StopWalk) {
 		w.stopped = true
-
-		return
+		panic(walkStopped{})
 	}
 	if w.err == nil {
 		w.err = err
 	}
 }
+
+// walkStopped is the panic that unwinds the descent once a visitor has answered [StopWalk].
+type walkStopped struct{}
 
 // done reports whether the walk has stopped handing nodes over.
 func (w *walkState) done() bool { return w.err != nil || w.stopped }
@@ -272,6 +284,8 @@ func (w *walkState) done() bool { return w.err != nil || w.stopped }
 //
 // An anchor is handed over before the node it names and left after it, and [Cursor.In] answers [KindAnchor]
 // for that node, so a writer has the anchor open while it writes the node.
+//
+// A visitor that returns [StopWalk] stops the walk and the parse, and Walk returns no error.
 //
 // A visitor that returns an error stops the walk: nothing more is handed over and Walk returns that error.
 // The parse still reads the rest of the stream, so a document it refuses after the visitor gave up is
@@ -294,7 +308,7 @@ func (p *Parser) Walk(src []byte, v Visitor) (*ast.File, error) {
 	p.tokens.Unpin()
 	defer p.tokens.ReleaseAll()
 
-	file, err := p.parse(p.newContext())
+	file, err := p.parseUntilStopped(p.newContext())
 	if err != nil {
 		return nil, drawUnder(src, err)
 	}
@@ -303,6 +317,22 @@ func (p *Parser) Walk(src []byte, v Visitor) (*ast.File, error) {
 	}
 
 	return file, nil
+}
+
+// parseUntilStopped runs the parse, and ends it where a visitor answered [StopWalk].
+func (p *Parser) parseUntilStopped(ctx context) (file *ast.File, err error) {
+	defer func() {
+		r := recover()
+		if r == nil {
+			return
+		}
+		if _, stopped := r.(walkStopped); !stopped {
+			panic(r)
+		}
+		file, err = p.walk.file, nil
+	}()
+
+	return p.parse(ctx)
 }
 
 // walking reports whether this parse is handing nodes over as it goes.

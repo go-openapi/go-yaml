@@ -95,6 +95,9 @@ func asSyntaxError(err error) error {
 
 func (p *Parser) parse(ctx context) (*ast.File, error) {
 	file := &ast.File{Docs: []*ast.DocumentNode{}}
+	if p.walk != nil {
+		p.walk.file = file
+	}
 	for {
 		p.openWalkDocument(len(file.Docs))
 		doc, ok, err := p.parseDocument(ctx)
