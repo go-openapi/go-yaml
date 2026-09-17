@@ -106,10 +106,11 @@ debug: false
 	// debug: false # off in production
 }
 
-// Strip every comment from a document.
+// Strip every comment from a document, and leave everything else as it was written.
 //
-// WithComments(false) leaves the comments out of what the renderer writes. The document is laid out again:
-// the sequence under flags loses the indentation the source gave it.
+// ast.Filter finds every comment group, and CommentGroupNode.Remove marks one for Renderer.VerbatimFile to
+// leave out. Setting a comment field to nil instead loses the record of which bytes to skip, and the text
+// comes back.
 func Example_stripComments() {
 	src := []byte(`# Service settings.
 name: my-service   # who we are
@@ -117,6 +118,7 @@ name: my-service   # who we are
 flags:
   - fast   # really
   - safe
+# The end.
 `)
 	file, err := parser.ParseBytes(src, parser.WithComments())
 	if err != nil {
@@ -125,13 +127,21 @@ flags:
 		return
 	}
 
-	fmt.Print(ast.NewRenderer(ast.WithComments(false)).File(file))
+	for _, node := range ast.FilterFile(ast.CommentType, file) {
+		if group, ok := node.(*ast.CommentGroupNode); ok {
+			group.Remove()
+		}
+	}
+
+	if err := ast.NewRenderer(ast.WithSource(src)).VerbatimFile(os.Stdout, file); err != nil {
+		fmt.Println(err)
+	}
 
 	// Output:
 	// name: my-service
 	// flags:
-	// - fast
-	// - safe
+	//   - fast
+	//   - safe
 }
 
 // Resolve a custom tag: GitLab CI's !reference names another part of the document by its keys, and a
