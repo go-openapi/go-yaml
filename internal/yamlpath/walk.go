@@ -76,8 +76,10 @@ type walkFrame struct {
 	// step indexes the step this node is read by.
 	step int
 
-	// result is the answer the node's matched child gave, for a select or an index frame.
-	result ast.Node
+	// result is the answer the node's matched child gave, for a select or an index frame, and delivered
+	// records that it has gone up already: the rest of the node cannot change it.
+	result    ast.Node
+	delivered bool
 
 	// pending records that the key just handed over matched, so the next value is the one to read.
 	// done records that a ".name" step matched once: the tree filter reads the first match only.
@@ -270,13 +272,17 @@ func (w *pathWalker) Leave(node ast.Node, _ parser.Closing) error {
 
 		return w.deliver(kept)
 	case frameSelect:
-		return w.deliver(top.result)
+		if top.delivered {
+			return nil
+		}
+
+		return w.deliver(nil)
 	case frameIndex:
 		if !top.found {
 			return errOutOfRange(w.steps[top.step].(*indexNode).selector, top.count)
 		}
 
-		return w.deliver(top.result)
+		return nil
 	case frameAll:
 		out, _ := cloneWithPaths(node).(*ast.SequenceNode)
 		out.Values = top.results
@@ -296,7 +302,15 @@ func (w *pathWalker) Leave(node ast.Node, _ parser.Closing) error {
 
 // deliver hands what a node answered to the node that read it, or ends the walk with the first answer.
 func (w *pathWalker) deliver(answer ast.Node) error {
-	if len(w.frames) == 0 {
+	return w.deliverTo(len(w.frames)-1, answer)
+}
+
+// deliverTo hands answer to the frame at index at, and on up where that settles the frame's own answer.
+//
+// A ".name" answers with its first match and a "[k]" with entry k, so neither waits for the rest of its node:
+// the answer goes up at once, and a walk whose first document answers stops there.
+func (w *pathWalker) deliverTo(at int, answer ast.Node) error {
+	if at < 0 {
 		if answer == nil {
 			return nil
 		}
@@ -305,17 +319,17 @@ func (w *pathWalker) deliver(answer ast.Node) error {
 		return parser.StopWalk
 	}
 
-	parent := &w.frames[len(w.frames)-1]
-	switch parent.kind {
-	case frameAll:
+	parent := &w.frames[at]
+	if parent.kind == frameAll {
 		if answer != nil {
 			parent.results = append(parent.results, answer)
 		}
-	default:
-		parent.result = answer
-	}
 
-	return nil
+		return nil
+	}
+	parent.result, parent.delivered = answer, true
+
+	return w.deliverTo(at-1, answer)
 }
 
 // answer is the sequence a recursive step returns, as recursiveNode.filter builds it.

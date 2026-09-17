@@ -88,6 +88,25 @@ const (
 	largePaths  = 12
 )
 
+// TestReadingAPathStopsAtTheAnswer checks that ReadNode reads no further than the node it returns.
+//
+// A document after the answer is not read, so an invalid one is not refused, where the tree reader parses
+// the whole stream first and refuses it.
+func TestReadingAPathStopsAtTheAnswer(t *testing.T) {
+	t.Parallel()
+
+	const src = "a: 1\n---\n- b\nc: 2\n"
+	path, err := PathString("$.a")
+	require.NoError(t, err)
+
+	got, err := path.ReadNode(strings.NewReader(src))
+	require.NoError(t, err)
+	assert.Equal(t, "1", got.String())
+
+	_, err = path.readByTree([]byte(src))
+	require.Error(t, err, "the second document is invalid")
+}
+
 func errText(err error) string {
 	if err == nil {
 		return ""

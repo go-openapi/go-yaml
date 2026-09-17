@@ -222,6 +222,8 @@ func (p *Path) String() string {
 //
 // It answers as [Path.FilterFile] does on the parsed stream, and reads the stream by walking it: every branch
 // off the path is skipped, so the memory it holds is the node it returns and not the document.
+// It stops reading at the answer, so a later document is not read and a syntax error there is not reported.
+// Parse the stream and call FilterFile to have the whole of it checked.
 // The node is a copy that owns its tokens. Where it is most of the document, the copy costs more than a parse
 // into a tree: 206 ms against 155 ms for the whole of golang_source, which is 4 MB against 60 MB for one
 // scalar of it.
