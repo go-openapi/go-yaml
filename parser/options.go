@@ -177,6 +177,16 @@ func WithAnchors(anchors map[string]ast.Node) Option {
 	}
 }
 
+// DeclaredAnchors returns the anchors passed with [WithAnchors], or nil when none were.
+//
+// The map is the caller's own and is not copied, so do not write to it while p reads a stream.
+// An alias the parse resolves to one of these has its [ast.AliasNode.Target] set to the node.
+// A [Visitor] on [Parser.Walk] needs it to answer such an alias:
+// the walk hands over only the stream's own nodes, and a declared anchor is never one of them.
+func (p *Parser) DeclaredAnchors() map[string]ast.Node {
+	return p.anchors.declared
+}
+
 // WithLaxTags keeps the text of a scalar whose tag does not apply to it, instead of rejecting the document.
 //
 // The parser records the policy on each [ast.TagNode], and [ast.TagNode.Resolve] applies it,

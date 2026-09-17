@@ -202,6 +202,20 @@ func TestPublishedAnchorsAreNamedButNotDeclared(t *testing.T) {
 	assert.Equal(t, "2", aliasesOf(t, own.Docs[0])[0].Target.String())
 }
 
+// TestDeclaredAnchorsReturnsWhatWithAnchorsPassed checks [parser.Parser.DeclaredAnchors],
+// which a visitor on a walk reads to answer an alias to an anchor the walk never hands over.
+func TestDeclaredAnchorsReturnsWhatWithAnchorsPassed(t *testing.T) {
+	declared := map[string]ast.Node{"x": &ast.StringNode{Value: "given"}}
+
+	p := parser.New(parser.WithAnchors(declared))
+	assert.Equal(t, declared, p.DeclaredAnchors())
+
+	p.Reset()
+	assert.Nil(t, p.DeclaredAnchors(), "Reset drops the options of the previous stream")
+
+	assert.Nil(t, parser.New().DeclaredAnchors())
+}
+
 // TestANamelessAnchorNeverReachesTheTable checks that the scanner rejects a '&' or a '*' with no name,
 // with yamlerrors.ErrSyntax, before the anchor table sees it, so no entry is made under an empty name.
 func TestANamelessAnchorNeverReachesTheTable(t *testing.T) {
