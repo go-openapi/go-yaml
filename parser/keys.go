@@ -77,11 +77,12 @@ func (p *Parser) recordBuiltKeyOnce(key ast.MapKeyNode) {
 // It returns false inside a key and inside an anchor, because there the node is read a second time.
 // A key is named by its content, and an alias names the anchored node,
 // which [ast.KeyIdentity] reads through [ast.AliasNode.Target].
+// It also returns false inside a node a visitor answered with [KeepNode], which it receives whole.
 //
 // Keeping an anchor's nodes holds no extra tape: closeAnchor already saves the tokens an anchor covers
 // until the document ends.
 func (p *Parser) keepsNothing() bool {
-	return !p.descent.readingAKey() && !p.anchors.reading()
+	return !p.descent.readingAKey() && !p.anchors.reading() && (p.walk == nil || !p.walk.keeping)
 }
 
 // builtKeyIdentity names a key that no single token names.

@@ -119,6 +119,20 @@ type Closing interface {
 // Returned from [Visitor.Leave] it has no meaning and stops the walk, as any other error does.
 var SkipNode = errors.New("skip this node's content") //nolint:staticcheck,errname // a control signal, named as io/fs names SkipDir and SkipAll
 
+// KeepNode tells [Parser.Walk] to hand the node over whole at its Leave. Return it from [Visitor.Enter].
+//
+// Nothing inside the node is handed over, as for [SkipNode], but Leave is called, and the node then holds
+// all its content: a mapping its entries, a sequence its values. Use [ast.Clone] in Leave to keep it,
+// since the parse reuses its cells and tokens once Leave returns.
+//
+// The walk holds the node's cells and tokens from Enter until Leave returns, so a kept subtree costs its
+// own size and no more. Keep the nodes you want and skip the rest to read a large document with the memory
+// of its matches.
+//
+// A scalar and a node with no content are whole already, so KeepNode reads as nil for them.
+// Returned from [Visitor.Leave] it has no meaning and stops the walk, as any other error does.
+var KeepNode = errors.New("keep this node whole") //nolint:staticcheck,errname // a control signal, named as SkipNode is
+
 // StopWalk stops the walk with no error. Return it from [Visitor.Enter] or [Visitor.Leave].
 //
 // Nothing more is handed over, not even the Leave of a node already open, and [Parser.Walk] returns
@@ -139,8 +153,9 @@ var StopWalk = errors.New("stop the walk") //nolint:staticcheck,errname // a con
 // Use [ast.Clone] to keep a scalar: the copy owns its tokens.
 //
 // A mapping or a sequence reaches Leave without its entries: they were handed over one by one and not kept,
-// so its Values are empty and it renders as "{}" or "[]". Build what you need from the entries as they arrive.
-// The exceptions are a collection standing as a mapping key or under an anchor, which the parse keeps whole
+// so its Values are empty and it renders as "{}" or "[]". Build what you need from the entries as they arrive,
+// or return [KeepNode] from Enter to receive the collection whole instead of its entries.
+// A collection standing as a mapping key or under an anchor also arrives whole: the parse keeps it
 // to name the key or to answer an alias.
 //
 // Do not key a map on the node pointer.
@@ -154,7 +169,8 @@ var StopWalk = errors.New("stop the walk") //nolint:staticcheck,errname // a con
 type Visitor interface {
 	// Enter is called before the node's content.
 	//
-	// Return nil to receive the content, [SkipNode] to skip it, and any other error to stop the walk.
+	// Return nil to receive the content, [SkipNode] to skip it, [KeepNode] to receive the node whole at Leave
+	// instead, and any other error to stop the walk.
 	// Leave is not called for a node Enter skipped or failed on.
 	Enter(node ast.Node, at Cursor) error
 	// Leave is called after the node's content has been visited, and the Cursor answers as it did for Enter.
@@ -178,6 +194,9 @@ type walkState struct {
 	keyNext bool
 	// skip counts the depths below a node that Enter declined, which are walked without being handed over.
 	skip int
+	// keeping records a node Enter answered with [KeepNode], whose content the parse keeps until its Leave.
+	// Nothing inside it is handed over, so at most one is open at a time.
+	keeping bool
 	// quiet counts the parses running inside a node already handed over.
 	// A block scalar reads its content through parseToken, and that content is part of the literal.
 	quiet int
@@ -381,7 +400,10 @@ func (p *Parser) enterAs(ctx context, node ast.Node, in Kind, key bool) bool {
 	}
 
 	p.walk.curKey = key
-	if err := p.walk.visitor.Enter(node, p.walk); err != nil {
+	err := p.walk.visitor.Enter(node, p.walk)
+	if errors.Is(err, KeepNode) {
+		p.keep()
+	} else if err != nil {
 		if !errors.Is(err, SkipNode) {
 			p.walk.fail(err)
 		}
@@ -398,6 +420,23 @@ func (p *Parser) enterAs(ctx context, node ast.Node, in Kind, key bool) bool {
 	return true
 }
 
+// keep starts reading a node whole for a visitor that answered [KeepNode].
+//
+// keepsNothing reads keeping, so every retention gate of the descent keeps the node's content, and each
+// mark and rewind of the node arena inside the node sees the same answer. The gates around the node read it
+// before Enter and after Leave, when it is false.
+//
+// The tape is pinned as an anchor pins it, and unpinned without a save once Leave returns:
+// nothing reads a kept node after that.
+func (p *Parser) keep() {
+	p.walk.keeping = true
+	// The node's own leave unwinds this and then hands the node over.
+	p.walk.skip = 1
+	if p.tokens != nil {
+		p.tokens.Pin()
+	}
+}
+
 // leave hands a node over after its content.
 func (p *Parser) leave(ctx context, node ast.Node) {
 	if p.walk == nil || node == nil {
@@ -405,10 +444,14 @@ func (p *Parser) leave(ctx context, node ast.Node) {
 	}
 	if p.walk.skip > 0 {
 		p.walk.skip--
-		p.releaseSkipped(ctx)
+		if p.walk.skip > 0 || !p.walk.keeping {
+			p.releaseSkipped(ctx)
 
-		return
+			return
+		}
 	}
+	kept := p.walk.keeping
+	p.walk.keeping = false
 
 	p.walk.in = p.walk.in[:len(p.walk.in)-1]
 	p.walk.index = p.walk.index[:len(p.walk.index)-1]
@@ -427,6 +470,9 @@ func (p *Parser) leave(ctx context, node ast.Node) {
 		}
 	}
 	p.walk.keyBase = -1
+	if kept && p.tokens != nil {
+		p.tokens.Unpin()
+	}
 	p.count()
 	p.readTo(ctx)
 }
@@ -486,8 +532,9 @@ func (p *Parser) handAs(ctx context, node ast.Node, key bool) {
 	p.walk.curKey = key
 	p.walk.keyBase = -1
 	// A node with no content: SkipNode has nothing to skip, and only drops the Leave.
+	// KeepNode has nothing to keep, and reads as nil.
 	switch err := p.walk.visitor.Enter(node, p.walk); {
-	case err == nil:
+	case err == nil, errors.Is(err, KeepNode):
 		if err := p.walk.visitor.Leave(node, p.walk); err != nil {
 			p.walk.fail(err)
 		}
@@ -509,8 +556,9 @@ func (p *Parser) handAs(ctx context, node ast.Node, key bool) {
 // It moves the tail at the points an ordinary walk does, so every token the
 // descent reads again is still held. Inside a quiet node an ordinary walk hands
 // nothing over and so never moves the tail, and neither does this.
+// Inside a kept node the tape is pinned, and the node's own leave moves the tail.
 func (p *Parser) releaseSkipped(ctx context) {
-	if p.walk.quiet > 0 {
+	if p.walk.quiet > 0 || p.walk.keeping {
 		return
 	}
 	p.readTo(ctx)
