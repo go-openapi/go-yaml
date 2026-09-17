@@ -684,7 +684,8 @@ func (d *Decoder) walkInto(src []byte, v reflect.Value) error {
 		share:  d.shareAliases,
 		budget: aliasBudget(len(src)),
 	}
-	if _, err := parser.New(parser.WithOmitNodePaths()).Walk(src, b); err != nil {
+	opts := append(d.parserOptions(), parser.WithOmitNodePaths())
+	if _, err := parser.New(opts...).Walk(src, b); err != nil {
 		return err
 	}
 

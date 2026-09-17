@@ -9,6 +9,7 @@ import (
 	"github.com/go-openapi/testify/v2/assert"
 	"github.com/go-openapi/testify/v2/require"
 
+	"github.com/go-openapi/go-yaml/ast"
 	"github.com/go-openapi/go-yaml/codec"
 	"github.com/go-openapi/go-yaml/parser"
 )
@@ -44,9 +45,9 @@ func TestWithParserOptionsReachesTheParser(t *testing.T) {
 	})
 
 	t.Run("both decode paths honor it", func(t *testing.T) {
-		// Decoding into an `any` walks the source and everything else gathers a
-		// tree, and the two take their parser options from the same place. An
-		// option that reached one and not the other would be worse than none.
+		// Decoding into an `any` walks the source and a map gathers a tree, and
+		// the two take their parser options from the same place. A struct is the
+		// third path, held below.
 		var walked any
 		require.NoError(t, codec.UnmarshalWithOptions([]byte("a: yes\n"), &walked,
 			codec.WithParserOptions(parser.WithYAMLVersion(parser.YAML11))))
@@ -56,6 +57,42 @@ func TestWithParserOptionsReachesTheParser(t *testing.T) {
 		require.NoError(t, codec.UnmarshalWithOptions([]byte("a: yes\n"), &treed,
 			codec.WithParserOptions(parser.WithYAMLVersion(parser.YAML11))))
 		assert.Equal(t, map[string]any{"a": true}, treed, "the gathering path")
+	})
+
+	t.Run("a struct decode honors it", func(t *testing.T) {
+		// A struct is read by a third path, which walks the source into the Go
+		// type. It built its parser without these options, so "010" read as ten
+		// under 1.1, "<<" stayed a key under WithMergeKeys, and an alias to an
+		// anchor passed with WithAnchors failed to parse.
+		type target struct {
+			I int
+			N map[string]any
+			S string
+		}
+		for _, tc := range []struct {
+			name string
+			src  string
+			opt  parser.Option
+			want target
+		}{
+			{"1.1 reads 010 in octal", "i: 010\n", parser.WithYAMLVersion(parser.YAML11), target{I: 8}},
+			{
+				"WithMergeKeys merges",
+				"n: {<<: {a: 1}}\n", parser.WithMergeKeys(),
+				target{N: map[string]any{"a": uint64(1)}},
+			},
+			{
+				"WithAnchors resolves an alias",
+				"s: *x\n", parser.WithAnchors(map[string]ast.Node{"x": &ast.StringNode{Value: "given"}}),
+				target{S: "given"},
+			},
+		} {
+			t.Run(tc.name, func(t *testing.T) {
+				var got target
+				require.NoError(t, codec.UnmarshalWithOptions([]byte(tc.src), &got, codec.WithParserOptions(tc.opt)))
+				assert.Equal(t, tc.want, got)
+			})
+		}
 	})
 
 	t.Run("without it the default reading stands", func(t *testing.T) {
