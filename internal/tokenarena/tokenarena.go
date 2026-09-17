@@ -88,6 +88,8 @@ type Chunk[T any] struct {
 	// saves counts the runs saved that fall in this chunk. Above zero it is
 	// never recycled, whatever the tail says.
 	saves int
+	// onSaved records that the chunk stands on the saved list, so Release finds it there without a search.
+	onSaved bool
 	// generation counts how many times this chunk has been filled. The lab
 	// reads it to catch a token read after the chunk was reused; the parser
 	// does not read it at all.
@@ -149,16 +151,6 @@ func (l *list[T]) remove(c *Chunk[T]) {
 }
 
 // holds reports whether c is on this list.
-func (l *list[T]) holds(c *Chunk[T]) bool {
-	for at := l.head; at != nil; at = at.next {
-		if at == c {
-			return true
-		}
-	}
-
-	return false
-}
-
 func (l *list[T]) popFront() *Chunk[T] {
 	c := l.head
 	if c == nil {
@@ -253,7 +245,7 @@ func (a *TokenArena[T]) grow() {
 		a.stats.Recycled++
 	}
 
-	c.base, c.pos, c.saves = a.next, 0, 0
+	c.base, c.pos, c.saves, c.onSaved = a.next, 0, 0, false
 	a.index(c)
 	a.live.pushBack(c)
 	a.head = c
@@ -293,6 +285,7 @@ func (a *TokenArena[T]) sweep() {
 		switch {
 		case c.saves > 0:
 			a.saved.pushBack(c)
+			c.onSaved = true
 		default:
 			a.freeChunk(c)
 		}
@@ -363,8 +356,9 @@ func (a *TokenArena[T]) Release(from, to int) int {
 		if c.saves > 0 {
 			return
 		}
-		if a.saved.holds(c) {
+		if c.onSaved {
 			a.saved.remove(c)
+			c.onSaved = false
 			a.freeChunk(c)
 			n++
 		}
@@ -380,7 +374,7 @@ func (a *TokenArena[T]) Release(from, to int) int {
 // document is. Call it only where nothing holds those tokens any more.
 func (a *TokenArena[T]) ReleaseAll() {
 	for c := a.saved.popFront(); c != nil; c = a.saved.popFront() {
-		c.saves = 0
+		c.saves, c.onSaved = 0, false
 		a.freeChunk(c)
 	}
 	for c := a.live.head; c != nil; c = c.next {
@@ -389,14 +383,18 @@ func (a *TokenArena[T]) ReleaseAll() {
 }
 
 // eachChunkIn calls do for every chunk in hand holding a token in [from, to].
+//
+// It looks the chunks up in byIndex, which holds exactly the live and saved ones, so it costs the chunks the
+// run covers. Walking the lists instead cost every chunk in hand, and a pin keeps them all: holdRun saves one
+// token for each collection, so a walk under an anchor or a kept node was quadratic in the node's size.
 func (a *TokenArena[T]) eachChunkIn(from, to int, do func(*Chunk[T])) {
-	for _, l := range []*list[T]{&a.live, &a.saved} {
-		for c := l.head; c != nil; {
-			next := c.next
-			if c.pos > 0 && from < c.base+c.pos && to >= c.base {
-				do(c)
-			}
-			c = next
+	from = max(from, 0)
+	last := min(to/a.chunkSize, len(a.byIndex)-1)
+	for at := from / a.chunkSize; at <= last; at++ {
+		c := a.byIndex[at]
+		a.stats.Visited++
+		if c != nil && c.pos > 0 && from < c.base+c.pos && to >= c.base {
+			do(c)
 		}
 	}
 }
@@ -509,6 +507,7 @@ func (a *TokenArena[T]) Reset() {
 func (a *TokenArena[T]) Recycle() {
 	for _, l := range []*list[T]{&a.live, &a.saved} {
 		for c := l.popFront(); c != nil; c = l.popFront() {
+			c.onSaved = false
 			a.free.pushBack(c)
 		}
 	}
@@ -554,6 +553,8 @@ type Stats struct {
 	LiveHigh, FreeHigh, SavedHigh int
 	// Pins counts the freezes taken and Saves the runs saved.
 	Pins, Saves int
+	// Visited counts the chunks Save and Release looked at, which is the chunks their runs cover.
+	Visited int
 	// Frozen says a pin is held now, so nothing is being recycled.
 	Frozen bool
 }

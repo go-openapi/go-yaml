@@ -232,6 +232,56 @@ func TestSavesCountPerChunk(t *testing.T) {
 	assert.Zero(t, a.Stats().Saved, "the second release did not free the chunk")
 }
 
+// TestASaveCostsTheChunksItCovers checks that Save and Release look at the chunks their run covers, and not
+// at every chunk in hand.
+//
+// A pin keeps every chunk in hand, and the parser saves one token for each collection it opens. Walking the
+// lists made a walk under an anchor or a kept node quadratic in the node's size: golang_source took 430 ms
+// under one anchor against 130 ms without.
+func TestASaveCostsTheChunksItCovers(t *testing.T) {
+	const chunk, chunks, saves = 4, 200, 1000
+
+	a := tokenarena.New[token.Token](chunk)
+	a.Pin()
+	add(a, chunk*chunks)
+
+	before := a.Stats().Visited
+	for i := range saves {
+		seq := i % (chunk * chunks)
+		a.Save(seq, seq)
+		a.Release(seq, seq)
+	}
+	assert.Equal(t, 2*saves, a.Stats().Visited-before, "one chunk for each save and each release of one token")
+
+	before = a.Stats().Visited
+	a.Save(0, chunk*chunks-1)
+	assert.Equal(t, chunks, a.Stats().Visited-before, "a run over every chunk visits each once")
+}
+
+// TestAReleasedChunkLeavesTheSavedList checks a chunk the tail passed while saved goes to the free list when
+// its last save is released, and only then.
+func TestAReleasedChunkLeavesTheSavedList(t *testing.T) {
+	a := tokenarena.New[token.Token](4)
+	a.Pin()
+	add(a, 12)
+	a.Save(0, 3)
+	a.Save(0, 3)
+	a.Unpin()
+	add(a, 8)
+	a.SetTail(20)
+	require.Equal(t, 1, a.Stats().Saved)
+
+	a.Release(0, 3)
+	require.Equal(t, 1, a.Stats().Saved, "one save of two is still held")
+
+	freeBefore := a.Stats().Free
+	assert.Equal(t, 1, a.Release(0, 3))
+	assert.Zero(t, a.Stats().Saved)
+	assert.Equal(t, freeBefore+1, a.Stats().Free)
+
+	assert.Zero(t, a.Release(0, 3), "a chunk already free is not released twice")
+}
+
 // TestReleaseAllGivesEverySaveBack checks the document boundary.
 func TestReleaseAllGivesEverySaveBack(t *testing.T) {
 	a := tokenarena.New[token.Token](4)
