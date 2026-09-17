@@ -13,10 +13,12 @@ package ast
 // they were. A clone claims no source, so [Renderer.Verbatim] lays it out where
 // it was put, the way it does a node built by hand.
 //
-// The copy owns its own tokens and comments. Three things are carried as they
-// are, being references to nodes the clone does not own: [AliasNode.Target],
-// [DocumentNode.Anchors] and the path recorded by [Node.GetPath], which names
-// where the original stood and not where the copy is going.
+// The copy owns its own tokens and comments. Two things are carried as they
+// are, being references to nodes the clone does not own: [AliasNode.Target] and
+// [DocumentNode.Anchors]. The path [Node.GetPath] returns is dropped, since it
+// names where the original stood and not where the copy is going: GetPath
+// returns "" on every node of the copy. Use [Node.SetPathNode] to give a copy a
+// path.
 func Clone(n Node) Node {
 	switch node := n.(type) {
 	case nil:
