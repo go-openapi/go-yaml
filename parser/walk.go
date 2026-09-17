@@ -399,6 +399,7 @@ func (p *Parser) leave(ctx context, node ast.Node) {
 	}
 	if p.walk.skip > 0 {
 		p.walk.skip--
+		p.releaseSkipped(ctx)
 
 		return
 	}
@@ -462,7 +463,12 @@ func (p *Parser) hand(ctx context, node ast.Node) {
 }
 
 func (p *Parser) handAs(ctx context, node ast.Node, key bool) {
-	if p.walk == nil || node == nil || p.walk.skip > 0 || p.walk.quiet > 0 || p.walk.done() {
+	if p.walk == nil || node == nil {
+		return
+	}
+	if p.walk.skip > 0 || p.walk.quiet > 0 || p.walk.done() {
+		p.releaseSkipped(ctx)
+
 		return
 	}
 	// takeKey is called whatever key is, so the flag is always cleared.
@@ -483,6 +489,24 @@ func (p *Parser) handAs(ctx context, node ast.Node, key bool) {
 		p.walk.fail(err)
 	}
 	p.count()
+	p.readTo(ctx)
+}
+
+// releaseSkipped moves the tape's tail for a node the visitor did not receive,
+// as leave and handAs do for one it did.
+//
+// Without it a visitor skipping the root, or stopping the walk, held every token
+// of the rest of the stream: the parse reads on either way, and the tail moved
+// only when a node was handed over. On 20,000 flat keys that doubled the bytes
+// a walk allocated and multiplied its allocations by 4.6.
+//
+// It moves the tail at the points an ordinary walk does, so every token the
+// descent reads again is still held. Inside a quiet node an ordinary walk hands
+// nothing over and so never moves the tail, and neither does this.
+func (p *Parser) releaseSkipped(ctx context) {
+	if p.walk.quiet > 0 {
+		return
+	}
 	p.readTo(ctx)
 }
 

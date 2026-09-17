@@ -11,6 +11,7 @@ import (
 	"github.com/go-openapi/testify/v2/require"
 
 	"github.com/go-openapi/go-yaml/ast"
+	"github.com/go-openapi/go-yaml/internal/corpus"
 	"github.com/go-openapi/go-yaml/parser"
 )
 
@@ -147,4 +148,40 @@ func countOf(all []string, want string) int {
 	}
 
 	return n
+}
+
+// firstAnswer returns first from the first Enter and nil after it.
+type firstAnswer struct {
+	first   error
+	entered bool
+}
+
+func (v *firstAnswer) Enter(ast.Node, parser.Cursor) error {
+	if v.entered {
+		return nil
+	}
+	v.entered = true
+
+	return v.first
+}
+
+func (v *firstAnswer) Leave(ast.Node, parser.Closing) error { return nil }
+
+// TestAWalkReceivingNothingStillReleasesTheTape holds a walk whose visitor skips the root, or stops at once,
+// to the memory of one that takes every node.
+//
+// The parse reads the rest of the stream either way. The tape's tail moved only when a node was handed over,
+// so such a walk held every token it read: on 5,000 flat keys, several times the allocations of a full walk.
+func TestAWalkReceivingNothingStillReleasesTheTape(t *testing.T) {
+	src := []byte(corpus.FlatMap(5000))
+	allocs := func(first error) float64 {
+		return testing.AllocsPerRun(3, func() {
+			_, err := parser.New(parser.WithOmitNodePaths()).Walk(src, &firstAnswer{first: first})
+			require.NoError(t, err)
+		})
+	}
+
+	full := allocs(nil)
+	assert.LessOrEqual(t, allocs(parser.SkipNode), full, "skipping the root")
+	assert.LessOrEqual(t, allocs(parser.StopWalk), full, "stopping at the root")
 }
