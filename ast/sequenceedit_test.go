@@ -122,3 +122,66 @@ func TestSequenceReplaceRefusesAnIndexOutsideTheSequence(t *testing.T) {
 	require.NoError(t, seq.Replace(1, ast.Text("x")))
 	assert.Equal(t, "- a\n- x", ast.NewRenderer().String(seq))
 }
+
+// TestSequenceRemoveTakesTheValueAndWhatWasWrittenForIt checks that a removal
+// takes the entry and the head comment with the value, and leaves the values
+// after it holding their own.
+func TestSequenceRemoveTakesTheValueAndWhatWasWrittenForIt(t *testing.T) {
+	t.Parallel()
+
+	src := []byte("s:\n  - a\n  # about b\n  - b\n  # about c\n  - c\n")
+	file, err := parser.ParseBytes(src, parser.WithComments())
+	require.NoError(t, err)
+
+	seq, ok := ast.Lookup(file.Docs[0].Body, "s").Value.(*ast.SequenceNode)
+	require.True(t, ok)
+
+	require.NoError(t, seq.Remove(1))
+
+	require.Len(t, seq.Values, 2)
+	require.Len(t, seq.Entries, 2, "Entries shrank with Values")
+	require.Len(t, seq.ValueHeadComments, 2, "ValueHeadComments shrank with Values")
+	assert.Nil(t, seq.ValueHeadComments[0], "a carried no head comment")
+	require.NotNil(t, seq.ValueHeadComments[1])
+	assert.Equal(t, "# about c", seq.ValueHeadComments[1].String(), "c keeps its own")
+
+	assert.Equal(t, "s:\n- a\n# about c\n- c\n", ast.NewRenderer().File(file))
+}
+
+// TestSequenceRemoveRefusesAnIndexOutsideTheSequence checks the bounds and that
+// a refusal changes nothing.
+func TestSequenceRemoveRefusesAnIndexOutsideTheSequence(t *testing.T) {
+	t.Parallel()
+
+	for _, idx := range []int{-1, 2, 100} {
+		seq := ast.Seq(ast.Text("a"), ast.Text("b"))
+		require.Errorf(t, seq.Remove(idx), "index %d", idx)
+		assert.Len(t, seq.Values, 2, "a refused removal left the sequence alone")
+	}
+
+	seq := ast.Seq(ast.Text("a"), ast.Text("b"))
+	require.NoError(t, seq.Remove(0))
+	assert.Equal(t, "- b", ast.NewRenderer().String(seq))
+	assert.Empty(t, seq.Entries, "a built sequence has no entries to close")
+}
+
+// TestSequenceSpliceReadsAsInsertThenRemove is the shape a caller resolving a
+// reference needs: one value out, several in, and everything else as written.
+func TestSequenceSpliceReadsAsInsertThenRemove(t *testing.T) {
+	t.Parallel()
+
+	src := []byte("s:\n  - a\n  # about b\n  - b\n  - c\n")
+	file, err := parser.ParseBytes(src, parser.WithComments())
+	require.NoError(t, err)
+
+	seq, ok := ast.Lookup(file.Docs[0].Body, "s").Value.(*ast.SequenceNode)
+	require.True(t, ok)
+
+	at := 1
+	values := []ast.Node{ast.Text("x"), ast.Text("z")}
+	require.NoError(t, seq.Insert(at, values...))
+	require.NoError(t, seq.Remove(at+len(values)))
+
+	assert.Equal(t, "s:\n- a\n- x\n- z\n- c\n", ast.NewRenderer().File(file),
+		"b and the comment written above it are gone, a and c are untouched")
+}

@@ -6,6 +6,7 @@ package ast_test
 import (
 	"fmt"
 	"os"
+	"slices"
 
 	"github.com/go-openapi/go-yaml/ast"
 	"github.com/go-openapi/go-yaml/parser"
@@ -175,8 +176,9 @@ func held(entry *ast.MappingValueNode) string {
 // Resolve a custom tag: GitLab CI's !reference names another part of the document by its keys, and a
 // reference in a sequence is replaced by the values of the sequence it names.
 //
-// The tag stays on the node as the document wrote it, and TagNode.URI names it. A node moved from another
-// place in the document is written as nothing there, so the values are copied with ast.Clone.
+// The tag stays on the node as the document wrote it, and TagNode.URI names it. Replacing one value with
+// several is SequenceNode.Insert then SequenceNode.Remove, and a node moved from another place in the
+// document is written as nothing there, so the values are copied with ast.Clone.
 func Example_resolveACustomTag() {
 	src := []byte(`.setup:
   script:
@@ -216,18 +218,21 @@ test:
 			continue
 		}
 
-		var values []ast.Node
-		for _, value := range parent.Values {
-			if value != ast.Node(tag) {
-				values = append(values, value)
-
-				continue
-			}
-			for _, referenced := range named.Values {
-				values = append(values, ast.Clone(referenced))
-			}
+		at := slices.Index(parent.Values, ast.Node(tag))
+		copies := make([]ast.Node, 0, len(named.Values))
+		for _, referenced := range named.Values {
+			copies = append(copies, ast.Clone(referenced))
 		}
-		parent.Values = values
+		if err := parent.Insert(at, copies...); err != nil {
+			fmt.Println(err)
+
+			return
+		}
+		if err := parent.Remove(at + len(copies)); err != nil {
+			fmt.Println(err)
+
+			return
+		}
 	}
 
 	if err := ast.NewRenderer(ast.WithSource(src)).VerbatimFile(os.Stdout, file); err != nil {

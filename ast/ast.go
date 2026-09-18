@@ -1520,6 +1520,28 @@ func (n *SequenceNode) Insert(idx int, values ...Node) error {
 	return nil
 }
 
+// Remove takes the value standing at idx out of the sequence, and returns an
+// error where idx is outside it.
+//
+// The entry it was written as and the head comment above it go with it, so what
+// the document wrote for that value is gone and the values after it keep their
+// own. Remove and [SequenceNode.Insert] are how a caller splices: put the new
+// values in at idx, then remove the old one from idx+len(values).
+func (n *SequenceNode) Remove(idx int) error {
+	if idx < 0 || idx >= len(n.Values) {
+		return fmt.Errorf(
+			"invalid index for sequence: sequence length is %d, but specified %d index",
+			len(n.Values), idx,
+		)
+	}
+
+	n.Values = slices.Delete(n.Values, idx, idx+1)
+	n.Entries = removeBeside(n.Entries, idx)
+	n.ValueHeadComments = removeBeside(n.ValueHeadComments, idx)
+
+	return nil
+}
+
 // insertBeside opens count nil cells at idx in a slice held index-parallel with
 // [SequenceNode.Values], so that an insert does not move the entries and head
 // comments of the values standing after it.
@@ -1532,6 +1554,17 @@ func insertBeside[T any](beside []T, idx, count int) []T {
 	}
 
 	return slices.Insert(beside, min(idx, len(beside)), make([]T, count)...)
+}
+
+// removeBeside closes the cell at idx in a slice held index-parallel with
+// [SequenceNode.Values], so that a removal does not move the entries and head
+// comments of the values standing after it.
+func removeBeside[T any](beside []T, idx int) []T {
+	if idx >= len(beside) {
+		return beside
+	}
+
+	return slices.Delete(beside, idx, idx+1)
 }
 
 // Merge merge sequence value.
