@@ -1469,15 +1469,24 @@ type SequenceNode struct {
 	Duplicates []DuplicateKey
 }
 
-// Replace replace value node.
+// Replace puts value where the value at idx stands, and returns an error where
+// idx is outside the sequence.
+//
+// The value replaced is the only thing that changes: the entry it was written
+// as and the head comment above it stay where they are, so a document renders
+// with its layout and its comments and the new value in place. Use [Clone] for
+// a value taken from elsewhere in the same document, which [Renderer.Verbatim]
+// otherwise refuses with [ErrMove].
 func (n *SequenceNode) Replace(idx int, value Node) error {
-	if len(n.Values) <= idx {
+	if idx < 0 || idx >= len(n.Values) {
 		return fmt.Errorf(
 			"invalid index for sequence: sequence length is %d, but specified %d index",
 			len(n.Values), idx,
 		)
 	}
+
 	n.Values[idx] = value
+
 	return nil
 }
 

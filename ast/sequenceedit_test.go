@@ -105,3 +105,20 @@ func TestSequenceInsertKeepsCommentsOnTheirValues(t *testing.T) {
 	require.NoError(t, ast.NewRenderer(ast.WithSource(src)).VerbatimFile(&out, file))
 	assert.Equal(t, "s:\n  - first\n  - a\n  # about b\n  - b\n  # about c\n  - c\n", out.String())
 }
+
+// TestSequenceReplaceRefusesAnIndexOutsideTheSequence is the guard for defect
+// 144: Replace bounded only the high side, so a negative index reached
+// n.Values[idx] and panicked.
+func TestSequenceReplaceRefusesAnIndexOutsideTheSequence(t *testing.T) {
+	t.Parallel()
+
+	for _, idx := range []int{-1, -100, 2, 100} {
+		seq := ast.Seq(ast.Text("a"), ast.Text("b"))
+		require.Errorf(t, seq.Replace(idx, ast.Text("x")), "index %d", idx)
+		assert.Equal(t, "- a\n- b", ast.NewRenderer().String(seq), "a refused replace left the sequence alone")
+	}
+
+	seq := ast.Seq(ast.Text("a"), ast.Text("b"))
+	require.NoError(t, seq.Replace(1, ast.Text("x")))
+	assert.Equal(t, "- a\n- x", ast.NewRenderer().String(seq))
+}
