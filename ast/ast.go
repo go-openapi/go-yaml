@@ -1481,6 +1481,50 @@ func (n *SequenceNode) Replace(idx int, value Node) error {
 	return nil
 }
 
+// Insert puts values into the sequence before the value standing at idx, and
+// appends them where idx is len(Values). It returns an error where idx is
+// outside [0, len(Values)], and does nothing where no value is passed.
+//
+// A parsed sequence carries Entries and ValueHeadComments beside Values, one
+// per value and read by index, so Insert grows those too and leaves a nil for
+// each inserted node: nothing wrote it in the source, and [Renderer] lays it
+// out from the tree. Both stay empty where the parse left them empty, as they
+// are for a sequence built with [Seq].
+//
+// An inserted node has no place in the source, so [Renderer.Verbatim] refuses a
+// node taken from elsewhere in the document with [ErrMove]. Pass [Clone] of it.
+func (n *SequenceNode) Insert(idx int, values ...Node) error {
+	if idx < 0 || idx > len(n.Values) {
+		return fmt.Errorf(
+			"invalid index for sequence: sequence length is %d, but specified %d index",
+			len(n.Values), idx,
+		)
+	}
+	if len(values) == 0 {
+		return nil
+	}
+
+	n.Values = slices.Insert(n.Values, idx, values...)
+	n.Entries = insertBeside(n.Entries, idx, len(values))
+	n.ValueHeadComments = insertBeside(n.ValueHeadComments, idx, len(values))
+
+	return nil
+}
+
+// insertBeside opens count nil cells at idx in a slice held index-parallel with
+// [SequenceNode.Values], so that an insert does not move the entries and head
+// comments of the values standing after it.
+//
+// A slice the parse left empty stays empty: a sequence written without comments
+// has no ValueHeadComments, and one built by [Seq] has no Entries either.
+func insertBeside[T any](beside []T, idx, count int) []T {
+	if len(beside) == 0 {
+		return beside
+	}
+
+	return slices.Insert(beside, min(idx, len(beside)), make([]T, count)...)
+}
+
 // Merge merge sequence value.
 func (n *SequenceNode) Merge(target *SequenceNode) {
 	n.Values = append(n.Values, target.Values...)
