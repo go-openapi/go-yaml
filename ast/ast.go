@@ -2279,7 +2279,26 @@ func (f *parentFinder) walk(parent, node Node) Node {
 	return nil
 }
 
-// Parent get parent node from child node.
+// Parent returns the node under root that holds child, and nil where no node
+// under root holds it.
+//
+// child is matched by identity, so hand back the node itself and not a copy or
+// another node spelling the same text. Parent(root, root) returns root.
+//
+// Use Parent where a document names one of its own parts and the caller has to
+// put that part where the reference stands: GitLab CI's "!reference" is the
+// worked case, in this package's examples. The reference is found anywhere in
+// the document, so the caller needs the sequence or mapping it was written in
+// before it can splice, and only a search from the root finds that.
+//
+// Two things this costs. Parent descends the tree from root on every call, so
+// resolving N references costs N descents. And the whole tree has to stand at
+// once: a visitor driven by parser.Walk holds only what it cloned at Leave,
+// because the parse reuses the node cells behind it, so there is no root to
+// search from. Parse the document into a tree for this.
+//
+// Comments are not searched. Nothing inside a [CommentGroupNode] is reached,
+// and a [SequenceNode] is descended by its Values and not its Entries.
 func Parent(root, child Node) Node {
 	finder := &parentFinder{target: child}
 	return finder.walk(root, root)
