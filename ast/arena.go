@@ -3,85 +3,13 @@
 
 package ast
 
-import (
-	"unsafe"
-
-	"github.com/go-openapi/go-yaml/token"
-)
+import "github.com/go-openapi/go-yaml/token"
 
 // nodeBlockSize bounds how many nodes of one type an allocation covers.
 const (
 	minNodeBlock = 16
 	maxNodeBlock = 512
 )
-
-// TypeStats is what the nodes of one type cost an arena.
-type TypeStats struct {
-	// Type is the node type, or "mapping runs" for the entry lists a mapping's
-	// Values is taken from.
-	Type string
-	// Nodes is how many were handed out. For mapping runs it is how many lists.
-	Nodes int
-	// Blocks is how many allocations covered them.
-	Blocks int
-	// Bytes is what those allocations cover, handed out or not.
-	Bytes int
-	// Unused is the part of Bytes still standing in the block being handed out
-	// of -- the price of the last allocation being sized for more than the
-	// document had left.
-	Unused int
-}
-
-// ArenaStats is what an arena handed out, by node type and in total.
-//
-// The figures are counted as the nodes are handed out rather than read back off
-// a heap profile: exact, attributed to the node type rather than to a generic
-// instantiation, and available from the parse that produced them. Read them
-// with [Arena.Stats].
-type ArenaStats struct {
-	// ByType holds one row per node type, in the order the arena declares them,
-	// and only for the types a parse used.
-	ByType []TypeStats
-	// Total sums ByType. Its Type is "total".
-	Total TypeStats
-	// BlockSize is how many nodes of one type an allocation covers here.
-	BlockSize int
-}
-
-// Stats reports what this arena has handed out.
-//
-// A parse asks for a node at a time and the arena answers from blocks, so what
-// a tree costs is the blocks and not the nodes: Bytes counts what was allocated
-// and Nodes counts what was asked for. The two differ by Unused, the tail of
-// each type's last block.
-func (a *Arena) Stats() ArenaStats {
-	rows := []TypeStats{
-		a.strings.stats("StringNode"),
-		a.integers.stats("IntegerNode"),
-		a.floats.stats("FloatNode"),
-		a.bools.stats("BoolNode"),
-		a.nulls.stats("NullNode"),
-		a.mappingValues.stats("MappingValueNode"),
-		a.mappings.stats("MappingNode"),
-		a.sequences.stats("SequenceNode"),
-		a.sequenceEntry.stats("SequenceEntryNode"),
-		a.mappingRuns.stats("mapping runs"),
-	}
-
-	out := ArenaStats{Total: TypeStats{Type: "total"}, BlockSize: a.blockSize()}
-	for _, row := range rows {
-		if row.Blocks == 0 {
-			continue
-		}
-		out.ByType = append(out.ByType, row)
-		out.Total.Nodes += row.Nodes
-		out.Total.Blocks += row.Blocks
-		out.Total.Bytes += row.Bytes
-		out.Total.Unused += row.Unused
-	}
-
-	return out
-}
 
 // block hands out values of one type from an allocation at a time.
 //
@@ -98,9 +26,10 @@ type block[T any] struct {
 	// and never pays for the clearing.
 	rewound bool
 	// nodes, blocks and cells count what has been handed out and what was
-	// allocated to hand it out. They cost an increment each per node and are
-	// what [Arena.Stats] reports; deriving the same figures from a heap profile
-	// means reading a generic instantiation off a stack and believing a sample.
+	// allocated to hand it out. They cost an increment each per node, and
+	// Arena.Stats reports them for a build with -tags yamlprobe; deriving the
+	// same figures from a heap profile means reading a generic instantiation
+	// off a stack and believing a sample.
 	nodes  int
 	blocks int
 	cells  int
@@ -170,20 +99,6 @@ func (b *block[T]) rewind(m blockMark) {
 	b.rewound = true
 }
 
-// stats reports what this block handed out. width is taken at the type, so it
-// costs nothing until Stats is called.
-func (b *block[T]) stats(name string) TypeStats {
-	width := int(unsafe.Sizeof(*new(T)))
-
-	return TypeStats{
-		Type:   name,
-		Nodes:  b.nodes,
-		Blocks: b.blocks,
-		Bytes:  b.cells * width,
-		Unused: len(b.free) * width,
-	}
-}
-
 // slab hands out runs of T from blocks, for a run whose length is already
 // known.
 type slab[T any] struct {
@@ -215,19 +130,6 @@ func (s *slab[T]) take(src []T, size int) []T {
 	s.runs++
 
 	return out
-}
-
-// stats reports what this slab handed out.
-func (s *slab[T]) stats(name string) TypeStats {
-	width := int(unsafe.Sizeof(*new(T)))
-
-	return TypeStats{
-		Type:   name,
-		Nodes:  s.runs,
-		Blocks: s.blocks,
-		Bytes:  s.cells * width,
-		Unused: len(s.free) * width,
-	}
 }
 
 // Arena hands out nodes from blocks rather than one allocation each.
