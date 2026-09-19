@@ -34,9 +34,18 @@ upstream touches both copies.
 
 One directory per grammar at the top level -- `json`, `yaml`, and whatever comes after. What every grammar
 needs sits beside them: `suite` for the file format, `stance` for the vocabulary, `grammar` for the
-recognizer. Those three are public because a consumer uses them: it reads an artifact, declares a table of
-its own positions, and may run the oracle live over its own input. Shared code a consumer never calls goes
-under `internal`.
+recognizer. `suite` and `stance` are public because a consumer uses them: it reads an artifact, and it
+declares a table of its own positions.
+
+`grammar` is a different case. A consumer may run the oracle live over its own input, so it needs the data
+types an oracle hands back -- `Result`, `Coverage` -- and it never compiles a grammar of its own. The engine
+therefore goes under `internal` once every suite in this module can reach it there, and each grammar
+package re-exports the types it hands out:
+
+	type Result = grammar.Result
+
+Go decides `internal` by path, so an engine under `grammar/internal` would serve `grammar` alone. The shared
+one belongs at the module's own `internal`.
 
 A grammar directory holds one package when one is enough, as `json` does, and splits as it grows -- the YAML
 side arrives as a corpus and a generator. Package names stay grammar-prefixed (`jsoncorpus`, `yamlcorpus`,
