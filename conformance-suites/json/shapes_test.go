@@ -8,7 +8,7 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/go-openapi/conformance-suites/jsoncorpus"
+	jsoncorpus "github.com/go-openapi/conformance-suites/json"
 	"github.com/go-openapi/conformance-suites/stance"
 )
 

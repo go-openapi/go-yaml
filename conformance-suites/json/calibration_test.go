@@ -12,7 +12,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/go-openapi/conformance-suites/jsoncorpus"
+	jsoncorpus "github.com/go-openapi/conformance-suites/json"
 )
 
 // TestRecognizerAgreesWithJSONTestSuite scores the recognizer against every

@@ -21,7 +21,7 @@ different job, and it gets a module of its own.
 | `suite` | the on-disk form of a corpus: `Reader`, `Writer`, `Header`, `Case`, `Meaning` |
 | `stance` | the vocabulary a corpus is labelled with: `Tag`, `Stage`, `Stand`, `Table`, `Rules`, `Shape` |
 | `grammar` | the recognizer: a compiler from a published grammar, and the YAML 1.2 productions |
-| `jsoncorpus` | the JSON suite: RFC 8259 compiled with no patches, the generator, and the corpus |
+| `json` | the JSON suite, package `jsoncorpus`: RFC 8259 compiled with no patches, the generator, the corpus |
 | `internal/yamltestsuite` | the vendored YAML Test Suite, read by the recognizer's calibration tests |
 
 `suite` and `stance` import nothing outside the standard library. `grammar` adds the test framework and
@@ -29,6 +29,18 @@ nothing else.
 
 The vendored fixtures come from `yaml/yaml-test-suite` and `go-yaml` vendors them too, so a version bump
 upstream touches both copies.
+
+## Where things go
+
+One directory per grammar at the top level -- `json`, `yaml`, and whatever comes after. What every grammar
+needs sits beside them: `suite` for the file format, `stance` for the vocabulary, `grammar` for the
+recognizer. Those three are public because a consumer uses them: it reads an artifact, declares a table of
+its own positions, and may run the oracle live over its own input. Shared code a consumer never calls goes
+under `internal`.
+
+A grammar directory holds one package when one is enough, as `json` does, and splits as it grows -- the YAML
+side arrives as a corpus and a generator. Package names stay grammar-prefixed (`jsoncorpus`, `yamlcorpus`,
+`yamlgen`) so that a name in a report or a commit says which grammar it belongs to.
 
 ## Reading an artifact
 

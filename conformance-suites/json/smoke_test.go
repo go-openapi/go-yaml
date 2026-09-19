@@ -6,7 +6,7 @@ package jsoncorpus_test
 import (
 	"testing"
 
-	"github.com/go-openapi/conformance-suites/jsoncorpus"
+	jsoncorpus "github.com/go-openapi/conformance-suites/json"
 )
 
 // TestTheGrammarCompiledIntoWhatItSays is the check that runs before the suite

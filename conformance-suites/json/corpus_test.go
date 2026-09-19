@@ -7,7 +7,7 @@ import (
 	"bytes"
 	"testing"
 
-	"github.com/go-openapi/conformance-suites/jsoncorpus"
+	jsoncorpus "github.com/go-openapi/conformance-suites/json"
 )
 
 // TestEveryEmittedDocumentIsValidJSON gates our own side.

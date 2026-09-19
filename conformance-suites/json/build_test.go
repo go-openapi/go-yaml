@@ -10,7 +10,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/go-openapi/conformance-suites/jsoncorpus"
+	jsoncorpus "github.com/go-openapi/conformance-suites/json"
 	"github.com/go-openapi/conformance-suites/stance"
 	"github.com/go-openapi/conformance-suites/suite"
 )
@@ -56,7 +56,7 @@ func TestTheStoredCorpusIsWhatTheOracleWouldSayNow(t *testing.T) {
 
 	t.Errorf("the stored corpus is not what the oracle says now (%s).\n"+
 		"Either the grammar changed, or the generator did. Look at which before regenerating:\n"+
-		"    go test -run TestRegenerate ./jsoncorpus/ -args -jsoncorpus.write",
+		"    go test -run TestRegenerate ./json/ -args -jsoncorpus.write",
 		firstDifference(want, got))
 }
 
