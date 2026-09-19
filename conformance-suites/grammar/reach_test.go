@@ -117,7 +117,7 @@ func TestTheUnreachableProductionsAreTheOnesNothingRefers(t *testing.T) {
 	var referred []string
 
 	for name := range unreachable {
-		if !contains(grammar.YAML.Unreferenced(), name) {
+		if !slices.Contains(grammar.YAML.Unreferenced(), name) {
 			referred = append(referred, name)
 		}
 	}
@@ -128,10 +128,6 @@ func TestTheUnreachableProductionsAreTheOnesNothingRefers(t *testing.T) {
 	if len(referred) > 0 {
 		t.Logf("referred to and still unreachable: %v", referred)
 	}
-}
-
-func contains(haystack []string, needle string) bool {
-	return slices.Contains(haystack, needle)
 }
 
 // everyEscape is one double-quoted scalar exercising every escape the grammar
