@@ -1,16 +1,15 @@
 // SPDX-FileCopyrightText: Copyright 2025 go-swagger maintainers
 // SPDX-License-Identifier: Apache-2.0
 
-package jsonspike_test
+package jsoncorpus_test
 
 import (
 	"bytes"
 	"slices"
 	"testing"
 
+	"github.com/go-openapi/conformance-suites/jsoncorpus"
 	"github.com/go-openapi/conformance-suites/stance"
-
-	"github.com/go-openapi/go-yaml/internal/testintegration/jsonspike"
 )
 
 // TestEveryEncodingShapeIsTaggedAsItWasMeant checks the generator and the
@@ -25,8 +24,8 @@ import (
 // Detection may find more than was intended -- a UTF-16 mark is also not valid
 // UTF-8, and saying so is right -- so the check is containment, not equality.
 func TestEveryEncodingShapeIsTaggedAsItWasMeant(t *testing.T) {
-	for _, shape := range jsonspike.EncodingShapes() {
-		got := jsonspike.Describe(shape.Name, shape.Src).Tags
+	for _, shape := range jsoncorpus.EncodingShapes() {
+		got := jsoncorpus.Describe(shape.Name, shape.Src).Tags
 
 		for _, want := range shape.Intent {
 			if !slices.Contains(got, want) {
@@ -44,7 +43,7 @@ func TestEveryEncodingShapeIsTaggedAsItWasMeant(t *testing.T) {
 // and a cross-product quietly yielding duplicates is how a corpus comes to
 // claim coverage it does not have.
 func TestEncodingShapesAreAllDifferent(t *testing.T) {
-	shapes := jsonspike.EncodingShapes()
+	shapes := jsoncorpus.EncodingShapes()
 	seen := make(map[string]string, len(shapes))
 
 	for _, shape := range shapes {
@@ -68,7 +67,7 @@ func TestEncodingShapesAreAllDifferent(t *testing.T) {
 // cross-product has a hole -- and a hole here is invisible, since no grammar
 // mentions a byte order mark and no coverage signal points at one.
 func TestTheEncodingShapesReachEveryMark(t *testing.T) {
-	shapes := jsonspike.EncodingShapes()
+	shapes := jsoncorpus.EncodingShapes()
 
 	for _, mark := range stance.Marks {
 		if !slices.ContainsFunc(shapes, func(s stance.Shape) bool {
@@ -88,15 +87,15 @@ func TestTheEncodingShapesReachEveryMark(t *testing.T) {
 func TestTheStanceDecidesEveryEncodingShape(t *testing.T) {
 	var undecided int
 
-	for _, shape := range jsonspike.EncodingShapes() {
-		doc := jsonspike.Describe(shape.Name, shape.Src)
+	for _, shape := range jsoncorpus.EncodingShapes() {
+		doc := jsoncorpus.Describe(shape.Name, shape.Src)
 
-		if out, why := jsonspike.DefaultLexer.Expect(doc); out == stance.Undecided {
+		if out, why := jsoncorpus.DefaultLexer.Expect(doc); out == stance.Undecided {
 			t.Errorf("%s cannot be scored: %s", shape.Name, why)
 
 			undecided++
 		}
 	}
 
-	t.Logf("%d shapes undecidable under %s", undecided, jsonspike.DefaultLexer.Name)
+	t.Logf("%d shapes undecidable under %s", undecided, jsoncorpus.DefaultLexer.Name)
 }

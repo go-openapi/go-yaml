@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: Copyright 2025 go-swagger maintainers
 // SPDX-License-Identifier: Apache-2.0
 
-package jsonspike_test
+package jsoncorpus_test
 
 import (
 	"os"
@@ -12,7 +12,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/go-openapi/go-yaml/internal/testintegration/jsonspike"
+	"github.com/go-openapi/conformance-suites/jsoncorpus"
 )
 
 // TestRecognizerAgreesWithJSONTestSuite scores the recognizer against every
@@ -54,7 +54,7 @@ func TestRecognizerAgreesWithJSONTestSuite(t *testing.T) {
 			t.Fatalf("cannot read %s: %v", name, rerr)
 		}
 
-		got := jsonspike.Text(src).OK
+		got := jsoncorpus.Text(src).OK
 
 		switch {
 		case strings.HasPrefix(name, "y_"):

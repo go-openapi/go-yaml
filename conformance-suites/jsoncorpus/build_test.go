@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: Copyright 2025 go-swagger maintainers
 // SPDX-License-Identifier: Apache-2.0
 
-package jsonspike_test
+package jsoncorpus_test
 
 import (
 	"bytes"
@@ -10,10 +10,9 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/go-openapi/conformance-suites/jsoncorpus"
 	"github.com/go-openapi/conformance-suites/stance"
 	"github.com/go-openapi/conformance-suites/suite"
-
-	"github.com/go-openapi/go-yaml/internal/testintegration/jsonspike"
 )
 
 const stored = "testdata/json-smoke.jsonl.gz"
@@ -37,7 +36,7 @@ func TestTheStoredCorpusIsWhatTheOracleWouldSayNow(t *testing.T) {
 	}
 
 	var built bytes.Buffer
-	if err := jsonspike.Smoke().Write(&built); err != nil {
+	if err := jsoncorpus.Smoke().Write(&built); err != nil {
 		t.Fatal(err)
 	}
 
@@ -57,7 +56,7 @@ func TestTheStoredCorpusIsWhatTheOracleWouldSayNow(t *testing.T) {
 
 	t.Errorf("the stored corpus is not what the oracle says now (%s).\n"+
 		"Either the grammar changed, or the generator did. Look at which before regenerating:\n"+
-		"    go test -run TestRegenerate ./internal/testintegration/jsonspike/ -args -jsonspike.write",
+		"    go test -run TestRegenerate ./jsoncorpus/ -args -jsoncorpus.write",
 		firstDifference(want, got))
 }
 
@@ -69,11 +68,11 @@ func TestTheStoredCorpusIsWhatTheOracleWouldSayNow(t *testing.T) {
 // TestTheStoredCorpusIsWhatTheOracleWouldSayNow incapable of ever failing.
 func TestRegenerate(t *testing.T) {
 	if !*writeCorpus {
-		t.Skip("pass -jsonspike.write to rewrite the stored corpus")
+		t.Skip("pass -jsoncorpus.write to rewrite the stored corpus")
 	}
 
 	var buf bytes.Buffer
-	if err := jsonspike.Smoke().Write(&buf); err != nil {
+	if err := jsoncorpus.Smoke().Write(&buf); err != nil {
 		t.Fatal(err)
 	}
 
@@ -88,19 +87,19 @@ func TestRegenerate(t *testing.T) {
 // artifact rather than a generator: a consumer reads it and scores against it
 // with no oracle, no generation and no fuzzing in the loop.
 func TestTheEmbeddedCorpusIsUsableWithNothingElse(t *testing.T) {
-	header, cases, err := jsonspike.SmokeSuite()
+	header, cases, err := jsoncorpus.SmokeSuite()
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	switch {
-	case header.Grammar != jsonspike.JSON.Name():
+	case header.Grammar != jsoncorpus.JSON.Name():
 		t.Errorf("the corpus was built against %q", header.Grammar)
-	case header.Digest != jsonspike.JSON.Digest():
+	case header.Digest != jsoncorpus.JSON.Digest():
 		t.Errorf("the corpus was built against a different grammar file:\n  stored %s\n  now    %s",
-			header.Digest, jsonspike.JSON.Digest())
-	case header.Generator != jsonspike.Generator:
-		t.Errorf("the corpus was built by %q, this is %q", header.Generator, jsonspike.Generator)
+			header.Digest, jsoncorpus.JSON.Digest())
+	case header.Generator != jsoncorpus.Generator:
+		t.Errorf("the corpus was built by %q, this is %q", header.Generator, jsoncorpus.Generator)
 	case len(cases) == 0:
 		t.Fatal("the corpus is empty")
 	}
@@ -135,7 +134,7 @@ func TestTheEmbeddedCorpusIsUsableWithNothingElse(t *testing.T) {
 // TestTheStanceCanScoreEveryStoredCase holds the corpus to the standard the
 // suite itself is held to: a case nobody can score is not a test.
 func TestTheStanceCanScoreEveryStoredCase(t *testing.T) {
-	header, cases, err := jsonspike.SmokeSuite()
+	header, cases, err := jsoncorpus.SmokeSuite()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -159,7 +158,7 @@ func TestTheStanceCanScoreEveryStoredCase(t *testing.T) {
 			VerdictAt:  suite.StageOf(c.VerdictAt),
 		}
 
-		if out, why := jsonspike.DefaultLexer.Expect(doc); out == stance.Undecided {
+		if out, why := jsoncorpus.DefaultLexer.Expect(doc); out == stance.Undecided {
 			undecided++
 
 			if undecided < 5 {
@@ -181,7 +180,7 @@ func TestTheStanceCanScoreEveryStoredCase(t *testing.T) {
 // grammar saw would drop every one of them, and the corpus would silently stop
 // saying anything about encoding.
 func TestTheEnumeratedShapesSurviveMinimizing(t *testing.T) {
-	_, cases, err := jsonspike.SmokeSuite()
+	_, cases, err := jsoncorpus.SmokeSuite()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -194,7 +193,7 @@ func TestTheEnumeratedShapesSurviveMinimizing(t *testing.T) {
 		}
 	}
 
-	if want := len(jsonspike.EncodingShapes()); found != want {
+	if want := len(jsoncorpus.EncodingShapes()); found != want {
 		t.Errorf("%d of %d enumerated shapes are in the corpus", found, want)
 	}
 }
@@ -214,7 +213,7 @@ func tagsOf(c suite.Case) []stance.Tag {
 // a tag belonging to a stage it never reaches, and reading that silence as
 // ignorance would report the lexer as incomplete for not having an opinion
 // about numbers it never converts.
-func known() []string { return jsonspike.Vocabulary().Tags() }
+func known() []string { return jsoncorpus.Vocabulary().Tags() }
 
 // firstDifference names the line two artifacts first disagree on, so that a
 // failure points at a case rather than at a byte count.

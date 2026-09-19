@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: Copyright 2025 go-swagger maintainers
 // SPDX-License-Identifier: Apache-2.0
 
-package jsonspike
+package jsoncorpus
 
 import (
 	"fmt"
@@ -20,7 +20,7 @@ import (
 // Bump it when the documents a seed produces change. A corpus whose generator
 // string no longer matches is not regenerable and has to be rebuilt rather
 // than diffed.
-const Generator = "jsonspike/1"
+const Generator = "jsoncorpus/1"
 
 // Build is the recipe for a corpus: how much to generate, and how much of it
 // to keep.

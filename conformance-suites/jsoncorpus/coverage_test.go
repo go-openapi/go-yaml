@@ -1,12 +1,12 @@
 // SPDX-FileCopyrightText: Copyright 2025 go-swagger maintainers
 // SPDX-License-Identifier: Apache-2.0
 
-package jsonspike_test
+package jsoncorpus_test
 
 import (
 	"testing"
 
-	"github.com/go-openapi/go-yaml/internal/testintegration/jsonspike"
+	"github.com/go-openapi/conformance-suites/jsoncorpus"
 )
 
 // TestWhatTheOfficialSuiteReaches measures how much of RFC 8259 the 318
@@ -17,14 +17,14 @@ import (
 // untouched, then "we wrote down the cases we thought of" has a measurable
 // ceiling, and generating against the grammar has somewhere to go.
 func TestWhatTheOfficialSuiteReaches(t *testing.T) {
-	cov := jsonspike.NewCoverage()
-	rec := jsonspike.NewRecognizer(1024)
+	cov := jsoncorpus.NewCoverage()
+	rec := jsoncorpus.NewRecognizer(1024)
 	rec.Cover(cov)
 
 	var n int
 
 	forEachFixture(t, func(_ *testing.T, _ string, src []byte) {
-		rec.Text(jsonspike.Normalize(src))
+		rec.Text(jsoncorpus.Normalize(src))
 		n++
 	})
 
@@ -41,19 +41,19 @@ func TestWhatTheOfficialSuiteReaches(t *testing.T) {
 // produced them, and why enumerating them by hand is not laziness but the only
 // thing that works.
 func TestTheEncodingShapesAddNoGrammarCoverage(t *testing.T) {
-	suite := jsonspike.NewCoverage()
-	rec := jsonspike.NewRecognizer(1024)
+	suite := jsoncorpus.NewCoverage()
+	rec := jsoncorpus.NewRecognizer(1024)
 	rec.Cover(suite)
 
 	forEachFixture(t, func(_ *testing.T, _ string, src []byte) {
-		rec.Text(jsonspike.Normalize(src))
+		rec.Text(jsoncorpus.Normalize(src))
 	})
 
-	shapes := jsonspike.NewCoverage()
+	shapes := jsoncorpus.NewCoverage()
 	rec.Cover(shapes)
 
-	for _, shape := range jsonspike.EncodingShapes() {
-		rec.Text(jsonspike.Normalize(shape.Src))
+	for _, shape := range jsoncorpus.EncodingShapes() {
+		rec.Text(jsoncorpus.Normalize(shape.Src))
 	}
 
 	if shapes.AddsTo(suite) {
@@ -72,7 +72,7 @@ func TestTheEncodingShapesAddNoGrammarCoverage(t *testing.T) {
 // where the analysis earns its keep and JSON is where it can be checked by
 // inspection, which is the only reason this is worth asserting.
 func TestTheDenominatorIsTheRuleCount(t *testing.T) {
-	reach := jsonspike.JSON.Reach("JSON-text", "")
+	reach := jsoncorpus.JSON.Reach("JSON-text", "")
 
 	if reach.Buckets() != reach.Rules() {
 		t.Errorf("%d buckets over %d productions, in a grammar with one context",

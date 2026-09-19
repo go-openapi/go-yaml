@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: Copyright 2025 go-swagger maintainers
 // SPDX-License-Identifier: Apache-2.0
 
-package jsonspike_test
+package jsoncorpus_test
 
 import (
 	"encoding/base64"
@@ -10,9 +10,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/go-openapi/conformance-suites/jsoncorpus"
 	"github.com/go-openapi/conformance-suites/stance"
-
-	"github.com/go-openapi/go-yaml/internal/testintegration/jsonspike"
 )
 
 // TestFreezeCorpus writes a generated corpus out for replay by a parser this
@@ -39,11 +38,11 @@ func TestFreezeCorpus(t *testing.T) {
 	if v := os.Getenv("CORPUSMUT"); v != "" {
 		mut, _ = strconv.Atoi(v)
 	}
-	entries := jsonspike.Generate(1, docs, mut)
+	entries := jsoncorpus.Generate(1, docs, mut)
 
 	var b strings.Builder
 	for _, e := range entries {
-		want, _ := jsonspike.DefaultLexer.Expect(e.Doc)
+		want, _ := jsoncorpus.DefaultLexer.Expect(e.Doc)
 		if want == stance.Undecided {
 			continue
 		}

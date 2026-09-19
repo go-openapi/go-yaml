@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: Copyright 2025 go-swagger maintainers
 // SPDX-License-Identifier: Apache-2.0
 
-package jsonspike
+package jsoncorpus
 
 import (
 	"encoding/json"
@@ -180,7 +180,7 @@ func literalBytesOfTheGrammar() []byte {
 func rawGrammar() map[string]any {
 	var raw map[string]any
 	if err := json.Unmarshal(spec, &raw); err != nil {
-		panic("jsonspike: the embedded grammar does not decode: " + err.Error())
+		panic("jsoncorpus: the embedded grammar does not decode: " + err.Error())
 	}
 
 	return raw

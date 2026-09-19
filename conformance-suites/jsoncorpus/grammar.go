@@ -1,22 +1,7 @@
 // SPDX-FileCopyrightText: Copyright 2025 go-swagger maintainers
 // SPDX-License-Identifier: Apache-2.0
 
-// Package jsonspike is the corpus idea, rehearsed on a grammar small enough to
-// check by eye.
-//
-// JSON is the right rehearsal for three reasons. Its grammar has fifteen-odd
-// productions and no propagated parameters, so the coverage vector collapses
-// from production x context to production alone and the selection idea can be
-// tested without the hardest open question in the YAML design. Its official
-// test suite is the product of a deliberate hunt for parser disagreements
-// across dozens of implementations, so beating it means something. And there is
-// exactly one bug that suite missed in our own lexer, which gives the spike a
-// falsifiable question rather than a demonstration.
-//
-// Nothing here depends on YAML. That is deliberate: the recognizer, the
-// coverage hook and the corpus builder are expected to move to their own repo,
-// and this package is the proof that the grammar package carries no YAML in it.
-package jsonspike
+package jsoncorpus
 
 import (
 	"github.com/go-openapi/conformance-suites/grammar"

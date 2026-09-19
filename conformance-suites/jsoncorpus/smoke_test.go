@@ -1,19 +1,19 @@
 // SPDX-FileCopyrightText: Copyright 2025 go-swagger maintainers
 // SPDX-License-Identifier: Apache-2.0
 
-package jsonspike_test
+package jsoncorpus_test
 
 import (
 	"testing"
 
-	"github.com/go-openapi/go-yaml/internal/testintegration/jsonspike"
+	"github.com/go-openapi/conformance-suites/jsoncorpus"
 )
 
 // TestTheGrammarCompiledIntoWhatItSays is the check that runs before the suite
 // score, so that a grammar which fails to compile at all says so in one line
 // rather than as three hundred disagreements.
 func TestTheGrammarCompiledIntoWhatItSays(t *testing.T) {
-	if got := jsonspike.JSON.Rules(); got == 0 {
+	if got := jsoncorpus.JSON.Rules(); got == 0 {
 		t.Fatal("the grammar compiled to no productions")
 	}
 
@@ -42,7 +42,7 @@ func TestTheGrammarCompiledIntoWhatItSays(t *testing.T) {
 		{"\"\t\"", false, "a raw control character in a string"},
 		{`-0.5e+10`, true, "every optional part of a number at once"},
 	} {
-		if got := jsonspike.Text([]byte(c.src)).OK; got != c.want {
+		if got := jsoncorpus.Text([]byte(c.src)).OK; got != c.want {
 			t.Errorf("%-12q want %v, got %v -- %s", c.src, c.want, got, c.why)
 		}
 	}

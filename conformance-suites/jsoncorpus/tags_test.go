@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: Copyright 2025 go-swagger maintainers
 // SPDX-License-Identifier: Apache-2.0
 
-package jsonspike_test
+package jsoncorpus_test
 
 import (
 	"os"
@@ -10,9 +10,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/go-openapi/conformance-suites/jsoncorpus"
 	"github.com/go-openapi/conformance-suites/stance"
-
-	"github.com/go-openapi/go-yaml/internal/testintegration/jsonspike"
 )
 
 // TestEveryImplementationDefinedCaseIsTagged holds the tag vocabulary to the
@@ -29,7 +28,7 @@ func TestEveryImplementationDefinedCaseIsTagged(t *testing.T) {
 			return
 		}
 
-		if tags := jsonspike.Describe(short, src).Tags; len(tags) == 0 {
+		if tags := jsoncorpus.Describe(short, src).Tags; len(tags) == 0 {
 			t.Errorf("%s is implementation-defined and carries no tag, so it will be scored as settled", short)
 		}
 	})
@@ -67,7 +66,7 @@ func TestNoSettledCaseIsTaggedWithoutCause(t *testing.T) {
 			return
 		}
 
-		if tags := jsonspike.Describe(short, src).Tags; len(tags) > 0 {
+		if tags := jsoncorpus.Describe(short, src).Tags; len(tags) > 0 {
 			unexpected = append(unexpected, short+" -> "+join(tags))
 		}
 	})

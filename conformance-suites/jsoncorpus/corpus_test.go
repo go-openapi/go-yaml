@@ -1,27 +1,27 @@
 // SPDX-FileCopyrightText: Copyright 2025 go-swagger maintainers
 // SPDX-License-Identifier: Apache-2.0
 
-package jsonspike_test
+package jsoncorpus_test
 
 import (
 	"bytes"
 	"testing"
 
-	"github.com/go-openapi/go-yaml/internal/testintegration/jsonspike"
+	"github.com/go-openapi/conformance-suites/jsoncorpus"
 )
 
 // TestEveryEmittedDocumentIsValidJSON gates our own side.
 //
 // Being valid is a property of what the generator writes, not a question asked
-// of it: every document comes from a [jsonspike.Value] laid out in a
-// [jsonspike.Style], so the emitter producing something the grammar refuses is
+// of it: every document comes from a [jsoncorpus.Value] laid out in a
+// [jsoncorpus.Style], so the emitter producing something the grammar refuses is
 // a defect here and never news about a parser.
 //
 // This is also what makes the mutation hunt mean anything. A mutant is
 // interesting because a valid document was broken; if the original was already
 // invalid, the finding says nothing.
 func TestEveryEmittedDocumentIsValidJSON(t *testing.T) {
-	entries := jsonspike.Generate(7, 400, 0)
+	entries := jsoncorpus.Generate(7, 400, 0)
 
 	if len(entries) == 0 {
 		t.Fatal("the generator produced nothing")
@@ -44,8 +44,8 @@ func TestEveryEmittedDocumentIsValidJSON(t *testing.T) {
 // reportable: "seed 1, document 1062, mutant 16" has to name the same bytes
 // tomorrow.
 func TestGeneratingIsReproducible(t *testing.T) {
-	first := jsonspike.Generate(3, 60, 4)
-	again := jsonspike.Generate(3, 60, 4)
+	first := jsoncorpus.Generate(3, 60, 4)
+	again := jsoncorpus.Generate(3, 60, 4)
 
 	if len(first) != len(again) {
 		t.Fatalf("the same seed produced %d entries and then %d", len(first), len(again))
@@ -60,7 +60,7 @@ func TestGeneratingIsReproducible(t *testing.T) {
 		}
 	}
 
-	if other := jsonspike.Generate(4, 60, 4); len(other) == len(first) &&
+	if other := jsoncorpus.Generate(4, 60, 4); len(other) == len(first) &&
 		bytes.Equal(other[len(other)-1].Doc.Src, first[len(first)-1].Doc.Src) {
 		t.Error("two different seeds produced the same corpus")
 	}
@@ -74,8 +74,8 @@ func TestGeneratingIsReproducible(t *testing.T) {
 // survived, the mutation catalog would be too gentle to be worth running, and
 // that is a failure the hunt itself would report as "no findings".
 func TestMutationProducesDocumentsTheGrammarRefuses(t *testing.T) {
-	entries := jsonspike.Generate(11, 200, 8)
-	broken := jsonspike.Broken(entries)
+	entries := jsoncorpus.Generate(11, 200, 8)
+	broken := jsoncorpus.Broken(entries)
 
 	switch {
 	case broken == 0:
@@ -93,19 +93,19 @@ func TestMutationProducesDocumentsTheGrammarRefuses(t *testing.T) {
 func TestEveryMutationIsUsed(t *testing.T) {
 	used := make(map[string]int)
 
-	for _, e := range jsonspike.Generate(13, 300, 8) {
+	for _, e := range jsoncorpus.Generate(13, 300, 8) {
 		if e.Mutation != "" {
 			used[e.Mutation]++
 		}
 	}
 
-	for _, name := range jsonspike.MutationNames() {
+	for _, name := range jsoncorpus.MutationNames() {
 		if used[name] == 0 {
 			t.Errorf("%q never produced a document the grammar refuses", name)
 		}
 	}
 
-	for _, name := range jsonspike.MutationNames() {
+	for _, name := range jsoncorpus.MutationNames() {
 		t.Logf("%5d  %s", used[name], name)
 	}
 }

@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: Copyright 2025 go-swagger maintainers
 // SPDX-License-Identifier: Apache-2.0
 
-package jsonspike_test
+package jsoncorpus_test
 
 import (
 	"os"
@@ -11,10 +11,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/go-openapi/conformance-suites/jsoncorpus"
 	"github.com/go-openapi/conformance-suites/stance"
 	"github.com/go-openapi/conformance-suites/suite"
-
-	"github.com/go-openapi/go-yaml/internal/testintegration/jsonspike"
 )
 
 // measuredDefaultLexer is what the default lexer actually does with the
@@ -100,7 +99,7 @@ func TestTheStanceDescribesTheRealLexer(t *testing.T) {
 		}
 
 		short := strings.TrimSuffix(name, ".json")
-		doc := jsonspike.Describe(short, src)
+		doc := jsoncorpus.Describe(short, src)
 		docs = append(docs, doc)
 
 		want, ok := realBehaviour(short)
@@ -108,7 +107,7 @@ func TestTheStanceDescribesTheRealLexer(t *testing.T) {
 			t.Fatalf("no measurement for %s", short)
 		}
 
-		got, why := jsonspike.DefaultLexer.Expect(doc)
+		got, why := jsoncorpus.DefaultLexer.Expect(doc)
 		switch {
 		case got == stance.Undecided:
 			unknown = append(unknown, short+" -- "+why)
@@ -122,7 +121,7 @@ func TestTheStanceDescribesTheRealLexer(t *testing.T) {
 
 	t.Logf("%d of %d documents predicted, %d undecidable under this stance", scored, len(docs), len(unknown))
 
-	if missing := jsonspike.DefaultLexer.Undeclared(docs); len(missing) > 0 {
+	if missing := jsoncorpus.DefaultLexer.Undeclared(docs); len(missing) > 0 {
 		t.Errorf("the stance says nothing about %v, so those documents go unscored", missing)
 	}
 
@@ -165,7 +164,7 @@ func realBehaviour(short string) (stance.Outcome, bool) {
 // it is not measured against anything, because there is nothing here to measure
 // it against. What is being demonstrated is the mechanism, not a parser.
 func TestOneCorpusScoresTwoStages(t *testing.T) {
-	_, cases, err := jsonspike.SmokeSuite()
+	_, cases, err := jsoncorpus.SmokeSuite()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -174,15 +173,15 @@ func TestOneCorpusScoresTwoStages(t *testing.T) {
 		Name:    "an illustrative consumer that reads numbers into float64",
 		Because: "demonstrates a construct-stage position; not measured against any parser",
 		At:      stance.Construct,
-		Speaks:  jsonspike.Vocabulary(),
+		Speaks:  jsoncorpus.Vocabulary(),
 		Stands: map[stance.Tag]stance.Stand{
-			stance.TagNotUTF8:             stance.Refuses,
-			stance.TagUTF16:               stance.Refuses,
-			stance.TagUTF32:               stance.Refuses,
-			stance.TagBOM:                 stance.Accepts,
-			jsonspike.TagLoneSurrogate:    stance.Refuses,
-			jsonspike.TagDeepNesting:      stance.Accepts,
-			jsonspike.TagNumberOutOfRange: stance.Refuses,
+			stance.TagNotUTF8:              stance.Refuses,
+			stance.TagUTF16:                stance.Refuses,
+			stance.TagUTF32:                stance.Refuses,
+			stance.TagBOM:                  stance.Accepts,
+			jsoncorpus.TagLoneSurrogate:    stance.Refuses,
+			jsoncorpus.TagDeepNesting:      stance.Accepts,
+			jsoncorpus.TagNumberOutOfRange: stance.Refuses,
 		},
 	}
 
@@ -198,11 +197,11 @@ func TestOneCorpusScoresTwoStages(t *testing.T) {
 			VerdictAt:  suite.StageOf(c.VerdictAt),
 		}
 
-		if !hasTag(doc.Tags, jsonspike.TagNumberOutOfRange) {
+		if !hasTag(doc.Tags, jsoncorpus.TagNumberOutOfRange) {
 			continue
 		}
 
-		if out, _ := jsonspike.DefaultLexer.Expect(doc); out == stance.Accept {
+		if out, _ := jsoncorpus.DefaultLexer.Expect(doc); out == stance.Accept {
 			reachesLexer++
 		}
 
