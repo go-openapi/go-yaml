@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"math/rand/v2"
 
-	"github.com/go-openapi/go-yaml/internal/testintegration/stance"
+	"github.com/go-openapi/conformance-suites/stance"
 )
 
 // Entry is one corpus document with everything a replay needs and nothing a

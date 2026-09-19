@@ -3,7 +3,7 @@
 
 package yamlcorpus
 
-import "github.com/go-openapi/go-yaml/internal/testintegration/stance"
+import "github.com/go-openapi/conformance-suites/stance"
 
 // Directives: the prelude, and the four separate errors the spec states about
 // it.

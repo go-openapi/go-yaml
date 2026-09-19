@@ -8,8 +8,8 @@ import (
 	"io"
 	"slices"
 
-	"github.com/go-openapi/go-yaml/internal/testintegration/stance"
-	"github.com/go-openapi/go-yaml/internal/testintegration/suite"
+	"github.com/go-openapi/conformance-suites/stance"
+	"github.com/go-openapi/conformance-suites/suite"
 
 	_ "embed"
 )

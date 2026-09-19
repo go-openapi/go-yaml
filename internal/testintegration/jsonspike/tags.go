@@ -12,7 +12,7 @@ import (
 	"unicode/utf16"
 	"unicode/utf8"
 
-	"github.com/go-openapi/go-yaml/internal/testintegration/stance"
+	"github.com/go-openapi/conformance-suites/stance"
 )
 
 // The implementation-defined properties of a JSON document that are peculiar to

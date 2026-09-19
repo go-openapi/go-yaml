@@ -11,9 +11,10 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/go-openapi/conformance-suites/stance"
+	"github.com/go-openapi/conformance-suites/suite"
+
 	"github.com/go-openapi/go-yaml/internal/testintegration/jsonspike"
-	"github.com/go-openapi/go-yaml/internal/testintegration/stance"
-	"github.com/go-openapi/go-yaml/internal/testintegration/suite"
 )
 
 // measuredDefaultLexer is what the default lexer actually does with the

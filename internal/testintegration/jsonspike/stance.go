@@ -7,7 +7,7 @@ import (
 	"bytes"
 	"unicode/utf8"
 
-	"github.com/go-openapi/go-yaml/internal/testintegration/stance"
+	"github.com/go-openapi/conformance-suites/stance"
 )
 
 // Normalize returns the bytes a parser that tolerates the losslessly

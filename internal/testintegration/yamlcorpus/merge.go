@@ -3,7 +3,7 @@
 
 package yamlcorpus
 
-import "github.com/go-openapi/go-yaml/internal/testintegration/stance"
+import "github.com/go-openapi/conformance-suites/stance"
 
 // Merge keys: a construct no version of the specification we test against
 // defines.

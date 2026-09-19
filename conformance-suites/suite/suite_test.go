@@ -7,7 +7,7 @@ import (
 	"bytes"
 	"testing"
 
-	"github.com/go-openapi/go-yaml/internal/testintegration/suite"
+	"github.com/go-openapi/conformance-suites/suite"
 )
 
 func sample() (suite.Header, []suite.Case) {

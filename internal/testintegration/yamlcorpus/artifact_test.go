@@ -12,8 +12,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/go-openapi/conformance-suites/suite"
+
 	"github.com/go-openapi/go-yaml/internal/testintegration/grammar"
-	"github.com/go-openapi/go-yaml/internal/testintegration/suite"
 	"github.com/go-openapi/go-yaml/internal/testintegration/yamlcorpus"
 )
 

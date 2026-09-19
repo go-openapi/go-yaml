@@ -4,7 +4,7 @@
 package jsonspike
 
 import (
-	"github.com/go-openapi/go-yaml/internal/testintegration/stance"
+	"github.com/go-openapi/conformance-suites/stance"
 )
 
 // around is what JSON contributes to the shared encoding shapes: a small valid

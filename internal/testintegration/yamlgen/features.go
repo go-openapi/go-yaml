@@ -8,7 +8,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/go-openapi/go-yaml/internal/testintegration/stance"
+	"github.com/go-openapi/conformance-suites/stance"
 )
 
 // What a document contains, recorded as it is written.

@@ -9,9 +9,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/go-openapi/conformance-suites/stance"
 	"pgregory.net/rapid"
 
-	"github.com/go-openapi/go-yaml/internal/testintegration/stance"
 	"github.com/go-openapi/go-yaml/internal/testintegration/yamlgen"
 )
 

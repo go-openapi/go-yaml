@@ -8,8 +8,9 @@ import (
 	"slices"
 	"testing"
 
+	"github.com/go-openapi/conformance-suites/stance"
+
 	"github.com/go-openapi/go-yaml/internal/testintegration/jsonspike"
-	"github.com/go-openapi/go-yaml/internal/testintegration/stance"
 )
 
 // TestEveryEncodingShapeIsTaggedAsItWasMeant checks the generator and the

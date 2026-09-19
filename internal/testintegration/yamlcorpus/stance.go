@@ -6,7 +6,8 @@ package yamlcorpus
 import (
 	"maps"
 
-	"github.com/go-openapi/go-yaml/internal/testintegration/stance"
+	"github.com/go-openapi/conformance-suites/stance"
+
 	"github.com/go-openapi/go-yaml/internal/testintegration/yamlgen"
 )
 

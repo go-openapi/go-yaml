@@ -13,11 +13,11 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/go-openapi/conformance-suites/stance"
 	"github.com/go-openapi/testify/v2/assert"
 	"github.com/go-openapi/testify/v2/require"
 
 	"github.com/go-openapi/go-yaml/codec"
-	"github.com/go-openapi/go-yaml/internal/testintegration/stance"
 	"github.com/go-openapi/go-yaml/internal/testintegration/yamlcorpus"
 	"github.com/go-openapi/go-yaml/internal/testintegration/yamlgen"
 )

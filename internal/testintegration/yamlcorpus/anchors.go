@@ -14,7 +14,7 @@ import (
 	"fmt"
 	"maps"
 
-	"github.com/go-openapi/go-yaml/internal/testintegration/stance"
+	"github.com/go-openapi/conformance-suites/stance"
 )
 
 // Around is what a generated document contributes to the anchor and alias

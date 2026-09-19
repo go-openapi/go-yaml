@@ -7,7 +7,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/go-openapi/go-yaml/internal/testintegration/stance"
+	"github.com/go-openapi/conformance-suites/stance"
 )
 
 // SpecsFor builds an artifact's vocabulary from a language's tags and rules,

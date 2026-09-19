@@ -9,8 +9,9 @@ import (
 	"strconv"
 	"testing"
 
+	"github.com/go-openapi/conformance-suites/stance"
+
 	"github.com/go-openapi/go-yaml/internal/testintegration/grammar"
-	"github.com/go-openapi/go-yaml/internal/testintegration/stance"
 	"github.com/go-openapi/go-yaml/internal/testintegration/yamlcorpus"
 )
 

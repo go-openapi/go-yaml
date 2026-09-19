@@ -3,7 +3,7 @@
 
 package yamlcorpus
 
-import "github.com/go-openapi/go-yaml/internal/testintegration/stance"
+import "github.com/go-openapi/conformance-suites/stance"
 
 // Unique keys: the rule that needs resolution rather than spelling.
 //

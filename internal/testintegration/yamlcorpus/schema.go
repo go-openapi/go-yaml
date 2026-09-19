@@ -6,7 +6,7 @@ package yamlcorpus
 import (
 	"fmt"
 
-	"github.com/go-openapi/go-yaml/internal/testintegration/stance"
+	"github.com/go-openapi/conformance-suites/stance"
 )
 
 // Schema resolution: what a plain scalar means.

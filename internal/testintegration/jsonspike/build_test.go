@@ -10,9 +10,10 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/go-openapi/conformance-suites/stance"
+	"github.com/go-openapi/conformance-suites/suite"
+
 	"github.com/go-openapi/go-yaml/internal/testintegration/jsonspike"
-	"github.com/go-openapi/go-yaml/internal/testintegration/stance"
-	"github.com/go-openapi/go-yaml/internal/testintegration/suite"
 )
 
 const stored = "testdata/json-smoke.jsonl.gz"

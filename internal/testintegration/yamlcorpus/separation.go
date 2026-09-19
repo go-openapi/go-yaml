@@ -3,7 +3,7 @@
 
 package yamlcorpus
 
-import "github.com/go-openapi/go-yaml/internal/testintegration/stance"
+import "github.com/go-openapi/conformance-suites/stance"
 
 // SeparationShapes records where a tab may stand and where it may not.
 //

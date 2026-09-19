@@ -3,7 +3,7 @@
 
 package yamlcorpus
 
-import "github.com/go-openapi/go-yaml/internal/testintegration/stance"
+import "github.com/go-openapi/conformance-suites/stance"
 
 // Documents whose only job is to enter a production nothing else enters.
 //

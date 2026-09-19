@@ -7,7 +7,8 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/go-openapi/go-yaml/internal/testintegration/suite"
+	"github.com/go-openapi/conformance-suites/suite"
+
 	"github.com/go-openapi/go-yaml/internal/testintegration/yamlcorpus"
 	"github.com/go-openapi/go-yaml/internal/testintegration/yamlgen"
 )

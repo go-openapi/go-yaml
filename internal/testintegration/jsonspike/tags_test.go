@@ -10,8 +10,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/go-openapi/conformance-suites/stance"
+
 	"github.com/go-openapi/go-yaml/internal/testintegration/jsonspike"
-	"github.com/go-openapi/go-yaml/internal/testintegration/stance"
 )
 
 // TestEveryImplementationDefinedCaseIsTagged holds the tag vocabulary to the
