@@ -524,7 +524,7 @@ s:
 		t.Run(fmt.Sprintf("path.ReadNode %s path %s", test.name, test.path), func(t *testing.T) {
 			n, err := path.ReadNode(strings.NewReader(test.src))
 			if err != nil {
-				t.Fatal("expected error", err)
+				t.Fatal(err)
 			}
 			var v interface{}
 			err = yaml.Unmarshal([]byte(n.String()), &v)
