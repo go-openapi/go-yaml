@@ -357,12 +357,8 @@ a.b.c:
 					t.Fatalf("%+v", err)
 				}
 			}
-			file, err := parser.ParseBytes([]byte(test.src))
-			if err != nil {
-				t.Fatal(err)
-			}
 			var v interface{}
-			if err := path.Read(file, &v); err != nil {
+			if err := path.Read(strings.NewReader(test.src), &v); err != nil {
 				t.Fatalf("%+v", err)
 			}
 			if v != test.expected {
@@ -388,12 +384,8 @@ func TestPath_Invalid(t *testing.T) {
 			t.Fatal(err)
 		}
 		t.Run("path.Read", func(t *testing.T) {
-			file, err := parser.ParseBytes([]byte(test.src))
-			if err != nil {
-				t.Fatal(err)
-			}
 			var v interface{}
-			err = path.Read(file, &v)
+			err := path.Read(strings.NewReader(test.src), &v)
 			if err == nil {
 				t.Fatal("expected error")
 			}
@@ -402,11 +394,7 @@ func TestPath_Invalid(t *testing.T) {
 			}
 		})
 		t.Run("path.ReadNode", func(t *testing.T) {
-			file, err := parser.ParseBytes([]byte(test.src))
-			if err != nil {
-				t.Fatal(err)
-			}
-			_, err = path.ReadNode(file)
+			_, err := path.ReadNode(strings.NewReader(test.src))
 			if err == nil {
 				t.Fatal("expected error")
 			}
@@ -534,11 +522,7 @@ s:
 			t.Fatal(err)
 		}
 		t.Run(fmt.Sprintf("path.ReadNode %s path %s", test.name, test.path), func(t *testing.T) {
-			file, err := parser.ParseBytes([]byte(test.src))
-			if err != nil {
-				t.Fatal(err)
-			}
-			n, err := path.ReadNode(file)
+			n, err := path.ReadNode(strings.NewReader(test.src))
 			if err != nil {
 				t.Fatal("expected error", err)
 			}
