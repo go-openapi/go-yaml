@@ -45,6 +45,12 @@ func refuseDuplicateKeys(n ast.Node) error {
 // records a key before the value under it is handed over, so the record of a
 // repeat is there by then -- even for a key under an anchor, a tag or a "?",
 // which goes over before the parse has named it.
+//
+// A key the parse can name only once the entry is built records its repeat
+// after the value has gone over, and the entry after it would take the drop.
+// Those are the collection keys, and neither converter reads one: both parse
+// under parser.WithJSONCompatible, which refuses a sequence or a mapping
+// standing as a key.
 func newAllowedRepeat(node *ast.MappingNode, seen *int) bool {
 	if node == nil {
 		return false
