@@ -197,7 +197,7 @@ func TestOneCorpusScoresTwoStages(t *testing.T) {
 			VerdictAt:  suite.StageOf(c.VerdictAt),
 		}
 
-		if !hasTag(doc.Tags, jsoncorpus.TagNumberOutOfRange) {
+		if !slices.Contains(doc.Tags, jsoncorpus.TagNumberOutOfRange) {
 			continue
 		}
 
@@ -221,8 +221,4 @@ func TestOneCorpusScoresTwoStages(t *testing.T) {
 
 	t.Logf("%d cases are accepted by a lexer and refused by a converter, from one corpus and one set of bytes",
 		reachesLexer)
-}
-
-func hasTag(tags []stance.Tag, want stance.Tag) bool {
-	return slices.Contains(tags, want)
 }
