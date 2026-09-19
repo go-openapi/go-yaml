@@ -12,10 +12,10 @@ import (
 	"slices"
 	"unicode/utf8"
 
+	"github.com/go-openapi/conformance-suites/grammar"
 	"github.com/go-openapi/conformance-suites/stance"
 	"github.com/go-openapi/conformance-suites/suite"
 
-	"github.com/go-openapi/go-yaml/internal/testintegration/grammar"
 	"github.com/go-openapi/go-yaml/internal/testintegration/yamlgen"
 
 	_ "embed"

@@ -19,7 +19,7 @@
 package jsonspike
 
 import (
-	"github.com/go-openapi/go-yaml/internal/testintegration/grammar"
+	"github.com/go-openapi/conformance-suites/grammar"
 
 	_ "embed"
 )

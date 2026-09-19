@@ -7,10 +7,10 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/go-openapi/conformance-suites/grammar"
 	"github.com/go-openapi/conformance-suites/stance"
 
 	yaml "github.com/go-openapi/go-yaml"
-	"github.com/go-openapi/go-yaml/internal/testintegration/grammar"
 	"github.com/go-openapi/go-yaml/internal/testintegration/yamlcorpus"
 )
 

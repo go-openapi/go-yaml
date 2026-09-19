@@ -20,8 +20,14 @@ different job, and it gets a module of its own.
 |---|---|
 | `suite` | the on-disk form of a corpus: `Reader`, `Writer`, `Header`, `Case`, `Meaning` |
 | `stance` | the vocabulary a corpus is labelled with: `Tag`, `Stage`, `Stand`, `Table`, `Rules`, `Shape` |
+| `grammar` | the recognizer: a compiler from a published grammar, and the YAML 1.2 productions |
+| `internal/yamltestsuite` | the vendored YAML Test Suite, read by the recognizer's calibration tests |
 
-Neither imports anything outside the standard library.
+`suite` and `stance` import nothing outside the standard library. `grammar` adds the test framework and
+nothing else.
+
+The vendored fixtures come from `yaml/yaml-test-suite` and `go-yaml` vendors them too, so a version bump
+upstream touches both copies.
 
 ## Reading an artifact
 

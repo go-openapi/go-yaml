@@ -6,9 +6,9 @@ package yamlcorpus_test
 import (
 	"testing"
 
+	"github.com/go-openapi/conformance-suites/grammar"
 	"github.com/go-openapi/conformance-suites/stance"
 
-	"github.com/go-openapi/go-yaml/internal/testintegration/grammar"
 	"github.com/go-openapi/go-yaml/internal/testintegration/yamlcorpus"
 )
 

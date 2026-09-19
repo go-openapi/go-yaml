@@ -65,7 +65,7 @@ linters:
         text: "G115:"
       # The conformance harness's numbers are generator data -- random-draw bounds, Unicode block ranges, the grammar's
       # context ids, corpus tiers -- and not tunables a name would explain.
-      - path: internal/testintegration/
+      - path: (internal/testintegration|conformance-suites)/
         linters:
           - mnd
       # YAML fixtures repeat words on purpose ("hello:\n  hello:", "[x, x, x]").
