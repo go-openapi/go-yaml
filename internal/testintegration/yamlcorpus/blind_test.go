@@ -174,7 +174,7 @@ func TestBlindReplay(t *testing.T) {
 			continue
 		}
 
-		if got, merr := json.Marshal(yamlgen.NamedKeys(value)); merr != nil || !bytes.Equal(got, c.Meaning.JSON) {
+		if got, merr := yamlgen.MeaningJSON(value); merr != nil || !bytes.Equal(got, c.Meaning.JSON) {
 			note("the value differs", c)
 		}
 	}

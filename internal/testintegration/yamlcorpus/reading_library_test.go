@@ -5,7 +5,6 @@ package yamlcorpus_test
 
 import (
 	"bytes"
-	"encoding/json"
 	"strings"
 	"testing"
 
@@ -147,7 +146,7 @@ func TestTheLibraryMeansWhatTheCorpusSaysUnderEachReading(t *testing.T) {
 
 			// Named as the corpus names each key: a mapping with a key that is
 			// not a string decodes to a map[any]any, which JSON cannot write.
-			encoded, err := json.Marshal(yamlgen.NamedKeys(got))
+			encoded, err := yamlgen.MeaningJSON(got)
 			if err != nil {
 				t.Errorf("%s: %s read something JSON cannot write: %v", c.Name, table.Name, err)
 

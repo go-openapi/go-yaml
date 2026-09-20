@@ -243,7 +243,7 @@ func meaningOfEntry(e Entry, wellFormed bool) *suite.Meaning {
 	// not a string decodes to a map[any]any, which encoding/json refuses, and
 	// the corpus names each key as KeyText does.
 	if e.Means != nil && wellFormed {
-		encoded, err := json.Marshal(yamlgen.NamedKeys(e.Means))
+		encoded, err := yamlgen.MeaningJSON(e.Means)
 		if err != nil {
 			return nil
 		}
@@ -255,7 +255,7 @@ func meaningOfEntry(e Entry, wellFormed bool) *suite.Meaning {
 		return nil
 	}
 
-	encoded, err := json.Marshal(yamlgen.NamedKeys(e.Value.Decoded()))
+	encoded, err := yamlgen.MeaningJSON(e.Value.Decoded())
 	if err != nil {
 		return nil
 	}
@@ -277,7 +277,7 @@ func readingsOfEntry(e Entry, core *suite.Meaning) []suite.Meaning {
 	out := []suite.Meaning{*core}
 
 	for _, name := range slices.Sorted(maps.Keys(e.Readings)) {
-		encoded, err := json.Marshal(yamlgen.NamedKeys(e.Readings[name]))
+		encoded, err := yamlgen.MeaningJSON(e.Readings[name])
 		if err != nil {
 			return nil
 		}

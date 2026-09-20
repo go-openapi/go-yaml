@@ -75,7 +75,7 @@ func TestEveryStatedMeaningIsWhatTheLibraryReads(t *testing.T) {
 						return
 					}
 
-					encoded, merr := json.Marshal(yamlgen.NamedKeys(got))
+					encoded, merr := yamlgen.MeaningJSON(got)
 					if merr != nil || string(encoded) != string(want) {
 						t.Logf("still differs -- %q reads %s where the corpus says %s",
 							s.Src, encoded, want)
@@ -92,7 +92,7 @@ func TestEveryStatedMeaningIsWhatTheLibraryReads(t *testing.T) {
 
 				require.NoErrorf(t, readErr, "the corpus states a meaning for %q and the library refuses it", s.Src)
 
-				encoded, merr := json.Marshal(yamlgen.NamedKeys(got))
+				encoded, merr := yamlgen.MeaningJSON(got)
 				require.NoError(t, merr)
 				assert.Equalf(t, string(want), string(encoded),
 					"%q: the corpus states what the specification settles, so the library is what moved", s.Src)

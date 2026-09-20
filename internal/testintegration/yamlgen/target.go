@@ -4,6 +4,7 @@
 package yamlgen
 
 import (
+	"encoding/json"
 	"fmt"
 	"math"
 	"math/big"
@@ -12,6 +13,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/go-openapi/go-yaml/codec"
 )
 
 // The Go type a document is read into, built from the value the document was
@@ -480,4 +483,57 @@ func keyString(v reflect.Value) string {
 	}
 
 	return strconv.FormatFloat(math.NaN(), 'g', -1, 64)
+}
+
+// MeaningJSON renders what a document denotes as the JSON a corpus stores.
+//
+// It runs [NamedKeys] first, so a value read into a Go type comes back in the
+// shape [Value.Decoded] speaks, and then puts every number in the number
+// position: a *big.Float carries MarshalText, so encoding/json writes one as a
+// quoted string, and a float past float64's range would be published as text
+// where the document holds a number. A JSON number is digits of unbounded
+// length, so nothing about the value forces that.
+//
+// A *big.Int needs no help -- big.Int carries MarshalJSON -- and is left alone.
+func MeaningJSON(v any) ([]byte, error) {
+	return json.Marshal(jsonNumbers(NamedKeys(v)))
+}
+
+// jsonNumbers replaces every *big.Float in v with the digits it writes, as a
+// json.Number that encoding/json emits unquoted.
+//
+// It walks the shapes [Normalize] produces: a map keyed by string, a slice, an
+// ordered map, and the scalars. Everything else is handed back untouched.
+func jsonNumbers(v any) any {
+	switch n := v.(type) {
+	case *big.Float:
+		return json.Number(n.Text('g', -1))
+	case []any:
+		out := make([]any, 0, len(n))
+		for _, item := range n {
+			out = append(out, jsonNumbers(item))
+		}
+
+		return out
+	case map[string]any:
+		out := make(map[string]any, len(n))
+		for key, value := range n {
+			out[key] = jsonNumbers(value)
+		}
+
+		return out
+	case codec.MapSliceSeq:
+		var items []codec.MapItem
+		for key, value := range n.All() {
+			items = append(items, codec.MapItem{Key: key, Value: jsonNumbers(value)})
+		}
+		ordered, err := codec.NewMapSliceSeq(items...)
+		if err != nil {
+			return n
+		}
+
+		return ordered
+	}
+
+	return v
 }
