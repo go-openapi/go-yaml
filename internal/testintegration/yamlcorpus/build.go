@@ -203,7 +203,7 @@ func (b Build) cases() []suite.Case {
 			WellFormed: wellFormed,
 			VerdictAt:  verdictAt(e),
 			Opaque:     !utf8.Valid(e.Src),
-			Tags:       append(encodingTags(e.Src), names(e.Tags)...),
+			Tags:       append(append(encodingTags(e.Src), representationNames(e.Value)...), names(e.Tags)...),
 			Features:   featureNames(e.Features),
 			Meaning:    meaning,
 			Meanings:   readingsOfEntry(e, meaning),
@@ -286,6 +286,18 @@ func readingsOfEntry(e Entry, core *suite.Meaning) []suite.Meaning {
 	}
 
 	return out
+}
+
+// representationNames reports the representation questions a generated
+// document raises, as the artifact spells them.
+//
+// It reads the drawn value, so a mutant contributes nothing: its Value is nil.
+func representationNames(v yamlgen.Value) []string {
+	if v == nil {
+		return nil
+	}
+
+	return names(representationTags(v))
 }
 
 // encodingTags reports what a document's bytes exhibit, which for a generated

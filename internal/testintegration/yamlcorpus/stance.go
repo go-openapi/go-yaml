@@ -163,6 +163,29 @@ var GoYAML = stance.Table{
 		// refused, which is the boundary the two shapes at the end of the family
 		// hold.
 		TagKindMismatch: stance.Refuses,
+
+		// The representation family, which this table answers the same way
+		// throughout: a Go value holds every one of these, so the decoder
+		// accepts and the question is only ever what it hands back.
+		//
+		// A "!!binary" comes back as a codec.Base64 and not a []byte, a
+		// "!!timestamp" as a time.Time in UTC, an "!!omap" as a
+		// codec.MapSliceSeq, an integer past a machine word as a *big.Int and a
+		// float past float64's range as a *big.Float. Each is one of the
+		// answers its tag names, and none of them is the language's.
+		TagBinaryRepresentation:     stance.Accepts,
+		TagTimestampRepresentation:  stance.Accepts,
+		TagOrderedMapRepresentation: stance.Accepts,
+		TagWideInteger:              stance.Accepts,
+		TagFloatOutOfRange:          stance.Accepts,
+		TagNonFiniteFloat:           stance.Accepts,
+
+		// Whether the meaning can be written as JSON is not a question a
+		// decoder into Go answers: it holds a NaN and an infinity, and it
+		// refuses a collection key through TagKeyNotAScalar, which is the tag
+		// that carries that refusal. A JSON-bound consumer declares Refuses
+		// here, and codec.ToJSON is one.
+		TagNotJSONRepresentable: stance.Accepts,
 	},
 }
 
