@@ -1022,6 +1022,13 @@ func (e *emitter) simpleScalar(v Value, flow bool, tag string) string {
 		// makes of it whatever form asked for it: "1e+330" is an exponent with
 		// no '.' before it, which 1.1 reads as a string.
 		return e.number(bigFloatText(n.V), NumberPlain)
+	case InexactFloat:
+		// The digits the document writes, which carry more than a float64
+		// keeps. A reader rounds; the text is what it was given.
+		e.feat.add(FeaturePlain)
+		e.feat.add(FeatureValueFloat)
+
+		return e.number(n.Text, NumberPlain)
 	case Float:
 		e.feat.add(FeaturePlain)
 

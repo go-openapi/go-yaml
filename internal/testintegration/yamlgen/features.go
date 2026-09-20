@@ -536,7 +536,7 @@ func valueFeatures(v Value, into features) {
 		into.add(FeatureValueBigInt)
 	case BigFloat:
 		into.add(FeatureValueBigFloat)
-	case Float:
+	case Float, InexactFloat:
 		into.add(FeatureValueFloat)
 	case Timestamp:
 		into.add(FeatureValueTimestamp)

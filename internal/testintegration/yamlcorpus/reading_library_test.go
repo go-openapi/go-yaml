@@ -5,6 +5,9 @@ package yamlcorpus_test
 
 import (
 	"bytes"
+	"encoding/json"
+	"slices"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -153,7 +156,7 @@ func TestTheLibraryMeansWhatTheCorpusSaysUnderEachReading(t *testing.T) {
 				continue
 			}
 
-			if string(encoded) != string(meaning.JSON) {
+			if !sameMeaning(meaning.JSON, encoded, slices.Contains(c.Tags, string(yamlcorpus.TagInexactFloat))) {
 				t.Errorf("%s under %s\n  document: %q\n  library:  %s\n  corpus:   %s",
 					c.Name, table.Reads, strings.TrimRight(string(c.Src), "\n"), encoded, meaning.JSON)
 			}
@@ -257,4 +260,93 @@ func holdsACollectionKeyInText(src string) bool {
 	}
 
 	return false
+}
+
+// sameMeaning reports whether the library read a document as the corpus says it
+// means.
+//
+// The two are compared as text, which is exact and cheap, and numerically where
+// rounds is set: a document carrying more digits than a float64 keeps has a
+// meaning this library cannot hold, and rounding it is the stand this table
+// declares on representation/float-inexact. The rounding is confined to the
+// numbers that differ, so a document holding a long mantissa beside a float
+// past float64's range still has the second one compared whole.
+func sameMeaning(corpus, library []byte, rounds bool) bool {
+	if bytes.Equal(corpus, library) {
+		return true
+	}
+	if !rounds {
+		return false
+	}
+
+	want, ok := decodeNumbers(corpus)
+	if !ok {
+		return false
+	}
+	got, ok := decodeNumbers(library)
+	if !ok {
+		return false
+	}
+
+	return sameRounded(want, got)
+}
+
+// decodeNumbers reads JSON with every number left as text, so a number wider
+// than a float64 survives the reading that compares it.
+func decodeNumbers(src []byte) (any, bool) {
+	decoder := json.NewDecoder(bytes.NewReader(src))
+	decoder.UseNumber()
+
+	var out any
+	if err := decoder.Decode(&out); err != nil {
+		return nil, false
+	}
+
+	return out, true
+}
+
+// sameRounded compares two decoded meanings, reading a number as the float64 a
+// reader holds where the two spell it differently.
+func sameRounded(want, got any) bool {
+	switch w := want.(type) {
+	case json.Number:
+		g, ok := got.(json.Number)
+		if !ok {
+			return false
+		}
+		if w.String() == g.String() {
+			return true
+		}
+		wf, werr := strconv.ParseFloat(w.String(), 64)
+		gf, gerr := strconv.ParseFloat(g.String(), 64)
+
+		return werr == nil && gerr == nil && wf == gf
+	case []any:
+		g, ok := got.([]any)
+		if !ok || len(w) != len(g) {
+			return false
+		}
+		for i := range w {
+			if !sameRounded(w[i], g[i]) {
+				return false
+			}
+		}
+
+		return true
+	case map[string]any:
+		g, ok := got.(map[string]any)
+		if !ok || len(w) != len(g) {
+			return false
+		}
+		for key, value := range w {
+			other, held := g[key]
+			if !held || !sameRounded(value, other) {
+				return false
+			}
+		}
+
+		return true
+	}
+
+	return want == got
 }

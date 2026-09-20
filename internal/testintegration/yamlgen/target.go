@@ -485,6 +485,18 @@ func keyString(v reflect.Value) string {
 	return strconv.FormatFloat(math.NaN(), 'g', -1, 64)
 }
 
+// Inexact is what a float written with more digits than a float64 keeps
+// denotes, carried as both readings of it.
+//
+// Text is the decimal the document wrote, which is what the document means.
+// V is the float64 a reader holds, which is this library's answer and the
+// answer of every reader that reads into a float64. A corpus publishes Text
+// and scores a reader against V, and the two part company by design.
+type Inexact struct {
+	Text string
+	V    float64
+}
+
 // MeaningJSON renders what a document denotes as the JSON a corpus stores.
 //
 // It runs [NamedKeys] first, so a value read into a Go type comes back in the
@@ -506,6 +518,8 @@ func MeaningJSON(v any) ([]byte, error) {
 // ordered map, and the scalars. Everything else is handed back untouched.
 func jsonNumbers(v any) any {
 	switch n := v.(type) {
+	case Inexact:
+		return json.Number(n.Text)
 	case *big.Float:
 		return json.Number(n.Text('g', -1))
 	case []any:

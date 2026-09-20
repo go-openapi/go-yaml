@@ -65,6 +65,14 @@ const (
 	// moves with the type: 1e-320 is a float64 through its subnormals and
 	// nothing at all to a float32.
 	TagFloatOutOfRange stance.Tag = "representation/float-out-of-range"
+	// TagInexactFloat is a float written with more digits than the model's
+	// float type keeps, so a reader into one rounds and the document's digits
+	// are not what it holds.
+	//
+	// The magnitude fits, which is what separates this from
+	// [TagFloatOutOfRange]: nothing overflows and nothing is refused, and the
+	// loss is silent. The corpus states the digits the document wrote.
+	TagInexactFloat stance.Tag = "representation/float-inexact"
 	// TagNonFiniteFloat is ".inf", "-.inf" or ".nan": a float a model may hold,
 	// refuse, or never resolve to a float in the first place.
 	//
@@ -93,6 +101,7 @@ func RepresentationVocabulary() stance.Vocabulary {
 		TagOrderedMapRepresentation: stance.Construct,
 		TagWideInteger:              stance.Construct,
 		TagFloatOutOfRange:          stance.Construct,
+		TagInexactFloat:             stance.Construct,
 		TagNonFiniteFloat:           stance.Construct,
 		TagNotJSONRepresentable:     stance.Construct,
 	}
@@ -129,6 +138,8 @@ func collectRepresentation(v yamlgen.Value, out *[]stance.Tag) {
 		*out = append(*out, TagTimestampRepresentation)
 	case yamlgen.BigInt:
 		*out = append(*out, TagWideInteger)
+	case yamlgen.InexactFloat:
+		*out = append(*out, TagInexactFloat)
 	case yamlgen.BigFloat:
 		// bigFloats draws past float64's range in both directions, which is
 		// the one reason the generator reaches for a big.Float at all.

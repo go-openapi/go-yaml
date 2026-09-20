@@ -12,6 +12,7 @@ import (
 	"github.com/go-openapi/testify/v2/require"
 
 	"github.com/go-openapi/go-yaml/codec"
+	"github.com/go-openapi/go-yaml/internal/testintegration/yamlgen"
 )
 
 // sameValue is ObjectsAreEqual with NaN equal to itself.
@@ -42,6 +43,19 @@ func sameValue(want, got any) bool {
 	}
 
 	switch w := want.(type) {
+	case yamlgen.Inexact:
+		// The document carries more digits than a float64 keeps, so a reader
+		// into one rounds and the two sides are the rounded value. What the
+		// document meant is published by the corpus and checked there.
+		g, ok := got.(float64)
+		if !ok {
+			return false
+		}
+		if math.IsNaN(w.V) {
+			return math.IsNaN(g)
+		}
+
+		return w.V == g
 	case *big.Float:
 		// reflect's equality compares a big.Float's Accuracy, which records how
 		// the last rounding went rather than what the number is -- and this

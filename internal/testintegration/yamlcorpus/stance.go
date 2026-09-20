@@ -178,6 +178,7 @@ var GoYAML = stance.Table{
 		TagOrderedMapRepresentation: stance.Accepts,
 		TagWideInteger:              stance.Accepts,
 		TagFloatOutOfRange:          stance.Accepts,
+		TagInexactFloat:             stance.Accepts,
 		TagNonFiniteFloat:           stance.Accepts,
 
 		// Whether the meaning can be written as JSON is not a question a

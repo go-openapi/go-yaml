@@ -413,10 +413,17 @@ type placement struct {
 // column its value is measured from. Four documents that were refused now read,
 // which is the parser and not the renderer, and they insert cleanly at every
 // placement: unreadable and disturbed stand.
+//
+// 1784 -> 1812 on the regeneration to yamlcorpus/47, which draws a float
+// written with more digits than a float64 keeps and reshuffled every seed
+// behind it. The counts follow the corpus: 28 more documents reach the
+// insertion, unreadable stands at 0, disturbed stands at 64 and 81 in front and
+// in the middle, and at the back moves 190 -> 192, which is 10.65% -> 10.60% of
+// the documents measured.
 var insertionCensus = map[string]placement{
-	"front":  {tested: 1784, unreadable: 0, disturbed: 64},
-	"middle": {tested: 1784, unreadable: 0, disturbed: 81},
-	"back":   {tested: 1784, unreadable: 0, disturbed: 190},
+	"front":  {tested: 1812, unreadable: 0, disturbed: 64},
+	"middle": {tested: 1812, unreadable: 0, disturbed: 81},
+	"back":   {tested: 1812, unreadable: 0, disturbed: 192},
 }
 
 // TestInsertingIntoTheCorpus puts one entry into every document the corpus holds

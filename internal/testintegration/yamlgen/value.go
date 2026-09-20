@@ -65,6 +65,20 @@ type (
 	// A NaN costs the property tests one helper: it is not equal to itself, so
 	// they compare with sameValue rather than with reflect's equality.
 	Float struct{ V float64 }
+	// InexactFloat is a float written with more digits than a float64 keeps.
+	//
+	// Its magnitude fits, so this library reads it as a float64 and rounds --
+	// see [Inexact]. The document's digits are the meaning and the rounding is
+	// a reader's answer, so the two are carried apart: Text is what the
+	// document writes and V is what a float64 holds.
+	//
+	// Drawn short of the precision cap the library reads a number under, since
+	// a suite exercising a circuit breaker measures the breaker and not the
+	// language.
+	InexactFloat struct {
+		Text string
+		V    float64
+	}
 	// BigInt is an integer past what a machine word holds, which this library
 	// reads as a *big.Int rather than losing.
 	BigInt struct{ V *big.Int }
@@ -197,6 +211,10 @@ func KeyText(v Value) string {
 		return "false"
 	case Int:
 		return strconv.Itoa(n.V)
+	case InexactFloat:
+		// Named by the float a reader holds, because the name is what tells one
+		// key from another and a reader has only the rounded value to compare.
+		return floatKeyText(n.V)
 	case Float:
 		// The canonical spelling of a float: shortest round-trip, and a ".0"
 		// when that leaves no decimal point or exponent. 1.0 is named "1.0",
@@ -276,10 +294,15 @@ func (i Int) Decoded() any {
 	return int64(i.V)
 }
 
-func (f Float) Decoded() any    { return f.V }
-func (b BigInt) Decoded() any   { return b.V }
-func (b BigFloat) Decoded() any { return b.V }
-func (s Str) Decoded() any      { return s.V }
+func (f Float) Decoded() any { return f.V }
+
+// Decoded returns both readings of a float written with more digits than a
+// float64 keeps: [Normalize] reduces it to the float64 a reader holds, and
+// [MeaningJSON] publishes the digits the document wrote.
+func (f InexactFloat) Decoded() any { return Inexact(f) }
+func (b BigInt) Decoded() any       { return b.V }
+func (b BigFloat) Decoded() any     { return b.V }
+func (s Str) Decoded() any          { return s.V }
 
 func (t Timestamp) Decoded() any { return t.V }
 func (b Binary) Decoded() any    { return codec.Base64(base64.StdEncoding.EncodeToString(b.V)) }
@@ -1600,14 +1623,89 @@ func drawInt(t *rapid.T) Value {
 	return Int{V: rapid.IntRange(-1000, 1000).Draw(t, "int")}
 }
 
-// drawFloat draws a float, one in eight of them past what a float64 holds.
+// drawFloat draws a float: one in eight past what a float64 holds, and one in
+// eight written with more digits than one keeps.
+//
+// The two share the integer draw's reasoning -- see [drawInt] -- and the ratio
+// matters as little. What the second one buys is a path nothing else reaches: a
+// number whose magnitude fits and whose digits do not, which every reader into
+// a float64 rounds and no reader refuses.
 func drawFloat(t *rapid.T) Value {
-	if rapid.IntRange(0, 7).Draw(t, "wide") == 0 {
+	switch rapid.IntRange(0, 7).Draw(t, "wide") {
+	case 0:
 		return BigFloat{V: bigFloats().Draw(t, "bigfloat")}
+	case 7:
+		return inexactFloats().Draw(t, "inexact")
 	}
 
 	return Float{V: floats().Draw(t, "float")}
 }
+
+// Digits for a float written more precisely than a float64 keeps.
+//
+// # Short of the circuit breaker, deliberately
+//
+// token.ParseBigFloat reads a number at up to bigFloatMaxPrecision, 1024 bits
+// or about 308 decimal digits, and rounds the mantissa past that. A suite that
+// drew 400 digits would measure the guard rather than the language, and Fred
+// ruled on 2026-09-20 that a conformance suite exercises the path and leaves
+// the anti-DoS bounds alone.
+//
+// 20 is past what a float64 keeps -- 17 significant digits round-trip one --
+// and 60 leaves the cap five times the room it needs.
+const (
+	inexactMinDigits = 20
+	inexactMaxDigits = 60
+)
+
+// inexactFloats draws a decimal with more significant digits than a float64
+// holds, carrying the digits and the float64 a reader rounds them to.
+//
+// The drawn digits are compared against the rounded value before they are
+// kept: a decimal that happens to land exactly on a float64 -- every digit
+// zero after the first, say -- exercises nothing, so one more digit is written
+// to move it off.
+func inexactFloats() *rapid.Generator[Value] {
+	return rapid.Custom(func(t *rapid.T) Value {
+		digits := rapid.IntRange(inexactMinDigits, inexactMaxDigits).Draw(t, "digits")
+
+		text := make([]byte, 0, digits+3)
+		if rapid.Bool().Draw(t, "negative") {
+			text = append(text, '-')
+		}
+		text = append(text, byte('1'+rapid.IntRange(0, 8).Draw(t, "lead")), '.')
+		for range digits - 1 {
+			text = append(text, byte('0'+rapid.IntRange(0, 9).Draw(t, "digit")))
+		}
+
+		for {
+			value, err := strconv.ParseFloat(string(text), 64)
+			if err != nil {
+				// Unreachable: the text is digits with one point in it.
+				panic("yamlgen: a drawn decimal that does not parse: " + string(text))
+			}
+			if !exactlyAFloat64(string(text), value) {
+				return InexactFloat{Text: string(text), V: value}
+			}
+			text = append(text, '7')
+		}
+	})
+}
+
+// exactlyAFloat64 reports whether text denotes the float64 v with nothing lost,
+// which makes it a document about spelling and not about precision.
+func exactlyAFloat64(text string, v float64) bool {
+	written, _, err := big.ParseFloat(text, 10, bigFloatCompare, big.ToNearestEven)
+	if err != nil {
+		return false
+	}
+
+	return written.Cmp(new(big.Float).SetPrec(bigFloatCompare).SetFloat64(v)) == 0
+}
+
+// bigFloatCompare is precision enough to tell a 60-digit decimal from the
+// float64 it rounds to: 60 decimal digits need about 200 bits.
+const bigFloatCompare = 256
 
 // Numbers wider than a machine word, and the bounds they are drawn inside.
 //

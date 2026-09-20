@@ -101,7 +101,13 @@ func TestTheVerbatimDescentFollowsTheDocument(t *testing.T) {
 // mutations of it -- and every one opens with an anchored scalar written as a
 // key with no value, which is the second shape above: "{&a1 \"x\"}" alone reads
 // backwards here and on the commit before the change. No new shape arrived.
-const descentCeiling = 30
+//
+// 30 -> 32 on 2026-09-20, on a corpus that moved: yamlcorpus/47 draws a float
+// written with more digits than a float64 keeps, and every seed reshuffled
+// behind it. Counted by source, the suite side stands at 2 documents before and
+// after and the seed side goes 28 -> 30, so the ceiling followed the corpus and
+// the descent stood still.
+const descentCeiling = 32
 
 // TestVerbatimWritesANodeBack checks the per-node half: a node writes the
 // stretch of source it covers, and nothing of its neighbors.

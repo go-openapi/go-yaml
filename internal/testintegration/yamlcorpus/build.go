@@ -23,7 +23,7 @@ import (
 
 // Generator names what produced a corpus, so a change here is as visible in an
 // artifact's header as a change to the grammar.
-const Generator = "yamlcorpus/46"
+const Generator = "yamlcorpus/47"
 
 // Build is the recipe for a corpus: how much to draw, and how much to keep.
 type Build struct {

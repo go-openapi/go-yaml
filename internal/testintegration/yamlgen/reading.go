@@ -447,6 +447,8 @@ func (r *readings) numberText(v Value) (string, bool) {
 		text, _ = bigIntText(n.V, r.st)
 	case Float:
 		text, _ = floatText(n.V, r.st)
+	case InexactFloat:
+		text = n.Text
 	case BigFloat:
 		text = bigFloatText(n.V)
 	default:
