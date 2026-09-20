@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"math/big"
 	"reflect"
 	"sort"
 	"strconv"
@@ -443,6 +444,19 @@ func (e *Encoder) encodeByMarshaler(v reflect.Value, column int) (ast.Node, erro
 		return e.encodeDuration(t, column), nil
 	}
 
+	// A number keeps its type. *big.Int and *big.Float both carry MarshalText,
+	// so the branch below wrote them as quoted text and a round trip turned a
+	// number into a string: the decoder builds these for a value no machine
+	// word holds, and codec.ToJSON writes them as numbers.
+	if n, ok := iface.(*big.Int); ok && n != nil {
+		value := n.String()
+
+		return ast.Integer(token.New(value, value, e.pos(column))), nil
+	}
+	if f, ok := iface.(*big.Float); ok && f != nil {
+		return e.encodeBigFloat(f, column), nil
+	}
+
 	if marshaler, ok := iface.(encoding.TextMarshaler); ok {
 		text, err := marshaler.MarshalText()
 		if err != nil {
@@ -615,6 +629,30 @@ func (e *Encoder) encodeFloat(v float64, bitSize int) ast.Node {
 
 		return ast.Float(token.New(value, value, e.pos(e.column)))
 	}
+}
+
+// encodeBigFloat writes a float past what a float64 holds, as [Encoder.encodeFloat]
+// writes one that fits: a bare number reads back as an integer, so the ".0" is
+// what keeps the float.
+func (e *Encoder) encodeBigFloat(v *big.Float, column int) ast.Node {
+	if v.IsInf() {
+		value := ".inf"
+		if v.Signbit() {
+			value = "-.inf"
+		}
+
+		return ast.Infinity(token.New(value, value, e.pos(column)))
+	}
+
+	value := v.Text('g', -1)
+	if !strings.Contains(value, ".") && !strings.Contains(value, "e") {
+		if e.autoInt {
+			return ast.Integer(token.New(value, value, e.pos(column)))
+		}
+		value += ".0"
+	}
+
+	return ast.Float(token.New(value, value, e.pos(column)))
 }
 
 func (e *Encoder) isNeedQuoted(v string) bool {
