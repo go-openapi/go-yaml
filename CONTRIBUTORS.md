@@ -4,12 +4,12 @@
 
 | Total Contributors | Total Contributions |
 | --- | --- |
-| 78  | 971  |
+| 78  | 1614  |
 
 | Username | All Time Contribution Count | All Commits |
 | --- | --- | --- |
+| @fredbi | 803 | <https://github.com/go-openapi/go-yaml/commits?author=fredbi> |
 | @goccy | 605 | <https://github.com/go-openapi/go-yaml/commits?author=goccy> |
-| @fredbi | 160 | <https://github.com/go-openapi/go-yaml/commits?author=fredbi> |
 | @shuheiktgw | 22 | <https://github.com/go-openapi/go-yaml/commits?author=shuheiktgw> |
 | @kitagry | 18 | <https://github.com/go-openapi/go-yaml/commits?author=kitagry> |
 | @k1LoW | 14 | <https://github.com/go-openapi/go-yaml/commits?author=k1LoW> |
@@ -41,6 +41,7 @@
 | @braydonk | 2 | <https://github.com/go-openapi/go-yaml/commits?author=braydonk> |
 | @bwplotka | 2 | <https://github.com/go-openapi/go-yaml/commits?author=bwplotka> |
 | @Al2Klimov | 2 | <https://github.com/go-openapi/go-yaml/commits?author=Al2Klimov> |
+| @oxzi | 1 | <https://github.com/go-openapi/go-yaml/commits?author=oxzi> |
 | @yhabteab | 1 | <https://github.com/go-openapi/go-yaml/commits?author=yhabteab> |
 | @WillAbides | 1 | <https://github.com/go-openapi/go-yaml/commits?author=WillAbides> |
 | @linyows | 1 | <https://github.com/go-openapi/go-yaml/commits?author=linyows> |
@@ -51,8 +52,6 @@
 | @pgeiem | 1 | <https://github.com/go-openapi/go-yaml/commits?author=pgeiem> |
 | @eikemeier | 1 | <https://github.com/go-openapi/go-yaml/commits?author=eikemeier> |
 | @morris-kelly | 1 | <https://github.com/go-openapi/go-yaml/commits?author=morris-kelly> |
-| @asabaki | 1 | <https://github.com/go-openapi/go-yaml/commits?author=asabaki> |
-| @oxzi | 1 | <https://github.com/go-openapi/go-yaml/commits?author=oxzi> |
 | @brammeleman | 1 | <https://github.com/go-openapi/go-yaml/commits?author=brammeleman> |
 | @chanxuehong | 1 | <https://github.com/go-openapi/go-yaml/commits?author=chanxuehong> |
 | @dorencambia | 1 | <https://github.com/go-openapi/go-yaml/commits?author=dorencambia> |
@@ -63,6 +62,7 @@
 | @jeffalder | 1 | <https://github.com/go-openapi/go-yaml/commits?author=jeffalder> |
 | @nekrassov01 | 1 | <https://github.com/go-openapi/go-yaml/commits?author=nekrassov01> |
 | @rriski | 1 | <https://github.com/go-openapi/go-yaml/commits?author=rriski> |
+| @asabaki | 1 | <https://github.com/go-openapi/go-yaml/commits?author=asabaki> |
 | @cpuguy83 | 1 | <https://github.com/go-openapi/go-yaml/commits?author=cpuguy83> |
 | @sirikon | 1 | <https://github.com/go-openapi/go-yaml/commits?author=sirikon> |
 | @charithe | 1 | <https://github.com/go-openapi/go-yaml/commits?author=charithe> |
