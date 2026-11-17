@@ -157,7 +157,7 @@ func TestOrderedMapRefusesAShapeTheTagDoesNotName(t *testing.T) {
 		require.Errorf(t, err, "%q", src)
 
 		tokens := codec.ToJSONTokens([]byte(src))
-		for range tokens.Tokens() { //nolint:revive // the stream is drained for its error
+		for range tokens.Tokens() {
 		}
 		require.Errorf(t, tokens.Err(), "%q", src)
 	}
@@ -195,7 +195,7 @@ func TestFixedAnAliasToAnOrderedMapKeepsTheTag(t *testing.T) {
 			require.Errorf(t, err, "%q", src)
 
 			tokens := codec.ToJSONTokens([]byte(src))
-			for range tokens.Tokens() { //nolint:revive // the stream is drained for its error
+			for range tokens.Tokens() {
 			}
 			require.Errorf(t, tokens.Err(), "%q", src)
 		}

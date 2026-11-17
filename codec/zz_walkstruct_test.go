@@ -22,14 +22,16 @@ type WalkLeaf struct {
 
 type embedded struct {
 	WalkLeaf `yaml:",inline"`
-	Extra    string `yaml:"extra"`
+
+	Extra string `yaml:"extra"`
 }
 
 // selfEmbedding embeds itself through a pointer, which flatten must not follow
 // for ever.
 type selfEmbedding struct {
 	*selfEmbedding `yaml:",inline"` //nolint:unused // the embedding is the point: flatten has to stop on it
-	Name           string           `yaml:"name"`
+
+	Name string `yaml:"name"`
 }
 
 type walkShape struct {

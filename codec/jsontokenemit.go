@@ -122,6 +122,7 @@ func (t *jsonTokener) emitScalarNode(node ast.Node, at token.Position) {
 // is nothing left to do. Where it names a scalar type, openTag held that back
 // and the value goes over here, read from the tag rather than from the node.
 func (t *jsonTokener) closeTag(n *ast.TagNode, at parser.Cursor) {
+	_ = at
 	mark := t.tags[len(t.tags)-1]
 	t.tags = t.tags[:len(t.tags)-1]
 	if mark.suppressed {
@@ -215,6 +216,7 @@ func (t *jsonTokener) aliasTarget(n *ast.AliasNode) (ast.Node, error) {
 // the one anchor table the parser owns rather than from a record this converter
 // keeps of what it wrote.
 func (t *jsonTokener) emitAlias(n *ast.AliasNode, at parser.Cursor) {
+	_ = at
 	target, err := t.aliasTarget(n)
 	if err != nil {
 		t.fail(err)

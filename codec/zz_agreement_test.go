@@ -34,19 +34,23 @@ type (
 		// A tag naming an anonymous field makes it an ordinary one, in
 		// encoding/json and here.
 		AgLeaf `json:"leaf"`
-		Tail   string `json:"tail"`
+
+		Tail string `json:"tail"`
 	}
 	agUnexportedEmbed struct {
 		agUnexported
+
 		Tail string `json:"tail"`
 	}
 	agPointerEmbed struct {
 		*AgLeaf
+
 		Tail string `json:"tail"`
 	}
 	agMid  struct{ AgLeaf }
 	agDeep struct {
 		agMid
+
 		Tail string `json:"tail"`
 	}
 	agShallow struct {
@@ -71,6 +75,7 @@ type (
 	}
 	agOuterShadows struct {
 		AgLeaf
+
 		Name string `json:"name"`
 	}
 	agTagged struct {

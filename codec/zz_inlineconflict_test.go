@@ -22,6 +22,7 @@ type (
 	// outerShadows declares "name" itself and inlines a type declaring it too.
 	outerShadows struct {
 		leaf `yaml:",inline"`
+
 		Name string `yaml:"name"`
 	}
 
@@ -53,7 +54,8 @@ type (
 		leaf `yaml:",inline"`
 	}
 	deeplyShadowed struct {
-		mid  `yaml:",inline"`
+		mid `yaml:",inline"`
+
 		Name string `yaml:"name"`
 	}
 
@@ -62,7 +64,8 @@ type (
 	selfInline struct {
 		//nolint:unused // read by reflection, and the cycle is the point of the case
 		*selfInline `yaml:",inline"`
-		Value       string `yaml:"value"`
+
+		Value string `yaml:"value"`
 	}
 
 	// inlineMapBesideAField pairs a named field with an inline map. A map
@@ -75,6 +78,7 @@ type (
 	// noConflict inlines a type whose names are all its own.
 	noConflict struct {
 		leaf `yaml:",inline"`
+
 		Tail string `yaml:"tail"`
 	}
 )

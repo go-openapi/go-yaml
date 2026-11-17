@@ -113,7 +113,7 @@ func (a *Run[T]) blockSize() int {
 	return a.Size
 }
 
-// release takes back every chunk at the front that dead reports finished with,
+// Release takes back every chunk at the front that dead reports finished with,
 // poisoning its cells where the build asks for it.
 //
 // Every retired chunk is looked at rather than only the front: deadness is a

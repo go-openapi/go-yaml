@@ -147,7 +147,7 @@ func TestJSONTokensRefuseWhatJSONCannotHold(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			s := codec.ToJSONTokens([]byte(src))
-			for range s.Tokens() { //nolint:revive // the error is what is under test
+			for range s.Tokens() {
 			}
 			assert.Error(t, s.Err())
 		})
@@ -299,7 +299,7 @@ func TestJSONTokensRefuseAStreamWhenAskedTo(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			s := codec.ToJSONTokens([]byte(tc.src)).OneDocument()
-			for range s.Tokens() { //nolint:revive // the error is what is under test
+			for range s.Tokens() {
 			}
 			if tc.refused {
 				assert.Error(t, s.Err())

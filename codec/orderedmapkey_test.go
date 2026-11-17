@@ -128,6 +128,8 @@ func TestAnOrderedMapKeyIsUniqueOnEveryPath(t *testing.T) {
 			require.NoErrorf(t, treeErr, "tree: %q", src)
 			assert.ErrorIsf(t, jsonErr, yamlerrors.ErrNotJSON, "ToJSON: %q", src)
 			assert.ErrorIsf(t, tokenErr, yamlerrors.ErrNotJSON, "tokens: %q", src)
+		default:
+			t.Fatalf("unknown expectation %v", want)
 		}
 	}
 }

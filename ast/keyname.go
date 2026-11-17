@@ -93,7 +93,7 @@ type KeyAlias func(*AliasNode) (string, token.KeyKind, bool)
 // and not its "|-" header, and an alias by alias, which may be nil.
 //
 // It reports false for a collection, which [KeyIdentity] names from what it
-// holds, and for an alias alias does not answer.
+// holds, and for an alias that the alias function does not resolve.
 func ScalarKeyName(n Node, alias KeyAlias) (string, token.KeyKind, bool) {
 	return scalarKeyNameAt(n, 0, alias)
 }

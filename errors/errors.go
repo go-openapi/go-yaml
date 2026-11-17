@@ -265,7 +265,7 @@ func (e *Error) setSource(src Source) { e.source = src }
 
 func (e *Error) message() string {
 	switch e.kind {
-	case ErrTypeMismatch:
+	case ErrTypeMismatch: //nolint:errorlint // kind holds one of this package's sentinels, never a wrapped error
 		if e.field != "" {
 			return fmt.Sprintf("cannot unmarshal %s into Go struct field %s of type %s", e.src, e.field, e.dst)
 		}
@@ -282,7 +282,7 @@ func (e *Error) message() string {
 
 // sourced is an error that can be told the text it was found in.
 type sourced interface {
-	setSource(Source)
+	setSource(src Source)
 }
 
 // WithSource tells err, and every error wrapped inside it, the text it was
@@ -302,8 +302,7 @@ func WithSource(err error, src Source) error {
 // and inclSource asks for it. An error this package did not raise prints as
 // its own Error method returns it.
 func FormatError(err error, colored, inclSource bool) string {
-	var yerr *Error
-	if stderrors.As(err, &yerr) {
+	if yerr, ok := stderrors.AsType[*Error](err); ok {
 		return yerr.FormatError(colored, inclSource)
 	}
 

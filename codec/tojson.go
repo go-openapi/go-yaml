@@ -70,6 +70,8 @@ func appendJSONToken(out []byte, tok JSONToken, comma bool) ([]byte, bool) {
 		return append(out, '}'), true
 	case JSONArrayEnd:
 		return append(out, ']'), true
+	default:
+		// nothing to do
 	}
 	if comma {
 		out = append(out, ',')
@@ -272,6 +274,8 @@ func (w *tagReader) taggedValue(t *ast.TagNode, key bool) (JSONToken, bool) {
 			fmt.Sprintf("cannot read %q as %s", res.Text, res.Tag), t.Value.GetToken()))
 
 		return JSONToken{}, false
+	default:
+		// nothing to do
 	}
 
 	if res.Empty {
@@ -407,6 +411,8 @@ func taggedFloat(text string, schema token.Schema) any {
 		}
 
 		return math.Inf(0)
+	default:
+		// nothing to do
 	}
 	if base.IsInteger() {
 		// A whole number under "!!float". The digits are read in the base the

@@ -23,6 +23,8 @@ func startsEntry(tk *group.TapeToken) bool {
 	switch tk.GroupType() {
 	case group.TokenGroupMapKey, group.TokenGroupMapKeyValue:
 		return true
+	default:
+		// nothing to do
 	}
 
 	// A '-' cannot be a scalar's value, so it opens the next entry of the enclosing sequence.
@@ -89,7 +91,7 @@ func (d *descentState) opensNextEntry(next *group.TapeToken, line int) bool {
 		// On the property's line, so the property names it.
 		return false
 	}
-	if d.entryCol <= 0 || int(next.Column()) > d.entryCol {
+	if d.entryCol <= 0 || next.Column() > d.entryCol {
 		// At the document's root, or indented further than the entry: nothing else can claim it.
 		return false
 	}
@@ -98,7 +100,7 @@ func (d *descentState) opensNextEntry(next *group.TapeToken, line int) bool {
 		// A block sequence may sit at the key's own column, so a '-' there is the value:
 		// "k: &a" over "- 1" reads as {k: [1]}.
 		// Further left, it belongs to a collection enclosing the mapping.
-		return int(next.Column()) < d.entryCol
+		return next.Column() < d.entryCol
 	}
 
 	return true

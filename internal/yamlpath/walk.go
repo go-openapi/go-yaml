@@ -90,6 +90,10 @@ type walkFrame struct {
 	count int
 	found bool
 
+	// name is the key a ".name" step selects, and index the entry k a "[k]" step reads.
+	name  string
+	index uint
+
 	// results holds what each entry of a "[*]" sequence answered, the nil answers left out.
 	results []ast.Node
 
@@ -135,7 +139,7 @@ func (w *pathWalker) Enter(node ast.Node, at parser.Cursor) error {
 	case frameIndex:
 		entry := top.count
 		top.count++
-		if uint(entry) != w.steps[top.step].(*indexNode).selector {
+		if uint(entry) != top.index {
 			return parser.SkipNode
 		}
 		top.found = true
@@ -151,6 +155,54 @@ func (w *pathWalker) Enter(node ast.Node, at parser.Cursor) error {
 	}
 }
 
+func (w *pathWalker) Leave(node ast.Node, _ parser.Closing) error {
+	top := w.frames[len(w.frames)-1]
+	w.frames = w.frames[:len(w.frames)-1]
+
+	switch top.kind {
+	case frameKeep:
+		kept := cloneWithPaths(node)
+		if top.rec != nil {
+			top.rec.values = append(top.rec.values, kept)
+			below, err := top.rec.step.filterNode(kept)
+			if err != nil {
+				return err
+			}
+			top.rec.values = append(top.rec.values, below.Values...)
+
+			return nil
+		}
+
+		return w.deliver(kept)
+	case frameSelect:
+		if top.delivered {
+			return nil
+		}
+
+		return w.deliver(nil)
+	case frameIndex:
+		if !top.found {
+			return errOutOfRange(top.index, top.count)
+		}
+
+		return nil
+	case frameAll:
+		out, _ := cloneWithPaths(node).(*ast.SequenceNode)
+		out.Values = top.results
+
+		return w.deliver(out)
+	default:
+		if top.root {
+			// A block collection's token moves between Enter and Leave, and the tree filter reads the last one.
+			top.rec.start = node.GetToken().Clone()
+
+			return w.deliver(top.rec.answer())
+		}
+
+		return nil
+	}
+}
+
 // enterSelected reads an entry of a mapping a ".name" step stands on.
 func (w *pathWalker) enterSelected(top *walkFrame, node ast.Node, at parser.Cursor) error {
 	if top.done {
@@ -161,7 +213,7 @@ func (w *pathWalker) enterSelected(top *walkFrame, node ast.Node, at parser.Curs
 		if err != nil {
 			return err
 		}
-		top.pending = key == w.steps[top.step].(*selectorNode).name()
+		top.pending = key == top.name
 
 		return parser.SkipNode
 	}
@@ -228,12 +280,12 @@ func (w *pathWalker) read(node ast.Node, step int) error {
 		if node.Type() != ast.MappingType {
 			return errNotAMapping(node.Type())
 		}
-		w.frames = append(w.frames, walkFrame{kind: frameSelect, step: step})
+		w.frames = append(w.frames, walkFrame{kind: frameSelect, step: step, name: s.name()})
 	case *indexNode:
 		if node.Type() != ast.SequenceType {
 			return errNotASequence(node.Type())
 		}
-		w.frames = append(w.frames, walkFrame{kind: frameIndex, step: step})
+		w.frames = append(w.frames, walkFrame{kind: frameIndex, step: step, index: s.selector})
 	case *indexAllNode:
 		if node.Type() != ast.SequenceType {
 			return errNotASequence(node.Type())
@@ -250,54 +302,6 @@ func (w *pathWalker) read(node ast.Node, step int) error {
 	}
 
 	return nil
-}
-
-func (w *pathWalker) Leave(node ast.Node, _ parser.Closing) error {
-	top := w.frames[len(w.frames)-1]
-	w.frames = w.frames[:len(w.frames)-1]
-
-	switch top.kind {
-	case frameKeep:
-		kept := cloneWithPaths(node)
-		if top.rec != nil {
-			top.rec.values = append(top.rec.values, kept)
-			below, err := top.rec.step.filterNode(kept)
-			if err != nil {
-				return err
-			}
-			top.rec.values = append(top.rec.values, below.Values...)
-
-			return nil
-		}
-
-		return w.deliver(kept)
-	case frameSelect:
-		if top.delivered {
-			return nil
-		}
-
-		return w.deliver(nil)
-	case frameIndex:
-		if !top.found {
-			return errOutOfRange(w.steps[top.step].(*indexNode).selector, top.count)
-		}
-
-		return nil
-	case frameAll:
-		out, _ := cloneWithPaths(node).(*ast.SequenceNode)
-		out.Values = top.results
-
-		return w.deliver(out)
-	default:
-		if top.root {
-			// A block collection's token moves between Enter and Leave, and the tree filter reads the last one.
-			top.rec.start = node.GetToken().Clone()
-
-			return w.deliver(top.rec.answer())
-		}
-
-		return nil
-	}
 }
 
 // deliver hands what a node answered to the node that read it, or ends the walk with the first answer.

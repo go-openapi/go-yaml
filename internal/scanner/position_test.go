@@ -104,7 +104,7 @@ func TestTrailingBlanksDoNotMovePosition(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			tk := valueToken(t, tc.src, tc.value)
 
-			assert.Equalf(t, int(tc.offset), int(tk.Position.Offset()),
+			assert.Equalf(t, tc.offset, int(tk.Position.Offset()),
 				"%q: %q begins at offset %d", tc.src, tc.value, tc.offset)
 			assert.Equalf(t, tc.column, tk.Position.Column,
 				"%q: %q stands at column %d", tc.src, tc.value, tc.column)

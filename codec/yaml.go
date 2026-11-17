@@ -132,7 +132,7 @@ func UnmarshalWithOptions(data []byte, v any, opts ...DecodeOption) error {
 func UnmarshalContext(ctx context.Context, data []byte, v any, opts ...DecodeOption) error {
 	dec := NewDecoder(bytes.NewBuffer(data), opts...)
 	if err := dec.DecodeContext(ctx, v); err != nil {
-		if err == io.EOF {
+		if errors.Is(err, io.EOF) {
 			return nil
 		}
 		return err

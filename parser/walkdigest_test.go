@@ -7,6 +7,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"io"
 	"strings"
 	"testing"
 
@@ -126,7 +127,7 @@ const fixedWalkDigest = "f812871aad59fb68a6440868cc0333253a8b4a8b8ea605644fce14b
 
 // digestVisitor writes each node it is handed, so a node the walk reads from a reused cell changes the digest.
 type digestVisitor struct {
-	out interface{ Write([]byte) (int, error) }
+	out io.Writer
 }
 
 func (d *digestVisitor) Enter(node ast.Node, at parser.Cursor) error {

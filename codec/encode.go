@@ -155,7 +155,7 @@ func (e *Encoder) EncodeToNodeContext(ctx context.Context, v any) (ast.Node, err
 // never asks what a path is -- so it does not depend on the query language, and
 // a caller with another way to reach a node can pass that instead.
 type nodeFilter interface {
-	FilterNode(ast.Node) (ast.Node, error)
+	FilterNode(node ast.Node) (ast.Node, error)
 }
 
 func (e *Encoder) setCommentByCommentMap(node ast.Node) error {
@@ -493,7 +493,7 @@ func (e *Encoder) encodeByMarshaler(ctx context.Context, v reflect.Value, column
 			if err != nil {
 				return nil, err
 			}
-			doc, err := FromJSON(jsonBytes)
+			doc, err := FromJSON(jsonBytes) //nolint:contextcheck // decodes JSON into any: no user unmarshaler can receive the context
 			if err != nil {
 				return nil, err
 			}
@@ -643,7 +643,7 @@ func (e *Encoder) encodeFloat(v float64, bitSize int) ast.Node {
 				return ast.Integer(token.New(value, value, e.pos(e.column)))
 			}
 			// append x.0 suffix to keep float value context
-			value = fmt.Sprintf("%s.0", value)
+			value += ".0"
 		}
 
 		return ast.Float(token.New(value, value, e.pos(e.column)))
@@ -667,7 +667,7 @@ func (e *Encoder) isNeedQuoted(v string) bool {
 	}
 
 	if e.isFlowStyle {
-		for i := 0; i < len(v); i++ {
+		for i := range len(v) {
 			if v[i] != ':' {
 				continue
 			}
@@ -708,7 +708,7 @@ func (e *Encoder) encodeSlice(ctx context.Context, value reflect.Value) (*ast.Se
 	}
 	column := e.column
 	sequence := ast.Sequence(token.New("-", "-", e.pos(column)), e.isFlowStyle)
-	for i := 0; i < value.Len(); i++ {
+	for i := range value.Len() {
 		node, err := e.encodeValue(ctx, value.Index(i), column)
 		if err != nil {
 			return nil, err
@@ -725,7 +725,7 @@ func (e *Encoder) encodeArray(ctx context.Context, value reflect.Value) (*ast.Se
 	}
 	column := e.column
 	sequence := ast.Sequence(token.New("-", "-", e.pos(column)), e.isFlowStyle)
-	for i := 0; i < value.Len(); i++ {
+	for i := range value.Len() {
 		node, err := e.encodeValue(ctx, value.Index(i), column)
 		if err != nil {
 			return nil, err
@@ -987,6 +987,8 @@ func (e *Encoder) isOmittedByOmitZero(v reflect.Value) bool {
 			}
 		}
 		return true
+	default:
+		// nothing to do
 	}
 	return false
 }
@@ -1007,6 +1009,8 @@ func (e *Encoder) isOmittedByOmitEmptyOption(v reflect.Value) bool {
 		return v.Uint() == 0
 	case reflect.Bool:
 		return !v.Bool()
+	default:
+		// nothing to do
 	}
 	return false
 }
@@ -1052,6 +1056,8 @@ func (e *Encoder) isOmittedByOmitEmptyTag(v reflect.Value) bool {
 			}
 		}
 		return true
+	default:
+		// nothing to do
 	}
 	return false
 }
@@ -1155,7 +1161,7 @@ func (e *Encoder) encodeStruct(ctx context.Context, value reflect.Value, column 
 	fieldMap := fields.fields
 	hasInlineAnchorField := false
 	var inlineAnchorValue reflect.Value
-	for i := 0; i < value.NumField(); i++ {
+	for i := range value.NumField() {
 		field := structType.Field(i)
 		if isIgnoredStructField(field, mode) {
 			continue
@@ -1286,6 +1292,8 @@ func (e *Encoder) toPointer(v reflect.Value) uintptr {
 		return v.Pointer()
 	case reflect.Map:
 		return v.Pointer()
+	default:
+		// nothing to do
 	}
 	return 0
 }

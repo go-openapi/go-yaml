@@ -242,6 +242,13 @@ func (s *Scanner) NextToken() (token.Token, bool) {
 	}
 }
 
+// Reset clears the Scanner of its source and of every state the last scan left,
+// and keeps the room its buffers have grown. It scans nothing until [Scanner.Init] gives it a source.
+func (s *Scanner) Reset() {
+	s.ctx.Reset()
+	*s = Scanner{quoted: s.quoted[:0], ctx: s.ctx}
+}
+
 // scan reads the source until it has a token, and returns with that token buffered in ctx.
 //
 // The source is left where it stands, so calling scan again reads on from there.
@@ -423,7 +430,10 @@ func (s *Scanner) scan(ctx *Context) error {
 			if err := s.scanCommentIndicator(ctx); err != nil {
 				return err
 			}
-		case '\'', '"': // TODO(perf): why is this folded here just to leave scanQuote recheck ? I suggest both cases are split in the switch and scanQuote inlined here, with the addTokenValue / clear moved to the called methods
+		case '\'', '"':
+			// TODO(perf): why is this folded here just to leave scanQuote recheck?
+			// Split both cases in the switch and inline scanQuote here, with the
+			// addTokenValue / clear moved to the called methods.
 			scanned, err := s.scanQuote(ctx, c)
 			if err != nil {
 				return err
@@ -788,13 +798,6 @@ func (s *Scanner) scanSequence(ctx *Context) (bool, error) {
 	s.progressColumn(ctx, 1)
 	ctx.clear()
 	return true, nil
-}
-
-// Reset clears the Scanner of its source and of every state the last scan left,
-// and keeps the room its buffers have grown. It scans nothing until [Scanner.Init] gives it a source.
-func (s *Scanner) Reset() {
-	s.ctx.Reset()
-	*s = Scanner{quoted: s.quoted[:0], ctx: s.ctx}
 }
 
 // reset sets the state a scan of text starts from, on a Scanner that Reset has cleared,

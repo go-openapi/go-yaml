@@ -130,6 +130,8 @@ func commentGroupsOf(node ast.Node) map[*ast.CommentGroupNode]bool {
 				}
 				visit(v.Field(i))
 			}
+		default:
+			// nothing to do
 		}
 	}
 	visit(reflect.ValueOf(node))

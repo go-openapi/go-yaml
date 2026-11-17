@@ -1045,6 +1045,7 @@ foo:
 baz: 1
 `,
 		},
+		//nolint:lll // the expected flow-style output is a single line
 		{
 			`
 {
@@ -1790,7 +1791,7 @@ multiple:
 
 func TestInFlowStyle(t *testing.T) {
 	type inFlowStyle interface {
-		SetIsFlowStyle(bool)
+		SetIsFlowStyle(isFlow bool)
 	}
 
 	tests := []struct {
@@ -1880,7 +1881,7 @@ q#.r: hogehoge # commentQR
 		ast.Walk(&capturer, doc.Body)
 	}
 	commentPaths := []string{}
-	for i := 0; i < capturer.capturedNum; i++ {
+	for i := range capturer.capturedNum {
 		if capturer.orderedTypes[i] == ast.CommentType {
 			commentPaths = append(commentPaths, capturer.orderedPaths[i])
 		}

@@ -25,14 +25,16 @@ type (
 	// walkedEmbed takes the walk decoder: every field is one the walk can fill.
 	walkedEmbed struct {
 		unexportedLeaf `yaml:",inline"`
-		Tail           string `yaml:"tail"`
+
+		Tail string `yaml:"tail"`
 	}
 	// treedEmbed is the same shape with a field the walk cannot fill, so the
 	// tree decoder reads it.
 	treedEmbed struct {
 		unexportedLeaf `yaml:",inline"`
-		Tail           string    `yaml:"tail"`
-		At             time.Time `yaml:"at"`
+
+		Tail string    `yaml:"tail"`
+		At   time.Time `yaml:"at"`
 	}
 
 	deepLeaf struct {
@@ -43,12 +45,14 @@ type (
 	}
 	walkedDeep struct {
 		midLevel `yaml:",inline"`
-		Tail     string `yaml:"tail"`
+
+		Tail string `yaml:"tail"`
 	}
 	treedDeep struct {
 		midLevel `yaml:",inline"`
-		Tail     string    `yaml:"tail"`
-		At       time.Time `yaml:"at"`
+
+		Tail string    `yaml:"tail"`
+		At   time.Time `yaml:"at"`
 	}
 
 	// PointerLeaf is exported, so the field embedding a pointer to it can be
@@ -58,16 +62,18 @@ type (
 	}
 	pointerEmbed struct {
 		*PointerLeaf `yaml:",inline"`
-		Tail         string    `yaml:"tail"`
-		At           time.Time `yaml:"at"`
+
+		Tail string    `yaml:"tail"`
+		At   time.Time `yaml:"at"`
 	}
 
 	// unexportedPointerEmbed cannot be filled at all: the field is unexported,
 	// so nothing can put a pointer in it.
 	unexportedPointerEmbed struct {
 		*deepLeaf `yaml:",inline"`
-		Tail      string    `yaml:"tail"`
-		At        time.Time `yaml:"at"`
+
+		Tail string    `yaml:"tail"`
+		At   time.Time `yaml:"at"`
 	}
 )
 

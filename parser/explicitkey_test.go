@@ -103,7 +103,7 @@ func TestAnExplicitEntrysColonStandsAtItsQuestionMarksColumn(t *testing.T) {
 	t.Run("a ':' at another column opens its own entry", func(t *testing.T) {
 		for _, src := range []string{
 			"---\n&a3\n# c1\n? &a1 '1_000'\n:\n #  ? &a2 '+0b11'\n : *a1\n",
-			"%TAG !x! tag:yaml.org,2002:\r\n---\r\n# c1\r\n?\t' '\r\n:\t# c2\r\n  # c3\r\n  -\t# c4\r\n    # c5\r\n    ?\t'-1_0'\r\n:\t|2-\r\n      'a\r\n# c6\r\n?\tfalse\r\n: !x!int\t-929\t# c7\r\n",
+			"%TAG !x! tag:yaml.org,2002:\r\n---\r\n# c1\r\n?\t' '\r\n:\t# c2\r\n  # c3\r\n  -\t# c4\r\n    # c5\r\n    ?\t'-1_0'\r\n:\t|2-\r\n      'a\r\n# c6\r\n?\tfalse\r\n: !x!int\t-929\t# c7\r\n", //nolint:lll // fuzz reproducer kept verbatim
 		} {
 			_, err := parser.ParseBytes([]byte(src), parser.WithComments())
 			assert.NoErrorf(t, err, "%q", src)

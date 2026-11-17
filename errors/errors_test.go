@@ -84,7 +84,7 @@ func TestErrorKind(t *testing.T) {
 
 			// the kind it carries matches, and no other kind does
 			for _, kind := range kinds {
-				want := kind == tt.kind
+				want := kind == tt.kind //nolint:errorlint // compares two sentinels, not an error to a sentinel
 				if got := stderrors.Is(tt.err, kind); got != want {
 					t.Errorf("Is(err, %v) = %v, want %v", kind, got, want)
 				}
@@ -145,7 +145,7 @@ func TestWithSource(t *testing.T) {
 		t.Fatalf("Error() drew source before WithSource: %q", err.Error())
 	}
 
-	if got := errors.WithSource(err, errors.Source{Text: doc, FirstLine: 1}); got != error(err) {
+	if got := errors.WithSource(err, errors.Source{Text: doc, FirstLine: 1}); got != error(err) { //nolint:errorlint // WithSource must return the same error, not a wrapper
 		t.Errorf("WithSource returned %v, want the error it was given", got)
 	}
 	if !strings.Contains(err.Error(), "b: [") {
@@ -159,7 +159,7 @@ func TestWithSource(t *testing.T) {
 
 	// an error that cannot be told its source is returned untouched
 	plain := stderrors.New("plain")
-	if got := errors.WithSource(plain, errors.Source{Text: doc, FirstLine: 1}); got != plain {
+	if got := errors.WithSource(plain, errors.Source{Text: doc, FirstLine: 1}); got != plain { //nolint:errorlint // WithSource must return the same error, not a wrapper
 		t.Errorf("WithSource returned %v, want the error it was given", got)
 	}
 }

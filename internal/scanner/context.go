@@ -70,9 +70,14 @@ type Context struct {
 	hasLastContentTk bool
 }
 
-func (c *Context) clear() {
-	c.resetBuffer()
-	c.mstate = nil
+// Reset clears the context of its source and of every state a scan left,
+// and keeps the room its buffers have grown: pending, and the cursor's buf and originCopy.
+func (c *Context) Reset() {
+	clear(c.pending[:cap(c.pending)])
+	*c = Context{
+		cursor:  cursor{buf: c.buf[:0], originCopy: c.originCopy[:0]},
+		pending: c.pending[:0],
+	}
 }
 
 /*
@@ -84,6 +89,11 @@ func (c *Context) forgetTokens() {
 	c.prevPropRun = propertyRun{}
 }
 */
+
+func (c *Context) clear() {
+	c.resetBuffer()
+	c.mstate = nil
+}
 
 // lastContentToken returns the last emitted token belonging to the document itself, skipping comments.
 func (c *Context) lastContentToken() *token.Token {
@@ -120,16 +130,6 @@ func (c *Context) keyStartColumn() int32 {
 	}
 
 	return column
-}
-
-// Reset clears the context of its source and of every state a scan left,
-// and keeps the room its buffers have grown: pending, and the cursor's buf and originCopy.
-func (c *Context) Reset() {
-	clear(c.pending[:cap(c.pending)])
-	*c = Context{
-		cursor:  cursor{buf: c.buf[:0], originCopy: c.originCopy[:0]},
-		pending: c.pending[:0],
-	}
 }
 
 // reset points a context that Reset has cleared at src.

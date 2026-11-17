@@ -50,6 +50,8 @@ func flowCollectionStart(ret []*TapeToken) int {
 			if depth == 0 {
 				return i
 			}
+		default:
+			// nothing to do
 		}
 	}
 

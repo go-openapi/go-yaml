@@ -6,9 +6,9 @@ package codec
 import (
 	"encoding"
 	"errors"
+	"fmt"
 	"reflect"
 	"slices"
-	"sync"
 	"time"
 
 	"github.com/go-openapi/go-yaml/ast"
@@ -76,6 +76,81 @@ type typedBuilder struct {
 // holdsAnything reports a destination that takes whatever the document writes.
 func holdsAnything(v reflect.Value) bool {
 	return v.Kind() == reflect.Interface && v.Type().NumMethod() == 0
+}
+
+func (b *typedBuilder) Enter(node ast.Node, at parser.Cursor) error {
+	switch node.(type) {
+	case *ast.AnchorNode, *ast.AliasNode, *ast.TagNode, *ast.MappingKeyNode:
+		// A property or an alias, inside an "any" subtree or out of one. The
+		// nested builder reads anchors of its own and would answer for the
+		// document's, so both go to the tree together.
+		return b.fail(errNeedsTheTree)
+	case *ast.CommentGroupNode:
+		return parser.SkipNode
+	}
+
+	if b.values != nil {
+		return b.forwardEnter(node, at)
+	}
+
+	// A key names the entry that follows rather than being a value, so it is
+	// read before the destination is looked at.
+	if at.IsKey() && len(b.stack) > 0 {
+		return b.openEntry(&b.stack[len(b.stack)-1], node)
+	}
+
+	// Read where this goes once and hand it on: destination makes a sequence's
+	// entry as it is asked for, so asking twice makes two.
+	dst, wanted := b.destination()
+	if wanted && holdsAnything(dst) {
+		b.anyInto = dst
+		b.values = &valueBuilder{share: b.share, budget: b.budget}
+
+		return b.forwardEnter(node, at)
+	}
+
+	switch n := node.(type) {
+	case *ast.MappingNode:
+		return b.openMapping(dst, wanted)
+	case *ast.SequenceNode:
+		return b.openSequence(dst, wanted)
+	default:
+		return b.scalar(n, dst, wanted)
+	}
+}
+
+func (b *typedBuilder) Leave(node ast.Node, at parser.Closing) error {
+	if b.err != nil {
+		// The walk hands nothing more over once a visitor has failed, and still leaves the nodes it had open.
+		return b.err
+	}
+	if b.values != nil {
+		return b.forwardLeave(node, at)
+	}
+	switch node.(type) {
+	case *ast.MappingNode, *ast.SequenceNode:
+	default:
+		return nil
+	}
+
+	if _, isMapping := node.(*ast.MappingNode); isMapping {
+		// The parser hangs the repeats on the mapping as it closes, so they are
+		// read here rather than as it opened.
+		if err := refuseDuplicateKeys(node); err != nil {
+			return b.fail(err)
+		}
+	}
+
+	frame := b.stack[len(b.stack)-1]
+	b.stack = b.stack[:len(b.stack)-1]
+	if frame.dropped {
+		b.settle(reflect.Value{})
+
+		return nil
+	}
+	b.settle(frame.out)
+
+	return nil
 }
 
 // forwardEnter and forwardLeave hand a node to the nested value builder and close the
@@ -175,47 +250,6 @@ func (b *typedBuilder) settle(v reflect.Value) {
 	top.target = reflect.Value{}
 }
 
-func (b *typedBuilder) Enter(node ast.Node, at parser.Cursor) error {
-	switch node.(type) {
-	case *ast.AnchorNode, *ast.AliasNode, *ast.TagNode, *ast.MappingKeyNode:
-		// A property or an alias, inside an "any" subtree or out of one. The
-		// nested builder reads anchors of its own and would answer for the
-		// document's, so both go to the tree together.
-		return b.fail(errNeedsTheTree)
-	case *ast.CommentGroupNode:
-		return parser.SkipNode
-	}
-
-	if b.values != nil {
-		return b.forwardEnter(node, at)
-	}
-
-	// A key names the entry that follows rather than being a value, so it is
-	// read before the destination is looked at.
-	if at.IsKey() && len(b.stack) > 0 {
-		return b.openEntry(&b.stack[len(b.stack)-1], node)
-	}
-
-	// Read where this goes once and hand it on: destination makes a sequence's
-	// entry as it is asked for, so asking twice makes two.
-	dst, wanted := b.destination()
-	if wanted && holdsAnything(dst) {
-		b.anyInto = dst
-		b.values = &valueBuilder{share: b.share, budget: b.budget}
-
-		return b.forwardEnter(node, at)
-	}
-
-	switch n := node.(type) {
-	case *ast.MappingNode:
-		return b.openMapping(dst, wanted)
-	case *ast.SequenceNode:
-		return b.openSequence(dst, wanted)
-	default:
-		return b.scalar(n, dst, wanted)
-	}
-}
-
 func (b *typedBuilder) openMapping(dst reflect.Value, wanted bool) error {
 	if !wanted {
 		// Inside an entry no field claims. Read the mapping and drop it.
@@ -312,67 +346,6 @@ func (b *typedBuilder) scalar(node ast.Node, dst reflect.Value, wanted bool) err
 	return parser.SkipNode
 }
 
-// openEntry names the entry a key opens, and says where its value goes.
-func (b *typedBuilder) openEntry(top *typedFrame, keyNode ast.Node) error {
-	if top.dropped {
-		return parser.SkipNode
-	}
-
-	if key, isKey := keyNode.(ast.MapKeyNode); isKey && key.IsMergeKey() {
-		// "<<" folds another mapping's entries into this one, which the walk
-		// does not do yet. A merge written as an alias gives up on the alias;
-		// one written in place -- "<<: {a: 1}" -- has nothing else to give up
-		// on, and was read as a key no field claims and dropped.
-		return b.fail(errNeedsTheTree)
-	}
-
-	name, named := entryText(keyNode)
-	if !named {
-		if top.kind == typedMap {
-			return b.fail(errNeedsTheTree)
-		}
-		// No field can be named after it.
-		top.skip = true
-
-		return parser.SkipNode
-	}
-
-	switch top.kind {
-	case typedStruct:
-		fields, err := structFields(top.dst.Type(), b.dec.tagMode())
-		if err != nil {
-			return b.fail(err)
-		}
-		sf, at, _, known := fields.lookup(name)
-		if !known {
-			top.skip, top.target = true, reflect.Value{}
-
-			return parser.SkipNode
-		}
-		if at != nil {
-			// The type embeds another, and the name reaches a field of it.
-			field, err := fieldAt(top.dst, at)
-			if err != nil {
-				return b.fail(err)
-			}
-			top.skip, top.target = false, field
-
-			return parser.SkipNode
-		}
-		top.skip = false
-		top.target = top.dst.Field(sf.Index)
-	case typedMap:
-		top.skip = false
-		top.key = reflect.ValueOf(b.strs.clone(name)).Convert(top.dst.Type().Key())
-		top.target = reflect.New(top.dst.Type().Elem()).Elem()
-	case typedSlice:
-		return b.fail(errNeedsTheTree)
-	}
-
-	// A key names the entry and holds nothing the walk descends into.
-	return parser.SkipNode
-}
-
 // fieldAt walks the index path an embedded field stands at, making the pointers
 // between as it goes. reflect.Value.FieldByIndex panics on a nil one and
 // FieldByIndexErr refuses rather than filling it, and a document writing through
@@ -408,6 +381,80 @@ func entryText(n ast.Node) (string, bool) {
 	name, kind := ast.KeyName(n)
 
 	return name, kind != token.KeyOther
+}
+
+// openEntry names the entry a key opens, and says where its value goes.
+func (b *typedBuilder) openEntry(top *typedFrame, keyNode ast.Node) error {
+	if top.dropped {
+		return parser.SkipNode
+	}
+
+	if key, isKey := keyNode.(ast.MapKeyNode); isKey && key.IsMergeKey() {
+		// "<<" folds another mapping's entries into this one, which the walk
+		// does not do yet. A merge written as an alias gives up on the alias;
+		// one written in place -- "<<: {a: 1}" -- has nothing else to give up
+		// on, and was read as a key no field claims and dropped.
+		return b.fail(errNeedsTheTree)
+	}
+
+	name, named := entryText(keyNode)
+	if !named {
+		if top.kind == typedMap {
+			return b.fail(errNeedsTheTree)
+		}
+		// No field can be named after it.
+		top.skip = true
+
+		return parser.SkipNode
+	}
+
+	switch top.kind {
+	case typedStruct:
+		fields, err := structFields(top.dst.Type(), b.dec.tagMode())
+		if err != nil {
+			return b.fail(err)
+		}
+		ff, known := fields.lookup(name)
+		if !known {
+			top.skip, top.target = true, reflect.Value{}
+
+			return parser.SkipNode
+		}
+		if ff.at != nil {
+			// The type embeds another, and the name reaches a field of it.
+			field, err := fieldAt(top.dst, ff.at)
+			if err != nil {
+				return b.fail(err)
+			}
+			top.skip, top.target = false, field
+
+			return parser.SkipNode
+		}
+		top.skip = false
+		top.target = top.dst.Field(ff.sf.Index)
+	case typedMap:
+		top.skip = false
+		top.key = reflect.ValueOf(b.strs.clone(name)).Convert(top.dst.Type().Key())
+		top.target = reflect.New(top.dst.Type().Elem()).Elem()
+	case typedSlice:
+		return b.fail(errNeedsTheTree)
+	default:
+		panic(fmt.Sprintf("codec: unknown typed frame kind %d", top.kind))
+	}
+
+	// A key names the entry and holds nothing the walk descends into.
+	return parser.SkipNode
+}
+
+func scalarNumber(node ast.Node) any {
+	switch n := node.(type) {
+	case *ast.IntegerNode:
+		return n.GetValue()
+	case *ast.FloatNode:
+		return n.GetValue()
+	default:
+		return nil
+	}
 }
 
 func (b *typedBuilder) setScalar(dst reflect.Value, node ast.Node) error {
@@ -500,51 +547,6 @@ func (b *typedBuilder) setScalar(dst reflect.Value, node ast.Node) error {
 	}
 }
 
-func scalarNumber(node ast.Node) any {
-	switch n := node.(type) {
-	case *ast.IntegerNode:
-		return n.GetValue()
-	case *ast.FloatNode:
-		return n.GetValue()
-	default:
-		return nil
-	}
-}
-
-func (b *typedBuilder) Leave(node ast.Node, at parser.Closing) error {
-	if b.err != nil {
-		// The walk hands nothing more over once a visitor has failed, and still leaves the nodes it had open.
-		return b.err
-	}
-	if b.values != nil {
-		return b.forwardLeave(node, at)
-	}
-	switch node.(type) {
-	case *ast.MappingNode, *ast.SequenceNode:
-	default:
-		return nil
-	}
-
-	if _, isMapping := node.(*ast.MappingNode); isMapping {
-		// The parser hangs the repeats on the mapping as it closes, so they are
-		// read here rather than as it opened.
-		if err := refuseDuplicateKeys(node); err != nil {
-			return b.fail(err)
-		}
-	}
-
-	frame := b.stack[len(b.stack)-1]
-	b.stack = b.stack[:len(b.stack)-1]
-	if frame.dropped {
-		b.settle(reflect.Value{})
-
-		return nil
-	}
-	b.settle(frame.out)
-
-	return nil
-}
-
 // handled reports a destination the tree decoder reads for itself: a custom
 // unmarshaler, a time.Time or time.Duration, a MapSlice. This walk writes none
 // of them.
@@ -567,7 +569,7 @@ func (b *typedBuilder) handled(dst reflect.Value) bool {
 // walkableTypes caches which destination types the typed walk can fill, keyed
 // by reflect.Type, one map per tagMode: the fields a type shows depend on the
 // mode, and so does whether the walk can fill it.
-var walkableTypes [modeCount]sync.Map
+var walkableTypes [modeCount]typeCache[bool]
 
 // walkableType reports whether a destination of type t can be filled by the
 // walk, looking at the Go type alone.
@@ -580,7 +582,7 @@ var walkableTypes [modeCount]sync.Map
 func walkableType(t reflect.Type, mode tagMode) bool {
 	cache := &walkableTypes[mode]
 	if cached, known := cache.Load(t); known {
-		return cached.(bool)
+		return cached
 	}
 	ok := readWalkable(t, map[reflect.Type]bool{}, mode)
 	cache.Store(t, ok)

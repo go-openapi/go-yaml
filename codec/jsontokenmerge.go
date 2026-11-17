@@ -181,6 +181,8 @@ func mergedMembers(run []JSONToken) []jsonTokenMember {
 			open++
 		case JSONObjectEnd, JSONArrayEnd:
 			open--
+		default:
+			// nothing to do
 		}
 	}
 

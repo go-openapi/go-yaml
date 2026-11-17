@@ -143,6 +143,65 @@ func aliasBudget(n int) int {
 	return 1024 + 32*n
 }
 
+// Decode reads the next YAML-encoded value from its input
+// and stores it in the value pointed to by v.
+//
+// See the documentation for Unmarshal for details about the
+// conversion of YAML into a Go value.
+func (d *Decoder) Decode(v any) error {
+	return d.DecodeContext(context.Background(), v)
+}
+
+// DecodeContext reads the next YAML-encoded value from its input
+// and stores it in the value pointed to by v with context.Context.
+func (d *Decoder) DecodeContext(ctx context.Context, v any) error {
+	rv := reflect.ValueOf(v)
+	if !rv.IsValid() || rv.Type().Kind() != reflect.Pointer {
+		return ErrDecodeRequiredPointerType
+	}
+	if d.isInitialized() {
+		if err := d.decode(ctx, rv); err != nil {
+			return yamlerrors.WithSource(err, d.source)
+		}
+
+		return nil
+	}
+	if err := d.decodeInit(ctx, rv); err != nil {
+		return yamlerrors.WithSource(err, d.source)
+	}
+	if err := d.decode(ctx, rv); err != nil {
+		return yamlerrors.WithSource(err, d.source)
+	}
+	return nil
+}
+
+// DecodeFromNode decodes node into the value pointed to by v.
+func (d *Decoder) DecodeFromNode(node ast.Node, v any) error {
+	return d.DecodeFromNodeContext(context.Background(), node, v)
+}
+
+// DecodeFromNodeContext decodes node into the value pointed to by v with context.Context.
+func (d *Decoder) DecodeFromNodeContext(ctx context.Context, node ast.Node, v any) error {
+	rv := reflect.ValueOf(v)
+	if rv.Type().Kind() != reflect.Pointer {
+		return ErrDecodeRequiredPointerType
+	}
+	if !d.isInitialized() {
+		// A node in hand is a tree, so this never takes the walking path.
+		if err := d.decodeInit(ctx, reflect.Value{}); err != nil {
+			return err
+		}
+	}
+	// resolve references to the anchor on the same file
+	if _, err := d.nodeToValue(ctx, node); err != nil {
+		return err
+	}
+	if err := d.decodeValue(ctx, rv.Elem(), node); err != nil {
+		return err
+	}
+	return nil
+}
+
 func (d *Decoder) stepIn() {
 	d.decodeDepth++
 	d.built++
@@ -150,46 +209,6 @@ func (d *Decoder) stepIn() {
 
 func (d *Decoder) stepOut() {
 	d.decodeDepth--
-}
-
-func (d *Decoder) isExceededMaxDepth() bool {
-	return d.decodeDepth > maxDecodeDepth
-}
-
-// isOverBudget reports a decode building more than the document can account
-// for, which only an alias can do.
-func (d *Decoder) isOverBudget() bool {
-	return d.budget > 0 && d.built > d.budget
-}
-
-// refuseOverBudget returns the error to stop a decode that has run away.
-//
-// It names an alias, as the walk does: only an alias builds more than the
-// document holds, and the node in hand when the count runs out sits somewhere
-// in an anchored tree, which may belong to another document. That alias is the
-// outermost one being read through, or else the last one read.
-//
-// The walk counts only what it copies for an alias, so it always runs out
-// inside one. This counts every node, so it can run out on the first node after
-// an alias, and names that alias. Counting only under an alias would miss the
-// aliases getMapNode and getArrayNode follow, which do not set expanding.
-func (d *Decoder) refuseOverBudget(at ast.Node) error {
-	switch {
-	case d.expanding != nil:
-		at = d.expanding
-	case d.expanded != nil:
-		at = d.expanded
-	}
-	var tk *token.Token
-	if at != nil {
-		tk = at.GetToken()
-	}
-
-	return yamlerrors.NewExcessiveAliasing(d.built, d.budget, tk)
-}
-
-func (d *Decoder) castToFloat(v any) any {
-	return castToFloatValue(v)
 }
 
 // castToFloatValue is castToFloat without a decoder, for the walking builder.
@@ -282,46 +301,14 @@ func floatOf(v *big.Float) (float64, bool) {
 	return f, true
 }
 
-func (d *Decoder) mapKeyNodeToString(ctx context.Context, node ast.MapKeyNode) (string, error) {
-	key, err := d.nodeToValue(ctx, node)
-	if err != nil {
-		return "", err
-	}
-
-	name, err := mapKeyString(node, key)
-	if err != nil {
-		return "", err
-	}
-
-	return d.strs.clone(name), nil
+func (d *Decoder) isExceededMaxDepth() bool {
+	return d.decodeDepth > maxDecodeDepth
 }
 
-// mapKeyNodeToValue is the key a [MapSlice] entry is addressed by.
-//
-// A MapItem.Key is an interface{}, so it holds what the key resolves to, as a
-// map[any]any key does: "1:" gives an integer, "1.0:" a float, "null:" nil.
-// Naming it by text instead put `"1.0": a` and `1.0: b` in one MapSlice under
-// one key, where 3.2.1.1 makes a string and a float two keys -- and a merge
-// then let one override the other, which is what defect 69 was.
-//
-// [UseStringKeys] asks for the text instead and gets it for every scalar. A
-// collection reaches mapKeyString either way, which refuses it: a MapSlice key
-// must be comparable, and Go hashes no slice or map.
-func (d *Decoder) mapKeyNodeToValue(ctx context.Context, node ast.MapKeyNode) (any, error) {
-	key, err := d.nodeToValue(ctx, node)
-	if err != nil {
-		return nil, err
-	}
-	if d.useStringKeys || !hashableKey(key) {
-		name, err := mapKeyString(node, key)
-		if err != nil {
-			return nil, err
-		}
-
-		return d.strs.clone(name), nil
-	}
-
-	return key, nil
+// isOverBudget reports a decode building more than the document can account
+// for, which only an alias can do.
+func (d *Decoder) isOverBudget() bool {
+	return d.budget > 0 && d.built > d.budget
 }
 
 // hashableKey reports whether a decoded key can stand as a Go map key.
@@ -475,110 +462,34 @@ func (k *keyedMap) value() any {
 	return k.byName
 }
 
-// setToMapValue fills m from node.
+// refuseOverBudget returns the error to stop a decode that has run away.
 //
-// merged says the entries come from a "<<" rather than from the mapping
-// holding it. A mapping's own keys win over the ones it merges in, whichever
-// side of the "<<" they were written, and an earlier "<<" wins over a later one
-// -- so a merged key is written only where none stands already. That is the
-// rule keyToNodeMap applies for a struct, and this path did not: "x: 9" over
-// "<<: *a" took the merged x, and "<<: [*a, *b]" took b's where the merge spec
-// gives it to a.
-func (d *Decoder) setToMapValue(ctx context.Context, node ast.Node, m *keyedMap, merged bool) error {
-	d.stepIn()
-	defer d.stepOut()
-	if d.isExceededMaxDepth() {
-		return ErrExceededMaxDepth
+// It names an alias, as the walk does: only an alias builds more than the
+// document holds, and the node in hand when the count runs out sits somewhere
+// in an anchored tree, which may belong to another document. That alias is the
+// outermost one being read through, or else the last one read.
+//
+// The walk counts only what it copies for an alias, so it always runs out
+// inside one. This counts every node, so it can run out on the first node after
+// an alias, and names that alias. Counting only under an alias would miss the
+// aliases getMapNode and getArrayNode follow, which do not set expanding.
+func (d *Decoder) refuseOverBudget(at ast.Node) error {
+	switch {
+	case d.expanding != nil:
+		at = d.expanding
+	case d.expanded != nil:
+		at = d.expanded
+	}
+	var tk *token.Token
+	if at != nil {
+		tk = at.GetToken()
 	}
 
-	d.setPathToCommentMap(node)
-	switch n := node.(type) {
-	case *ast.MappingValueNode:
-		if n.Key.IsMergeKey() {
-			value, err := d.getMapNode(n.Value, true)
-			if err != nil {
-				return err
-			}
-			if err := eachMergedEntry(value, func(v ast.Node) error {
-				return d.setToMapValue(ctx, v, m, true)
-			}); err != nil {
-				return err
-			}
-		} else {
-			key, err := d.mapKeyNodeToValue(ctx, n.Key)
-			if err != nil {
-				return err
-			}
-			if merged && m.holds(key) {
-				return nil
-			}
-
-			v, err := d.nodeToValue(ctx, n.Value)
-			if err != nil {
-				return err
-			}
-			m.put(key, v)
-		}
-	case *ast.MappingNode:
-		return eachEntryOwnFirst(n, func(value ast.Node, isMerge bool) error {
-			return d.setToMapValue(ctx, value, m, merged || isMerge)
-		})
-	case *ast.AnchorNode:
-		anchorName := n.Name.GetToken().Value
-		d.anchorNodeMap[anchorName] = n.Value
-	}
-	return nil
+	return yamlerrors.NewExcessiveAliasing(d.built, d.budget, tk)
 }
 
-// setToOrderedMapValue fills m from node, reading merged as [Decoder.setToMapValue] does.
-//
-// A MapSlice keeps what a map cannot: the order the document wrote. So a key
-// already standing is overwritten where it stands rather than appended again --
-// "<<: *a" over "x: 9" is one entry holding 9, at the place the merge brought x
-// in. Appending gave a MapSlice with x twice, which no reader of one expects
-// and which json.Marshal writes as a repeated member.
-func (d *Decoder) setToOrderedMapValue(ctx context.Context, node ast.Node, m *MapSlice, merged bool) error {
-	d.stepIn()
-	defer d.stepOut()
-	if d.isExceededMaxDepth() {
-		return ErrExceededMaxDepth
-	}
-
-	d.setPathToCommentMap(node)
-	switch n := node.(type) {
-	case *ast.MappingValueNode:
-		if n.Key.IsMergeKey() {
-			value, err := d.getMapNode(n.Value, true)
-			if err != nil {
-				return err
-			}
-			if err := eachMergedEntry(value, func(v ast.Node) error {
-				return d.setToOrderedMapValue(ctx, v, m, true)
-			}); err != nil {
-				return err
-			}
-		} else {
-			key, err := d.mapKeyNodeToValue(ctx, n.Key)
-			if err != nil {
-				return err
-			}
-			if merged && m.index(key) >= 0 {
-				return nil
-			}
-			value, err := d.nodeToValue(ctx, n.Value)
-			if err != nil {
-				return err
-			}
-			if err := m.Set(key, value); err != nil {
-				return err
-			}
-		}
-	case *ast.MappingNode:
-		return eachEntryOwnFirst(n, func(value ast.Node, isMerge bool) error {
-			return d.setToOrderedMapValue(ctx, value, m, merged || isMerge)
-		})
-	}
-	return nil
+func (d *Decoder) castToFloat(v any) any {
+	return castToFloatValue(v)
 }
 
 // eachEntryOwnFirst calls fn for the mapping's own entries in document order,
@@ -788,6 +699,169 @@ func sameKeyIn(m map[any]any, key any) (any, bool) {
 	return nil, false
 }
 
+func (d *Decoder) mapKeyNodeToString(ctx context.Context, node ast.MapKeyNode) (string, error) {
+	key, err := d.nodeToValue(ctx, node)
+	if err != nil {
+		return "", err
+	}
+
+	name, err := mapKeyString(node, key)
+	if err != nil {
+		return "", err
+	}
+
+	return d.strs.clone(name), nil
+}
+
+// mapKeyNodeToValue is the key a [MapSlice] entry is addressed by.
+//
+// A MapItem.Key is an interface{}, so it holds what the key resolves to, as a
+// map[any]any key does: "1:" gives an integer, "1.0:" a float, "null:" nil.
+// Naming it by text instead put `"1.0": a` and `1.0: b` in one MapSlice under
+// one key, where 3.2.1.1 makes a string and a float two keys -- and a merge
+// then let one override the other, which is what defect 69 was.
+//
+// [UseStringKeys] asks for the text instead and gets it for every scalar. A
+// collection reaches mapKeyString either way, which refuses it: a MapSlice key
+// must be comparable, and Go hashes no slice or map.
+func (d *Decoder) mapKeyNodeToValue(ctx context.Context, node ast.MapKeyNode) (any, error) {
+	key, err := d.nodeToValue(ctx, node)
+	if err != nil {
+		return nil, err
+	}
+	if d.useStringKeys || !hashableKey(key) {
+		name, err := mapKeyString(node, key)
+		if err != nil {
+			return nil, err
+		}
+
+		return d.strs.clone(name), nil
+	}
+
+	return key, nil
+}
+
+// setToMapValue fills m from node.
+//
+// merged says the entries come from a "<<" rather than from the mapping
+// holding it. A mapping's own keys win over the ones it merges in, whichever
+// side of the "<<" they were written, and an earlier "<<" wins over a later one
+// -- so a merged key is written only where none stands already. That is the
+// rule keyToNodeMap applies for a struct, and this path did not: "x: 9" over
+// "<<: *a" took the merged x, and "<<: [*a, *b]" took b's where the merge spec
+// gives it to a.
+func (d *Decoder) setToMapValue(ctx context.Context, node ast.Node, m *keyedMap, merged bool) error {
+	d.stepIn()
+	defer d.stepOut()
+	if d.isExceededMaxDepth() {
+		return ErrExceededMaxDepth
+	}
+
+	d.setPathToCommentMap(node)
+	switch n := node.(type) {
+	case *ast.MappingValueNode:
+		if n.Key.IsMergeKey() {
+			value, err := d.getMapNode(n.Value, true)
+			if err != nil {
+				return err
+			}
+			if err := eachMergedEntry(value, func(v ast.Node) error {
+				return d.setToMapValue(ctx, v, m, true)
+			}); err != nil {
+				return err
+			}
+		} else {
+			key, err := d.mapKeyNodeToValue(ctx, n.Key)
+			if err != nil {
+				return err
+			}
+			if merged && m.holds(key) {
+				return nil
+			}
+
+			v, err := d.nodeToValue(ctx, n.Value)
+			if err != nil {
+				return err
+			}
+			m.put(key, v)
+		}
+	case *ast.MappingNode:
+		return eachEntryOwnFirst(n, func(value ast.Node, isMerge bool) error {
+			return d.setToMapValue(ctx, value, m, merged || isMerge)
+		})
+	case *ast.AnchorNode:
+		anchorName := n.Name.GetToken().Value
+		d.anchorNodeMap[anchorName] = n.Value
+	}
+	return nil
+}
+
+// headCommentPath is the path a head comment is keyed by: a collection's own
+// head comment belongs to its first key, as the walk below already records it.
+func headCommentPath(node ast.Node) string {
+	switch n := node.(type) {
+	case *ast.MappingNode:
+		if len(n.Values) != 0 {
+			return n.Values[0].Key.GetPath()
+		}
+	case *ast.MappingValueNode:
+		return n.Key.GetPath()
+	}
+
+	return node.GetPath()
+}
+
+// setToOrderedMapValue fills m from node, reading merged as [Decoder.setToMapValue] does.
+//
+// A MapSlice keeps what a map cannot: the order the document wrote. So a key
+// already standing is overwritten where it stands rather than appended again --
+// "<<: *a" over "x: 9" is one entry holding 9, at the place the merge brought x
+// in. Appending gave a MapSlice with x twice, which no reader of one expects
+// and which json.Marshal writes as a repeated member.
+func (d *Decoder) setToOrderedMapValue(ctx context.Context, node ast.Node, m *MapSlice, merged bool) error {
+	d.stepIn()
+	defer d.stepOut()
+	if d.isExceededMaxDepth() {
+		return ErrExceededMaxDepth
+	}
+
+	d.setPathToCommentMap(node)
+	switch n := node.(type) {
+	case *ast.MappingValueNode:
+		if n.Key.IsMergeKey() {
+			value, err := d.getMapNode(n.Value, true)
+			if err != nil {
+				return err
+			}
+			if err := eachMergedEntry(value, func(v ast.Node) error {
+				return d.setToOrderedMapValue(ctx, v, m, true)
+			}); err != nil {
+				return err
+			}
+		} else {
+			key, err := d.mapKeyNodeToValue(ctx, n.Key)
+			if err != nil {
+				return err
+			}
+			if merged && m.index(key) >= 0 {
+				return nil
+			}
+			value, err := d.nodeToValue(ctx, n.Value)
+			if err != nil {
+				return err
+			}
+			if err := m.Set(key, value); err != nil {
+				return err
+			}
+		}
+	case *ast.MappingNode:
+		return eachEntryOwnFirst(n, func(value ast.Node, isMerge bool) error {
+			return d.setToOrderedMapValue(ctx, value, m, merged || isMerge)
+		})
+	}
+	return nil
+}
+
 func (d *Decoder) setPathToCommentMap(node ast.Node) {
 	if node == nil {
 		return
@@ -875,21 +949,6 @@ func (d *Decoder) addOwnHeadCommentToMap(node ast.Node) {
 	}
 
 	d.addCommentToMap(headCommentPath(node), HeadComment(texts...))
-}
-
-// headCommentPath is the path a head comment is keyed by: a collection's own
-// head comment belongs to its first key, as the walk below already records it.
-func headCommentPath(node ast.Node) string {
-	switch n := node.(type) {
-	case *ast.MappingNode:
-		if len(n.Values) != 0 {
-			return n.Values[0].Key.GetPath()
-		}
-	case *ast.MappingValueNode:
-		return n.Key.GetPath()
-	}
-
-	return node.GetPath()
 }
 
 // addEntryLineCommentToMap records the comment written on a mapping entry's own
@@ -1042,6 +1101,8 @@ func (d *Decoder) nodeToValue(ctx context.Context, node ast.Node) (any, error) {
 
 			return nil, yamlerrors.NewSyntax(
 				fmt.Sprintf("cannot read %q as %s", res.Text, res.Tag), n.Value.GetToken())
+		default:
+			// nothing to do
 		}
 
 		v, err := d.taggedValue(ctx, n, res)
@@ -1209,6 +1270,103 @@ func (d *Decoder) nodeToValue(ctx context.Context, node ast.Node) (any, error) {
 	return nil, nil
 }
 
+// byteArray reports whether t is an array of bytes, which a "!!binary" fills as
+// it fills a byte slice.
+func byteArray(t reflect.Type) bool {
+	return t.Kind() == reflect.Array && t.Elem().Kind() == reflect.Uint8
+}
+
+// copyIntoByteArray fills a byte array from b, and reports a length the array
+// cannot hold rather than writing part of it.
+func copyIntoByteArray(dst reflect.Value, b []byte, src ast.Node) error {
+	if len(b) != dst.Len() {
+		return yamlerrors.NewSyntax(
+			fmt.Sprintf("a %d byte array cannot hold the %d bytes this !!binary carries", dst.Len(), len(b)),
+			src.GetToken(),
+		)
+	}
+	reflect.Copy(dst, reflect.ValueOf(b))
+
+	return nil
+}
+
+// byteSlice reports whether t is a slice of bytes a []byte converts to. A
+// []MyByte is not one: Go converts between slice types only where the element
+// types are identical.
+func byteSlice(t reflect.Type) bool {
+	return t.Kind() == reflect.Slice && reflect.TypeFor[[]byte]().ConvertibleTo(t)
+}
+
+// isBigNumber reports whether v holds a number wider than a native type.
+func isBigNumber(v reflect.Value) bool {
+	switch v.Interface().(type) {
+	case *big.Int, *big.Float:
+		return true
+	default:
+		return false
+	}
+}
+
+func isFloatKind(k reflect.Kind) bool { return k == reflect.Float32 || k == reflect.Float64 }
+
+// convertBigNumber converts a number the AST read into a [big.Int] or a
+// [big.Float], which it does for one no native type holds.
+//
+// A float destination takes the nearest float64, and is refused where the
+// number reaches past what one holds. strconv.ParseFloat answers the same
+// values and returns ErrRange with them, and dropping that gave a document
+// holding 1e400 a field reading +Inf with nothing said. A caller who wants the
+// number whole decodes into a *big.Int or a *big.Float, which take it exactly.
+//
+// ±Inf is a float64 like any other and a document naming one gets it: ".inf"
+// resolves to an ast.InfinityNode, which holds a float64 already and never
+// reaches here. Only a finite big.Int or big.Float does, and a float64 of ±Inf
+// from finite digits has lost the number rather than named it.
+//
+// A string destination takes the digits. Anything else is left to convertValue's
+// own rules, which end in a type mismatch.
+func convertBigNumber(v reflect.Value, typ reflect.Type) (reflect.Value, bool) {
+	var (
+		f    float64
+		text string
+	)
+	switch n := v.Interface().(type) {
+	case *big.Int:
+		f, _ = new(big.Float).SetInt(n).Float64()
+		text = n.String()
+	case *big.Float:
+		f, _ = n.Float64()
+		text = n.Text('g', -1)
+	default:
+		return reflect.Value{}, false
+	}
+
+	switch typ.Kind() {
+	case reflect.Float32, reflect.Float64:
+		if outOfFloatRange(f, text) {
+			return reflect.Value{}, false
+		}
+
+		return reflect.ValueOf(f).Convert(typ), true
+	case reflect.String:
+		return reflect.ValueOf(text).Convert(typ), true
+	default:
+		return reflect.Value{}, false
+	}
+}
+
+// outOfFloatRange reports whether the float64 nearest to a finite number has
+// lost it rather than rounded it: infinite, or zero from digits that are not.
+func outOfFloatRange(f float64, text string) bool {
+	if math.IsInf(f, 0) {
+		return true
+	}
+
+	return f == 0 && strings.ContainsFunc(text, func(r rune) bool {
+		return r >= '1' && r <= '9'
+	})
+}
+
 func (d *Decoder) getMapNode(node ast.Node, isMerge bool) (ast.MapNode, error) {
 	d.stepIn()
 	defer d.stepOut()
@@ -1339,103 +1497,6 @@ func (d *Decoder) binaryBytes(node ast.Node) ([]byte, bool) {
 	}
 }
 
-// byteArray reports whether t is an array of bytes, which a "!!binary" fills as
-// it fills a byte slice.
-func byteArray(t reflect.Type) bool {
-	return t.Kind() == reflect.Array && t.Elem().Kind() == reflect.Uint8
-}
-
-// copyIntoByteArray fills a byte array from b, and reports a length the array
-// cannot hold rather than writing part of it.
-func copyIntoByteArray(dst reflect.Value, b []byte, src ast.Node) error {
-	if len(b) != dst.Len() {
-		return yamlerrors.NewSyntax(
-			fmt.Sprintf("a %d byte array cannot hold the %d bytes this !!binary carries", dst.Len(), len(b)),
-			src.GetToken(),
-		)
-	}
-	reflect.Copy(dst, reflect.ValueOf(b))
-
-	return nil
-}
-
-// byteSlice reports whether t is a slice of bytes a []byte converts to. A
-// []MyByte is not one: Go converts between slice types only where the element
-// types are identical.
-func byteSlice(t reflect.Type) bool {
-	return t.Kind() == reflect.Slice && reflect.TypeFor[[]byte]().ConvertibleTo(t)
-}
-
-// isBigNumber reports whether v holds a number wider than a native type.
-func isBigNumber(v reflect.Value) bool {
-	switch v.Interface().(type) {
-	case *big.Int, *big.Float:
-		return true
-	default:
-		return false
-	}
-}
-
-func isFloatKind(k reflect.Kind) bool { return k == reflect.Float32 || k == reflect.Float64 }
-
-// convertBigNumber converts a number the AST read into a [big.Int] or a
-// [big.Float], which it does for one no native type holds.
-//
-// A float destination takes the nearest float64, and is refused where the
-// number reaches past what one holds. strconv.ParseFloat answers the same
-// values and returns ErrRange with them, and dropping that gave a document
-// holding 1e400 a field reading +Inf with nothing said. A caller who wants the
-// number whole decodes into a *big.Int or a *big.Float, which take it exactly.
-//
-// ±Inf is a float64 like any other and a document naming one gets it: ".inf"
-// resolves to an ast.InfinityNode, which holds a float64 already and never
-// reaches here. Only a finite big.Int or big.Float does, and a float64 of ±Inf
-// from finite digits has lost the number rather than named it.
-//
-// A string destination takes the digits. Anything else is left to convertValue's
-// own rules, which end in a type mismatch.
-func convertBigNumber(v reflect.Value, typ reflect.Type) (reflect.Value, bool) {
-	var (
-		f    float64
-		text string
-	)
-	switch n := v.Interface().(type) {
-	case *big.Int:
-		f, _ = new(big.Float).SetInt(n).Float64()
-		text = n.String()
-	case *big.Float:
-		f, _ = n.Float64()
-		text = n.Text('g', -1)
-	default:
-		return reflect.Value{}, false
-	}
-
-	switch typ.Kind() {
-	case reflect.Float32, reflect.Float64:
-		if outOfFloatRange(f, text) {
-			return reflect.Value{}, false
-		}
-
-		return reflect.ValueOf(f).Convert(typ), true
-	case reflect.String:
-		return reflect.ValueOf(text).Convert(typ), true
-	default:
-		return reflect.Value{}, false
-	}
-}
-
-// outOfFloatRange reports whether the float64 nearest to a finite number has
-// lost it rather than rounded it: infinite, or zero from digits that are not.
-func outOfFloatRange(f float64, text string) bool {
-	if math.IsInf(f, 0) {
-		return true
-	}
-
-	return f == 0 && strings.ContainsFunc(text, func(r rune) bool {
-		return r >= '1' && r <= '9'
-	})
-}
-
 func (d *Decoder) convertValue(v reflect.Value, typ reflect.Type, src ast.Node) (reflect.Value, error) {
 	if converted, ok := convertBigNumber(v, typ); ok {
 		return converted, nil
@@ -1490,6 +1551,10 @@ func (d *Decoder) convertValue(v reflect.Value, typ reflect.Type, src ast.Node) 
 	return val, nil
 }
 
+type jsonUnmarshaler interface {
+	UnmarshalJSON(data []byte) error
+}
+
 // tagMode says which of encoding/json's rules this decoder adds to the `yaml`
 // tag. Neither option set is go.yaml.in/yaml/v3 exactly.
 func (d *Decoder) tagMode() tagMode {
@@ -1524,8 +1589,7 @@ func (d *Decoder) deleteStructKeys(structType reflect.Type, unknownFields map[st
 		return err
 	}
 
-	for j := 0; j < structType.NumField(); j++ {
-		field := structType.Field(j)
+	for field := range structType.Fields() {
 		if isIgnoredStructField(field, d.tagMode()) {
 			continue
 		}
@@ -1550,7 +1614,7 @@ func (d *Decoder) deleteStructKeys(structType reflect.Type, unknownFields map[st
 // so a nested Unmarshal reads the fragment as the document read it: "<<" merges
 // and "yes" is true. Without the line the fragment parsed as 1.2, and a merge
 // inside it came back as an ordinary key named "<<".
-func (d *Decoder) unmarshalableDocument(node ast.Node) ([]byte, error) {
+func (d *Decoder) unmarshalableDocument(node ast.Node) ([]byte, error) { //nolint:unparam // signature kept stable: callers already handle the error
 	doc := format.FormatNodeWithResolvedAlias(node, d.anchorNodeMap)
 	if d.docSchema == token.Schema11 {
 		return []byte("%YAML 1.1\n---\n" + doc), nil
@@ -1567,9 +1631,7 @@ func (d *Decoder) unmarshalableText(node ast.Node) ([]byte, bool) {
 	return []byte(v), true
 }
 
-type jsonUnmarshaler interface {
-	UnmarshalJSON([]byte) error
-}
+var astNodeType = reflect.TypeFor[ast.Node]()
 
 func (d *Decoder) existsTypeInCustomUnmarshalerMap(t reflect.Type) bool {
 	if _, exists := d.customUnmarshalerMap[t]; exists {
@@ -1720,7 +1782,7 @@ func (d *Decoder) decodeByUnmarshaler(ctx context.Context, dst reflect.Value, sr
 	}
 
 	if unmarshaler, isText := iface.(encoding.TextUnmarshaler); isText {
-		b, ok := d.unmarshalableText(src)
+		b, ok := d.unmarshalableText(src) //nolint:contextcheck // decodes into a plain string: no user unmarshaler can receive the context
 		if ok {
 			if err := unmarshaler.UnmarshalText(b); err != nil {
 				return err
@@ -1749,8 +1811,6 @@ func (d *Decoder) decodeByUnmarshaler(ctx context.Context, dst reflect.Value, sr
 
 	return errors.New("does not implemented GoYAMLUnmarshaler")
 }
-
-var astNodeType = reflect.TypeFor[ast.Node]()
 
 func (d *Decoder) decodeValue(ctx context.Context, dst reflect.Value, src ast.Node) error {
 	d.stepIn()
@@ -1923,6 +1983,8 @@ func (d *Decoder) decodeValue(ctx context.Context, dst reflect.Value, src ast.No
 			return yamlerrors.NewTypeMismatch(valueType, reflect.TypeOf(v), src.GetToken())
 		}
 		return yamlerrors.NewOverflow(valueType, fmt.Sprint(v), src.GetToken())
+	default:
+		// nothing to do
 	}
 	srcVal, err := d.nodeToValue(ctx, src)
 	if err != nil {
@@ -1949,6 +2011,16 @@ func (d *Decoder) createDecodableValue(typ reflect.Type) reflect.Value {
 	}
 	return reflect.New(typ).Elem()
 }
+
+/*
+func (d *Decoder) keyToKeyNodeMap(ctx context.Context, node ast.Node, ignoreMergeKey bool) (map[string]ast.Node, error) {
+	m, err := d.keyToNodeMap(ctx, node, ignoreMergeKey, func(nodeMap *ast.MapNodeIter) ast.Node { return nodeMap.Key() })
+	if err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+*/
 
 func (d *Decoder) castToAssignableValue(value reflect.Value, target reflect.Type, src ast.Node) (reflect.Value, error) {
 	if target.Kind() != reflect.Pointer {
@@ -2083,6 +2155,102 @@ func (d *Decoder) keyToNodeMap(ctx context.Context, node ast.Node, ignoreMergeKe
 	return keyToNodeMap, nil
 }
 
+// orderedMapShape reports the sequence of one-entry mappings an "!!omap" names,
+// where the node the tag stands on is one.
+//
+// A tag naming a kind its node is not is refused, as every other malformed tag
+// is: the document parses -- the shape is a question about what it means, not
+// about how it is written -- and the loader declines to build a value. So
+// "!!omap [1, 2]" is a document the parser reports and nodeToValue refuses.
+//
+// No implementation here votes on the shape. Measured 2026-09-10:
+// go.yaml.in/yaml/v3 v3.0.5 and libfyaml 1.0.0b1 both pass "!!omap" through
+// whatever stands under it -- a conforming sequence included -- so neither
+// builds an ordered map at all and neither reports a key written twice. What
+// they read says nothing about the shape a reader that builds the type should
+// require.
+func orderedMapShape(node ast.Node) (*ast.SequenceNode, bool) {
+	// The anchor may follow the tag, as in "!!omap &o [{x: 1}]".
+	seq := orderedMapSequence(node)
+	if seq == nil {
+		return nil, false
+	}
+	for _, entry := range seq.Values {
+		if entryMapping(entry) == nil {
+			return nil, false
+		}
+	}
+
+	return seq, true
+}
+
+// notAnOrderedMap reports a node "!!omap" stands on that is not the shape the
+// tag names.
+func notAnOrderedMap(node ast.Node) error {
+	return yamlerrors.NewSyntax("!!omap names a sequence of one-entry mappings", node.GetToken())
+}
+
+// entryMapping is the one entry an "!!omap" element holds, or nil where the
+// element is not a mapping holding exactly one key.
+//
+// A mapping that writes its one key twice, "{a: 1, a: 2}", comes back whole:
+// it is one key and a repeat, which orderedMapOf refuses as a mapping's repeat
+// is refused and reads under AllowDuplicateMapKey with the last value standing,
+// as the walk does. Counting the entries instead refused it as the wrong shape,
+// where every other reader reported the repeat.
+func entryMapping(entry ast.Node) ast.Node {
+	switch n := entry.(type) {
+	case *ast.MappingNode:
+		if distinctKeys(n) != 1 {
+			return nil
+		}
+		if len(n.Values) != 1 {
+			return n
+		}
+
+		return n.Values[0]
+	case *ast.MappingValueNode:
+		return n
+	case *ast.AnchorNode:
+		return entryMapping(n.Value)
+	case *ast.TagNode:
+		return entryMapping(n.Value)
+	case *ast.AliasNode:
+		// "!!omap [{x: 1}, *m]" is an ordered map where m names a one-entry
+		// mapping. The tree keeps the node an alias names, so it is read
+		// through; without this the element was refused as no entry at all.
+		if n.Target == nil {
+			return nil
+		}
+
+		return entryMapping(n.Target)
+	default:
+		return nil
+	}
+}
+
+// tagZero is what a tag standing on no value denotes: the value its type starts
+// at. "k: !!int" is 0 and "k: !!bool" is false, exactly as
+// parser.newTagDefaultScalarValueNode writes them into the tree.
+func tagZero(tag token.ReservedTagKeyword) (any, error) {
+	switch tag {
+	case token.IntegerTag:
+		return uint64(0), nil
+	case token.FloatTag:
+		return float64(0), nil
+	case token.BooleanTag:
+		return false, nil
+	case token.StringTag:
+		return "", nil
+	case token.BinaryTag:
+		return Base64(""), nil
+	case token.TimestampTag:
+		return time.Time{}, nil
+	default:
+		return nil, nil
+	}
+}
+
 // mergedKeyToNodeMap reads what a "<<" names, which is a mapping or a sequence
 // of them: getMapNode folds a sequence into one MapNode.
 //
@@ -2140,16 +2308,6 @@ func (d *Decoder) mergedKeyToNodeMap(
 
 	return keyToNodeMap, nil
 }
-
-/*
-func (d *Decoder) keyToKeyNodeMap(ctx context.Context, node ast.Node, ignoreMergeKey bool) (map[string]ast.Node, error) {
-	m, err := d.keyToNodeMap(ctx, node, ignoreMergeKey, func(nodeMap *ast.MapNodeIter) ast.Node { return nodeMap.Key() })
-	if err != nil {
-		return nil, err
-	}
-	return m, nil
-}
-*/
 
 func (d *Decoder) keyToValueNodeMap(ctx context.Context, node ast.Node, ignoreMergeKey bool) (map[string]ast.Node, error) {
 	m, err := d.keyToNodeMap(ctx, node, ignoreMergeKey, func(nodeMap *ast.MapNodeIter) ast.Node { return nodeMap.Value() })
@@ -2267,101 +2425,10 @@ func (d *Decoder) orderedMapOf(ctx context.Context, seq *ast.SequenceNode) (MapS
 	return MapSliceSeq(m), nil
 }
 
-// orderedMapShape reports the sequence of one-entry mappings an "!!omap" names,
-// where the node the tag stands on is one.
-//
-// A tag naming a kind its node is not is refused, as every other malformed tag
-// is: the document parses -- the shape is a question about what it means, not
-// about how it is written -- and the loader declines to build a value. So
-// "!!omap [1, 2]" is a document the parser reports and nodeToValue refuses.
-//
-// No implementation here votes on the shape. Measured 2026-09-10:
-// go.yaml.in/yaml/v3 v3.0.5 and libfyaml 1.0.0b1 both pass "!!omap" through
-// whatever stands under it -- a conforming sequence included -- so neither
-// builds an ordered map at all and neither reports a key written twice. What
-// they read says nothing about the shape a reader that builds the type should
-// require.
-func orderedMapShape(node ast.Node) (*ast.SequenceNode, bool) {
-	// The anchor may follow the tag, as in "!!omap &o [{x: 1}]".
-	seq := orderedMapSequence(node)
-	if seq == nil {
-		return nil, false
-	}
-	for _, entry := range seq.Values {
-		if entryMapping(entry) == nil {
-			return nil, false
-		}
-	}
-
-	return seq, true
-}
-
-// notAnOrderedMap reports a node "!!omap" stands on that is not the shape the
-// tag names.
-func notAnOrderedMap(node ast.Node) error {
-	return yamlerrors.NewSyntax("!!omap names a sequence of one-entry mappings", node.GetToken())
-}
-
-// entryMapping is the one entry an "!!omap" element holds, or nil where the
-// element is not a mapping holding exactly one key.
-//
-// A mapping that writes its one key twice, "{a: 1, a: 2}", comes back whole:
-// it is one key and a repeat, which orderedMapOf refuses as a mapping's repeat
-// is refused and reads under AllowDuplicateMapKey with the last value standing,
-// as the walk does. Counting the entries instead refused it as the wrong shape,
-// where every other reader reported the repeat.
-func entryMapping(entry ast.Node) ast.Node {
-	switch n := entry.(type) {
-	case *ast.MappingNode:
-		if distinctKeys(n) != 1 {
-			return nil
-		}
-		if len(n.Values) != 1 {
-			return n
-		}
-
-		return n.Values[0]
-	case *ast.MappingValueNode:
-		return n
-	case *ast.AnchorNode:
-		return entryMapping(n.Value)
-	case *ast.TagNode:
-		return entryMapping(n.Value)
-	case *ast.AliasNode:
-		// "!!omap [{x: 1}, *m]" is an ordered map where m names a one-entry
-		// mapping. The tree keeps the node an alias names, so it is read
-		// through; without this the element was refused as no entry at all.
-		if n.Target == nil {
-			return nil
-		}
-
-		return entryMapping(n.Target)
-	default:
-		return nil
-	}
-}
-
-// tagZero is what a tag standing on no value denotes: the value its type starts
-// at. "k: !!int" is 0 and "k: !!bool" is false, exactly as
-// parser.newTagDefaultScalarValueNode writes them into the tree.
-func tagZero(tag token.ReservedTagKeyword) (any, error) {
-	switch tag {
-	case token.IntegerTag:
-		return uint64(0), nil
-	case token.FloatTag:
-		return float64(0), nil
-	case token.BooleanTag:
-		return false, nil
-	case token.StringTag:
-		return "", nil
-	case token.BinaryTag:
-		return Base64(""), nil
-	case token.TimestampTag:
-		return time.Time{}, nil
-	default:
-		return nil, nil
-	}
-}
+// getMergeAliasName support single alias only
+// mapEntryFunc is handed one entry of a mapping. merged says the entry comes
+// from a "<<" rather than from the mapping itself.
+type mapEntryFunc func(name string, keyNode, valueNode, entryNode ast.Node, merged bool) error
 
 func (d *Decoder) castToTime(ctx context.Context, src ast.Node) (time.Time, error) {
 	if src == nil {
@@ -2428,6 +2495,36 @@ func (d *Decoder) castToDuration(ctx context.Context, src ast.Node) (time.Durati
 	return t, nil
 }
 
+// writtenFields records which fields a mapping has set, so that what a "<<"
+// merges in does not overwrite them. A struct of 64 fields or fewer costs no
+// allocation.
+type writtenFields struct {
+	first uint64
+	rest  []uint64
+}
+
+func (w *writtenFields) mark(i int) {
+	if i < 64 {
+		w.first |= 1 << uint(i%64)
+
+		return
+	}
+	word := i/64 - 1
+	for len(w.rest) <= word {
+		w.rest = append(w.rest, 0)
+	}
+	w.rest[word] |= 1 << uint(i%64)
+}
+
+func (w *writtenFields) has(i int) bool {
+	if i < 64 {
+		return w.first&(1<<uint(i%64)) != 0
+	}
+	word := i/64 - 1
+
+	return word < len(w.rest) && w.rest[word]&(1<<uint(i%64)) != 0
+}
+
 func (d *Decoder) decodeDuration(ctx context.Context, dst reflect.Value, src ast.Node) error {
 	t, err := d.castToDuration(ctx, src)
 	if err != nil {
@@ -2437,10 +2534,69 @@ func (d *Decoder) decodeDuration(ctx context.Context, dst reflect.Value, src ast
 	return nil
 }
 
-// getMergeAliasName support single alias only
-// mapEntryFunc is handed one entry of a mapping. merged says the entry comes
-// from a "<<" rather than from the mapping itself.
-type mapEntryFunc func(name string, keyNode, valueNode, entryNode ast.Node, merged bool) error
+// located is the field a mapping key names, found in a destination.
+//
+// sf is nil where no field of the type answers to the name. ord is the bit the
+// merge bookkeeping marks, and at is the index path, empty where the field
+// stands in the type itself.
+type located struct {
+	value reflect.Value
+	sf    *StructField
+	ord   int
+	at    []int
+}
+
+// name reports the field as a Go path -- "U.T.A" for a field A promoted from an
+// embedded T of U -- which is how encoding/json names one in a type error.
+func (l located) name(structType reflect.Type) string {
+	if len(l.at) == 0 {
+		return structType.Name() + "." + l.sf.FieldName
+	}
+
+	var b strings.Builder
+	b.WriteString(structType.Name())
+	t := structType
+	for _, step := range l.at {
+		for t.Kind() == reflect.Pointer {
+			t = t.Elem()
+		}
+		field := t.Field(step)
+		b.WriteByte('.')
+		b.WriteString(field.Name)
+		t = field.Type
+	}
+
+	return b.String()
+}
+
+// fieldFor finds the field a mapping key names.
+//
+// A type that embeds another is read through readFields.flat, which names every
+// field the embedding promotes and holds the index path to reach it; fieldAt
+// fills the pointers along the way. A type that embeds nothing takes the direct
+// lookup and no index path at all, which is the common case and the fast one.
+func fieldFor(dst reflect.Value, fields *readFields, name string) (located, error) {
+	ff, known := fields.lookup(name)
+	if !known {
+		return located{}, nil
+	}
+	if ff.at == nil {
+		return located{value: dst.Field(ff.sf.Index), sf: ff.sf, ord: ff.ord}, nil
+	}
+
+	field, err := fieldAt(dst, ff.at)
+	if err != nil {
+		// fieldAt could not make a pointer standing between, which happens
+		// where an embedded pointer is unexported. encoding/json refuses the
+		// same shape.
+		return located{}, fmt.Errorf(
+			"cannot set embedded pointer to unexported struct on the way to %q in %s",
+			name, dst.Type(),
+		)
+	}
+
+	return located{value: field, sf: ff.sf, ord: ff.ord, at: ff.at}, nil
+}
 
 // rangeMapEntries reads the mapping src names and hands its entries over: the
 // ones it writes itself first, in document order, then the ones each "<<"
@@ -2552,40 +2708,29 @@ func (d *Decoder) rangeMergedEntries(ctx context.Context, src ast.Node, ignoreMe
 // field tagged "true" and "1.0: x" one tagged "1.0", which is how the same
 // document reads into a map[string]any. Requiring the key to be an ast string
 // dropped every one of those instead.
-func (d *Decoder) entryName(_ context.Context, keyNode ast.Node) (string, bool, error) {
+func (d *Decoder) entryName(_ context.Context, keyNode ast.Node) (string, bool, error) { //nolint:unparam // signature kept stable: callers already handle the error
 	name, kind := ast.KeyName(keyNode)
 
 	return name, kind != token.KeyOther, nil
 }
 
-// writtenFields records which fields a mapping has set, so that what a "<<"
-// merges in does not overwrite them. A struct of 64 fields or fewer costs no
-// allocation.
-type writtenFields struct {
-	first uint64
-	rest  []uint64
-}
-
-func (w *writtenFields) mark(i int) {
-	if i < 64 {
-		w.first |= 1 << uint(i%64)
-
-		return
+// getParentMapTokenIfExists if the NodeType is a container type such as MappingType or SequenceType,
+// it is necessary to return the parent MapNode's colon token to represent the entire container.
+// validationErrorToken returns where to report a field that failed validation.
+//
+// A scalar is reported at itself: the message names the field, and what a
+// reader wants pointed at is the value that failed. A mapping or a sequence has
+// no one token to point at -- the first of them stands inside the value rather
+// than naming it -- so those are reported at the ':' of the entry that writes
+// them, which is what entry carries.
+func validationErrorToken(value, entry ast.Node) *token.Token {
+	if value.Type() == ast.MappingType || value.Type() == ast.SequenceType {
+		if entry != nil {
+			return entry.GetToken()
+		}
 	}
-	word := i/64 - 1
-	for len(w.rest) <= word {
-		w.rest = append(w.rest, 0)
-	}
-	w.rest[word] |= 1 << uint(i%64)
-}
 
-func (w *writtenFields) has(i int) bool {
-	if i < 64 {
-		return w.first&(1<<uint(i%64)) != 0
-	}
-	word := i/64 - 1
-
-	return word < len(w.rest) && w.rest[word]&(1<<uint(i%64)) != 0
+	return value.GetToken()
 }
 
 // decodeInlineFields reads the three kinds of `,inline` field an index path
@@ -2700,68 +2845,15 @@ func (d *Decoder) decodeInlineFields(
 	return nil
 }
 
-// located is the field a mapping key names, found in a destination.
-//
-// sf is nil where no field of the type answers to the name. ord is the bit the
-// merge bookkeeping marks, and at is the index path, empty where the field
-// stands in the type itself.
-type located struct {
-	value reflect.Value
-	sf    *StructField
-	ord   int
-	at    []int
-}
-
-// name reports the field as a Go path -- "U.T.A" for a field A promoted from an
-// embedded T of U -- which is how encoding/json names one in a type error.
-func (l located) name(structType reflect.Type) string {
-	if len(l.at) == 0 {
-		return structType.Name() + "." + l.sf.FieldName
+// sequenceEntryToken returns the '-' that writes entry idx of node, where the
+// sequence kept it.
+func sequenceEntryNode(node ast.ArrayNode, idx int) ast.Node {
+	seq, ok := node.(*ast.SequenceNode)
+	if !ok || idx < 0 || idx >= len(seq.Entries) {
+		return nil
 	}
 
-	var b strings.Builder
-	b.WriteString(structType.Name())
-	t := structType
-	for _, step := range l.at {
-		for t.Kind() == reflect.Pointer {
-			t = t.Elem()
-		}
-		field := t.Field(step)
-		b.WriteByte('.')
-		b.WriteString(field.Name)
-		t = field.Type
-	}
-
-	return b.String()
-}
-
-// fieldFor finds the field a mapping key names.
-//
-// A type that embeds another is read through readFields.flat, which names every
-// field the embedding promotes and holds the index path to reach it; fieldAt
-// fills the pointers along the way. A type that embeds nothing takes the direct
-// lookup and no index path at all, which is the common case and the fast one.
-func fieldFor(dst reflect.Value, fields *readFields, name string) (located, error) {
-	sf, at, ord, known := fields.lookup(name)
-	if !known {
-		return located{}, nil
-	}
-	if at == nil {
-		return located{value: dst.Field(sf.Index), sf: sf, ord: ord}, nil
-	}
-
-	field, err := fieldAt(dst, at)
-	if err != nil {
-		// fieldAt could not make a pointer standing between, which happens
-		// where an embedded pointer is unexported. encoding/json refuses the
-		// same shape.
-		return located{}, fmt.Errorf(
-			"cannot set embedded pointer to unexported struct on the way to %q in %s",
-			name, dst.Type(),
-		)
-	}
-
-	return located{value: field, sf: sf, ord: ord, at: at}, nil
+	return seq.Entries[idx]
 }
 
 // findEntry returns the value a mapping writes under name, and the entry that
@@ -2791,8 +2883,8 @@ func (d *Decoder) getMergeAliasName(src ast.Node) string {
 	for mapIter.Next() {
 		key := mapIter.Key()
 		value := mapIter.Value()
-		if key.IsMergeKey() && value.Type() == ast.AliasType {
-			return value.(*ast.AliasNode).Value.GetToken().Value
+		if alias, isAlias := value.(*ast.AliasNode); isAlias && key.IsMergeKey() {
+			return alias.Value.GetToken().Value
 		}
 	}
 	return ""
@@ -2873,7 +2965,7 @@ func (d *Decoder) decodeStruct(ctx context.Context, dst reflect.Value, src ast.N
 		d.entry = prevEntry
 		if err != nil {
 			if foundErr != nil {
-				return nil
+				return nil //nolint:nilerr // only the first field error is kept; decoding continues as encoding/json does
 			}
 			var te *yamlerrors.Error
 			if errors.As(err, &te) && errors.Is(te, yamlerrors.ErrTypeMismatch) {
@@ -2929,7 +3021,7 @@ func (d *Decoder) decodeStruct(ctx context.Context, dst reflect.Value, src ast.N
 				// field, which is the ":" rather than anything inside the value.
 				// The entries are read here rather than during the decode: a
 				// document that validates never needs them.
-				for i := 0; i < ev.Len(); i++ {
+				for i := range ev.Len() {
 					fieldErr, ok := reflect.TypeAssert[FieldError](ev.Index(i))
 					if !ok {
 						continue
@@ -2956,25 +3048,6 @@ func (d *Decoder) decodeStruct(ctx context.Context, dst reflect.Value, src ast.N
 	return nil
 }
 
-// getParentMapTokenIfExists if the NodeType is a container type such as MappingType or SequenceType,
-// it is necessary to return the parent MapNode's colon token to represent the entire container.
-// validationErrorToken returns where to report a field that failed validation.
-//
-// A scalar is reported at itself: the message names the field, and what a
-// reader wants pointed at is the value that failed. A mapping or a sequence has
-// no one token to point at -- the first of them stands inside the value rather
-// than naming it -- so those are reported at the ':' of the entry that writes
-// them, which is what entry carries.
-func validationErrorToken(value, entry ast.Node) *token.Token {
-	if value.Type() == ast.MappingType || value.Type() == ast.SequenceType {
-		if entry != nil {
-			return entry.GetToken()
-		}
-	}
-
-	return value.GetToken()
-}
-
 // missingFieldToken returns where to report a field the document left out.
 //
 // There is no entry to point at, so the error goes to the first key of the
@@ -2988,17 +3061,6 @@ func (d *Decoder) missingFieldToken(src ast.Node) *token.Token {
 	}
 
 	return src.GetToken()
-}
-
-// sequenceEntryToken returns the '-' that writes entry idx of node, where the
-// sequence kept it.
-func sequenceEntryNode(node ast.ArrayNode, idx int) ast.Node {
-	seq, ok := node.(*ast.SequenceNode)
-	if !ok || idx < 0 || idx >= len(seq.Entries) {
-		return nil
-	}
-
-	return seq.Entries[idx]
 }
 
 // enterEntry records the node that writes the one about to be decoded, and
@@ -3153,6 +3215,21 @@ func (d *Decoder) decodeMapItem(ctx context.Context, dst *MapItem, src ast.Node)
 	return nil
 }
 
+// taggedOrderedMap reports the sequence an "!!omap" standing on node names,
+// through an anchor.
+func taggedOrderedMap(node ast.Node) (*ast.SequenceNode, bool) {
+	switch n := node.(type) {
+	case *ast.TagNode:
+		if res := n.Resolve(); res.Verdict == ast.TagResolved && res.Tag == token.OrderedMapTag && !res.Empty {
+			return orderedMapShape(n.Value)
+		}
+	case *ast.AnchorNode:
+		return taggedOrderedMap(n.Value)
+	}
+
+	return nil, false
+}
+
 // validateDuplicateKey refuses two entries that land on one key of the Go
 // destination, which the parse does not see: "1: a" and "\"1\": b" are two YAML
 // keys and one key of a map[string]T, and "1: a" and "1.0: b" are two YAML keys
@@ -3254,21 +3331,6 @@ func (d *Decoder) orderedEntriesOf(ctx context.Context, src ast.Node) (MapSlice,
 	err := d.decodeMapSlice(ctx, &m, src)
 
 	return m, err
-}
-
-// taggedOrderedMap reports the sequence an "!!omap" standing on node names,
-// through an anchor.
-func taggedOrderedMap(node ast.Node) (*ast.SequenceNode, bool) {
-	switch n := node.(type) {
-	case *ast.TagNode:
-		if res := n.Resolve(); res.Verdict == ast.TagResolved && res.Tag == token.OrderedMapTag && !res.Empty {
-			return orderedMapShape(n.Value)
-		}
-	case *ast.AnchorNode:
-		return taggedOrderedMap(n.Value)
-	}
-
-	return nil, false
 }
 
 func (d *Decoder) decodeMap(ctx context.Context, dst reflect.Value, src ast.Node) error {
@@ -3444,7 +3506,7 @@ func (d *Decoder) isYAMLFile(file string) bool {
 }
 
 func (d *Decoder) readersUnderDir(dir string) ([]io.Reader, error) {
-	pattern := fmt.Sprintf("%s/*", dir)
+	pattern := dir + "/*"
 	matches, err := filepath.Glob(pattern)
 	if err != nil {
 		return nil, err
@@ -3463,6 +3525,34 @@ func (d *Decoder) readersUnderDir(dir string) ([]io.Reader, error) {
 	return readers, nil
 }
 
+// holdsAValue reports whether the document carries something to decode.
+//
+// A document of directives and nothing else opens their scope and denotes no
+// value, and a source holding only comments is not a document at all. Everything
+// else is one, including a tag or an anchor standing on nothing: "!!null" and
+// "&a" denote null exactly as "~" does.
+//
+// This replaced folding the whole document into a Go value and asking whether it
+// came out nil. That read "!!null" and "&a" as no document at all and dropped
+// them from the stream -- "a: 1" over "---" over "!!null" handed back one
+// document where go.yaml.in/yaml/v3 hands back two -- and it cost a second
+// reading of every document to answer a question about its shape.
+func holdsAValue(doc *ast.DocumentNode) bool {
+	if isEmptyDocument(doc) {
+		return true
+	}
+	if doc.Body == nil {
+		return false
+	}
+
+	switch doc.Body.(type) {
+	case *ast.DirectiveNode, *ast.CommentGroupNode:
+		return false
+	default:
+		return true
+	}
+}
+
 func (d *Decoder) readersUnderDirRecursive(dir string) ([]io.Reader, error) {
 	readers := []io.Reader{}
 	if err := filepath.Walk(dir, func(path string, info os.FileInfo, _ error) error {
@@ -3479,6 +3569,40 @@ func (d *Decoder) readersUnderDirRecursive(dir string) ([]io.Reader, error) {
 		return nil, err
 	}
 	return readers, nil
+}
+
+// readAll returns everything r holds, without copying it where r already has
+// it in one piece.
+//
+// Unmarshal wraps the caller's slice in a bytes.Buffer, so copying it into
+// another buffer and then calling String on that made three copies of the
+// document before the parse began. The parser keeps windows into what it is
+// given, so handing it the caller's own bytes costs nothing and holds nothing
+// twice.
+//
+// A reader that is not backed by a slice still has to be read into one. That
+// buffer grows by doubling, so what it hands back may have spare capacity, and
+// the tree pins the whole block; the alternative is a copy the size of the
+// document, which is what this exists to avoid.
+func readAll(r io.Reader) ([]byte, error) {
+	switch b := r.(type) {
+	case *bytes.Buffer:
+		return b.Bytes(), nil
+	case *bytes.Reader:
+		src := make([]byte, b.Len())
+		if _, err := io.ReadFull(b, src); err != nil {
+			return nil, err
+		}
+
+		return src, nil
+	}
+
+	var buf bytes.Buffer
+	if _, err := io.Copy(&buf, r); err != nil {
+		return nil, err
+	}
+
+	return buf.Bytes(), nil
 }
 
 func (d *Decoder) resolveReference(ctx context.Context) error {
@@ -3606,34 +3730,6 @@ func (d *Decoder) parse(ctx context.Context, bytes []byte) (*ast.File, error) {
 	return normalizedFile, nil
 }
 
-// holdsAValue reports whether the document carries something to decode.
-//
-// A document of directives and nothing else opens their scope and denotes no
-// value, and a source holding only comments is not a document at all. Everything
-// else is one, including a tag or an anchor standing on nothing: "!!null" and
-// "&a" denote null exactly as "~" does.
-//
-// This replaced folding the whole document into a Go value and asking whether it
-// came out nil. That read "!!null" and "&a" as no document at all and dropped
-// them from the stream -- "a: 1" over "---" over "!!null" handed back one
-// document where go.yaml.in/yaml/v3 hands back two -- and it cost a second
-// reading of every document to answer a question about its shape.
-func holdsAValue(doc *ast.DocumentNode) bool {
-	if isEmptyDocument(doc) {
-		return true
-	}
-	if doc.Body == nil {
-		return false
-	}
-
-	switch doc.Body.(type) {
-	case *ast.DirectiveNode, *ast.CommentGroupNode:
-		return false
-	default:
-		return true
-	}
-}
-
 // collectComments fills the map a caller asked for with CommentToMap.
 //
 // It reads the document the way the decode does, since a comment is recorded
@@ -3643,40 +3739,6 @@ func (d *Decoder) collectComments(ctx context.Context, body ast.Node) error {
 	_, err := d.nodeToValue(ctx, body)
 
 	return err
-}
-
-// readAll returns everything r holds, without copying it where r already has
-// it in one piece.
-//
-// Unmarshal wraps the caller's slice in a bytes.Buffer, so copying it into
-// another buffer and then calling String on that made three copies of the
-// document before the parse began. The parser keeps windows into what it is
-// given, so handing it the caller's own bytes costs nothing and holds nothing
-// twice.
-//
-// A reader that is not backed by a slice still has to be read into one. That
-// buffer grows by doubling, so what it hands back may have spare capacity, and
-// the tree pins the whole block; the alternative is a copy the size of the
-// document, which is what this exists to avoid.
-func readAll(r io.Reader) ([]byte, error) {
-	switch b := r.(type) {
-	case *bytes.Buffer:
-		return b.Bytes(), nil
-	case *bytes.Reader:
-		src := make([]byte, b.Len())
-		if _, err := io.ReadFull(b, src); err != nil {
-			return nil, err
-		}
-
-		return src, nil
-	}
-
-	var buf bytes.Buffer
-	if _, err := io.Copy(&buf, r); err != nil {
-		return nil, err
-	}
-
-	return buf.Bytes(), nil
 }
 
 func (d *Decoder) isInitialized() bool {
@@ -3712,6 +3774,27 @@ func (d *Decoder) canWalk(v reflect.Value) bool {
 	dst := v.Elem()
 
 	return dst.Kind() == reflect.Interface && dst.NumMethod() == 0
+}
+
+// isEmptyDocument reports whether doc holds no value and is a document all the
+// same.
+//
+// "---" opens a document and "..." closes one, so a document written with
+// either marker exists whatever stands between them: "---\n...\n" holds the
+// empty node and decodes to null. A run of comments carries no marker and is
+// no document at all -- l-yaml-stream puts those in a document prefix -- so
+// "# c\n" decodes to nothing.
+func isEmptyDocument(doc *ast.DocumentNode) bool {
+	if doc.Start == nil && doc.End == nil {
+		return false
+	}
+	if doc.Body == nil {
+		return true
+	}
+
+	_, comments := doc.Body.(*ast.CommentGroupNode)
+
+	return comments
 }
 
 func (d *Decoder) decodeInit(ctx context.Context, v reflect.Value) error {
@@ -3836,27 +3919,6 @@ func (d *Decoder) handWalked(v reflect.Value) error {
 	return nil
 }
 
-// isEmptyDocument reports whether doc holds no value and is a document all the
-// same.
-//
-// "---" opens a document and "..." closes one, so a document written with
-// either marker exists whatever stands between them: "---\n...\n" holds the
-// empty node and decodes to null. A run of comments carries no marker and is
-// no document at all -- l-yaml-stream puts those in a document prefix -- so
-// "# c\n" decodes to nothing.
-func isEmptyDocument(doc *ast.DocumentNode) bool {
-	if doc.Start == nil && doc.End == nil {
-		return false
-	}
-	if doc.Body == nil {
-		return true
-	}
-
-	_, comments := doc.Body.(*ast.CommentGroupNode)
-
-	return comments
-}
-
 func (d *Decoder) decode(ctx context.Context, v reflect.Value) error {
 	if d.typedWalk {
 		// The destination was filled as the parse read the source.
@@ -3915,65 +3977,6 @@ func (d *Decoder) decode(ctx context.Context, v reflect.Value) error {
 		return err
 	}
 	d.streamIndex++
-	return nil
-}
-
-// Decode reads the next YAML-encoded value from its input
-// and stores it in the value pointed to by v.
-//
-// See the documentation for Unmarshal for details about the
-// conversion of YAML into a Go value.
-func (d *Decoder) Decode(v any) error {
-	return d.DecodeContext(context.Background(), v)
-}
-
-// DecodeContext reads the next YAML-encoded value from its input
-// and stores it in the value pointed to by v with context.Context.
-func (d *Decoder) DecodeContext(ctx context.Context, v any) error {
-	rv := reflect.ValueOf(v)
-	if !rv.IsValid() || rv.Type().Kind() != reflect.Pointer {
-		return ErrDecodeRequiredPointerType
-	}
-	if d.isInitialized() {
-		if err := d.decode(ctx, rv); err != nil {
-			return yamlerrors.WithSource(err, d.source)
-		}
-
-		return nil
-	}
-	if err := d.decodeInit(ctx, rv); err != nil {
-		return yamlerrors.WithSource(err, d.source)
-	}
-	if err := d.decode(ctx, rv); err != nil {
-		return yamlerrors.WithSource(err, d.source)
-	}
-	return nil
-}
-
-// DecodeFromNode decodes node into the value pointed to by v.
-func (d *Decoder) DecodeFromNode(node ast.Node, v any) error {
-	return d.DecodeFromNodeContext(context.Background(), node, v)
-}
-
-// DecodeFromNodeContext decodes node into the value pointed to by v with context.Context.
-func (d *Decoder) DecodeFromNodeContext(ctx context.Context, node ast.Node, v any) error {
-	rv := reflect.ValueOf(v)
-	if rv.Type().Kind() != reflect.Pointer {
-		return ErrDecodeRequiredPointerType
-	}
-	if !d.isInitialized() {
-		// A node in hand is a tree, so this never takes the walking path.
-		if err := d.decodeInit(ctx, reflect.Value{}); err != nil {
-			return err
-		}
-	}
-	// resolve references to the anchor on the same file
-	if _, err := d.nodeToValue(ctx, node); err != nil {
-		return err
-	}
-	if err := d.decodeValue(ctx, rv.Elem(), node); err != nil {
-		return err
-	}
 	return nil
 }
 

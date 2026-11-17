@@ -4,7 +4,6 @@
 package parser
 
 import (
-	"fmt"
 	"strings"
 
 	"github.com/go-openapi/go-yaml/ast"
@@ -71,6 +70,8 @@ func (p *Parser) parseTokenNode(ctx context, tk *group.TapeToken) (ast.Node, err
 		}
 		ctx.goNext()
 		return node, nil
+	default:
+		// nothing to do
 	}
 	switch tk.Type() {
 	case token.CommentType:
@@ -91,6 +92,8 @@ func (p *Parser) parseTokenNode(ctx context, tk *group.TapeToken) (ast.Node, err
 		return nil, yamlerrors.NewSyntax("could not find '{' character corresponding to '}'", tk.RawToken())
 	case token.MappingValueType:
 		return nil, yamlerrors.NewSyntax("found an invalid key for this map", tk.RawToken())
+	default:
+		// nothing to do
 	}
 	node, err := p.parseScalarValue(ctx, tk)
 	if err != nil {
@@ -150,7 +153,7 @@ func (p *Parser) parseScalarValue(ctx context, tk *group.TapeToken) (ast.ScalarN
 		// A written tag decides what the scalar is, so jsonNumberless checks a tagged one once the tag resolves.
 		if p.opts.jsonCompatible && !p.descent.isTagged(tk.RawToken()) {
 			return nil, yamlerrors.NewNotJSON(
-				fmt.Sprintf("JSON has no number for %s", tk.RawToken().Value), tk.RawToken())
+				"JSON has no number for "+tk.RawToken().Value, tk.RawToken())
 		}
 		if tk.Type() == token.InfinityType {
 			return newInfinityNode(ctx, tk)
@@ -162,6 +165,8 @@ func (p *Parser) parseScalarValue(ctx context, tk *group.TapeToken) (ast.ScalarN
 	case token.TagType:
 		// A scalar tag with no value, as in "key: !!str," or "!!str : value".
 		return p.parseScalarTag(ctx)
+	default:
+		// nothing to do
 	}
 	return nil, yamlerrors.NewSyntax("unexpected scalar value type", tk.RawToken())
 }

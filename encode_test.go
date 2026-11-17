@@ -931,7 +931,7 @@ func TestEncoder(t *testing.T) {
 		},
 		{
 			"v: 30s\n",
-			map[string]*time.Duration{"v": ptr(30 * time.Second)},
+			map[string]*time.Duration{"v": new(30 * time.Second)},
 			nil,
 		},
 		{
@@ -1124,8 +1124,9 @@ d: *b
 func TestEncodeWithMerge(t *testing.T) {
 	type Person struct {
 		*Person `yaml:",omitempty,inline"`
-		Name    string `yaml:",omitempty"`
-		Age     int    `yaml:",omitempty"`
+
+		Name string `yaml:",omitempty"`
+		Age  int    `yaml:",omitempty"`
 	}
 	defaultPerson := &Person{
 		Name: "John Smith",
@@ -1226,7 +1227,8 @@ func TestEncoder_Inline(t *testing.T) {
 	enc := codec.NewEncoder(&buf)
 	if err := enc.Encode(struct {
 		*base `yaml:",inline"`
-		C     bool
+
+		C bool
 	}{
 		base: &base{
 			A: 1,
@@ -1259,8 +1261,9 @@ func TestEncoder_InlineAndConflictKey(t *testing.T) {
 	// so the encoder makes it as well as the decoder.
 	err := enc.Encode(struct {
 		*base `yaml:",inline"`
-		A     int // conflict
-		C     bool
+
+		A int // conflict
+		C bool
 	}{
 		base: &base{
 			A: 1,
@@ -1286,7 +1289,8 @@ func TestEncoder_InlineNil(t *testing.T) {
 	enc := codec.NewEncoder(&buf)
 	if err := enc.Encode(struct {
 		*base `yaml:",inline"`
-		C     bool
+
+		C bool
 	}{
 		C: true,
 	}); err != nil {
@@ -1389,6 +1393,7 @@ func TestEncoder_JSON(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("%+v", err)
 	}
+	//nolint:lll // the expected flow-style output is a single line
 	expect := `
 {"i": -10, "u": 10, "s": "hello", "f": 3.14, "struct": {"i": 2, "s": "world", "f": 1.23}, "slice": [1, 2, 3, 4, 5], "map": {"a": 1, "b": 1.23, "c": "json"}, "time": "0001-01-01T00:00:00Z", "duration": "5m0s"}
 `
@@ -1410,8 +1415,8 @@ func TestEncoder_MarshalAnchor(t *testing.T) {
 	type Queue struct {
 		// `yaml:","` here named the field the same way an absent tag does, and
 		// v3 refuses a tag with an empty flag.
-		Name string
-		*Host
+		Name  string
+		*Host //nolint:embeddedstructfieldcheck // the embedded field follows a regular one on purpose: the test covers that order
 	}
 	var doc struct {
 		Hosts  []*HostDecl `yaml:"hosts"`
@@ -2209,8 +2214,4 @@ a: &anc !mytag
 			}
 		})
 	}
-}
-
-func ptr[T any](v T) *T {
-	return &v
 }

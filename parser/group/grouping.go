@@ -431,6 +431,8 @@ func (g *Grouper) groupExplicitKeysIn(in []*TapeToken) []*TapeToken {
 			})
 
 			continue
+		default:
+			// nothing to do
 		}
 
 		hold(tk)

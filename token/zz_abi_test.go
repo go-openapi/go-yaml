@@ -21,8 +21,8 @@ func registers(t reflect.Type) int {
 	switch t.Kind() {
 	case reflect.Struct:
 		var n int
-		for i := range t.NumField() {
-			n += registers(t.Field(i).Type)
+		for field := range t.Fields() {
+			n += registers(field.Type)
 		}
 
 		return n

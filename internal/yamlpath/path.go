@@ -257,11 +257,6 @@ func (p *Path) FilterFile(f *ast.File) (ast.Node, error) {
 	return nil, p.errNotFound()
 }
 
-// errNotFound refuses a path that addresses no node of any document.
-func (p *Path) errNotFound() error {
-	return fmt.Errorf("failed to find path ( %s ): %w", p.node, ErrNotFoundNode)
-}
-
 // FilterNode filter from node by YAMLPath.
 func (p *Path) FilterNode(node ast.Node) (ast.Node, error) {
 	if node == nil {
@@ -342,15 +337,15 @@ func (p *Path) ReplaceWithFile(dst *ast.File, src *ast.File) error {
 	return nil
 }
 
-// ReplaceNode replace ast.File with ast.Node.
+// ReplaceWithNode replaces the nodes matched by the path in dst with node.
 func (p *Path) ReplaceWithNode(dst *ast.File, node ast.Node) error {
 	for _, doc := range dst.Docs {
 		// For simplicity, directives cannot be the target of operations
 		if doc.Body != nil && doc.Body.Type() == ast.DirectiveType {
 			continue
 		}
-		if node.Type() == ast.DocumentType {
-			node = node.(*ast.DocumentNode).Body
+		if docNode, isDoc := node.(*ast.DocumentNode); isDoc {
+			node = docNode.Body
 		}
 		if err := p.node.replace(doc.Body, node); err != nil {
 			return err
@@ -372,6 +367,11 @@ func (p *Path) AnnotateSource(source []byte, colored bool) ([]byte, error) {
 	var pp printer.Printer
 
 	return []byte(pp.PrintErrorSource(nocopy.String(source), 1, node.GetToken(), colored)), nil
+}
+
+// errNotFound refuses a path that addresses no node of any document.
+func (p *Path) errNotFound() error {
+	return fmt.Errorf("failed to find path ( %s ): %w", p.node, ErrNotFoundNode)
 }
 
 // PathBuilder represent builder for YAMLPath.
@@ -396,6 +396,22 @@ func (b *PathBuilder) IndexAll() *PathBuilder {
 func (b *PathBuilder) Recursive(selector string) *PathBuilder {
 	b.node = b.node.chain(newRecursiveNode(selector))
 	return b
+}
+
+// Child add '.name' to current path.
+func (b *PathBuilder) Child(name string) *PathBuilder {
+	return b.child(b.normalizeSelectorName(name))
+}
+
+// Index add '[idx]' to current path.
+func (b *PathBuilder) Index(idx uint) *PathBuilder {
+	b.node = b.node.chain(newIndexNode(idx))
+	return b
+}
+
+// Build build YAMLPath.
+func (b *PathBuilder) Build() *Path {
+	return &Path{node: b.root}
 }
 
 func (b *PathBuilder) containsReservedPathCharacters(path string) bool {
@@ -429,27 +445,11 @@ func (b *PathBuilder) child(name string) *PathBuilder {
 	return b
 }
 
-// Child add '.name' to current path.
-func (b *PathBuilder) Child(name string) *PathBuilder {
-	return b.child(b.normalizeSelectorName(name))
-}
-
-// Index add '[idx]' to current path.
-func (b *PathBuilder) Index(idx uint) *PathBuilder {
-	b.node = b.node.chain(newIndexNode(idx))
-	return b
-}
-
-// Build build YAMLPath.
-func (b *PathBuilder) Build() *Path {
-	return &Path{node: b.root}
-}
-
 type pathNode interface {
 	fmt.Stringer
-	chain(pathNode) pathNode
-	filter(ast.Node) (ast.Node, error)
-	replace(ast.Node, ast.Node) error
+	chain(node pathNode) pathNode
+	filter(node ast.Node) (ast.Node, error)
+	replace(node ast.Node, target ast.Node) error
 }
 
 type basePathNode struct {
@@ -500,6 +500,7 @@ func (n *rootNode) replace(node ast.Node, target ast.Node) error {
 
 type selectorNode struct {
 	*basePathNode
+
 	selector string
 }
 
@@ -510,11 +511,21 @@ func newSelectorNode(selector string) *selectorNode {
 	}
 }
 
+func (n *selectorNode) String() string {
+	var builder PathBuilder
+	selector := builder.normalizeSelectorName(n.selector)
+	s := "." + selector
+	if n.child != nil {
+		s += n.child.String()
+	}
+	return s
+}
+
 func (n *selectorNode) filter(node ast.Node) (ast.Node, error) {
 	selector := n.name()
-	switch node.Type() {
-	case ast.MappingType:
-		for _, value := range node.(*ast.MappingNode).Values {
+	switch typed := node.(type) {
+	case *ast.MappingNode:
+		for _, value := range typed.Values {
 			key, err := selectorKey(value.Key.GetToken().Value)
 			if err != nil {
 				return nil, err
@@ -530,14 +541,13 @@ func (n *selectorNode) filter(node ast.Node) (ast.Node, error) {
 				return filtered, nil
 			}
 		}
-	case ast.MappingValueType:
-		value, _ := node.(*ast.MappingValueNode)
-		key := value.Key.GetToken().Value
+	case *ast.MappingValueNode:
+		key := typed.Key.GetToken().Value
 		if key == selector {
 			if n.child == nil {
-				return value.Value, nil
+				return typed.Value, nil
 			}
-			filtered, err := n.child.filter(value.Value)
+			filtered, err := n.child.filter(typed.Value)
 			if err != nil {
 				return nil, err
 			}
@@ -547,16 +557,6 @@ func (n *selectorNode) filter(node ast.Node) (ast.Node, error) {
 		return nil, errNotAMapping(node.Type())
 	}
 	return nil, nil
-}
-
-// name is the key the selector matches, without the quotes a reserved character needs.
-func (n *selectorNode) name() string {
-	selector := n.selector
-	if len(selector) > 1 && selector[0] == '\'' && selector[len(selector)-1] == '\'' {
-		selector = selector[1 : len(selector)-1]
-	}
-
-	return selector
 }
 
 // selectorKey is the text a key's token is compared to a selector by, with its quotes taken off.
@@ -590,6 +590,16 @@ func errOutOfRange(index uint, length int) error {
 	return fmt.Errorf("expected index is %d. but got sequences has %d items: %w", index, length, ErrInvalidQuery)
 }
 
+// name is the key the selector matches, without the quotes a reserved character needs.
+func (n *selectorNode) name() string {
+	selector := n.selector
+	if len(selector) > 1 && selector[0] == '\'' && selector[len(selector)-1] == '\'' {
+		selector = selector[1 : len(selector)-1]
+	}
+
+	return selector
+}
+
 func (n *selectorNode) replaceMapValue(value *ast.MappingValueNode, target ast.Node) error {
 	key := value.Key.GetToken().Value
 	if key != n.selector {
@@ -608,16 +618,15 @@ func (n *selectorNode) replaceMapValue(value *ast.MappingValueNode, target ast.N
 }
 
 func (n *selectorNode) replace(node ast.Node, target ast.Node) error {
-	switch node.Type() {
-	case ast.MappingType:
-		for _, value := range node.(*ast.MappingNode).Values {
+	switch typed := node.(type) {
+	case *ast.MappingNode:
+		for _, value := range typed.Values {
 			if err := n.replaceMapValue(value, target); err != nil {
 				return err
 			}
 		}
-	case ast.MappingValueType:
-		value, _ := node.(*ast.MappingValueNode)
-		if err := n.replaceMapValue(value, target); err != nil {
+	case *ast.MappingValueNode:
+		if err := n.replaceMapValue(typed, target); err != nil {
 			return err
 		}
 	default:
@@ -626,18 +635,9 @@ func (n *selectorNode) replace(node ast.Node, target ast.Node) error {
 	return nil
 }
 
-func (n *selectorNode) String() string {
-	var builder PathBuilder
-	selector := builder.normalizeSelectorName(n.selector)
-	s := fmt.Sprintf(".%s", selector)
-	if n.child != nil {
-		s += n.child.String()
-	}
-	return s
-}
-
 type indexNode struct {
 	*basePathNode
+
 	selector uint
 }
 
@@ -646,6 +646,14 @@ func newIndexNode(selector uint) *indexNode {
 		basePathNode: &basePathNode{},
 		selector:     selector,
 	}
+}
+
+func (n *indexNode) String() string {
+	s := fmt.Sprintf("[%d]", n.selector)
+	if n.child != nil {
+		s += n.child.String()
+	}
+	return s
 }
 
 func (n *indexNode) filter(node ast.Node) (ast.Node, error) {
@@ -685,14 +693,6 @@ func (n *indexNode) replace(node ast.Node, target ast.Node) error {
 		return err
 	}
 	return nil
-}
-
-func (n *indexNode) String() string {
-	s := fmt.Sprintf("[%d]", n.selector)
-	if n.child != nil {
-		s += n.child.String()
-	}
-	return s
 }
 
 type indexAllNode struct {
@@ -762,6 +762,7 @@ func (n *indexAllNode) replace(node ast.Node, target ast.Node) error {
 
 type recursiveNode struct {
 	*basePathNode
+
 	selector string
 }
 
@@ -773,7 +774,7 @@ func newRecursiveNode(selector string) *recursiveNode {
 }
 
 func (n *recursiveNode) String() string {
-	s := fmt.Sprintf("..%s", n.selector)
+	s := ".." + n.selector
 	if n.child != nil {
 		s += n.child.String()
 	}

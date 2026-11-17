@@ -19,11 +19,11 @@ type positionDefects struct {
 	backwards int
 }
 
-func (d positionDefects) empty() bool { return d == positionDefects{} }
-
 func (d positionDefects) String() string {
 	return fmt.Sprintf("{zeroColumns:%d, backwards:%d}", d.zeroColumns, d.backwards)
 }
+
+func (d positionDefects) empty() bool { return d == positionDefects{} }
 
 // positionLedger records position defects the scanner is known to produce, per YAML Test Suite case.
 //

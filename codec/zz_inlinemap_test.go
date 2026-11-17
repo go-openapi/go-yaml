@@ -36,8 +36,9 @@ type (
 	}
 	withRestAndAnEmbed struct {
 		Promoted `yaml:",inline"`
-		Known    string         `yaml:"known"`
-		Rest     map[string]any `yaml:",inline"`
+
+		Known string         `yaml:"known"`
+		Rest  map[string]any `yaml:",inline"`
 	}
 )
 

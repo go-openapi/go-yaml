@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: Copyright 2025 go-swagger maintainers
 // SPDX-License-Identifier: Apache-2.0
 
+// Package printer renders YAML nodes and error sources as text, with optional
+// ANSI colors.
 package printer
 
 import (
@@ -38,51 +40,6 @@ func (p *Printer) PrintNode(node ast.Node) []byte {
 	return []byte(fmt.Sprintf("%+v\n", node))
 }
 
-func (p *Printer) setDefaultColorSet() {
-	p.Bool = func() *Property {
-		return &Property{
-			Prefix: format(ColorFgHiMagenta),
-			Suffix: format(ColorReset),
-		}
-	}
-	p.Number = func() *Property {
-		return &Property{
-			Prefix: format(ColorFgHiMagenta),
-			Suffix: format(ColorReset),
-		}
-	}
-	p.MapKey = func() *Property {
-		return &Property{
-			Prefix: format(ColorFgHiCyan),
-			Suffix: format(ColorReset),
-		}
-	}
-	p.Anchor = func() *Property {
-		return &Property{
-			Prefix: format(ColorFgHiYellow),
-			Suffix: format(ColorReset),
-		}
-	}
-	p.Alias = func() *Property {
-		return &Property{
-			Prefix: format(ColorFgHiYellow),
-			Suffix: format(ColorReset),
-		}
-	}
-	p.String = func() *Property {
-		return &Property{
-			Prefix: format(ColorFgHiGreen),
-			Suffix: format(ColorReset),
-		}
-	}
-	p.Comment = func() *Property {
-		return &Property{
-			Prefix: format(ColorFgHiBlack),
-			Suffix: format(ColorReset),
-		}
-	}
-}
-
 func (p *Printer) PrintErrorMessage(msg string, isColored bool) string {
 	if isColored {
 		return fmt.Sprintf("%s%s%s",
@@ -92,27 +49,6 @@ func (p *Printer) PrintErrorMessage(msg string, isColored bool) string {
 		)
 	}
 	return msg
-}
-
-func (p *Printer) setupErrorTokenFormat(annotateLine int, isColored bool) {
-	prefix := func(annotateLine, num int) string {
-		if annotateLine == num {
-			return fmt.Sprintf("> %2d | ", num)
-		}
-
-		return fmt.Sprintf("  %2d | ", num)
-	}
-	p.LineNumber = true
-	p.LineNumberFormat = func(num int) string {
-		if isColored {
-			return colorize(prefix(annotateLine, num), ColorBold, ColorFgHiWhite)
-		}
-
-		return prefix(annotateLine, num)
-	}
-	if isColored {
-		p.setDefaultColorSet()
-	}
 }
 
 // PrintErrorSource draws the lines of src around tk, with tk's line marked and
@@ -182,6 +118,72 @@ func (p *Printer) PrintErrorSource(src string, firstLine int, tk *token.Token, i
 	}
 
 	return strings.TrimSuffix(out.String(), "\n")
+}
+
+func (p *Printer) setDefaultColorSet() {
+	p.Bool = func() *Property {
+		return &Property{
+			Prefix: format(ColorFgHiMagenta),
+			Suffix: format(ColorReset),
+		}
+	}
+	p.Number = func() *Property {
+		return &Property{
+			Prefix: format(ColorFgHiMagenta),
+			Suffix: format(ColorReset),
+		}
+	}
+	p.MapKey = func() *Property {
+		return &Property{
+			Prefix: format(ColorFgHiCyan),
+			Suffix: format(ColorReset),
+		}
+	}
+	p.Anchor = func() *Property {
+		return &Property{
+			Prefix: format(ColorFgHiYellow),
+			Suffix: format(ColorReset),
+		}
+	}
+	p.Alias = func() *Property {
+		return &Property{
+			Prefix: format(ColorFgHiYellow),
+			Suffix: format(ColorReset),
+		}
+	}
+	p.String = func() *Property {
+		return &Property{
+			Prefix: format(ColorFgHiGreen),
+			Suffix: format(ColorReset),
+		}
+	}
+	p.Comment = func() *Property {
+		return &Property{
+			Prefix: format(ColorFgHiBlack),
+			Suffix: format(ColorReset),
+		}
+	}
+}
+
+func (p *Printer) setupErrorTokenFormat(annotateLine int, isColored bool) {
+	prefix := func(annotateLine, num int) string {
+		if annotateLine == num {
+			return fmt.Sprintf("> %2d | ", num)
+		}
+
+		return fmt.Sprintf("  %2d | ", num)
+	}
+	p.LineNumber = true
+	p.LineNumberFormat = func(num int) string {
+		if isColored {
+			return colorize(prefix(annotateLine, num), ColorBold, ColorFgHiWhite)
+		}
+
+		return prefix(annotateLine, num)
+	}
+	if isColored {
+		p.setDefaultColorSet()
+	}
 }
 
 // splitLines cuts src where the scanner counts a line break: "\r\n", "\r" or

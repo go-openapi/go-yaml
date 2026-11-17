@@ -231,7 +231,7 @@ func DeepIndent(n int) string {
 	return b.String()
 }
 
-// Shape names the document shapes worth measuring separately. The order is
+// Shapes names the document shapes worth measuring separately. The order is
 // fixed so that benchmark output lines up run to run.
 var Shapes = []struct {
 	Name     string

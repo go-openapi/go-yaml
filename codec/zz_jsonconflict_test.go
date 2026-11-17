@@ -27,6 +27,7 @@ type (
 	// JOuterShadows declares the name itself and embeds a type declaring it.
 	JOuterShadows struct {
 		JLeaf
+
 		Name string `json:"name"`
 	}
 	// JSiblings embeds two types that both declare it, at the same depth.
@@ -162,7 +163,8 @@ func TestTheModeDecidesWhetherAConflictIsRefused(t *testing.T) {
 	// two colliding names differ in where they come from.
 	type inlinedShadow struct {
 		JLeaf `yaml:",inline"`
-		Name  string `json:"name"`
+
+		Name string `json:"name"`
 	}
 
 	t.Run("the default refuses it", func(t *testing.T) {

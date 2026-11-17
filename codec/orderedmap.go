@@ -194,19 +194,32 @@ func (s MapSlice) ToMap() map[any]any {
 	return v
 }
 
-// index is where key stands, or -1.
+// MarshalJSON writes the entries as a JSON object, in the order they stand.
 //
-// A scan: a MapSlice carries no lookup table, so a mapping of n entries costs
-// n²/2 comparisons to build. Documents hold small mappings, and the table would
-// have to be kept through every Set and Delete.
-func (s MapSlice) index(key any) int {
-	for i := range s.items {
-		if sameMapKey(s.items[i].Key, key) {
-			return i
-		}
+// JSON specifies no ordering, so nothing carries the order to a reader that
+// takes the object apart into a map -- but the bytes hold it, which is what a
+// caller reading them in order, or diffing them, has. A MapSliceSeq writes the
+// same object: "!!omap" is a YAML tag and JSON has no spelling for it.
+//
+// The keys are named by the encoder in its JSON style, which is the same path
+// [MarshalWithOptions] with [JSON] takes, so a MapSlice and the document it was
+// read from write the same JSON. TestToJSONMatchesTheValueConverter holds that
+// path against [ToJSON] over the whole corpus.
+func (s MapSlice) MarshalJSON() ([]byte, error) {
+	out, err := MarshalWithOptions(s, JSON())
+	if err != nil {
+		return nil, err
 	}
 
-	return -1
+	// The encoder's JSON style writes a space after every ':' and ',', which
+	// encoding/json does not. Compacted here so a MapSlice inside a struct
+	// writes like everything around it.
+	var compact bytes.Buffer
+	if err := json.Compact(&compact, out); err != nil {
+		return nil, err
+	}
+
+	return compact.Bytes(), nil
 }
 
 // Len returns the number of entries.
@@ -236,34 +249,6 @@ func (s MapSliceSeq) All() iter.Seq2[any, any] { return MapSlice(s).All() }
 // ToMap returns the entries as a Go map, dropping the order.
 func (s MapSliceSeq) ToMap() map[any]any { return MapSlice(s).ToMap() }
 
-// MarshalJSON writes the entries as a JSON object, in the order they stand.
-//
-// JSON specifies no ordering, so nothing carries the order to a reader that
-// takes the object apart into a map -- but the bytes hold it, which is what a
-// caller reading them in order, or diffing them, has. A MapSliceSeq writes the
-// same object: "!!omap" is a YAML tag and JSON has no spelling for it.
-//
-// The keys are named by the encoder in its JSON style, which is the same path
-// [MarshalWithOptions] with [JSON] takes, so a MapSlice and the document it was
-// read from write the same JSON. TestToJSONMatchesTheValueConverter holds that
-// path against [ToJSON] over the whole corpus.
-func (s MapSlice) MarshalJSON() ([]byte, error) {
-	out, err := MarshalWithOptions(s, JSON())
-	if err != nil {
-		return nil, err
-	}
-
-	// The encoder's JSON style writes a space after every ':' and ',', which
-	// encoding/json does not. Compacted here so a MapSlice inside a struct
-	// writes like everything around it.
-	var compact bytes.Buffer
-	if err := json.Compact(&compact, out); err != nil {
-		return nil, err
-	}
-
-	return compact.Bytes(), nil
-}
-
 // UnmarshalJSON reads a JSON object, keeping the order its members were written
 // in.
 //
@@ -290,6 +275,21 @@ func (s *MapSlice) UnmarshalJSON(b []byte) error {
 	*s = m
 
 	return nil
+}
+
+// index is where key stands, or -1.
+//
+// A scan: a MapSlice carries no lookup table, so a mapping of n entries costs
+// n²/2 comparisons to build. Documents hold small mappings, and the table would
+// have to be kept through every Set and Delete.
+func (s MapSlice) index(key any) int {
+	for i := range s.items {
+		if sameMapKey(s.items[i].Key, key) {
+			return i
+		}
+	}
+
+	return -1
 }
 
 // MarshalJSON writes the entries as a JSON object, as [MapSlice.MarshalJSON]

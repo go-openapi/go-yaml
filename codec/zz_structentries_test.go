@@ -17,8 +17,8 @@ type EmbeddedInner struct {
 }
 
 type embeddingOuter struct {
-	A             int `yaml:"a"`
-	EmbeddedInner `yaml:",inline"`
+	A             int              `yaml:"a"`
+	EmbeddedInner `yaml:",inline"` //nolint:embeddedstructfieldcheck // the embedded field follows a regular one on purpose: the test covers that order
 }
 
 type namedOnly struct {

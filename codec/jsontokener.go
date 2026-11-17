@@ -78,101 +78,6 @@ type jsonTokener struct {
 	suppress int
 }
 
-// pushMap opens the frame of a mapping being handed over, reusing the room the
-// last frame at that depth grew for the names its merges brought in.
-//
-// A popped frame is not read again: closeMapping copies it before popping it,
-// and nothing it calls opens another mapping.
-func (t *jsonTokener) pushMap(n *ast.MappingNode) {
-	if len(t.maps) < cap(t.maps) {
-		t.maps = t.maps[:len(t.maps)+1]
-		frame := &t.maps[len(t.maps)-1]
-		*frame = tokenMapFrame{brought: frame.brought[:0], mergeSeq: -1, node: n}
-
-		return
-	}
-	t.maps = append(t.maps, tokenMapFrame{mergeSeq: -1, node: n})
-}
-
-// tokenMapFrame is one mapping being handed over.
-type tokenMapFrame struct {
-	// brought are the names earlier "<<" runs put into this mapping, for a later
-	// run to be answered against. The mapping's own keys are not here: the parse
-	// recorded them for its duplicate check and parser.Closing.HoldsKey answers
-	// for them, so a mapping with no "<<" records nothing at all.
-	brought []string
-	// merged holds what each "<<" of this mapping brings in, earliest first.
-	merged [][]JSONToken
-	// mergeValue says the next node handed over belongs to a "<<" and is to be
-	// collected rather than handed on. mergeSeq holds the depth of a sequence
-	// of merge sources, and -1 where there is none.
-	mergeValue bool
-	mergeSeq   int
-
-	// node is the mapping, whose Duplicates the parse appends to as it reads
-	// each key, and dups how many of those this frame has seen.
-	node *ast.MappingNode
-	dups int
-	// pending is the key of the entry being read, held until its value begins:
-	// a key under an anchor, a tag or a "?" goes over before the parse has
-	// recorded whether it repeats, and a token cannot be taken back.
-	pending    JSONToken
-	hasPending bool
-}
-
-// settleEntry decides, as an entry's value begins, whether the entry goes over,
-// and reports whether it is dropped.
-//
-// An entry whose key repeats one the parse allowed to repeat is dropped: JSON
-// names a member once and the first entry to name it stands, as the encoder
-// writes a map under SkipDuplicateMapKey. The held key is let go and the value
-// is not entered at all.
-func (t *jsonTokener) settleEntry(frame *tokenMapFrame) bool {
-	repeat := newAllowedRepeat(frame.node, &frame.dups)
-	if !frame.hasPending {
-		return false
-	}
-	tok := frame.pending
-	frame.hasPending = false
-	if repeat {
-		return true
-	}
-	t.emit(tok)
-
-	return false
-}
-
-// tokenKeyMark is one mapping key open: the wrapper the walk handed over, and
-// the depth it stands at.
-//
-// ⛔ The depth and not the pointer is what closes it. The parse hands its cells
-// out again behind the descent, so a node built inside this key may be the same
-// pointer, and matching on that would close the key early. A wrapper's Leave
-// reports the depth its Enter did, and key wrappers nest strictly, so the depth
-// names exactly one of them.
-type tokenKeyMark struct {
-	node  ast.Node
-	depth int
-}
-
-// tokenTagMark is one tag open: how many tokens had gone over when it opened,
-// and whether it stands as a mapping key.
-type tokenTagMark struct {
-	at int
-	// key says the tag stands as a mapping key, so what it resolves to names
-	// the entry rather than filling it.
-	key bool
-	// suppressed says openTag held back what the tag stands on.
-	suppressed bool
-	// peeking says the tag names a kind rather than a scalar type, so what it
-	// stands on is held back only until the first token says which it is: a
-	// collection writes itself and the hold is dropped, a scalar is kept in
-	// held and replaced where the tag resolves.
-	peeking bool
-	held    JSONToken
-	heldSet bool
-}
-
 func (t *jsonTokener) Enter(node ast.Node, at parser.Cursor) error {
 	if t.stopped {
 		return t.halted()
@@ -273,6 +178,32 @@ func (t *jsonTokener) Enter(node ast.Node, at parser.Cursor) error {
 	return t.halted()
 }
 
+// tokenMapFrame is one mapping being handed over.
+type tokenMapFrame struct {
+	// brought are the names earlier "<<" runs put into this mapping, for a later
+	// run to be answered against. The mapping's own keys are not here: the parse
+	// recorded them for its duplicate check and parser.Closing.HoldsKey answers
+	// for them, so a mapping with no "<<" records nothing at all.
+	brought []string
+	// merged holds what each "<<" of this mapping brings in, earliest first.
+	merged [][]JSONToken
+	// mergeValue says the next node handed over belongs to a "<<" and is to be
+	// collected rather than handed on. mergeSeq holds the depth of a sequence
+	// of merge sources, and -1 where there is none.
+	mergeValue bool
+	mergeSeq   int
+
+	// node is the mapping, whose Duplicates the parse appends to as it reads
+	// each key, and dups how many of those this frame has seen.
+	node *ast.MappingNode
+	dups int
+	// pending is the key of the entry being read, held until its value begins:
+	// a key under an anchor, a tag or a "?" goes over before the parse has
+	// recorded whether it repeats, and a token cannot be taken back.
+	pending    JSONToken
+	hasPending bool
+}
+
 func (t *jsonTokener) Leave(node ast.Node, at parser.Closing) error {
 	if t.stopped {
 		return t.halted()
@@ -302,6 +233,75 @@ func (t *jsonTokener) Leave(node ast.Node, at parser.Closing) error {
 	}
 
 	return t.halted()
+}
+
+// tokenKeyMark is one mapping key open: the wrapper the walk handed over, and
+// the depth it stands at.
+//
+// ⛔ The depth and not the pointer is what closes it. The parse hands its cells
+// out again behind the descent, so a node built inside this key may be the same
+// pointer, and matching on that would close the key early. A wrapper's Leave
+// reports the depth its Enter did, and key wrappers nest strictly, so the depth
+// names exactly one of them.
+type tokenKeyMark struct {
+	node  ast.Node
+	depth int
+}
+
+// tokenTagMark is one tag open: how many tokens had gone over when it opened,
+// and whether it stands as a mapping key.
+type tokenTagMark struct {
+	at int
+	// key says the tag stands as a mapping key, so what it resolves to names
+	// the entry rather than filling it.
+	key bool
+	// suppressed says openTag held back what the tag stands on.
+	suppressed bool
+	// peeking says the tag names a kind rather than a scalar type, so what it
+	// stands on is held back only until the first token says which it is: a
+	// collection writes itself and the hold is dropped, a scalar is kept in
+	// held and replaced where the tag resolves.
+	peeking bool
+	held    JSONToken
+	heldSet bool
+}
+
+// pushMap opens the frame of a mapping being handed over, reusing the room the
+// last frame at that depth grew for the names its merges brought in.
+//
+// A popped frame is not read again: closeMapping copies it before popping it,
+// and nothing it calls opens another mapping.
+func (t *jsonTokener) pushMap(n *ast.MappingNode) {
+	if len(t.maps) < cap(t.maps) {
+		t.maps = t.maps[:len(t.maps)+1]
+		frame := &t.maps[len(t.maps)-1]
+		*frame = tokenMapFrame{brought: frame.brought[:0], mergeSeq: -1, node: n}
+
+		return
+	}
+	t.maps = append(t.maps, tokenMapFrame{mergeSeq: -1, node: n})
+}
+
+// settleEntry decides, as an entry's value begins, whether the entry goes over,
+// and reports whether it is dropped.
+//
+// An entry whose key repeats one the parse allowed to repeat is dropped: JSON
+// names a member once and the first entry to name it stands, as the encoder
+// writes a map under SkipDuplicateMapKey. The held key is let go and the value
+// is not entered at all.
+func (t *jsonTokener) settleEntry(frame *tokenMapFrame) bool {
+	repeat := newAllowedRepeat(frame.node, &frame.dups)
+	if !frame.hasPending {
+		return false
+	}
+	tok := frame.pending
+	frame.hasPending = false
+	if repeat {
+		return true
+	}
+	t.emit(tok)
+
+	return false
 }
 
 // nodeAt is where a node stands in the source, and the zero Position where it carries no token.
@@ -456,6 +456,8 @@ func foldOrderedMapTokens(toks []JSONToken, drop []int) ([]JSONToken, bool) {
 				if depth == 1 {
 					entryKeys++
 				}
+			default:
+				// nothing to do
 			}
 			if depth > 0 && keep {
 				out = append(out, toks[i])
@@ -505,6 +507,8 @@ func (t *jsonTokener) step(tok JSONToken) {
 		}
 
 		return
+	default:
+		// nothing to do
 	}
 
 	// Everything else fills a slot of the collection around it, a nested

@@ -34,10 +34,10 @@ func TestPathStringRejectsAnIndexThatNeverCloses(t *testing.T) {
 // walks bytes, still addresses a key holding characters that take more than
 // one.
 func TestPathStringReadsKeysThatAreNotASCII(t *testing.T) {
-	const src = "日本語: 1\nprix: 2\n'a.b': 3\n"
+	const src = "日本語: 1\nprix: 2\n'a.b': 3\n" //nolint:gosmopolitan // non-ASCII keys are what the test reads
 
 	tests := map[string]any{
-		"$.日本語":   uint64(1),
+		"$.日本語":   uint64(1), //nolint:gosmopolitan // non-ASCII keys are what the test reads
 		"$.prix":  uint64(2),
 		"$.'a.b'": uint64(3),
 	}

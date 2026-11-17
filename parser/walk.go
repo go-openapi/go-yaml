@@ -395,7 +395,7 @@ func (p *Parser) releaseDocument() {
 }
 
 // enter hands a node over before its content, and reports whether to descend into it.
-func (p *Parser) enter(ctx context, node ast.Node, in Kind) bool {
+func (p *Parser) enter(ctx context, node ast.Node, in Kind) bool { //nolint:unparam // reports whether to descend, like enterKey; no caller needs it yet
 	return p.enterAs(ctx, node, in, false)
 }
 
@@ -405,6 +405,7 @@ func (p *Parser) enterKey(ctx context, node ast.Node, in Kind) bool {
 }
 
 func (p *Parser) enterAs(ctx context, node ast.Node, in Kind, key bool) bool {
+	_ = ctx
 	if p.walk == nil || node == nil {
 		return true
 	}
@@ -621,6 +622,7 @@ func (p *Parser) quiet() func() {
 //
 // The outermost run moves only when a whole entry of the document is done, after the last read of any of them.
 func (p *Parser) readTo(ctx context) {
+	_ = ctx
 	if p.tokens == nil || p.body == nil {
 		return
 	}

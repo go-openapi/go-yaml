@@ -307,6 +307,8 @@ func flushProperties(g *Grouper, at int, out []*TapeToken) []*TapeToken {
 		g.tag, g.name = nil, nil
 	case propTagSawAnchor:
 		g.fail(yamlerrors.NewSyntax("undefined anchor name", g.anchor.RawToken()))
+	default:
+		// nothing to do
 	}
 	g.prop = propNone
 

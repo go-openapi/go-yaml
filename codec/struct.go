@@ -8,7 +8,6 @@ import (
 	"reflect"
 	"slices"
 	"strings"
-	"sync"
 	"unicode"
 )
 
@@ -328,7 +327,7 @@ func (m StructFieldMap) hasMergeProperty() bool {
 // field maps, and a decoder using one must not be handed the other's. One map
 // per mode keeps reflect.Type as the key: it is already an interface, where a
 // struct holding the type and the mode would be boxed at every lookup.
-var structFieldMaps [modeCount]sync.Map
+var structFieldMaps [modeCount]typeCache[*readFields]
 
 // readFields holds one type's fields, or the error its tags raised. Both are
 // kept, so a type with a duplicated field name is refused as fast as one that
@@ -372,31 +371,20 @@ type readFields struct {
 // The map and the StructFields in it are shared between every decode and
 // encode of the type, so no caller may write to them.
 func structFieldMap(structType reflect.Type, mode tagMode) (StructFieldMap, error) {
-	cache := &structFieldMaps[mode]
-	if cached, read := cache.Load(structType); read {
-		r := cached.(*readFields)
+	r, err := structFields(structType, mode)
 
-		return r.fields, r.err
-	}
-
-	cached, _ := cache.LoadOrStore(structType, readType(structType, mode))
-	r := cached.(*readFields)
-
-	return r.fields, r.err
+	return r.fields, err
 }
 
 // structFields returns everything read from structType: the fields by Go name,
 // by the name a mapping key writes, and the embedded ones on their own.
 func structFields(structType reflect.Type, mode tagMode) (*readFields, error) {
 	cache := &structFieldMaps[mode]
-	if cached, read := cache.Load(structType); read {
-		r := cached.(*readFields)
-
+	if r, read := cache.Load(structType); read {
 		return r, r.err
 	}
 
-	cached, _ := cache.LoadOrStore(structType, readType(structType, mode))
-	r := cached.(*readFields)
+	r := cache.LoadOrStore(structType, readType(structType, mode))
 
 	return r, r.err
 }
@@ -404,31 +392,29 @@ func structFields(structType reflect.Type, mode tagMode) (*readFields, error) {
 // lookup finds the field a mapping key names.
 //
 // An exact match first, and under [UseJSONTags] one differing only in case
-// after that, which is the order encoding/json tries them in. at is nil where
-// the field stands in the type itself and there is no index path to walk.
-func (r *readFields) lookup(name string) (sf *StructField, at []int, ord int, ok bool) {
+// after that, which is the order encoding/json tries them in. The result's at
+// is nil where the field stands in the type itself and there is no index path
+// to walk.
+func (r *readFields) lookup(name string) (flatField, bool) {
 	if r.flat == nil {
 		if own, named := r.byRenderName[name]; named {
-			return own, nil, own.Index, true
+			return flatField{sf: own, ord: own.Index}, true
 		}
 	} else if ff, named := r.flat[name]; named {
-		return ff.sf, ff.at, ff.ord, true
+		return ff, true
 	}
 
 	if r.folded == nil {
-		return nil, nil, 0, false
+		return flatField{}, false
 	}
 	ff, named := r.folded[foldName(name)]
-	if !named {
-		return nil, nil, 0, false
-	}
 
-	return ff.sf, ff.at, ff.ord, true
+	return ff, named
 }
 
 // claims reports whether some field of the type answers to name.
 func (r *readFields) claims(name string) bool {
-	_, _, _, ok := r.lookup(name)
+	_, ok := r.lookup(name)
 
 	return ok
 }
@@ -793,7 +779,7 @@ func readStructFields(structType reflect.Type, mode tagMode) (StructFieldMap, er
 	fieldMap := StructFieldMap{}
 	renderNameMap := map[string]struct{}{}
 	inlineMaps := 0
-	for i := 0; i < structType.NumField(); i++ {
+	for i := range structType.NumField() {
 		field := structType.Field(i)
 		if isIgnoredStructField(field, mode) {
 			continue

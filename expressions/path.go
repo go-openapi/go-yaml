@@ -56,16 +56,6 @@ type PathBuilder struct {
 	inner *yamlpath.PathBuilder
 }
 
-// builder returns the engine's builder, starting one where the zero value is
-// still in hand.
-func (b *PathBuilder) builder() *yamlpath.PathBuilder {
-	if b.inner == nil {
-		b.inner = &yamlpath.PathBuilder{}
-	}
-
-	return b.inner
-}
-
 // Root adds '$' to the path being built.
 func (b *PathBuilder) Root() *PathBuilder {
 	b.inner = b.builder().Root()
@@ -104,6 +94,16 @@ func (b *PathBuilder) Index(idx uint) *PathBuilder {
 // Build returns the path built so far.
 func (b *PathBuilder) Build() *Path {
 	return &Path{Path: b.builder().Build()}
+}
+
+// builder returns the engine's builder, starting one where the zero value is
+// still in hand.
+func (b *PathBuilder) builder() *yamlpath.PathBuilder {
+	if b.inner == nil {
+		b.inner = &yamlpath.PathBuilder{}
+	}
+
+	return b.inner
 }
 
 // Read decodes the value p addresses in r into v.

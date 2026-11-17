@@ -201,6 +201,8 @@ func (b *valueBuilder) Leave(node ast.Node, at parser.Closing) error {
 			return b.fail(err)
 		}
 		b.deliver(v, node, frame.asKey)
+	default:
+		panic(fmt.Sprintf("codec: unknown frame kind %d", frame.kind))
 	}
 
 	return b.err
@@ -457,6 +459,8 @@ func (b *valueBuilder) deliver(v any, node ast.Node, key bool) {
 			top.seq = append(top.seq, v)
 
 			return
+		default:
+			panic(fmt.Sprintf("codec: unknown frame kind %d", top.kind))
 		}
 	}
 
@@ -552,8 +556,8 @@ func (f *buildFrame) holds(key any) bool {
 
 // bring writes what a "<<" names under key, where the mapping holds none.
 func (f *buildFrame) bring(key any, value any) {
-	if _, isString := key.(string); isString && f.anyKeyed == nil {
-		f.m[key.(string)] = value
+	if name, isString := key.(string); isString && f.anyKeyed == nil {
+		f.m[name] = value
 
 		return
 	}
@@ -618,7 +622,7 @@ func (f *buildFrame) refuseMerge(err error) {
 	}
 }
 
-// mergingValue reports whether the node entering at at is the value of a "<<".
+// mergingValue reports whether the node being entered is the value of a "<<" key.
 func (b *valueBuilder) mergingValue(key bool) bool {
 	n := len(b.stack)
 
@@ -681,6 +685,8 @@ func (b *valueBuilder) taggedWalkValue(n *ast.TagNode, value any) (any, error) {
 
 		return nil, yamlerrors.NewSyntax(
 			fmt.Sprintf("cannot read %q as %s", res.Text, res.Tag), n.Value.GetToken())
+	default:
+		// nothing to do
 	}
 
 	if res.Empty {

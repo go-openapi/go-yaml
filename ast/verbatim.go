@@ -638,6 +638,8 @@ func (vw *verbatimWriter) applyEdits(end int) {
 		case commentReplaced:
 			vw.skipComment(pending.comment.Token, false)
 			vw.raw("#" + pending.comment.text)
+		default:
+			// nothing to do
 		}
 	}
 }

@@ -184,6 +184,16 @@ type Mark struct {
 	sequenceEntry blockMark
 }
 
+// NewArena returns an arena whose blocks are sized for a document of n tokens.
+//
+// Roughly one token in four becomes a node of any one type, which is where the
+// size comes from. It is capped both ways: a long document takes more blocks
+// rather than one huge one, and a short document does not pay for a block it
+// will use a tenth of.
+func NewArena(n int) *Arena {
+	return &Arena{size: min(max(n/4, minNodeBlock), maxNodeBlock)}
+}
+
 // Push records where the arena stands, for a later [Arena.Pop].
 func (a *Arena) Push() {
 	a.marks = append(a.marks, a.Mark())
@@ -245,16 +255,6 @@ func (a *Arena) Rewind(m Mark) {
 	a.sequenceEntry.rewind(m.sequenceEntry)
 }
 
-// NewArena returns an arena whose blocks are sized for a document of n tokens.
-//
-// Roughly one token in four becomes a node of any one type, which is where the
-// size comes from. It is capped both ways: a long document takes more blocks
-// rather than one huge one, and a short document does not pay for a block it
-// will use a tenth of.
-func NewArena(n int) *Arena {
-	return &Arena{size: min(max(n/4, minNodeBlock), maxNodeBlock)}
-}
-
 // Reset hands every cell out again from the start of each block,
 // and sizes the blocks allocated from now on for a document of n tokens, as [NewArena] does.
 //
@@ -264,14 +264,6 @@ func (a *Arena) Reset(n int) {
 	a.Rewind(Mark{})
 	a.marks = a.marks[:0]
 	a.size = min(max(n/4, minNodeBlock), maxNodeBlock)
-}
-
-func (a *Arena) blockSize() int {
-	if a.size == 0 {
-		return minNodeBlock
-	}
-
-	return a.size
 }
 
 // String returns a [StringNode] for tk, as [String] does.
@@ -345,7 +337,6 @@ func (a *Arena) Mapping(tk *token.Token, isFlowStyle bool, values []*MappingValu
 	return n
 }
 
-// Sequence returns a [SequenceNode] for tk, as [Sequence] does.
 // MappingRun returns a copy of values that no later call writes over, for a
 // mapping whose entries were gathered before the node above them was built.
 //
@@ -356,6 +347,7 @@ func (a *Arena) MappingRun(values []*MappingValueNode) []*MappingValueNode {
 	return a.mappingRuns.take(values, a.blockSize())
 }
 
+// Sequence returns a [SequenceNode] for tk, as [Sequence] does.
 func (a *Arena) Sequence(tk *token.Token, isFlowStyle bool) *SequenceNode {
 	n := a.sequences.next(a.blockSize())
 	n.Start, n.IsFlowStyle, n.Values = tk, isFlowStyle, []Node{}
@@ -385,6 +377,14 @@ func (a *Arena) Commit() {
 	for i := range a.marks {
 		a.marks[i].raise(here)
 	}
+}
+
+func (a *Arena) blockSize() int {
+	if a.size == 0 {
+		return minNodeBlock
+	}
+
+	return a.size
 }
 
 // raise moves m forward to to, in every block where to stands further on.

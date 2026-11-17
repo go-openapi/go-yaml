@@ -60,7 +60,7 @@ foo: bar # comment
 	for {
 		var v any
 		if err := dec.Decode(&v); err != nil {
-			if err == io.EOF {
+			if errors.Is(err, io.EOF) {
 				break
 			}
 			t.Fatal(err)

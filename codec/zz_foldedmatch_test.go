@@ -28,6 +28,7 @@ type (
 	}
 	foldedPromoted struct {
 		foldedInner
+
 		Tail string `json:"tail"`
 	}
 

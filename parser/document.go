@@ -85,8 +85,7 @@ func drawUnder(src []byte, err error) error {
 // asSyntaxError converts a scanner error into a syntax error,
 // so a caller sees one kind of error whichever stage rejected the document.
 func asSyntaxError(err error) error {
-	var invalid *scanner.InvalidTokenError
-	if errors.As(err, &invalid) {
+	if invalid, ok := errors.AsType[*scanner.InvalidTokenError](err); ok {
 		return yamlerrors.NewSyntax(invalid.Message, invalid.Token)
 	}
 

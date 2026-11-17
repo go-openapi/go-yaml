@@ -140,7 +140,8 @@ func TestTheInlineTargetsV3AcceptsStillRead(t *testing.T) {
 	t.Run("one map beside an inlined struct", func(t *testing.T) {
 		var v struct {
 			Payload `yaml:",inline"`
-			Rest    map[string]any `yaml:",inline"`
+
+			Rest map[string]any `yaml:",inline"`
 		}
 		require.NoError(t, codec.Unmarshal([]byte("b: B\nx: X\n"), &v))
 		assert.Equal(t, "B", v.B)

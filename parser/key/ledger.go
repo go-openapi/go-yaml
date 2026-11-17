@@ -146,18 +146,6 @@ func (l *Ledger) RecordEntry(text string, kind token.KeyKind, pos token.Position
 	}
 }
 
-// recordInOrderedMap records a key among the entries of scope, and a repeat on
-// its sequence.
-func (l *Ledger) recordInOrderedMap(scope orderedMapScope, text string, kind token.KeyKind, pos token.Position, index int) {
-	first, jsonOnly, defined := scope.keys.Record(0, text, kind, pos)
-	if !defined || scope.seq == nil {
-		return
-	}
-	scope.seq.Duplicates = append(scope.seq.Duplicates, ast.DuplicateKey{
-		Name: text, At: pos, FirstAt: first, JSONNameOnly: jsonOnly, Index: index, Allowed: l.allowRepeats,
-	})
-}
-
 // AllowRepeats marks every repeat recorded from now on as allowed, so a load
 // keeps one of the entries instead of refusing the document.
 func (l *Ledger) AllowRepeats(on bool) { l.allowRepeats = on }
@@ -226,6 +214,55 @@ func (l *Ledger) RecordBuilt(identity, display string, pos token.Position) {
 	l.builtKeys[top][identity] = pos
 }
 
+// Close drops the keys of the mapping that started at base.
+func (l *Ledger) Close(base int) {
+	if probe.Enabled {
+		l.probeBases = l.probeBases[:min(base, len(l.probeBases))]
+	}
+	l.keys.Close(base)
+}
+
+// Open records the mapping being read, and returns what takes it off.
+func (l *Ledger) Open(node *ast.MappingNode) func() {
+	l.openMaps = append(l.openMaps, openMap{node: node, entryOf: l.pending - 1, entryIndex: l.pendingIndex})
+	l.builtKeys = append(l.builtKeys, nil)
+	l.pending = 0
+	l.expectOrderedMap = false
+
+	return func() {
+		l.openMaps = l.openMaps[:len(l.openMaps)-1]
+		l.builtKeys = l.builtKeys[:len(l.builtKeys)-1]
+	}
+}
+
+// Reset forgets every key and every open mapping, and keeps the room the Ledger has grown.
+//
+// A parse that stops on an error leaves mappings open, so call Reset before the Ledger reads another stream.
+func (l *Ledger) Reset() {
+	l.keys.Reset()
+	clear(l.openMaps[:cap(l.openMaps)])
+	clear(l.builtKeys[:cap(l.builtKeys)])
+	l.probeBases = l.probeBases[:0]
+	l.openMaps = l.openMaps[:0]
+	l.builtKeys = l.builtKeys[:0]
+	clear(l.orderedMaps[:cap(l.orderedMaps)])
+	l.orderedMaps = l.orderedMaps[:0]
+	l.pending = 0
+	l.expectOrderedMap = false
+}
+
+// recordInOrderedMap records a key among the entries of scope, and a repeat on
+// its sequence.
+func (l *Ledger) recordInOrderedMap(scope orderedMapScope, text string, kind token.KeyKind, pos token.Position, index int) {
+	first, jsonOnly, defined := scope.keys.Record(0, text, kind, pos)
+	if !defined || scope.seq == nil {
+		return
+	}
+	scope.seq.Duplicates = append(scope.seq.Duplicates, ast.DuplicateKey{
+		Name: text, At: pos, FirstAt: first, JSONNameOnly: jsonOnly, Index: index, Allowed: l.allowRepeats,
+	})
+}
+
 // noteDuplicate records dup on the mapping being read, which is the innermost
 // one open.
 func (l *Ledger) noteDuplicate(dup ast.DuplicateKey) {
@@ -276,41 +313,4 @@ func (l *Ledger) checkStackTail(base int) {
 	}
 
 	l.probeBases = append(l.probeBases, int32(base))
-}
-
-// Close drops the keys of the mapping that started at base.
-func (l *Ledger) Close(base int) {
-	if probe.Enabled {
-		l.probeBases = l.probeBases[:min(base, len(l.probeBases))]
-	}
-	l.keys.Close(base)
-}
-
-// Open records the mapping being read, and returns what takes it off.
-func (l *Ledger) Open(node *ast.MappingNode) func() {
-	l.openMaps = append(l.openMaps, openMap{node: node, entryOf: l.pending - 1, entryIndex: l.pendingIndex})
-	l.builtKeys = append(l.builtKeys, nil)
-	l.pending = 0
-	l.expectOrderedMap = false
-
-	return func() {
-		l.openMaps = l.openMaps[:len(l.openMaps)-1]
-		l.builtKeys = l.builtKeys[:len(l.builtKeys)-1]
-	}
-}
-
-// Reset forgets every key and every open mapping, and keeps the room the Ledger has grown.
-//
-// A parse that stops on an error leaves mappings open, so call Reset before the Ledger reads another stream.
-func (l *Ledger) Reset() {
-	l.keys.Reset()
-	clear(l.openMaps[:cap(l.openMaps)])
-	clear(l.builtKeys[:cap(l.builtKeys)])
-	l.probeBases = l.probeBases[:0]
-	l.openMaps = l.openMaps[:0]
-	l.builtKeys = l.builtKeys[:0]
-	clear(l.orderedMaps[:cap(l.orderedMaps)])
-	l.orderedMaps = l.orderedMaps[:0]
-	l.pending = 0
-	l.expectOrderedMap = false
 }

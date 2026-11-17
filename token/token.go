@@ -208,8 +208,9 @@ func (t Type) String() string {
 		return "Nan"
 	case InvalidType:
 		return "Invalid"
+	default:
+		return ""
 	}
-	return ""
 }
 
 // CharacterType type for character category.
@@ -239,6 +240,8 @@ func (c CharacterType) String() string {
 		return "Miscellaneous"
 	case CharacterTypeEscaped:
 		return "Escaped"
+	default:
+		// nothing to do
 	}
 	return ""
 }
@@ -288,8 +291,9 @@ func (i Indicator) String() string {
 		return "Directive"
 	case InvalidUseOfReservedIndicator:
 		return "InvalidUseOfReserved"
+	default:
+		return ""
 	}
-	return ""
 }
 
 var (
@@ -1882,7 +1886,6 @@ func TextBytes(s string) []byte {
 		return nil
 	}
 
-	//nolint:gosec // the bytes are the string's own, and the doc comment says not to write to them
 	return unsafe.Slice(unsafe.StringData(s), len(s))
 }
 
@@ -1945,10 +1948,6 @@ func (t Tokens) InvalidToken() *Token {
 	return nil
 }
 
-func (t *Tokens) add(tk *Token) {
-	*t = append(*t, tk)
-}
-
 // Add append new some tokens.
 func (t *Tokens) Add(tks ...*Token) {
 	for _, tk := range tks {
@@ -1962,6 +1961,10 @@ func (t Tokens) Dump(w io.Writer) {
 		fmt.Fprint(w, "- ")
 		tk.Dump(w)
 	}
+}
+
+func (t *Tokens) add(tk *Token) {
+	*t = append(*t, tk)
 }
 
 // String create token for String.

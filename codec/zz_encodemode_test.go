@@ -21,6 +21,7 @@ type (
 	}
 	specShaped struct {
 		specProps
+
 		Extra string `json:"extra"`
 	}
 

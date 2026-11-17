@@ -123,6 +123,8 @@ func (l *Lookback) blankLineAbove(t *Token) bool {
 		//
 		//  baz: 1
 		return l.originBreaksBefore(prev) > 0
+	default:
+		// nothing to do
 	}
 
 	return lineDiff-adjustment > 0

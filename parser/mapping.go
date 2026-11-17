@@ -58,6 +58,8 @@ func (p *Parser) explicitMergeKey(ctx context) *group.TapeToken {
 		if tk.RawToken().Value == "<<" {
 			return tk
 		}
+	default:
+		// nothing to do
 	}
 
 	return nil

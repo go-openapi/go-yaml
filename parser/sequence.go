@@ -156,7 +156,7 @@ func (p *Parser) parseSequenceValue(ctx context, seqTk *group.TapeToken) (ast.No
 	seqCol := seqTk.Column()
 	seqLine := seqTk.Line()
 
-	defer p.descent.enterEntry(int(seqCol), false)()
+	defer p.descent.enterEntry(seqCol, false)()
 
 	if tk.Column() == seqCol && tk.Type() == token.SequenceEntryType {
 		// An entry with no value, followed by the next '-'.

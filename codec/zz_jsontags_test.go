@@ -52,6 +52,7 @@ type (
 	// deep embeds a type that itself embeds, so promotion has to recurse.
 	deep struct {
 		embedsUntagged
+
 		Extra string `json:"extra"`
 	}
 )

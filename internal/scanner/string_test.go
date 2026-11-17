@@ -42,7 +42,7 @@ func TestDoubleQuoteRefusesAnUnknownEscape(t *testing.T) {
 			var s scanner.Scanner
 			s.Init([]byte(`"` + written + `"`))
 
-			for range s.Tokens() { //nolint:revive // only what stopped the scan matters here
+			for range s.Tokens() {
 			}
 
 			assert.ErrorContains(t, s.Err(), "found unknown escape character")
@@ -86,7 +86,7 @@ func TestDoubleQuoteRefusesACodePointThatIsNotACharacter(t *testing.T) {
 			var s scanner.Scanner
 			s.Init([]byte(`"` + written + `"`))
 
-			for range s.Tokens() { //nolint:revive // only what stopped the scan matters here
+			for range s.Tokens() {
 			}
 
 			assert.ErrorContains(t, s.Err(), "found an escaped code point that is not a character")

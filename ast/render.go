@@ -113,6 +113,42 @@ func NewRenderer(opts ...RenderOption) *Renderer {
 	return r
 }
 
+// Render writes n to w.
+func (r *Renderer) Render(w io.Writer, n Node) error {
+	lw := lineWriter{w: w}
+	r.render(n).writeTo(&lw, 0)
+
+	return lw.err
+}
+
+// String renders n and returns the text.
+//
+// The result is relative to nothing: the node's own first line carries no
+// indentation, and everything nested under it is indented from there. A caller
+// placing the result somewhere indented adds that indentation itself.
+func (r *Renderer) String(n Node) string {
+	return r.render(n).string()
+}
+
+// File renders a whole file. It is separate from String because *File is not a
+// Node -- it holds documents rather than being one.
+func (r *Renderer) File(n *File) string {
+	docs := make([]rendered, 0, len(n.Docs))
+	for _, doc := range n.Docs {
+		// A document with nothing in it contributes nothing, not a blank line.
+		if piece := r.render(doc); !piece.empty() {
+			docs = append(docs, piece)
+		}
+	}
+	if len(docs) == 0 {
+		return ""
+	}
+
+	// The final line break belongs to the file: a node's rendering never ends
+	// in one, so that it can be placed anywhere.
+	return join(sepNone, join(sepBreak, docs...), leaf("\n")).string()
+}
+
 // bare returns a Renderer that writes no comments, for the places a comment
 // cannot go -- inside a key, where it would be read back as part of the key.
 func (r *Renderer) bare() *Renderer {
@@ -146,41 +182,6 @@ func (r *Renderer) flowing() *Renderer {
 // flowsInline reports whether a collection is written on one line.
 func (r *Renderer) flowsInline(flowStyle bool) bool {
 	return r.forceFlow || flowStyle
-}
-
-// Render writes n to w.
-func (r *Renderer) Render(w io.Writer, n Node) error {
-	lw := lineWriter{w: w}
-	r.render(n).writeTo(&lw, 0)
-
-	return lw.err
-}
-
-// String renders n and returns the text.
-//
-// The result is relative to nothing: the node's own first line carries no
-// indentation, and everything nested under it is indented from there. A caller
-// placing the result somewhere indented adds that indentation itself.
-func (r *Renderer) String(n Node) string {
-	return r.render(n).string()
-}
-
-// render builds what n writes, without writing it.
-//
-// It is String's dispatch, returning the pieces rather than the text so that a
-// parent can indent a child by a number and ask whether it spans lines without
-// building it twice. A node type still composing strings arrives here as one
-// leaf, which is correct and costs what it always did.
-func (r *Renderer) render(n Node) rendered {
-	if n == nil {
-		return rendered{}
-	}
-	if lit, group := r.unhoisted(n); lit != nil {
-		// Nothing wrote the group above the line, so n opens it.
-		return join(sepBreak, leaf(r.commentGroup(group)), r.hoisting(lit).render(n))
-	}
-
-	return r.withHeadComment(n, r.renderNode(n))
 }
 
 // endsOnAComment reports whether n renders with a comment at the end of its
@@ -245,6 +246,24 @@ type headCommented interface {
 	GetHeadComment() *CommentGroupNode
 }
 
+// render builds what n writes, without writing it.
+//
+// It is String's dispatch, returning the pieces rather than the text so that a
+// parent can indent a child by a number and ask whether it spans lines without
+// building it twice. A node type still composing strings arrives here as one
+// leaf, which is correct and costs what it always did.
+func (r *Renderer) render(n Node) rendered {
+	if n == nil {
+		return rendered{}
+	}
+	if lit, group := r.unhoisted(n); lit != nil {
+		// Nothing wrote the group above the line, so n opens it.
+		return join(sepBreak, leaf(r.commentGroup(group)), r.hoisting(lit).render(n))
+	}
+
+	return r.withHeadComment(n, r.renderNode(n))
+}
+
 // withHeadComment puts what stands above a node back above it.
 //
 // [BaseNode.HeadComment] is written only where the node's other comment field
@@ -305,25 +324,6 @@ func (r *Renderer) renderNode(n Node) rendered {
 
 		return leaf(n.String())
 	}
-}
-
-// File renders a whole file. It is separate from String because *File is not a
-// Node -- it holds documents rather than being one.
-func (r *Renderer) File(n *File) string {
-	docs := make([]rendered, 0, len(n.Docs))
-	for _, doc := range n.Docs {
-		// A document with nothing in it contributes nothing, not a blank line.
-		if piece := r.render(doc); !piece.empty() {
-			docs = append(docs, piece)
-		}
-	}
-	if len(docs) == 0 {
-		return ""
-	}
-
-	// The final line break belongs to the file: a node's rendering never ends
-	// in one, so that it can be placed anywhere.
-	return join(sepNone, join(sepBreak, docs...), leaf("\n")).string()
 }
 
 func (r *Renderer) document(n *DocumentNode) rendered {

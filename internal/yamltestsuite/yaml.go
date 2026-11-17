@@ -29,9 +29,6 @@ type TestSuite struct {
 	hasJSON bool
 }
 
-// fixturesDir is the vendored copy of the YAML Test Suite, held in this
-// package's testdata directory so that the fixtures sit beside the loader that
-// reads them.
 // HasExpectation reports whether the fixture says anything about what should
 // happen to its document.
 //
@@ -43,6 +40,9 @@ func (t *TestSuite) HasExpectation() bool {
 	return t.Error || t.hasJSON || t.OutYAML != nil
 }
 
+// fixturesDir is the vendored copy of the YAML Test Suite, held in this
+// package's testdata directory so that the fixtures sit beside the loader that
+// reads them.
 func fixturesDir() string {
 	_, file, _, _ := runtime.Caller(0) //nolint:dogsled
 

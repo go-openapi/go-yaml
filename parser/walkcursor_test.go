@@ -27,11 +27,6 @@ type cursorSpy struct {
 	disagreed []string
 }
 
-func (s *cursorSpy) read(node ast.Node, at parser.Cursor) string {
-	return fmt.Sprintf("%v depth=%d in=%v key=%v root=%v doc=%d",
-		node.Type(), at.Depth(), at.In(), at.IsKey(), at.IsRoot(), at.Document())
-}
-
 func (s *cursorSpy) Enter(node ast.Node, at parser.Cursor) error {
 	answer := s.read(node, at)
 	if at.IsRoot() {
@@ -52,6 +47,11 @@ func (s *cursorSpy) Leave(node ast.Node, at parser.Closing) error {
 	s.pairs = append(s.pairs, entered+" | "+answer)
 
 	return nil
+}
+
+func (s *cursorSpy) read(node ast.Node, at parser.Cursor) string {
+	return fmt.Sprintf("%v depth=%d in=%v key=%v root=%v doc=%d",
+		node.Type(), at.Depth(), at.In(), at.IsKey(), at.IsRoot(), at.Document())
 }
 
 // TestTheCursorAnswersTheSameAtLeave checks the contract a consumer folds a document on.

@@ -5,6 +5,7 @@ package yaml_test
 
 import (
 	"fmt"
+	"io"
 	"log"
 	"reflect"
 	"strings"
@@ -538,13 +539,83 @@ s:
 	}
 }
 
+// pathEditCase applies src at path in dst and expects the file to render as expected.
+type pathEditCase struct {
+	path     string
+	dst      string
+	src      string
+	expected string
+}
+
+// pathEdits holds the three variants of one [expressions.Path] edit: from a
+// reader, from a parsed file and from the file's first document node.
+type pathEdits struct {
+	names      [3]string
+	fromReader func(*expressions.Path, *ast.File, io.Reader) error
+	fromFile   func(*expressions.Path, *ast.File, *ast.File) error
+	fromNode   func(*expressions.Path, *ast.File, ast.Node) error
+}
+
+func runPathEdits(t *testing.T, tests []pathEditCase, edits pathEdits) {
+	t.Helper()
+
+	for _, test := range tests {
+		t.Run(test.path, func(t *testing.T) {
+			path, err := expressions.PathString(test.path)
+			if err != nil {
+				t.Fatalf("%+v", err)
+			}
+			check := func(t *testing.T, edit func(file *ast.File) error) {
+				t.Helper()
+
+				file, err := parser.ParseBytes([]byte(test.dst))
+				if err != nil {
+					t.Fatalf("%+v", err)
+				}
+				if err := edit(file); err != nil {
+					t.Fatalf("%+v", err)
+				}
+				actual := "\n" + file.String()
+				if test.expected != actual {
+					t.Fatalf("expected: %q. but got %q", test.expected, actual)
+				}
+			}
+			parseSrc := func(t *testing.T) *ast.File {
+				t.Helper()
+
+				src, err := parser.ParseBytes([]byte(test.src))
+				if err != nil {
+					t.Fatalf("%+v", err)
+				}
+
+				return src
+			}
+			t.Run(edits.names[0], func(t *testing.T) {
+				check(t, func(file *ast.File) error {
+					return edits.fromReader(path, file, strings.NewReader(test.src))
+				})
+			})
+			t.Run(edits.names[1], func(t *testing.T) {
+				src := parseSrc(t)
+				check(t, func(file *ast.File) error {
+					return edits.fromFile(path, file, src)
+				})
+			})
+			t.Run(edits.names[2], func(t *testing.T) {
+				src := parseSrc(t)
+				if len(src.Docs) == 0 {
+					t.Fatalf("failed to parse")
+				}
+				check(t, func(file *ast.File) error {
+					return edits.fromNode(path, file, src.Docs[0])
+				})
+			})
+		})
+	}
+}
+
 func TestPath_Merge(t *testing.T) {
-	tests := []struct {
-		path     string
-		dst      string
-		src      string
-		expected string
-	}{
+	tests := []pathEditCase{
 		{
 			path: "$.c",
 			dst: `
@@ -598,73 +669,16 @@ a:
 `,
 		},
 	}
-	for _, test := range tests {
-		t.Run(test.path, func(t *testing.T) {
-			path, err := expressions.PathString(test.path)
-			if err != nil {
-				t.Fatalf("%+v", err)
-			}
-			t.Run("FromReader", func(t *testing.T) {
-				file, err := parser.ParseBytes([]byte(test.dst))
-				if err != nil {
-					t.Fatalf("%+v", err)
-				}
-				if err := path.MergeFromReader(file, strings.NewReader(test.src)); err != nil {
-					t.Fatalf("%+v", err)
-				}
-				actual := "\n" + file.String()
-				if test.expected != actual {
-					t.Fatalf("expected: %q. but got %q", test.expected, actual)
-				}
-			})
-			t.Run("FromFile", func(t *testing.T) {
-				file, err := parser.ParseBytes([]byte(test.dst))
-				if err != nil {
-					t.Fatalf("%+v", err)
-				}
-				src, err := parser.ParseBytes([]byte(test.src))
-				if err != nil {
-					t.Fatalf("%+v", err)
-				}
-				if err := path.MergeFromFile(file, src); err != nil {
-					t.Fatalf("%+v", err)
-				}
-				actual := "\n" + file.String()
-				if test.expected != actual {
-					t.Fatalf("expected: %q. but got %q", test.expected, actual)
-				}
-			})
-			t.Run("FromNode", func(t *testing.T) {
-				file, err := parser.ParseBytes([]byte(test.dst))
-				if err != nil {
-					t.Fatalf("%+v", err)
-				}
-				src, err := parser.ParseBytes([]byte(test.src))
-				if err != nil {
-					t.Fatalf("%+v", err)
-				}
-				if len(src.Docs) == 0 {
-					t.Fatalf("failed to parse")
-				}
-				if err := path.MergeFromNode(file, src.Docs[0]); err != nil {
-					t.Fatalf("%+v", err)
-				}
-				actual := "\n" + file.String()
-				if test.expected != actual {
-					t.Fatalf("expected: %q. but got %q", test.expected, actual)
-				}
-			})
-		})
-	}
+	runPathEdits(t, tests, pathEdits{
+		names:      [3]string{"FromReader", "FromFile", "FromNode"},
+		fromReader: (*expressions.Path).MergeFromReader,
+		fromFile:   (*expressions.Path).MergeFromFile,
+		fromNode:   (*expressions.Path).MergeFromNode,
+	})
 }
 
 func TestPath_Replace(t *testing.T) {
-	tests := []struct {
-		path     string
-		dst      string
-		src      string
-		expected string
-	}{
+	tests := []pathEditCase{
 		{
 			path: "$.a",
 			dst: `
@@ -796,64 +810,12 @@ building:
 `,
 		},
 	}
-	for _, test := range tests {
-		t.Run(test.path, func(t *testing.T) {
-			path, err := expressions.PathString(test.path)
-			if err != nil {
-				t.Fatalf("%+v", err)
-			}
-			t.Run("WithReader", func(t *testing.T) {
-				file, err := parser.ParseBytes([]byte(test.dst))
-				if err != nil {
-					t.Fatalf("%+v", err)
-				}
-				if err := path.ReplaceWithReader(file, strings.NewReader(test.src)); err != nil {
-					t.Fatalf("%+v", err)
-				}
-				actual := "\n" + file.String()
-				if test.expected != actual {
-					t.Fatalf("expected: %q. but got %q", test.expected, actual)
-				}
-			})
-			t.Run("WithFile", func(t *testing.T) {
-				file, err := parser.ParseBytes([]byte(test.dst))
-				if err != nil {
-					t.Fatalf("%+v", err)
-				}
-				src, err := parser.ParseBytes([]byte(test.src))
-				if err != nil {
-					t.Fatalf("%+v", err)
-				}
-				if err := path.ReplaceWithFile(file, src); err != nil {
-					t.Fatalf("%+v", err)
-				}
-				actual := "\n" + file.String()
-				if test.expected != actual {
-					t.Fatalf("expected: %q. but got %q", test.expected, actual)
-				}
-			})
-			t.Run("WithNode", func(t *testing.T) {
-				file, err := parser.ParseBytes([]byte(test.dst))
-				if err != nil {
-					t.Fatalf("%+v", err)
-				}
-				src, err := parser.ParseBytes([]byte(test.src))
-				if err != nil {
-					t.Fatalf("%+v", err)
-				}
-				if len(src.Docs) == 0 {
-					t.Fatalf("failed to parse")
-				}
-				if err := path.ReplaceWithNode(file, src.Docs[0]); err != nil {
-					t.Fatalf("%+v", err)
-				}
-				actual := "\n" + file.String()
-				if test.expected != actual {
-					t.Fatalf("expected: %q. but got %q", test.expected, actual)
-				}
-			})
-		})
-	}
+	runPathEdits(t, tests, pathEdits{
+		names:      [3]string{"WithReader", "WithFile", "WithNode"},
+		fromReader: (*expressions.Path).ReplaceWithReader,
+		fromFile:   (*expressions.Path).ReplaceWithFile,
+		fromNode:   (*expressions.Path).ReplaceWithNode,
+	})
 }
 
 // TestPath_ReplaceWithNode_BlockValues replaces block mappings, block

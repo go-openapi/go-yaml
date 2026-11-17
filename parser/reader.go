@@ -205,6 +205,8 @@ func (r *reader) bodyToken() (*group.TapeToken, bool) {
 		r.ended = true
 
 		return nil, false
+	default:
+		// nothing to do
 	}
 
 	if r.tookDirective && isDirectiveToken(tk) {
@@ -272,6 +274,8 @@ func (r *reader) judgeNext() error {
 		switch tk.GroupType() {
 		case group.TokenGroupMapKey, group.TokenGroupMapKeyValue:
 			return yamlerrors.NewSyntax("value cannot be placed after document separator", tk.RawToken())
+		default:
+			// nothing to do
 		}
 		if tk.Type() == token.SequenceEntryType {
 			return yamlerrors.NewSyntax("value cannot be placed after document separator", tk.RawToken())

@@ -10,6 +10,7 @@ import (
 	"github.com/go-openapi/go-yaml/token"
 )
 
+//nolint:unparam // same signature as the other node constructors, which can fail
 func newMappingNode(ctx context, tk *token.Token, isFlow bool, values []*ast.MappingValueNode) (*ast.MappingNode, error) {
 	node := ctx.arena.Mapping(tk, isFlow, values)
 	node.SetPathNode(ctx.path)
@@ -53,7 +54,7 @@ func newMappingValueNode(ctx context, colonTk, entryTk *group.TapeToken, key ast
 	return node, nil
 }
 
-func newMappingKeyNode(ctx context, tk *group.TapeToken) (*ast.MappingKeyNode, error) {
+func newMappingKeyNode(ctx context, tk *group.TapeToken) (*ast.MappingKeyNode, error) { //nolint:unparam // same signature as the other node constructors, which can fail
 	node := ast.MappingKey(tk.RawToken())
 	node.SetPathNode(ctx.path)
 
@@ -224,7 +225,7 @@ func newTagNode(ctx context, tk *group.TapeToken) (*ast.TagNode, error) {
 	return node, nil
 }
 
-func newSequenceNode(ctx context, tk *group.TapeToken, isFlow bool) (*ast.SequenceNode, error) {
+func newSequenceNode(ctx context, tk *group.TapeToken, isFlow bool) (*ast.SequenceNode, error) { //nolint:unparam // same signature as the other node constructors, which can fail
 	node := ctx.arena.Sequence(tk.RawToken(), isFlow)
 	node.SetPathNode(ctx.path)
 	if isFlow {
@@ -322,7 +323,7 @@ func setLineComment(ctx context, node ast.Node, tk *group.TapeToken) error {
 // setEntryLineComment records the comment written on an explicit entry's ':' line in the entry's LineComment.
 //
 // Renderer.mappingValue writes LineComment back after the ':'.
-func setEntryLineComment(ctx context, node *ast.MappingValueNode, tk *group.TapeToken) error {
+func setEntryLineComment(ctx context, node *ast.MappingValueNode, tk *group.TapeToken) error { //nolint:unparam // signature kept stable: callers already handle the error
 	lineComment := ctx.takeLineComment(tk)
 	if lineComment == nil {
 		return nil
@@ -419,7 +420,7 @@ func onOneLine(n ast.Node) bool {
 
 // headCommented is a node with a HeadComment field for the comment written above it.
 type headCommented interface {
-	SetHeadComment(*ast.CommentGroupNode) error
+	SetHeadComment(comment *ast.CommentGroupNode) error
 	GetHeadComment() *ast.CommentGroupNode
 }
 

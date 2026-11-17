@@ -35,7 +35,7 @@ type Marshaler interface {
 
 // ContextMarshaler is [Marshaler] with a context.
 type ContextMarshaler interface {
-	MarshalYAML(context.Context) ([]byte, error)
+	MarshalYAML(ctx context.Context) ([]byte, error)
 }
 
 // GoYAMLMarshaler returns another Go value to encode in place of this one.
@@ -48,7 +48,7 @@ type GoYAMLMarshaler interface {
 
 // ContextGoYAMLMarshaler is [GoYAMLMarshaler] with a context.
 type ContextGoYAMLMarshaler interface {
-	MarshalYAML(context.Context) (any, error)
+	MarshalYAML(ctx context.Context) (any, error)
 }
 
 // The interfaces a type implements to decode itself.
@@ -62,12 +62,12 @@ type ContextGoYAMLMarshaler interface {
 
 // Unmarshaler is handed the YAML text of the value.
 type Unmarshaler interface {
-	UnmarshalYAML([]byte) error
+	UnmarshalYAML(data []byte) error
 }
 
 // ContextUnmarshaler is [Unmarshaler] with a context.
 type ContextUnmarshaler interface {
-	UnmarshalYAML(context.Context, []byte) error
+	UnmarshalYAML(ctx context.Context, data []byte) error
 }
 
 // GoYAMLUnmarshaler is handed a function that decodes the value into whatever
@@ -76,22 +76,22 @@ type ContextUnmarshaler interface {
 // This is github.com/go-yaml/yaml's shape. Prefer [Unmarshaler], which is handed
 // the text directly.
 type GoYAMLUnmarshaler interface {
-	UnmarshalYAML(func(any) error) error
+	UnmarshalYAML(unmarshal func(any) error) error
 }
 
 // ContextGoYAMLUnmarshaler is [GoYAMLUnmarshaler] with a context.
 type ContextGoYAMLUnmarshaler interface {
-	UnmarshalYAML(context.Context, func(any) error) error
+	UnmarshalYAML(ctx context.Context, unmarshal func(any) error) error
 }
 
 // NodeUnmarshaler is handed the node the value was read from.
 type NodeUnmarshaler interface {
-	UnmarshalYAML(ast.Node) error
+	UnmarshalYAML(node ast.Node) error
 }
 
 // ContextNodeUnmarshaler is [NodeUnmarshaler] with a context.
 type ContextNodeUnmarshaler interface {
-	UnmarshalYAML(context.Context, ast.Node) error
+	UnmarshalYAML(ctx context.Context, node ast.Node) error
 }
 
 // Base64 is the value a "!!binary" scalar decodes to: the base64 text the
@@ -168,6 +168,14 @@ var (
 	globalCustomUnmarshalerMap = map[reflect.Type]func(context.Context, any, []byte) error{}
 )
 
+// customArg returns v as the T a custom (un)marshaler was registered for.
+//
+// The custom (un)marshaler maps are keyed by the reflect.Type of T and looked
+// up by the type of the value at hand, so v is always a T.
+func customArg[T any](v any) T {
+	return v.(T) //nolint:forcetypeassert // the maps are keyed by T's type and looked up by v's
+}
+
 // RegisterCustomMarshaler overrides any encoding process for the type specified in generics.
 // If you want to switch the behavior for each encoder, use `CustomMarshaler` defined as EncodeOption.
 //
@@ -180,7 +188,7 @@ func RegisterCustomMarshaler[T any](marshaler func(T) ([]byte, error)) {
 
 	var typ T
 	globalCustomMarshalerMap[reflect.TypeOf(typ)] = func(ctx context.Context, v any) ([]byte, error) {
-		return marshaler(v.(T))
+		return marshaler(customArg[T](v))
 	}
 }
 
@@ -192,7 +200,7 @@ func RegisterCustomMarshalerContext[T any](marshaler func(context.Context, T) ([
 
 	var typ T
 	globalCustomMarshalerMap[reflect.TypeOf(typ)] = func(ctx context.Context, v any) ([]byte, error) {
-		return marshaler(ctx, v.(T))
+		return marshaler(ctx, customArg[T](v))
 	}
 }
 
@@ -207,7 +215,7 @@ func RegisterCustomUnmarshaler[T any](unmarshaler func(*T, []byte) error) {
 
 	var typ *T
 	globalCustomUnmarshalerMap[reflect.TypeOf(typ)] = func(ctx context.Context, v any, b []byte) error {
-		return unmarshaler(v.(*T), b)
+		return unmarshaler(customArg[*T](v), b)
 	}
 }
 
@@ -219,6 +227,6 @@ func RegisterCustomUnmarshalerContext[T any](unmarshaler func(context.Context, *
 
 	var typ *T
 	globalCustomUnmarshalerMap[reflect.TypeOf(typ)] = func(ctx context.Context, v any, b []byte) error {
-		return unmarshaler(ctx, v.(*T), b)
+		return unmarshaler(ctx, customArg[*T](v), b)
 	}
 }

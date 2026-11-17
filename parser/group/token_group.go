@@ -60,8 +60,9 @@ func (t TokenGroupType) String() string {
 		return "map_key"
 	case TokenGroupMapKeyValue:
 		return "map_key_value"
+	default:
+		return "none"
 	}
-	return "none"
 }
 
 /*
@@ -94,22 +95,6 @@ func NewTokenGroup(typ TokenGroupType, tks []*TapeToken) *TokenGroup {
 	g.set(typ, tks)
 
 	return g
-}
-
-// set fills g with the members tks, keeping two of them in the group itself.
-func (g *TokenGroup) set(typ TokenGroupType, tks []*TapeToken) {
-	g.Type = typ
-	switch len(tks) {
-	case 0:
-		g.a, g.b, g.more, g.n = nil, nil, nil, 0
-	case 1:
-		g.a, g.b, g.more, g.n = tks[0], nil, nil, 1
-	case 2:
-		g.a, g.b, g.more, g.n = tks[0], tks[1], nil, 2
-	default:
-		held := tks
-		g.a, g.b, g.more, g.n = nil, nil, &held, uint8(min(len(tks), 255))
-	}
 }
 
 // Len returns how many members g holds.
@@ -163,6 +148,14 @@ func (g *TokenGroup) Last() *TapeToken {
 	return g.At(n - 1)
 }
 
+func (g *TokenGroup) RawToken() *token.Token {
+	if g.Len() == 0 {
+		return nil
+	}
+
+	return g.At(0).RawToken()
+}
+
 /*
 func (g *TokenGroup) dump(ctx *groupTokenRenderContext) {
 	num := ctx.num
@@ -174,14 +167,6 @@ func (g *TokenGroup) dump(ctx *groupTokenRenderContext) {
 	fmt.Fprint(os.Stdout, colorize(num, ")"))
 }
 */
-
-func (g *TokenGroup) RawToken() *token.Token {
-	if g.Len() == 0 {
-		return nil
-	}
-
-	return g.At(0).RawToken()
-}
 
 func (g *TokenGroup) Line() int {
 	if g.Len() == 0 {
@@ -205,6 +190,22 @@ func (g *TokenGroup) TokenType() token.Type {
 	}
 
 	return g.At(0).Type()
+}
+
+// set fills g with the members tks, keeping two of them in the group itself.
+func (g *TokenGroup) set(typ TokenGroupType, tks []*TapeToken) {
+	g.Type = typ
+	switch len(tks) {
+	case 0:
+		g.a, g.b, g.more, g.n = nil, nil, nil, 0
+	case 1:
+		g.a, g.b, g.more, g.n = tks[0], nil, nil, 1
+	case 2:
+		g.a, g.b, g.more, g.n = tks[0], tks[1], nil, 2
+	default:
+		held := tks
+		g.a, g.b, g.more, g.n = nil, nil, &held, uint8(min(len(tks), 255))
+	}
 }
 
 // Grouper runs the passes that turn a flat token stream into grouped tokens.
@@ -284,6 +285,62 @@ type Grouper struct {
 	sweptAt int
 }
 
+// NewGrouper returns a Grouper for a stream of n tokens.
+//
+// Grouping turns roughly one token in four into a group, so that is where the
+// block size starts. It is capped both ways: a long document allocates more
+// blocks rather than one huge one, and a short document does not pay for a
+// block it will use a tenth of.
+func NewGrouper(n int) Grouper {
+	block := min(max(n/4, arena.MinGroupBlock), arena.MaxGroupBlock)
+
+	return Grouper{
+		block:  block,
+		leaves: arena.Run[TapeToken]{Size: block},
+		groups: arena.Run[TokenGroup]{Size: block},
+	}
+}
+
+// Reset empties the Grouper for another stream, and keeps its cells, its output buffer and its LineComments map.
+//
+// Every token and group the Grouper handed out before Reset is invalid afterwards.
+func (g *Grouper) Reset() {
+	g.leaves.Recycle(poisonLeaves)
+	g.groups.Recycle(poisonGroups)
+	clear(g.grouped[:cap(g.grouped)])
+	clear(g.LineComments)
+	*g = Grouper{
+		block:        g.block,
+		leaves:       g.leaves,
+		groups:       g.groups,
+		grouped:      g.grouped[:0],
+		LineComments: g.LineComments,
+	}
+}
+
+// Release hands back every cell nothing reads any more. dead answers whether
+// the tokens a cell stands for are finished with.
+//
+// Only a walk calls it: a parse gathering a tree holds every node it builds,
+// and a key node built through keyBefore points into a leaf.
+func (g *Grouper) Release(released int, dead func(seq int32) bool) {
+	if released == g.sweptAt {
+		// The tape has let go of nothing since the last sweep, so nothing the
+		// Grouper holds can have died either. A document the grouping cannot
+		// let go of -- one flow collection spanning it, which is what a JSON
+		// document is -- would otherwise be asked on every node and answer no.
+		return
+	}
+	g.sweptAt = released
+
+	// poisonLeaves and poisonGroups are declared in both builds. probe.go
+	// carries //go:build !yamlprobe and defines them empty, so a normal build
+	// passes a func with no body and Run.Release calls it once per sweep.
+	// probe_on.go stamps each released cell, and checkLive reads that stamp.
+	g.leaves.Release(dead, poisonLeaves)
+	g.groups.Release(dead, poisonGroups)
+}
+
 // setLineComment records that comment closes the line tk stands on.
 func (g *Grouper) setLineComment(tk *TapeToken, comment *token.Token) {
 	if probe.Enabled {
@@ -333,39 +390,6 @@ func (g *Grouper) out(n int) []*TapeToken {
 	return g.grouped[:0]
 }
 
-// NewGrouper returns a Grouper for a stream of n tokens.
-//
-// Grouping turns roughly one token in four into a group, so that is where the
-// block size starts. It is capped both ways: a long document allocates more
-// blocks rather than one huge one, and a short document does not pay for a
-// block it will use a tenth of.
-func NewGrouper(n int) Grouper {
-	block := min(max(n/4, arena.MinGroupBlock), arena.MaxGroupBlock)
-
-	return Grouper{
-		block:  block,
-		leaves: arena.Run[TapeToken]{Size: block},
-		groups: arena.Run[TokenGroup]{Size: block},
-	}
-}
-
-// Reset empties the Grouper for another stream, and keeps its cells, its output buffer and its LineComments map.
-//
-// Every token and group the Grouper handed out before Reset is invalid afterwards.
-func (g *Grouper) Reset() {
-	g.leaves.Recycle(poisonLeaves)
-	g.groups.Recycle(poisonGroups)
-	clear(g.grouped[:cap(g.grouped)])
-	clear(g.LineComments)
-	*g = Grouper{
-		block:        g.block,
-		leaves:       g.leaves,
-		groups:       g.groups,
-		grouped:      g.grouped[:0],
-		LineComments: g.LineComments,
-	}
-}
-
 // token returns a cell for a token standing at seq in the stream.
 func (g *Grouper) token(seq int32) *TapeToken {
 	tk := g.leaves.Take(seq)
@@ -396,29 +420,6 @@ func (g *Grouper) nextGroup(seq int32) *TokenGroup {
 	reviveGroup(grp)
 
 	return grp
-}
-
-// Release hands back every cell nothing reads any more. dead answers whether
-// the tokens a cell stands for are finished with.
-//
-// Only a walk calls it: a parse gathering a tree holds every node it builds,
-// and a key node built through keyBefore points into a leaf.
-func (g *Grouper) Release(released int, dead func(seq int32) bool) {
-	if released == g.sweptAt {
-		// The tape has let go of nothing since the last sweep, so nothing the
-		// Grouper holds can have died either. A document the grouping cannot
-		// let go of -- one flow collection spanning it, which is what a JSON
-		// document is -- would otherwise be asked on every node and answer no.
-		return
-	}
-	g.sweptAt = released
-
-	// poisonLeaves and poisonGroups are declared in both builds. probe.go
-	// carries //go:build !yamlprobe and defines them empty, so a normal build
-	// passes a func with no body and Run.Release calls it once per sweep.
-	// probe_on.go stamps each released cell, and checkLive reads that stamp.
-	g.leaves.Release(dead, poisonLeaves)
-	g.groups.Release(dead, poisonGroups)
 }
 
 // newGroup returns a group of typ over tks.
@@ -604,6 +605,8 @@ func endsExplicitKeyBody(tk *TapeToken, keyColumn int, inFlow bool, body []*Tape
 		if *depth == 0 {
 			return true
 		}
+	default:
+		// nothing to do
 	}
 
 	return false
@@ -1139,6 +1142,8 @@ func isScalarType(tk *TapeToken) bool {
 	switch tk.GroupType() {
 	case TokenGroupMapKey, TokenGroupMapKeyValue:
 		return false
+	default:
+		// nothing to do
 	}
 	typ := tk.Type()
 	return typ == token.AnchorType ||

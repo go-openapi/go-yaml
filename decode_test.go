@@ -1099,7 +1099,7 @@ merge:
 			source: "a: 1\nb: 2\n",
 			value: struct {
 				A     int
-				Child `yaml:",inline"`
+				Child `yaml:",inline"` //nolint:embeddedstructfieldcheck // the embedded field follows a regular one on purpose: the test covers that order
 			}{
 				1,
 				Child{
@@ -1310,7 +1310,7 @@ c:
 			typ := reflect.ValueOf(test.value).Type()
 			value := reflect.New(typ)
 			if err := dec.Decode(value.Interface()); err != nil {
-				if test.eof && err == io.EOF {
+				if test.eof && errors.Is(err, io.EOF) {
 					return
 				}
 				t.Fatalf("%s: %+v", test.source, err)
@@ -1407,7 +1407,7 @@ func TestDecoder_ScientificNotation(t *testing.T) {
 			typ := reflect.ValueOf(test.value).Type()
 			value := reflect.New(typ)
 			if err := dec.Decode(value.Interface()); err != nil {
-				if err == io.EOF {
+				if errors.Is(err, io.EOF) {
 					return
 				}
 				t.Fatalf("%s: %+v", test.source, err)
@@ -1795,7 +1795,8 @@ c: true
 `
 	var v struct {
 		*Base `yaml:",inline"`
-		C     bool
+
+		C bool
 	}
 	if err := codec.NewDecoder(strings.NewReader(yml)).Decode(&v); err != nil {
 		t.Fatalf("%+v", err)
@@ -1849,8 +1850,9 @@ c: true
 `
 	var v struct {
 		*Base `yaml:",inline"`
-		A     int
-		C     bool
+
+		A int
+		C bool
 	}
 
 	// "a" reaches Base.A and the outer A, and nothing settles which one the
@@ -1876,7 +1878,8 @@ c: true
 `
 	var v struct {
 		*Base `yaml:",inline"`
-		C     bool
+
+		C bool
 	}
 	err := codec.NewDecoder(strings.NewReader(yml), codec.Strict()).Decode(&v)
 	require.NotNilf(t, err, "expected error")
@@ -1979,7 +1982,8 @@ c:
 	t.Run("inline", func(t *testing.T) {
 		var v struct {
 			*Child `yaml:",inline"`
-			A      string `yaml:"a"`
+
+			A string `yaml:"a"`
 		}
 		yml := `---
 a: a
@@ -2884,8 +2888,8 @@ j: k
 	if err != nil {
 		t.Fatalf("%+v", err)
 	}
-	if string(yml) != "\n"+string(bytes) {
-		t.Fatalf("expected:[%s] actual:[%s]", string(yml), "\n"+string(bytes))
+	if yml != "\n"+string(bytes) {
+		t.Fatalf("expected:[%s] actual:[%s]", yml, "\n"+string(bytes))
 	}
 }
 
@@ -2906,7 +2910,7 @@ k: l
 	for {
 		var v map[string]string
 		if err := dec.Decode(&v); err != nil {
-			if err == io.EOF {
+			if errors.Is(err, io.EOF) {
 				break
 			}
 			t.Fatalf("%+v", err)
@@ -3324,11 +3328,13 @@ bar:
 		}
 		type foo struct {
 			*TestAnchor `yaml:",inline,alias"`
-			K2          string
+
+			K2 string
 		}
 		type bar struct {
 			*TestAnchor `yaml:",inline,alias"`
-			K3          string
+
+			K3 string
 		}
 		type doc struct {
 			TestAnchor *TestAnchor `yaml:"test-anchor,anchor"`

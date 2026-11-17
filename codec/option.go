@@ -268,7 +268,7 @@ func CustomUnmarshaler[T any](unmarshaler func(*T, []byte) error) DecodeOption {
 	return func(d *Decoder) error {
 		var typ *T
 		d.customUnmarshalerMap[reflect.TypeOf(typ)] = func(ctx context.Context, v any, b []byte) error {
-			return unmarshaler(v.(*T), b)
+			return unmarshaler(customArg[*T](v), b)
 		}
 		return nil
 	}
@@ -280,7 +280,7 @@ func CustomUnmarshalerContext[T any](unmarshaler func(context.Context, *T, []byt
 	return func(d *Decoder) error {
 		var typ *T
 		d.customUnmarshalerMap[reflect.TypeOf(typ)] = func(ctx context.Context, v any, b []byte) error {
-			return unmarshaler(ctx, v.(*T), b)
+			return unmarshaler(ctx, customArg[*T](v), b)
 		}
 		return nil
 	}
@@ -422,7 +422,7 @@ func CustomMarshaler[T any](marshaler func(T) ([]byte, error)) EncodeOption {
 	return func(e *Encoder) error {
 		var typ T
 		e.customMarshalerMap[reflect.TypeOf(typ)] = func(ctx context.Context, v any) ([]byte, error) {
-			return marshaler(v.(T))
+			return marshaler(customArg[T](v))
 		}
 		return nil
 	}
@@ -434,7 +434,7 @@ func CustomMarshalerContext[T any](marshaler func(context.Context, T) ([]byte, e
 	return func(e *Encoder) error {
 		var typ T
 		e.customMarshalerMap[reflect.TypeOf(typ)] = func(ctx context.Context, v any) ([]byte, error) {
-			return marshaler(ctx, v.(T))
+			return marshaler(ctx, customArg[T](v))
 		}
 		return nil
 	}

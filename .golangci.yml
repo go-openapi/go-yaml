@@ -4,6 +4,8 @@ linters:
   disable:
     - depguard
     - funlen
+    - gochecknoglobals
+    - gochecknoinits
     - goconst
     - godox
     - gomoddirectives
@@ -51,6 +53,14 @@ linters:
       - common-false-positives
       - legacy
       - std-error-handling
+    rules:
+      # YAML fixtures repeat words on purpose ("hello:\n  hello:", "[x, x, x]").
+      - path: _test\.go
+        linters:
+          - dupword
+          # Test fixtures are small, and a nil slice is often what an assertion expects.
+          - prealloc
+          - forcetypeassert
     paths:
       - third_party$
       - builtin$

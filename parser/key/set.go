@@ -155,6 +155,37 @@ func (k *Set) Holds(base int, text string) bool {
 	return false
 }
 
+// Close drops the keys of the mapping that started at base.
+//
+// Mappings close in the order they open, so the keys of the one closing are
+// always those above its base. A mapping that never spilled is dropped by
+// truncating; only a spilled one has entries to delete.
+func (k *Set) Close(base int) {
+	if len(k.entries)-base >= spillAt {
+		for i := base; i < len(k.entries); i++ {
+			delete(k.index, mapKeyRef{
+				base: int32(base),
+				kind: token.KeyKind(k.filter[i]),
+				text: k.entries[i].text,
+			})
+			if k.jsonNames {
+				delete(k.index, mapKeyRef{base: int32(base), kind: anyKind, text: k.entries[i].text})
+			}
+		}
+	}
+	k.filter = k.filter[:base]
+	k.entries = k.entries[:base]
+}
+
+// Reset forgets every key and turns UseJSONNames off, and keeps the room the Set has grown.
+func (k *Set) Reset() {
+	clear(k.entries[:cap(k.entries)])
+	clear(k.index)
+	k.filter = k.filter[:0]
+	k.entries = k.entries[:0]
+	k.jsonNames = false
+}
+
 // push adds one key to the stack.
 func (k *Set) push(text string, pos token.Position, f uint32) {
 	k.filter = append(k.filter, f)
@@ -204,35 +235,4 @@ func (k *Set) spill(base int) {
 			k.index[name] = k.entries[i].at
 		}
 	}
-}
-
-// Close drops the keys of the mapping that started at base.
-//
-// Mappings close in the order they open, so the keys of the one closing are
-// always those above its base. A mapping that never spilled is dropped by
-// truncating; only a spilled one has entries to delete.
-func (k *Set) Close(base int) {
-	if len(k.entries)-base >= spillAt {
-		for i := base; i < len(k.entries); i++ {
-			delete(k.index, mapKeyRef{
-				base: int32(base),
-				kind: token.KeyKind(k.filter[i]),
-				text: k.entries[i].text,
-			})
-			if k.jsonNames {
-				delete(k.index, mapKeyRef{base: int32(base), kind: anyKind, text: k.entries[i].text})
-			}
-		}
-	}
-	k.filter = k.filter[:base]
-	k.entries = k.entries[:base]
-}
-
-// Reset forgets every key and turns UseJSONNames off, and keeps the room the Set has grown.
-func (k *Set) Reset() {
-	clear(k.entries[:cap(k.entries)])
-	clear(k.index)
-	k.filter = k.filter[:0]
-	k.entries = k.entries[:0]
-	k.jsonNames = false
 }

@@ -105,14 +105,14 @@ func TestTheSupportedTagFlagsStillRead(t *testing.T) {
 	}
 
 	var v struct {
-		A       string   `yaml:"a,omitempty"`
-		Z       string   `yaml:"z,omitzero"`
-		F       []string `yaml:"f,flow"`
-		inner   `yaml:",inline"`
-		Anchor  string `yaml:"anchor,anchor"`
-		Named   string `yaml:"named,anchor=theName"`
-		Alias   string `yaml:"alias,alias"`
-		Aliased string `yaml:"aliased,alias=theAlias"`
+		A       string           `yaml:"a,omitempty"`
+		Z       string           `yaml:"z,omitzero"`
+		F       []string         `yaml:"f,flow"`
+		inner   `yaml:",inline"` //nolint:embeddedstructfieldcheck // the embedded field follows a regular one on purpose: the test covers that order
+		Anchor  string           `yaml:"anchor,anchor"`
+		Named   string           `yaml:"named,anchor=theName"`
+		Alias   string           `yaml:"alias,alias"`
+		Aliased string           `yaml:"aliased,alias=theAlias"`
 	}
 
 	const src = "a: A\nz: Z\nf: [x]\nb: B\nanchor: N\nnamed: M\nalias: L\naliased: K\n"

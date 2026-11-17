@@ -115,7 +115,7 @@ func jsonNumberless(tag *ast.TagNode) error {
 		scalar = anchor.Value
 	}
 
-	return yamlerrors.NewNotJSON(fmt.Sprintf("JSON has no number for %s", res.Text), scalar.GetToken())
+	return yamlerrors.NewNotJSON("JSON has no number for "+res.Text, scalar.GetToken())
 }
 
 // taggedScalar returns the plain scalar a tag stands on, when tk is that scalar or an anchor group naming it,
@@ -284,6 +284,8 @@ func (p *Parser) parseTagValue(ctx context, uri string, tagRawTk *token.Token, t
 			return p.parseTaggedOtherKind(ctx, uri, tagRawTk, tk)
 		}
 		return p.parseSequence(ctx)
+	default:
+		// nothing to do
 	}
 	if endsValue(tk) {
 		// A tag the core schema does not resolve (the non-specific "!", or a local tag),

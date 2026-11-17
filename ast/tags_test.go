@@ -241,7 +241,7 @@ func taggedBy(uri string, value ast.Node) *ast.TagNode {
 	return tag
 }
 
-func scalar(text string) ast.Node {
+func scalar(text string) ast.Node { //nolint:unparam // general fixture builder; the tests so far all use "5"
 	return ast.String(token.New(text, text, token.Position{}))
 }
 
