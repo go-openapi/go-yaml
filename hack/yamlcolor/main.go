@@ -12,10 +12,12 @@ package main
 
 import (
 	"bufio"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
 	"os"
+	"strings"
 
 	"github.com/go-openapi/go-yaml/ast"
 	"github.com/go-openapi/go-yaml/parser"
@@ -23,23 +25,30 @@ import (
 )
 
 func main() {
+	if err := run(); err != nil {
+		fmt.Fprintln(os.Stderr, err.Error())
+		if strings.Contains(err.Error(), "usage:") {
+			os.Exit(1)
+		}
+		os.Exit(2)
+	}
+}
+
+func run() error {
 	parts := flag.Bool("parts", false, "print one line per stretch instead of the document")
 	flag.Parse()
 	if flag.NArg() != 1 {
-		fmt.Fprintln(os.Stderr, "usage: yamlcolor [-parts] <file.yaml>")
-		os.Exit(2)
+		return errors.New("usage: yamlcolor [-parts] <file.yaml>")
 	}
 
 	src, err := os.ReadFile(flag.Arg(0))
 	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
+		return err
 	}
 
 	file, err := parser.ParseBytes(src, parser.WithComments())
 	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
+		return err
 	}
 
 	out := bufio.NewWriter(os.Stdout)
@@ -51,9 +60,10 @@ func main() {
 	}
 	if err := ast.NewRenderer(ast.WithSource(src), ast.WithTransform(hook)).VerbatimFile(out, file); err != nil {
 		_ = out.Flush()
-		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
+		return err
 	}
+
+	return nil
 }
 
 // dump writes one line per stretch: what the renderer is writing, the token it

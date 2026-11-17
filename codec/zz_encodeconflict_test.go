@@ -100,7 +100,7 @@ func TestAShadowedNameIsWrittenOnce(t *testing.T) {
 	// And reading the document back reaches that same field.
 	var back JMixedDepth
 	require.NoError(t, codec.UnmarshalWithOptions(out, &back, codec.UseJSONTags(true)))
-	assert.Equal(t, "shallow", back.JShallow.Name)
+	assert.Equal(t, "shallow", back.Name)
 	assert.Empty(t, back.JMid.Name)
 }
 

@@ -50,8 +50,14 @@ func TestEndLineCountsCarriageReturns(t *testing.T) {
 		org  string
 		want int32
 	}{
-		{"a", 0}, {"a\nb", 1}, {"a\r\nb", 1}, {"a\rb", 1},
-		{"a\n\nb", 2}, {"\n\na\n\n", 0}, {"  a  ", 0}, {"a\r\n\r\nb", 2},
+		{"a", 0},
+		{"a\nb", 1},
+		{"a\r\nb", 1},
+		{"a\rb", 1},
+		{"a\n\nb", 2},
+		{"\n\na\n\n", 0},
+		{"  a  ", 0},
+		{"a\r\n\r\nb", 2},
 	} {
 		tk := token.New("v", test.org, token.Position{Line: 10, Column: 1})
 		require.Equalf(t, 10+test.want, tk.EndLine(), "org %q", test.org)

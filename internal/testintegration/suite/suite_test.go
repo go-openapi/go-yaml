@@ -24,8 +24,10 @@ func sample() (suite.Header, []suite.Case) {
 		},
 	}, []suite.Case{
 		{Name: "a", Src: []byte(`{"a":1}`), WellFormed: true, Origin: suite.Origin{Document: 0}},
-		{Name: "b", Src: []byte("\xff\xfe{}"), Opaque: true,
-			Tags: []string{"encoding/not-utf8", "encoding/utf16"}, Origin: suite.Origin{Document: 1}},
+		{
+			Name: "b", Src: []byte("\xff\xfe{}"), Opaque: true,
+			Tags: []string{"encoding/not-utf8", "encoding/utf16"}, Origin: suite.Origin{Document: 1},
+		},
 		{Name: "c", Src: []byte(`{"a":}`), Origin: suite.Origin{Document: 2, Mutation: "delete a run", Signature: "xyz"}},
 	}
 }

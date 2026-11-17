@@ -352,15 +352,15 @@ a.b.c:
 					t.Fatal("expected error")
 				}
 				return
-			} else {
-				if err != nil {
-					t.Fatalf("%+v", err)
-				}
+			} else if err != nil {
+				t.Fatalf("%+v", err)
 			}
+
 			var v any
 			if err := path.Read(strings.NewReader(test.src), &v); err != nil {
 				t.Fatalf("%+v", err)
 			}
+
 			if v != test.expected {
 				t.Fatalf("failed to get value. expected:[%v] but got:[%v]", test.expected, v)
 			}

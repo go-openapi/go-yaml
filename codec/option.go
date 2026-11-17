@@ -13,10 +13,10 @@ import (
 	"github.com/go-openapi/go-yaml/parser"
 )
 
-// DecodeOption functional option type for Decoder
+// DecodeOption functional option type for Decoder.
 type DecodeOption func(d *Decoder) error
 
-// ReferenceReaders pass to Decoder that reference to anchor defined by passed readers
+// ReferenceReaders pass to Decoder that reference to anchor defined by passed readers.
 func ReferenceReaders(readers ...io.Reader) DecodeOption {
 	return func(d *Decoder) error {
 		d.referenceReaders = append(d.referenceReaders, readers...)
@@ -24,7 +24,7 @@ func ReferenceReaders(readers ...io.Reader) DecodeOption {
 	}
 }
 
-// ReferenceFiles pass to Decoder that reference to anchor defined by passed files
+// ReferenceFiles pass to Decoder that reference to anchor defined by passed files.
 func ReferenceFiles(files ...string) DecodeOption {
 	return func(d *Decoder) error {
 		d.referenceFiles = files
@@ -32,7 +32,7 @@ func ReferenceFiles(files ...string) DecodeOption {
 	}
 }
 
-// ReferenceDirs pass to Decoder that reference to anchor defined by files under the passed dirs
+// ReferenceDirs pass to Decoder that reference to anchor defined by files under the passed dirs.
 func ReferenceDirs(dirs ...string) DecodeOption {
 	return func(d *Decoder) error {
 		d.referenceDirs = dirs
@@ -40,7 +40,7 @@ func ReferenceDirs(dirs ...string) DecodeOption {
 	}
 }
 
-// RecursiveDir search yaml file recursively from passed dirs by ReferenceDirs option
+// RecursiveDir search yaml file recursively from passed dirs by ReferenceDirs option.
 func RecursiveDir(isRecursive bool) DecodeOption {
 	return func(d *Decoder) error {
 		d.isRecursiveDir = isRecursive
@@ -48,7 +48,7 @@ func RecursiveDir(isRecursive bool) DecodeOption {
 	}
 }
 
-// Validator set StructValidator instance to Decoder
+// Validator set StructValidator instance to Decoder.
 func Validator(v StructValidator) DecodeOption {
 	return func(d *Decoder) error {
 		d.validator = v
@@ -56,7 +56,7 @@ func Validator(v StructValidator) DecodeOption {
 	}
 }
 
-// Strict enable DisallowUnknownField
+// Strict enable DisallowUnknownField.
 func Strict() DecodeOption {
 	return func(d *Decoder) error {
 		d.disallowUnknownField = true
@@ -151,7 +151,7 @@ func ShareAliases() DecodeOption {
 }
 
 // UseOrderedMap can be interpreted as a map,
-// and uses MapSlice ( ordered map ) aggressively if there is no type specification
+// and uses MapSlice ( ordered map ) aggressively if there is no type specification.
 func UseOrderedMap() DecodeOption {
 	return func(d *Decoder) error {
 		d.useOrderedMap = true
@@ -286,10 +286,10 @@ func CustomUnmarshalerContext[T any](unmarshaler func(context.Context, *T, []byt
 	}
 }
 
-// EncodeOption functional option type for Encoder
+// EncodeOption functional option type for Encoder.
 type EncodeOption func(e *Encoder) error
 
-// Indent change indent number
+// Indent change indent number.
 func Indent(spaces int) EncodeOption {
 	return func(e *Encoder) error {
 		e.indentNum = spaces
@@ -297,7 +297,7 @@ func Indent(spaces int) EncodeOption {
 	}
 }
 
-// IndentSequence causes sequence values to be indented the same value as Indent
+// IndentSequence causes sequence values to be indented the same value as Indent.
 func IndentSequence(indent bool) EncodeOption {
 	return func(e *Encoder) error {
 		e.indentSequence = indent
@@ -313,7 +313,7 @@ func UseSingleQuote(sq bool) EncodeOption {
 	}
 }
 
-// Flow encoding by flow style
+// Flow encoding by flow style.
 func Flow(isFlowStyle bool) EncodeOption {
 	return func(e *Encoder) error {
 		e.isFlowStyle = isFlowStyle
@@ -339,7 +339,7 @@ func WithSmartAnchor() EncodeOption {
 }
 
 // UseLiteralStyleIfMultiline causes encoding multiline strings with a literal syntax,
-// no matter what characters they include
+// no matter what characters they include.
 func UseLiteralStyleIfMultiline(useLiteralStyleIfMultiline bool) EncodeOption {
 	return func(e *Encoder) error {
 		e.useLiteralStyleIfMultiline = useLiteralStyleIfMultiline
@@ -347,7 +347,7 @@ func UseLiteralStyleIfMultiline(useLiteralStyleIfMultiline bool) EncodeOption {
 	}
 }
 
-// JSON encode in JSON format
+// JSON encode in JSON format.
 func JSON() EncodeOption {
 	return func(e *Encoder) error {
 		e.isJSONStyle = true

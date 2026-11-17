@@ -13,7 +13,7 @@ import (
 )
 
 const (
-	// StructTagName tag keyword for Marshal/Unmarshal
+	// StructTagName tag keyword for Marshal/Unmarshal.
 	StructTagName = "yaml"
 	// jsonTagName is the tag encoding/json reads, which [UseJSONTags] adds where
 	// a field carries no `yaml` tag.
@@ -72,7 +72,7 @@ const (
 	nameFromJSON
 )
 
-// StructField information for each the field in structure
+// StructField information for each the field in structure.
 type StructField struct {
 	// Index is where the field stands in the struct, for reflect.Value.Field.
 	// FieldByName walks the type's fields and compares names on every call.

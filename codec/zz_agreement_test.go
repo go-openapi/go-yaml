@@ -100,26 +100,46 @@ type agShape struct {
 
 func agShapes() []agShape {
 	return []agShape{
-		{"a named embed", func() any { return &agNamedEmbed{} },
-			"leaf:\n  name: N\ntail: T\n", `{"leaf":{"name":"N"},"tail":"T"}`},
-		{"an unexported embed", func() any { return &agUnexportedEmbed{} },
-			"deep: D\ntail: T\n", `{"deep":"D","tail":"T"}`},
-		{"an embedded pointer", func() any { return &agPointerEmbed{} },
-			"name: N\ntail: T\n", `{"name":"N","tail":"T"}`},
-		{"an embed of an embed", func() any { return &agDeep{} },
-			"name: N\ntail: T\n", `{"name":"N","tail":"T"}`},
-		{"a depth conflict", func() any { return &agDepthConflict{} },
-			"name: N\nonlyS: S\n", `{"name":"N","onlyS":"S"}`},
-		{"a sibling conflict", func() any { return &agSiblings{} },
-			"name: N\nonlyO: O\n", `{"name":"N","onlyO":"O"}`},
-		{"one type down two branches", func() any { return &agTwoBranches{} },
-			"name: N\n", `{"name":"N"}`},
-		{"an outer field shadowing an embedded one", func() any { return &agOuterShadows{} },
-			"name: N\n", `{"name":"N"}`},
-		{"a tie where exactly one is tagged", func() any { return &agTieBreak{} },
-			"Name: V\n", `{"Name":"V"}`},
-		{"an inline map", func() any { return &agInlineMap{} },
-			"known: K\nextra: E\n", ""},
+		{
+			"a named embed", func() any { return &agNamedEmbed{} },
+			"leaf:\n  name: N\ntail: T\n", `{"leaf":{"name":"N"},"tail":"T"}`,
+		},
+		{
+			"an unexported embed", func() any { return &agUnexportedEmbed{} },
+			"deep: D\ntail: T\n", `{"deep":"D","tail":"T"}`,
+		},
+		{
+			"an embedded pointer", func() any { return &agPointerEmbed{} },
+			"name: N\ntail: T\n", `{"name":"N","tail":"T"}`,
+		},
+		{
+			"an embed of an embed", func() any { return &agDeep{} },
+			"name: N\ntail: T\n", `{"name":"N","tail":"T"}`,
+		},
+		{
+			"a depth conflict", func() any { return &agDepthConflict{} },
+			"name: N\nonlyS: S\n", `{"name":"N","onlyS":"S"}`,
+		},
+		{
+			"a sibling conflict", func() any { return &agSiblings{} },
+			"name: N\nonlyO: O\n", `{"name":"N","onlyO":"O"}`,
+		},
+		{
+			"one type down two branches", func() any { return &agTwoBranches{} },
+			"name: N\n", `{"name":"N"}`,
+		},
+		{
+			"an outer field shadowing an embedded one", func() any { return &agOuterShadows{} },
+			"name: N\n", `{"name":"N"}`,
+		},
+		{
+			"a tie where exactly one is tagged", func() any { return &agTieBreak{} },
+			"Name: V\n", `{"Name":"V"}`,
+		},
+		{
+			"an inline map", func() any { return &agInlineMap{} },
+			"known: K\nextra: E\n", "",
+		},
 	}
 }
 

@@ -217,7 +217,7 @@ func TestFixedATypedMapMergesLikeEveryOtherDestination(t *testing.T) {
 			require.NoErrorf(t, err, "%q", src)
 
 			var fromJSON box
-			require.NoErrorf(t, json.Unmarshal(out, &fromJSON), "%q: %s", src, out)
+			require.NoErrorf(t, json.Unmarshal(out, &fromJSON), "%q: %s", src, out) //nolint:musttag // this tests the behavior when no json tag is defined
 			assert.Equal(t, want, fromJSON, "%q through ToJSON", src)
 		}
 	})

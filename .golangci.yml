@@ -1,33 +1,49 @@
 version: "2"
 linters:
-  default: none
-  enable:
-    - modernize
-    - errcheck
-    - govet
-    - ineffassign
-    - misspell
-    - perfsprint
-    - staticcheck
-    - unused
+  default: all
+  disable:
+    - depguard
+    - funlen
+    - goconst
+    - godox
+    - gomoddirectives
+    - gomodguard
+    - gomodguard_v2
+    - err113
+    - exhaustruct
+    - exhaustruct_v5
+    - ireturn
+    - nlreturn
+    - nonamedreturns
+    - noinlineerr
+    - paralleltest
+    - recvcheck
+    - testpackage
+    - thelper
+    - tagliatelle
+    - tparallel
+    - varnamelen
+    - whitespace
+    - wrapcheck
+    - wsl
+    - wsl_v5
   settings:
-    errcheck:
-    govet:
-      disable:
-        - tests
-    misspell:
-      locale: US
-    perfsprint:
-      int-conversion: false
-      err-error: false
-      errorf: true
-      sprintf1: false
-      strconcat: false
-    staticcheck:
-      checks:
-        - -ST1000
-        - -ST1005
-        - all
+    dupl:
+      threshold: 200
+    goconst:
+      min-len: 2
+      min-occurrences: 3
+    cyclop:
+      max-complexity: 25
+    gocyclo:
+      min-complexity: 25
+    gocognit:
+      min-complexity: 35
+    exhaustive:
+      default-signifies-exhaustive: true
+      default-case-required: true
+    lll:
+      line-length: 180
   exclusions:
     generated: lax
     presets:
@@ -35,31 +51,27 @@ linters:
       - common-false-positives
       - legacy
       - std-error-handling
-    rules:
-      - linters:
-          - staticcheck
-        path: _test\.go
     paths:
       - third_party$
       - builtin$
       - examples$
 formatters:
   enable:
-    - gci
     - gofmt
-  settings:
-    gci:
-      sections:
-        - standard
-        - default
-        - prefix(github.com/go-openapi/go-yaml)
-        - blank
-        - dot
-    gofmt:
-      simplify: true
+    - goimports
+    - gofumpt
   exclusions:
     generated: lax
     paths:
       - third_party$
       - builtin$
       - examples$
+issues:
+  # Maximum issues count per one linter.
+  # Set to 0 to disable.
+  # Default: 50
+  max-issues-per-linter: 0
+  # Maximum count of issues with the same text.
+  # Set to 0 to disable.
+  # Default: 3
+  max-same-issues: 0

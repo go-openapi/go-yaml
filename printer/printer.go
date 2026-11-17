@@ -11,16 +11,16 @@ import (
 	"github.com/go-openapi/go-yaml/token"
 )
 
-// Property additional property set for each the token
+// Property additional property set for each the token.
 type Property struct {
 	Prefix string
 	Suffix string
 }
 
-// PrintFunc returns property instance
+// PrintFunc returns property instance.
 type PrintFunc func() *Property
 
-// Printer create text from token collection or ast
+// Printer create text from token collection or ast.
 type Printer struct {
 	LineNumber       bool
 	LineNumberFormat func(num int) string
@@ -33,7 +33,7 @@ type Printer struct {
 	Comment          PrintFunc
 }
 
-// PrintNode create text from ast.Node
+// PrintNode create text from ast.Node.
 func (p *Printer) PrintNode(node ast.Node) []byte {
 	return []byte(fmt.Sprintf("%+v\n", node))
 }

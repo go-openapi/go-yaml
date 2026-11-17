@@ -179,13 +179,29 @@ func TestBoolNodeReadsEitherSchemasSpelling(t *testing.T) {
 		want bool
 	}{
 		// YAML 1.2, and 1.1 too.
-		{"true", true}, {"True", true}, {"TRUE", true},
-		{"false", false}, {"False", false}, {"FALSE", false},
+		{"true", true},
+		{"True", true},
+		{"TRUE", true},
+		{"false", false},
+		{"False", false},
+		{"FALSE", false},
 		// YAML 1.1 only.
-		{"y", true}, {"Y", true}, {"yes", true}, {"Yes", true}, {"YES", true},
-		{"on", true}, {"On", true}, {"ON", true},
-		{"n", false}, {"N", false}, {"no", false}, {"No", false}, {"NO", false},
-		{"off", false}, {"Off", false}, {"OFF", false},
+		{"y", true},
+		{"Y", true},
+		{"yes", true},
+		{"Yes", true},
+		{"YES", true},
+		{"on", true},
+		{"On", true},
+		{"ON", true},
+		{"n", false},
+		{"N", false},
+		{"no", false},
+		{"No", false},
+		{"NO", false},
+		{"off", false},
+		{"Off", false},
+		{"OFF", false},
 	} {
 		n := ast.Bool(&token.Token{Type: token.BoolType, Value: tc.text})
 		assert.Equalf(t, tc.want, n.GetValue(), "%q", tc.text)

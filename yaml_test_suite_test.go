@@ -62,7 +62,7 @@ const (
 
 	// The fixture records the scalar's text and the decoder resolves the tag on
 	// it, so the two sides describe different things rather than disagreeing.
-	// reasonTagResolved = "the fixture records the text and the decoder resolves the tag"
+	// reasonTagResolved = "the fixture records the text and the decoder resolves the tag".
 
 	// The fixture expects a value the specification's own grammar does not
 	// produce, and the implementations agree with the grammar.

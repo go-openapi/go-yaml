@@ -2521,8 +2521,10 @@ func TestFixedAnAliasKeyIsTheNodeItsAnchorNames(t *testing.T) {
 			src  string
 			want map[string]any
 		}{
-			{"a: &x s\nb: &y t\n*x : p\n*y : q\n",
-				map[string]any{"a": "s", "b": "t", "s": "p", "t": "q"}},
+			{
+				"a: &x s\nb: &y t\n*x : p\n*y : q\n",
+				map[string]any{"a": "s", "b": "t", "s": "p", "t": "q"},
+			},
 		} {
 			var got any
 			require.NoErrorf(t, codec.Unmarshal([]byte(tc.src), &got), "%q", tc.src)

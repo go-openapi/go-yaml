@@ -336,18 +336,21 @@ func (vw *verbatimWriter) settleGap(end int) {
 
 	var drops []extent
 	var dropped bool
+LOOP:
 	for at := from; at < end; {
 		brk := indexBreak(vw.src, at, end)
 		next := end
-		if brk >= 0 {
+
+		switch {
+		case brk >= 0:
 			next = brk + 1
 			if vw.src[brk] == '\r' && next < end && vw.src[next] == '\n' {
 				next++
 			}
-		} else if end < len(vw.src) {
+		case end < len(vw.src):
 			// The line of the token about to be written.
-			break
-		} else {
+			break LOOP
+		default:
 			brk = end
 		}
 

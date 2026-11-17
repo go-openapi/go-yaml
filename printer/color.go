@@ -69,7 +69,7 @@ func format(attrs ...ColorAttribute) string {
 }
 
 func unformat(attrs ...ColorAttribute) string {
-	format := make([]string, len(attrs))
+	format := make([]string, 0, len(attrs))
 	for _, attr := range attrs {
 		v := fmt.Sprint(ColorReset)
 		reset, exists := colorResetMap[attr]

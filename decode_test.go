@@ -18,11 +18,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/go-openapi/go-yaml"
+	yaml "github.com/go-openapi/go-yaml"
 	"github.com/go-openapi/go-yaml/ast"
 	"github.com/go-openapi/go-yaml/codec"
 	yamlerrors "github.com/go-openapi/go-yaml/errors"
 	"github.com/go-openapi/go-yaml/parser"
+	"github.com/go-openapi/testify/v2/require"
 )
 
 type Child struct {
@@ -1344,9 +1345,7 @@ func TestDecoder_Invalid(t *testing.T) {
 		t.Run(test.src, func(t *testing.T) {
 			var v any
 			err := yaml.Unmarshal([]byte(test.src), &v)
-			if err == nil {
-				t.Fatal("cannot catch decode error")
-			}
+			require.Errorf(t, err, "cannot catch decode error")
 			actual := "\n" + err.Error()
 			if test.expect != actual {
 				t.Fatalf("expected: [%s] but got [%s]", test.expect, actual)
@@ -1880,9 +1879,7 @@ c: true
 		C     bool
 	}
 	err := codec.NewDecoder(strings.NewReader(yml), codec.Strict()).Decode(&v)
-	if err == nil {
-		t.Fatalf("expected error")
-	}
+	require.NotNilf(t, err, "expected error")
 
 	// TODO: properly check if errors are colored/have source
 	t.Logf("%s", err)
@@ -2058,7 +2055,6 @@ x-some-extra-thing: b_value
 			t.Fatal("expected error")
 		}
 	})
-
 }
 
 func TestDecoder_EmptySequenceItem(t *testing.T) {
@@ -2190,7 +2186,7 @@ func TestDecoder_DefaultValues(t *testing.T) {
 				Y string `yaml:"y"`
 			} `yaml:"x"`
 			Z struct {
-				Ä string `yaml:"ä"`
+				Ä string `yaml:"ä"` //nolint:asciicheck // unicode member used for testing
 			} `yaml:",inline"`
 		} `yaml:",inline"`
 	}{
@@ -2287,8 +2283,8 @@ A: 2
 B: d
 `
 	var v struct {
-		A int    `yaml:"foo" json:"A"`
-		B string `yaml:"bar" json:"B"`
+		A int    `json:"A" yaml:"foo"`
+		B string `json:"B" yaml:"bar"`
 	}
 	if err := yaml.Unmarshal([]byte(yml), &v); err != nil {
 		log.Fatal(err)
@@ -2376,18 +2372,16 @@ func TestDecoder_CustomUnmarshaler(t *testing.T) {
 		src := []byte(`foo: "bar"`)
 		var v T
 		ctx := context.WithValue(context.Background(), "plop", uint(42))
-		if err := codec.UnmarshalContext(ctx, src, &v, codec.CustomUnmarshalerContext[[]byte](func(ctx context.Context, dst *[]byte, b []byte) error {
+		err := codec.UnmarshalContext(ctx, src, &v, codec.CustomUnmarshalerContext[[]byte](func(ctx context.Context, dst *[]byte, b []byte) error {
 			if !bytes.Equal(b, []byte(`"bar"`)) {
 				t.Fatalf("failed to get target buffer: %q", b)
 			}
-			if ctx.Value("plop") != uint(42) {
-				t.Fatalf("context value is not correct")
-			}
+			require.Equalf(t, uint(42), ctx.Value("plop"), "context value is not correct")
 			*dst = []byte("bazbaz")
 			return nil
-		})); err != nil {
-			t.Fatal(err)
-		}
+		}))
+		require.NoError(t, err)
+
 		if !bytes.Equal(v.Foo, []byte("bazbaz")) {
 			t.Fatalf("failed to switch to custom unmarshaler. got: %q", v.Foo)
 		}
@@ -2822,24 +2816,19 @@ type unmarshalablePtrIntContainer struct {
 func TestUnmarshalablePtrInt(t *testing.T) {
 	t.Run("empty int", func(t *testing.T) {
 		t.Parallel()
+
 		var container unmarshalablePtrIntContainer
-		if err := yaml.Unmarshal([]byte(`value: 0`), &container); err != nil {
-			t.Fatalf("failed to unmarshal %v", err)
-		}
-		if container.V == nil || *container.V != 0 {
-			t.Fatalf("expected 0, but %q is set", *container.V)
-		}
+		require.NoErrorf(t, yaml.Unmarshal([]byte(`value: 0`), &container), "failed to unmarshal")
+		require.NotNil(t, container.V)
+		require.Emptyf(t, *container.V, "expected 0, but %q is set", *container.V)
 	})
 
 	t.Run("null", func(t *testing.T) {
 		t.Parallel()
+
 		var container unmarshalablePtrIntContainer
-		if err := yaml.Unmarshal([]byte(`value: null`), &container); err != nil {
-			t.Fatalf("failed to unmarshal %v", err)
-		}
-		if container.V != (*int)(nil) {
-			t.Fatalf("expected nil, but %q is set", *container.V)
-		}
+		require.NoError(t, yaml.Unmarshal([]byte(`value: null`), &container), "failed to unmarshal")
+		require.Nilf(t, container.V, "expected nil, but container.V is set")
 	})
 }
 
@@ -3558,7 +3547,6 @@ func TestNodeUnmarshalerContext(t *testing.T) {
 			}
 		})
 	}
-
 }
 
 type testNodeUnmarshaler struct {
@@ -3644,7 +3632,6 @@ func TestNodeUnmarshaler(t *testing.T) {
 			}
 		})
 	}
-
 }
 
 func TestMapKeyCustomUnmarshaler(t *testing.T) {
@@ -3741,7 +3728,6 @@ baz: *seq
 	); err != nil {
 		t.Fatal(err)
 	}
-
 }
 
 func TestIssue650(t *testing.T) {
@@ -3964,8 +3950,7 @@ func TestSetNullValue(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			t.Run("set null", func(t *testing.T) {
-				var v any
-				v = 0x1
+				var v any = 0x1
 				if err := yaml.Unmarshal([]byte(test.src), &v); err != nil {
 					t.Fatal(err)
 				}

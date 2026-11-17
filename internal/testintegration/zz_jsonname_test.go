@@ -79,20 +79,34 @@ func nmShapes() []struct {
 		mk    func() any
 		names []string
 	}{
-		{"a plain struct", reflect.TypeFor[NmPlain](), func() any { return &NmPlain{} },
-			[]string{"tagged_name", "Untagged", "Hidden", "nosuchname"}},
-		{"a promoted field", reflect.TypeFor[NmPromoted](), func() any { return &NmPromoted{} },
-			[]string{"name", "tail"}},
-		{"an embed of an embed", reflect.TypeFor[NmDeep](), func() any { return &NmDeep{} },
-			[]string{"name", "tail"}},
-		{"a depth conflict", reflect.TypeFor[NmDepthConflict](), func() any { return &NmDepthConflict{} },
-			[]string{"name", "onlyS"}},
-		{"a sibling conflict", reflect.TypeFor[NmSiblings](), func() any { return &NmSiblings{} },
-			[]string{"name", "onlyO"}},
-		{"a named embed", reflect.TypeFor[NmNamedEmbed](), func() any { return &NmNamedEmbed{} },
-			[]string{"tail", "name"}},
-		{"a tie where exactly one is tagged", reflect.TypeFor[NmTieBreak](), func() any { return &NmTieBreak{} },
-			[]string{"Name"}},
+		{
+			"a plain struct", reflect.TypeFor[NmPlain](), func() any { return &NmPlain{} },
+			[]string{"tagged_name", "Untagged", "Hidden", "nosuchname"},
+		},
+		{
+			"a promoted field", reflect.TypeFor[NmPromoted](), func() any { return &NmPromoted{} },
+			[]string{"name", "tail"},
+		},
+		{
+			"an embed of an embed", reflect.TypeFor[NmDeep](), func() any { return &NmDeep{} },
+			[]string{"name", "tail"},
+		},
+		{
+			"a depth conflict", reflect.TypeFor[NmDepthConflict](), func() any { return &NmDepthConflict{} },
+			[]string{"name", "onlyS"},
+		},
+		{
+			"a sibling conflict", reflect.TypeFor[NmSiblings](), func() any { return &NmSiblings{} },
+			[]string{"name", "onlyO"},
+		},
+		{
+			"a named embed", reflect.TypeFor[NmNamedEmbed](), func() any { return &NmNamedEmbed{} },
+			[]string{"tail", "name"},
+		},
+		{
+			"a tie where exactly one is tagged", reflect.TypeFor[NmTieBreak](), func() any { return &NmTieBreak{} },
+			[]string{"Name"},
+		},
 	}
 }
 

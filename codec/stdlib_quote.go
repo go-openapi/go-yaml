@@ -36,7 +36,8 @@ func appendQuotedWith(buf []byte, s string, quote byte) []byte {
 		buf = nBuf
 	}
 	buf = append(buf, quote)
-	for width := 0; len(s) > 0; s = s[width:] {
+	var width int
+	for ; len(s) > 0; s = s[width:] {
 		r := rune(s[0])
 		width = 1
 		if r >= utf8.RuneSelf {
@@ -50,7 +51,9 @@ func appendQuotedWith(buf []byte, s string, quote byte) []byte {
 		}
 		buf = appendEscapedRune(buf, r, quote)
 	}
+
 	buf = append(buf, quote)
+
 	return buf
 }
 

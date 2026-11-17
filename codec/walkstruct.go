@@ -550,11 +550,9 @@ func (b *typedBuilder) Leave(node ast.Node, at parser.Closing) error {
 // of them.
 func (b *typedBuilder) handled(dst reflect.Value) bool {
 	if !dst.CanAddr() {
-
 		return true
 	}
 	if b.dec.canDecodeByUnmarshaler(dst) {
-
 		return true
 	}
 	switch dst.Interface().(type) {

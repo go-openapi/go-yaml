@@ -174,8 +174,10 @@ func TestOrderedMapRefusesAShapeTheTagDoesNotName(t *testing.T) {
 func TestFixedAnAliasToAnOrderedMapKeepsTheTag(t *testing.T) {
 	for _, tc := range []struct{ src, want string }{
 		{"a: &m !!omap [{x: 1}]\nb: *m\n", `{"a":{"x":1},"b":{"x":1}}`},
-		{"a: &m !!omap [{x: 1}, {b: 2}]\nb: *m\nc: *m\n",
-			`{"a":{"x":1,"b":2},"b":{"x":1,"b":2},"c":{"x":1,"b":2}}`},
+		{
+			"a: &m !!omap [{x: 1}, {b: 2}]\nb: *m\nc: *m\n",
+			`{"a":{"x":1,"b":2},"b":{"x":1,"b":2},"c":{"x":1,"b":2}}`,
+		},
 	} {
 		folded, err := codec.ToJSON([]byte(tc.src))
 		require.NoErrorf(t, err, "%q", tc.src)

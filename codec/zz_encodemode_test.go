@@ -26,7 +26,7 @@ type (
 
 	// mixedTags carries both tags on one field and neither on another.
 	mixedTags struct {
-		Both    string `yaml:"yamlName" json:"jsonName"`
+		Both    string `json:"jsonName" yaml:"yamlName"`
 		Neither string
 	}
 )

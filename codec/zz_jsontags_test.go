@@ -33,13 +33,13 @@ type (
 	// bothTags names one field twice. The `yaml` tag wins under either mode, so
 	// the option adds nothing to this type and takes nothing from it.
 	bothTags struct {
-		Name string `yaml:"yamlName" json:"jsonName"`
+		Name string `json:"jsonName" yaml:"yamlName"`
 	}
 
 	// hiddenByYAML says "-" in the tag that wins, so the json name never
 	// applies.
 	hiddenByYAML struct {
-		Hidden string `yaml:"-" json:"visible"`
+		Hidden string `json:"visible" yaml:"-"`
 	}
 
 	// jsonNamed carries a json name its Go name does not spell, which is where

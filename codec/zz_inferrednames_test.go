@@ -14,8 +14,7 @@ import (
 )
 
 type (
-	// untaggedFields carries no tag at all, so every mode names its fields for
-	// itself.
+	// untaggedFields carries no tag at all, so every mode names its fields for itself.
 	untaggedFields struct {
 		FieldName string
 		Other     string
@@ -86,7 +85,7 @@ func TestUseInferredNamesTakesTheGoNameVerbatim(t *testing.T) {
 		var ours, theirs untaggedFields
 		require.NoError(t, codec.UnmarshalWithOptions(
 			[]byte("FieldName: x\nOther: y\n"), &ours, codec.UseInferredNames(true)))
-		require.NoError(t, json.Unmarshal([]byte(src), &theirs))
+		require.NoError(t, json.Unmarshal([]byte(src), &theirs)) //nolint:musttag // this test checks the behavior when no json is defined
 		assert.Equal(t, theirs, ours)
 	})
 }

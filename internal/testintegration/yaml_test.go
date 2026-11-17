@@ -208,11 +208,13 @@ b:
 	}
 }
 
-type ObjectMap map[string]*Object
-type ObjectDecl struct {
-	Name    string `yaml:"-"`
-	*Object `yaml:",inline,anchor"`
-}
+type (
+	ObjectMap  map[string]*Object
+	ObjectDecl struct {
+		Name    string `yaml:"-"`
+		*Object `yaml:",inline,anchor"`
+	}
+)
 
 func (m ObjectMap) MarshalYAML() (interface{}, error) {
 	newMap := map[string]*ObjectDecl{}
@@ -750,7 +752,6 @@ hoge:
 			t.Fatalf("expected:%s but got %s", expected, actual)
 		}
 	})
-
 }
 
 func Test_CommentToMapOption(t *testing.T) {
@@ -1074,7 +1075,6 @@ a: 1 # line
 				t.Fatalf("expected:\n%s\ngot:\n%s\n", expect, got)
 			}
 		})
-
 	}
 }
 

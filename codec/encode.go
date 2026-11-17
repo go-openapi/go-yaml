@@ -23,7 +23,7 @@ import (
 )
 
 const (
-	// DefaultIndentSpaces default number of space for indent
+	// DefaultIndentSpaces default number of space for indent.
 	DefaultIndentSpaces = 2
 )
 
@@ -626,40 +626,46 @@ func (e *Encoder) encodeUint(v uint64) *ast.IntegerNode {
 }
 
 func (e *Encoder) encodeFloat(v float64, bitSize int) ast.Node {
-	if v == math.Inf(0) {
+	switch {
+	case v == math.Inf(0):
 		value := ".inf"
 		return ast.Infinity(token.New(value, value, e.pos(e.column)))
-	} else if v == math.Inf(-1) {
+	case v == math.Inf(-1):
 		value := "-.inf"
 		return ast.Infinity(token.New(value, value, e.pos(e.column)))
-	} else if math.IsNaN(v) {
+	case math.IsNaN(v):
 		value := ".nan"
 		return ast.Nan(token.New(value, value, e.pos(e.column)))
-	}
-	value := strconv.FormatFloat(v, 'g', -1, bitSize)
-	if !strings.Contains(value, ".") && !strings.Contains(value, "e") {
-		if e.autoInt {
-			return ast.Integer(token.New(value, value, e.pos(e.column)))
+	default:
+		value := strconv.FormatFloat(v, 'g', -1, bitSize)
+		if !strings.Contains(value, ".") && !strings.Contains(value, "e") {
+			if e.autoInt {
+				return ast.Integer(token.New(value, value, e.pos(e.column)))
+			}
+			// append x.0 suffix to keep float value context
+			value = fmt.Sprintf("%s.0", value)
 		}
-		// append x.0 suffix to keep float value context
-		value = fmt.Sprintf("%s.0", value)
+
+		return ast.Float(token.New(value, value, e.pos(e.column)))
 	}
-	return ast.Float(token.New(value, value, e.pos(e.column)))
 }
 
 func (e *Encoder) isNeedQuoted(v string) bool {
 	if e.isJSONStyle {
 		return true
 	}
+
 	if e.useLiteralStyleIfMultiline && strings.Contains(v, "\n") && !token.NeedsQuotedSpelling(v) {
 		// A value holding a carriage return or a byte order mark has no block
 		// scalar spelling, so the literal style cannot be given to it however
 		// the option is set.
 		return false
 	}
+
 	if e.isFlowStyle && strings.ContainsAny(v, `]},'"`) {
 		return true
 	}
+
 	if e.isFlowStyle {
 		for i := 0; i < len(v); i++ {
 			if v[i] != ':' {
@@ -671,9 +677,11 @@ func (e *Encoder) isNeedQuoted(v string) bool {
 			return true
 		}
 	}
+
 	if token.IsNeedQuoted(v) {
 		return true
 	}
+
 	return false
 }
 

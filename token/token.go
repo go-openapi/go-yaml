@@ -13,47 +13,47 @@ import (
 	"unsafe"
 )
 
-// Character type for character
+// Character type for character.
 type Character byte
 
 const (
-	// SequenceEntryCharacter character for sequence entry
+	// SequenceEntryCharacter character for sequence entry.
 	SequenceEntryCharacter Character = '-'
-	// MappingKeyCharacter character for mapping key
+	// MappingKeyCharacter character for mapping key.
 	MappingKeyCharacter Character = '?'
-	// MappingValueCharacter character for mapping value
+	// MappingValueCharacter character for mapping value.
 	MappingValueCharacter Character = ':'
-	// CollectEntryCharacter character for collect entry
+	// CollectEntryCharacter character for collect entry.
 	CollectEntryCharacter Character = ','
-	// SequenceStartCharacter character for sequence start
+	// SequenceStartCharacter character for sequence start.
 	SequenceStartCharacter Character = '['
-	// SequenceEndCharacter character for sequence end
+	// SequenceEndCharacter character for sequence end.
 	SequenceEndCharacter Character = ']'
-	// MappingStartCharacter character for mapping start
+	// MappingStartCharacter character for mapping start.
 	MappingStartCharacter Character = '{'
-	// MappingEndCharacter character for mapping end
+	// MappingEndCharacter character for mapping end.
 	MappingEndCharacter Character = '}'
-	// CommentCharacter character for comment
+	// CommentCharacter character for comment.
 	CommentCharacter Character = '#'
-	// AnchorCharacter character for anchor
+	// AnchorCharacter character for anchor.
 	AnchorCharacter Character = '&'
-	// AliasCharacter character for alias
+	// AliasCharacter character for alias.
 	AliasCharacter Character = '*'
-	// TagCharacter character for tag
+	// TagCharacter character for tag.
 	TagCharacter Character = '!'
-	// LiteralCharacter character for literal
+	// LiteralCharacter character for literal.
 	LiteralCharacter Character = '|'
-	// FoldedCharacter character for folded
+	// FoldedCharacter character for folded.
 	FoldedCharacter Character = '>'
-	// SingleQuoteCharacter character for single quote
+	// SingleQuoteCharacter character for single quote.
 	SingleQuoteCharacter Character = '\''
-	// DoubleQuoteCharacter character for double quote
+	// DoubleQuoteCharacter character for double quote.
 	DoubleQuoteCharacter Character = '"'
-	// DirectiveCharacter character for directive
+	// DirectiveCharacter character for directive.
 	DirectiveCharacter Character = '%'
-	// SpaceCharacter character for space
+	// SpaceCharacter character for space.
 	SpaceCharacter Character = ' '
-	// LineBreakCharacter character for line break
+	// LineBreakCharacter character for line break.
 	LineBreakCharacter Character = '\n'
 )
 
@@ -64,79 +64,79 @@ const (
 type Type uint8
 
 const (
-	// UnknownType reserve for invalid type
+	// UnknownType reserve for invalid type.
 	UnknownType Type = iota
-	// DocumentHeaderType type for DocumentHeader token
+	// DocumentHeaderType type for DocumentHeader token.
 	DocumentHeaderType
-	// DocumentEndType type for DocumentEnd token
+	// DocumentEndType type for DocumentEnd token.
 	DocumentEndType
-	// SequenceEntryType type for SequenceEntry token
+	// SequenceEntryType type for SequenceEntry token.
 	SequenceEntryType
-	// MappingKeyType type for MappingKey token
+	// MappingKeyType type for MappingKey token.
 	MappingKeyType
-	// MappingValueType type for MappingValue token
+	// MappingValueType type for MappingValue token.
 	MappingValueType
-	// MergeKeyType type for MergeKey token
+	// MergeKeyType type for MergeKey token.
 	MergeKeyType
-	// CollectEntryType type for CollectEntry token
+	// CollectEntryType type for CollectEntry token.
 	CollectEntryType
-	// SequenceStartType type for SequenceStart token
+	// SequenceStartType type for SequenceStart token.
 	SequenceStartType
-	// SequenceEndType type for SequenceEnd token
+	// SequenceEndType type for SequenceEnd token.
 	SequenceEndType
-	// MappingStartType type for MappingStart token
+	// MappingStartType type for MappingStart token.
 	MappingStartType
-	// MappingEndType type for MappingEnd token
+	// MappingEndType type for MappingEnd token.
 	MappingEndType
-	// CommentType type for Comment token
+	// CommentType type for Comment token.
 	CommentType
-	// AnchorType type for Anchor token
+	// AnchorType type for Anchor token.
 	AnchorType
-	// AliasType type for Alias token
+	// AliasType type for Alias token.
 	AliasType
-	// TagType type for Tag token
+	// TagType type for Tag token.
 	TagType
-	// LiteralType type for Literal token
+	// LiteralType type for Literal token.
 	LiteralType
-	// FoldedType type for Folded token
+	// FoldedType type for Folded token.
 	FoldedType
-	// SingleQuoteType type for SingleQuote token
+	// SingleQuoteType type for SingleQuote token.
 	SingleQuoteType
-	// DoubleQuoteType type for DoubleQuote token
+	// DoubleQuoteType type for DoubleQuote token.
 	DoubleQuoteType
-	// DirectiveType type for Directive token
+	// DirectiveType type for Directive token.
 	DirectiveType
-	// SpaceType type for Space token
+	// SpaceType type for Space token.
 	SpaceType
-	// NullType type for Null token
+	// NullType type for Null token.
 	NullType
 	// ImplicitNullType type for implicit Null token.
 	// This is used when explicit keywords such as null or ~ are not specified.
 	// It is distinguished during encoding and output as an empty string.
 	ImplicitNullType
-	// InfinityType type for Infinity token
+	// InfinityType type for Infinity token.
 	InfinityType
-	// NanType type for Nan token
+	// NanType type for Nan token.
 	NanType
-	// IntegerType type for Integer token
+	// IntegerType type for Integer token.
 	IntegerType
-	// BinaryIntegerType type for BinaryInteger token
+	// BinaryIntegerType type for BinaryInteger token.
 	BinaryIntegerType
-	// OctetIntegerType type for OctetInteger token
+	// OctetIntegerType type for OctetInteger token.
 	OctetIntegerType
-	// HexIntegerType type for HexInteger token
+	// HexIntegerType type for HexInteger token.
 	HexIntegerType
-	// FloatType type for Float token
+	// FloatType type for Float token.
 	FloatType
-	// StringType type for String token
+	// StringType type for String token.
 	StringType
-	// BoolType type for Bool token
+	// BoolType type for Bool token.
 	BoolType
-	// InvalidType type for invalid token
+	// InvalidType type for invalid token.
 	InvalidType
 )
 
-// String type identifier to text
+// String type identifier to text.
 func (t Type) String() string {
 	switch t {
 	case UnknownType:
@@ -211,23 +211,23 @@ func (t Type) String() string {
 	return ""
 }
 
-// CharacterType type for character category
+// CharacterType type for character category.
 type CharacterType int
 
 const (
-	// CharacterTypeIndicator type of indicator character
+	// CharacterTypeIndicator type of indicator character.
 	CharacterTypeIndicator CharacterType = iota
-	// CharacterTypeWhiteSpace type of white space character
+	// CharacterTypeWhiteSpace type of white space character.
 	CharacterTypeWhiteSpace
-	// CharacterTypeMiscellaneous type of miscellaneous character
+	// CharacterTypeMiscellaneous type of miscellaneous character.
 	CharacterTypeMiscellaneous
-	// CharacterTypeEscaped type of escaped character
+	// CharacterTypeEscaped type of escaped character.
 	CharacterTypeEscaped
 	// CharacterTypeInvalid type for a invalid token.
 	CharacterTypeInvalid
 )
 
-// String character type identifier to text
+// String character type identifier to text.
 func (c CharacterType) String() string {
 	switch c {
 	case CharacterTypeIndicator:
@@ -242,31 +242,31 @@ func (c CharacterType) String() string {
 	return ""
 }
 
-// Indicator type for indicator
+// Indicator type for indicator.
 type Indicator int
 
 const (
-	// NotIndicator not indicator
+	// NotIndicator not indicator.
 	NotIndicator Indicator = iota
-	// BlockStructureIndicator indicator for block structure ( '-', '?', ':' )
+	// BlockStructureIndicator indicator for block structure ( '-', '?', ':' ).
 	BlockStructureIndicator
-	// FlowCollectionIndicator indicator for flow collection ( '[', ']', '{', '}', ',' )
+	// FlowCollectionIndicator indicator for flow collection ( '[', ']', '{', '}', ',' ).
 	FlowCollectionIndicator
-	// CommentIndicator indicator for comment ( '#' )
+	// CommentIndicator indicator for comment ( '#' ).
 	CommentIndicator
-	// NodePropertyIndicator indicator for node property ( '!', '&', '*' )
+	// NodePropertyIndicator indicator for node property ( '!', '&', '*' ).
 	NodePropertyIndicator
-	// BlockScalarIndicator indicator for block scalar ( '|', '>' )
+	// BlockScalarIndicator indicator for block scalar ( '|', '>' ).
 	BlockScalarIndicator
-	// QuotedScalarIndicator indicator for quoted scalar ( ''', '"' )
+	// QuotedScalarIndicator indicator for quoted scalar ( ''', '"' ).
 	QuotedScalarIndicator
-	// DirectiveIndicator indicator for directive ( '%' )
+	// DirectiveIndicator indicator for directive ( '%' ).
 	DirectiveIndicator
-	// InvalidUseOfReservedIndicator indicator for invalid use of reserved keyword ( '@', '`' )
+	// InvalidUseOfReservedIndicator indicator for invalid use of reserved keyword ( '@', '`' ).
 	InvalidUseOfReservedIndicator
 )
 
-// String indicator to text
+// String indicator to text.
 func (i Indicator) String() string {
 	switch i {
 	case NotIndicator:
@@ -608,55 +608,53 @@ func ReservedTagOf(uri string) (ReservedTagKeyword, bool) {
 	return keyword, true
 }
 
-// ReservedTagKeyword type of reserved tag keyword
+// ReservedTagKeyword type of reserved tag keyword.
 type ReservedTagKeyword string
 
 const (
-	// IntegerTag `!!int` tag
+	// IntegerTag `!!int` tag.
 	IntegerTag ReservedTagKeyword = "!!int"
-	// FloatTag `!!float` tag
+	// FloatTag `!!float` tag.
 	FloatTag ReservedTagKeyword = "!!float"
-	// NullTag `!!null` tag
+	// NullTag `!!null` tag.
 	NullTag ReservedTagKeyword = "!!null"
-	// SequenceTag `!!seq` tag
+	// SequenceTag `!!seq` tag.
 	SequenceTag ReservedTagKeyword = "!!seq"
-	// MappingTag `!!map` tag
+	// MappingTag `!!map` tag.
 	MappingTag ReservedTagKeyword = "!!map"
-	// StringTag `!!str` tag
+	// StringTag `!!str` tag.
 	StringTag ReservedTagKeyword = "!!str"
-	// BinaryTag `!!binary` tag
+	// BinaryTag `!!binary` tag.
 	BinaryTag ReservedTagKeyword = "!!binary"
-	// OrderedMapTag `!!omap` tag
+	// OrderedMapTag `!!omap` tag.
 	OrderedMapTag ReservedTagKeyword = "!!omap"
-	// SetTag `!!set` tag
+	// SetTag `!!set` tag.
 	SetTag ReservedTagKeyword = "!!set"
-	// TimestampTag `!!timestamp` tag
+	// TimestampTag `!!timestamp` tag.
 	TimestampTag ReservedTagKeyword = "!!timestamp"
-	// BooleanTag `!!bool` tag
+	// BooleanTag `!!bool` tag.
 	BooleanTag ReservedTagKeyword = "!!bool"
-	// MergeTag `!!merge` tag
+	// MergeTag `!!merge` tag.
 	MergeTag ReservedTagKeyword = "!!merge"
 )
 
-var (
-	// ReservedTagKeywordMap holds the tags YAML 1.2 reserves. A tag outside it is
-	// the document's own, and a scalar carrying one keeps the type its text says
-	// rather than the one the tag would resolve to.
-	ReservedTagKeywordMap = map[ReservedTagKeyword]struct{}{
-		IntegerTag:    {},
-		FloatTag:      {},
-		NullTag:       {},
-		SequenceTag:   {},
-		MappingTag:    {},
-		StringTag:     {},
-		BinaryTag:     {},
-		OrderedMapTag: {},
-		SetTag:        {},
-		TimestampTag:  {},
-		BooleanTag:    {},
-		MergeTag:      {},
-	}
-)
+// ReservedTagKeywordMap holds the tags YAML 1.2 reserves. A tag outside it is
+// the document's own, and a scalar carrying one keeps the type its text says
+// rather than the one the tag would resolve to.
+var ReservedTagKeywordMap = map[ReservedTagKeyword]struct{}{
+	IntegerTag:    {},
+	FloatTag:      {},
+	NullTag:       {},
+	SequenceTag:   {},
+	MappingTag:    {},
+	StringTag:     {},
+	BinaryTag:     {},
+	OrderedMapTag: {},
+	SetTag:        {},
+	TimestampTag:  {},
+	BooleanTag:    {},
+	MergeTag:      {},
+}
 
 type NumberType string
 
@@ -1661,7 +1659,7 @@ func opensADocumentMarker(value string) bool {
 	return value[len("---")] == ' ' || value[len("---")] == '\t'
 }
 
-// IsNeedQuoted checks whether the value needs quote for passed string or not
+// IsNeedQuoted checks whether the value needs quote for passed string or not.
 func IsNeedQuoted(value string) bool {
 	if value == "" {
 		return true
@@ -1808,7 +1806,7 @@ func At(line, column, offset, indentNum int32) Position {
 	}
 }
 
-// String position to text
+// String position to text.
 func (p *Position) String() string {
 	return fmt.Sprintf("[line:%d,column:%d,offset:%d]", p.Line, p.Column, p.Offset())
 }
@@ -1915,7 +1913,7 @@ func (t *Token) Detached() *Token {
 	return &detached
 }
 
-// Clone copy token ( preserve Prev/Next reference )
+// Clone copy token ( preserve Prev/Next reference ).
 func (t *Token) Clone() *Token {
 	if t == nil {
 		return nil
@@ -1934,7 +1932,7 @@ func (t *Token) Dump() {
 	)
 }
 
-// Tokens type of token collection
+// Tokens type of token collection.
 type Tokens []*Token
 
 func (t Tokens) InvalidToken() *Token {
@@ -1950,14 +1948,14 @@ func (t *Tokens) add(tk *Token) {
 	*t = append(*t, tk)
 }
 
-// Add append new some tokens
+// Add append new some tokens.
 func (t *Tokens) Add(tks ...*Token) {
 	for _, tk := range tks {
 		t.add(tk)
 	}
 }
 
-// Dump dump all token structures for debugging
+// Dump dump all token structures for debugging.
 func (t Tokens) Dump() {
 	for _, tk := range t {
 		fmt.Print("- ")
@@ -1965,7 +1963,7 @@ func (t Tokens) Dump() {
 	}
 }
 
-// String create token for String
+// String create token for String.
 func String(value string, org string, pos Position) *Token {
 	tk := MakeString(value, org, pos)
 
@@ -1985,7 +1983,7 @@ func MakeString[T Text](value string, org T, pos Position) Token {
 	}
 }
 
-// SequenceEntry create token for SequenceEntry
+// SequenceEntry create token for SequenceEntry.
 func SequenceEntry(org string, pos Position) *Token {
 	tk := MakeSequenceEntry(org, pos)
 
@@ -2007,7 +2005,7 @@ func MakeSequenceEntry[T Text](org T, pos Position) Token {
 	}
 }
 
-// MappingKey create token for MappingKey
+// MappingKey create token for MappingKey.
 func MappingKey(pos Position) *Token {
 	tk := MakeMappingKey(pos)
 
@@ -2027,7 +2025,7 @@ func MakeMappingKey(pos Position) Token {
 	}
 }
 
-// MappingValue create token for MappingValue
+// MappingValue create token for MappingValue.
 func MappingValue(pos Position) *Token {
 	tk := MakeMappingValue(pos)
 
@@ -2047,7 +2045,7 @@ func MakeMappingValue(pos Position) Token {
 	}
 }
 
-// CollectEntry create token for CollectEntry
+// CollectEntry create token for CollectEntry.
 func CollectEntry(org string, pos Position) *Token {
 	tk := MakeCollectEntry(org, pos)
 
@@ -2069,7 +2067,7 @@ func MakeCollectEntry[T Text](org T, pos Position) Token {
 	}
 }
 
-// SequenceStart create token for SequenceStart
+// SequenceStart create token for SequenceStart.
 func SequenceStart(org string, pos Position) *Token {
 	tk := MakeSequenceStart(org, pos)
 
@@ -2091,7 +2089,7 @@ func MakeSequenceStart[T Text](org T, pos Position) Token {
 	}
 }
 
-// SequenceEnd create token for SequenceEnd
+// SequenceEnd create token for SequenceEnd.
 func SequenceEnd(org string, pos Position) *Token {
 	tk := MakeSequenceEnd(org, pos)
 
@@ -2113,7 +2111,7 @@ func MakeSequenceEnd[T Text](org T, pos Position) Token {
 	}
 }
 
-// MappingStart create token for MappingStart
+// MappingStart create token for MappingStart.
 func MappingStart(org string, pos Position) *Token {
 	tk := MakeMappingStart(org, pos)
 
@@ -2135,7 +2133,7 @@ func MakeMappingStart[T Text](org T, pos Position) Token {
 	}
 }
 
-// MappingEnd create token for MappingEnd
+// MappingEnd create token for MappingEnd.
 func MappingEnd(org string, pos Position) *Token {
 	tk := MakeMappingEnd(org, pos)
 
@@ -2157,7 +2155,7 @@ func MakeMappingEnd[T Text](org T, pos Position) Token {
 	}
 }
 
-// Comment create token for Comment
+// Comment create token for Comment.
 func Comment(value string, org string, pos Position) *Token {
 	tk := MakeComment(value, org, pos)
 
@@ -2180,7 +2178,7 @@ func MakeComment[T Text](value string, org T, pos Position) Token {
 	}
 }
 
-// Anchor create token for Anchor
+// Anchor create token for Anchor.
 func Anchor(org string, pos Position) *Token {
 	tk := MakeAnchor(org, pos)
 
@@ -2202,7 +2200,7 @@ func MakeAnchor[T Text](org T, pos Position) Token {
 	}
 }
 
-// Alias create token for Alias
+// Alias create token for Alias.
 func Alias(org string, pos Position) *Token {
 	tk := MakeAlias(org, pos)
 
@@ -2224,7 +2222,7 @@ func MakeAlias[T Text](org T, pos Position) Token {
 	}
 }
 
-// Tag create token for Tag
+// Tag create token for Tag.
 func Tag(value string, org string, pos Position) *Token {
 	tk := MakeTag(value, org, pos)
 
@@ -2246,7 +2244,7 @@ func MakeTag[T Text](value string, org T, pos Position) Token {
 	}
 }
 
-// Literal create token for Literal
+// Literal create token for Literal.
 func Literal(value string, org string, pos Position) *Token {
 	tk := MakeLiteral(value, org, pos)
 
@@ -2269,7 +2267,7 @@ func MakeLiteral[T Text](value string, org T, pos Position) Token {
 	}
 }
 
-// Folded create token for Folded
+// Folded create token for Folded.
 func Folded(value string, org string, pos Position) *Token {
 	tk := MakeFolded(value, org, pos)
 
@@ -2292,7 +2290,7 @@ func MakeFolded[T Text](value string, org T, pos Position) Token {
 	}
 }
 
-// SingleQuote create token for SingleQuote
+// SingleQuote create token for SingleQuote.
 func SingleQuote(value string, org string, pos Position) *Token {
 	tk := MakeSingleQuote(value, org, pos)
 
@@ -2314,7 +2312,7 @@ func MakeSingleQuote[T Text](value string, org T, pos Position) Token {
 	}
 }
 
-// DoubleQuote create token for DoubleQuote
+// DoubleQuote create token for DoubleQuote.
 func DoubleQuote(value string, org string, pos Position) *Token {
 	tk := MakeDoubleQuote(value, org, pos)
 
@@ -2336,7 +2334,7 @@ func MakeDoubleQuote[T Text](value string, org T, pos Position) Token {
 	}
 }
 
-// Directive create token for Directive
+// Directive create token for Directive.
 func Directive(org string, pos Position) *Token {
 	tk := MakeDirective(org, pos)
 
@@ -2358,7 +2356,7 @@ func MakeDirective[T Text](org T, pos Position) Token {
 	}
 }
 
-// Space create token for Space
+// Space create token for Space.
 func Space(pos Position) *Token {
 	return &Token{
 		Type:     SpaceType,
@@ -2369,7 +2367,7 @@ func Space(pos Position) *Token {
 	}
 }
 
-// MergeKey create token for MergeKey
+// MergeKey create token for MergeKey.
 func MergeKey(org string, pos Position) *Token {
 	tk := MakeMergeKey(org, pos)
 
@@ -2391,7 +2389,7 @@ func MakeMergeKey[T Text](org T, pos Position) Token {
 	}
 }
 
-// DocumentHeader create token for DocumentHeader
+// DocumentHeader create token for DocumentHeader.
 func DocumentHeader(org string, pos Position) *Token {
 	tk := MakeDocumentHeader(org, pos)
 
@@ -2413,7 +2411,7 @@ func MakeDocumentHeader[T Text](org T, pos Position) Token {
 	}
 }
 
-// DocumentEnd create token for DocumentEnd
+// DocumentEnd create token for DocumentEnd.
 func DocumentEnd(org string, pos Position) *Token {
 	tk := MakeDocumentEnd(org, pos)
 

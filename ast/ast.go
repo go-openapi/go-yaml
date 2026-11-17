@@ -21,57 +21,57 @@ var (
 	ErrInvalidAliasName  = errors.New("invalid alias name")
 )
 
-// NodeType type identifier of node
+// NodeType type identifier of node.
 type NodeType int
 
 const (
-	// UnknownNodeType type identifier for default
+	// UnknownNodeType type identifier for default.
 	UnknownNodeType NodeType = iota
-	// DocumentType type identifier for document node
+	// DocumentType type identifier for document node.
 	DocumentType
-	// NullType type identifier for null node
+	// NullType type identifier for null node.
 	NullType
-	// BoolType type identifier for boolean node
+	// BoolType type identifier for boolean node.
 	BoolType
-	// IntegerType type identifier for integer node
+	// IntegerType type identifier for integer node.
 	IntegerType
-	// FloatType type identifier for float node
+	// FloatType type identifier for float node.
 	FloatType
-	// InfinityType type identifier for infinity node
+	// InfinityType type identifier for infinity node.
 	InfinityType
-	// NanType type identifier for nan node
+	// NanType type identifier for nan node.
 	NanType
-	// StringType type identifier for string node
+	// StringType type identifier for string node.
 	StringType
-	// MergeKeyType type identifier for merge key node
+	// MergeKeyType type identifier for merge key node.
 	MergeKeyType
-	// LiteralType type identifier for literal node
+	// LiteralType type identifier for literal node.
 	LiteralType
-	// MappingType type identifier for mapping node
+	// MappingType type identifier for mapping node.
 	MappingType
-	// MappingKeyType type identifier for mapping key node
+	// MappingKeyType type identifier for mapping key node.
 	MappingKeyType
-	// MappingValueType type identifier for mapping value node
+	// MappingValueType type identifier for mapping value node.
 	MappingValueType
-	// SequenceType type identifier for sequence node
+	// SequenceType type identifier for sequence node.
 	SequenceType
-	// SequenceEntryType type identifier for sequence entry node
+	// SequenceEntryType type identifier for sequence entry node.
 	SequenceEntryType
-	// AnchorType type identifier for anchor node
+	// AnchorType type identifier for anchor node.
 	AnchorType
-	// AliasType type identifier for alias node
+	// AliasType type identifier for alias node.
 	AliasType
-	// DirectiveType type identifier for directive node
+	// DirectiveType type identifier for directive node.
 	DirectiveType
-	// TagType type identifier for tag node
+	// TagType type identifier for tag node.
 	TagType
-	// CommentType type identifier for comment node
+	// CommentType type identifier for comment node.
 	CommentType
-	// CommentGroupType type identifier for comment group node
+	// CommentGroupType type identifier for comment group node.
 	CommentGroupType
 )
 
-// String node type identifier to text
+// String node type identifier to text.
 func (t NodeType) String() string {
 	switch t {
 	case UnknownNodeType:
@@ -174,7 +174,7 @@ func (t NodeType) YAMLName() string {
 	return ""
 }
 
-// Node type of node
+// Node type of node.
 type Node interface {
 	// String node to text
 	String() string
@@ -194,7 +194,7 @@ type Node interface {
 	SetPathNode(*PathNode)
 }
 
-// MapKeyNode type for map key node
+// MapKeyNode type for map key node.
 type MapKeyNode interface {
 	Node
 	IsMergeKey() bool
@@ -202,7 +202,7 @@ type MapKeyNode interface {
 	stringWithoutComment() string
 }
 
-// ScalarNode type for scalar node
+// ScalarNode type for scalar node.
 type ScalarNode interface {
 	MapKeyNode
 	GetValue() any
@@ -293,12 +293,12 @@ func (n *BaseNode) SetPathNode(p *PathNode) {
 	n.path = p
 }
 
-// GetComment returns comment token instance
+// GetComment returns comment token instance.
 func (n *BaseNode) GetComment() *CommentGroupNode {
 	return n.Comment
 }
 
-// SetComment set comment token
+// SetComment set comment token.
 func (n *BaseNode) SetComment(node *CommentGroupNode) error {
 	if err := refuseOverwritingWhatWasWritten(n.Comment, node); err != nil {
 		return err
@@ -391,14 +391,14 @@ func (n *NullNode) SetComment(node *CommentGroupNode) error {
 	return n.BaseNode.SetComment(node)
 }
 
-// Null create node for null value
+// Null create node for null value.
 func Null(tk *token.Token) *NullNode {
 	return &NullNode{
 		Token: tk,
 	}
 }
 
-// Bool create node for boolean value
+// Bool create node for boolean value.
 func Bool(tk *token.Token) *BoolNode {
 	b, _ := token.ParseBool(tk.Value)
 
@@ -408,14 +408,14 @@ func Bool(tk *token.Token) *BoolNode {
 	}
 }
 
-// Integer create node for integer value
+// Integer create node for integer value.
 func Integer(tk *token.Token) *IntegerNode {
 	return &IntegerNode{
 		Token: tk,
 	}
 }
 
-// Float create node for float value
+// Float create node for float value.
 func Float(tk *token.Token) *FloatNode {
 	return &FloatNode{
 		Token: tk,
@@ -445,14 +445,14 @@ func Infinity(tk *token.Token) *InfinityNode {
 	return node
 }
 
-// Nan create node for .nan value
+// Nan create node for .nan value.
 func Nan(tk *token.Token) *NanNode {
 	return &NanNode{
 		Token: tk,
 	}
 }
 
-// String create node for string value
+// String create node for string value.
 func String(tk *token.Token) *StringNode {
 	return &StringNode{
 		Token: tk,
@@ -460,7 +460,7 @@ func String(tk *token.Token) *StringNode {
 	}
 }
 
-// Comment create node for comment
+// Comment create node for comment.
 func Comment(tk *token.Token) *CommentNode {
 	return &CommentNode{
 		Token: tk,
@@ -477,14 +477,14 @@ func CommentGroup(comments []*token.Token) *CommentGroupNode {
 	}
 }
 
-// MergeKey create node for merge key ( << )
+// MergeKey create node for merge key ( << ).
 func MergeKey(tk *token.Token) *MergeKeyNode {
 	return &MergeKeyNode{
 		Token: tk,
 	}
 }
 
-// Mapping create node for map
+// Mapping create node for map.
 func Mapping(tk *token.Token, isFlowStyle bool, values ...*MappingValueNode) *MappingNode {
 	node := &MappingNode{
 		Start:       tk,
@@ -495,7 +495,7 @@ func Mapping(tk *token.Token, isFlowStyle bool, values ...*MappingValueNode) *Ma
 	return node
 }
 
-// MappingValue create node for mapping value
+// MappingValue create node for mapping value.
 func MappingValue(tk *token.Token, key MapKeyNode, value Node) *MappingValueNode {
 	return &MappingValueNode{
 		Start: tk,
@@ -511,7 +511,7 @@ func MappingKey(tk *token.Token) *MappingKeyNode {
 	}
 }
 
-// Sequence create node for sequence
+// Sequence create node for sequence.
 func Sequence(tk *token.Token, isFlowStyle bool) *SequenceNode {
 	return &SequenceNode{
 		Start:       tk,
@@ -557,7 +557,7 @@ func Tag(tk *token.Token) *TagNode {
 	}
 }
 
-// File contains all documents in YAML file
+// File contains all documents in YAML file.
 type File struct {
 	Name string
 	Docs []*DocumentNode
@@ -591,12 +591,12 @@ func (f *File) Read(p []byte) (int, error) {
 	return n, nil
 }
 
-// String all documents to text
+// String all documents to text.
 func (f *File) String() string {
 	return defaultRenderer.File(f)
 }
 
-// DocumentNode type of Document
+// DocumentNode type of Document.
 type DocumentNode struct {
 	BaseNode
 	Start *token.Token // position of DocumentHeader ( `---` )
@@ -634,7 +634,7 @@ type DocumentNode struct {
 	Schema token.Schema
 }
 
-// Type returns DocumentNodeType
+// Type returns DocumentNodeType.
 func (d *DocumentNode) Type() NodeType { return DocumentType }
 
 // GetToken returns token instance.
@@ -648,26 +648,26 @@ func (d *DocumentNode) GetToken() *token.Token {
 	return d.Body.GetToken()
 }
 
-// String document to text
+// String document to text.
 func (d *DocumentNode) String() string {
 	return defaultRenderer.String(d)
 }
 
-// NullNode type of null node
+// NullNode type of null node.
 type NullNode struct {
 	BaseNode
 	Token *token.Token
 }
 
-// Type returns NullType
+// Type returns NullType.
 func (n *NullNode) Type() NodeType { return NullType }
 
-// GetToken returns token instance
+// GetToken returns token instance.
 func (n *NullNode) GetToken() *token.Token {
 	return n.Token
 }
 
-// GetValue returns nil value
+// GetValue returns nil value.
 func (n *NullNode) GetValue() any {
 	return nil
 }
@@ -710,16 +710,16 @@ func (n *NullNode) IsMergeKey() bool {
 	return false
 }
 
-// IntegerNode type of integer node
+// IntegerNode type of integer node.
 type IntegerNode struct {
 	BaseNode
 	Token *token.Token
 }
 
-// Type returns IntegerType
+// Type returns IntegerType.
 func (n *IntegerNode) Type() NodeType { return IntegerType }
 
-// GetToken returns token instance
+// GetToken returns token instance.
 func (n *IntegerNode) GetToken() *token.Token {
 	return n.Token
 }
@@ -751,7 +751,7 @@ func (n *IntegerNode) GetValue() any {
 	return nil
 }
 
-// String int64 to text
+// String int64 to text.
 func (n *IntegerNode) String() string {
 	if n.Comment != nil {
 		return addCommentString(n.Token.Value, n.Comment)
@@ -768,16 +768,16 @@ func (n *IntegerNode) IsMergeKey() bool {
 	return false
 }
 
-// FloatNode type of float node
+// FloatNode type of float node.
 type FloatNode struct {
 	BaseNode
 	Token *token.Token
 }
 
-// Type returns FloatType
+// Type returns FloatType.
 func (n *FloatNode) Type() NodeType { return FloatType }
 
-// GetToken returns token instance
+// GetToken returns token instance.
 func (n *FloatNode) GetToken() *token.Token {
 	return n.Token
 }
@@ -809,7 +809,7 @@ func (n *FloatNode) GetValue() any {
 	return float64(0)
 }
 
-// String float64 to text
+// String float64 to text.
 func (n *FloatNode) String() string {
 	if n.Comment != nil {
 		return addCommentString(n.Token.Value, n.Comment)
@@ -826,22 +826,22 @@ func (n *FloatNode) IsMergeKey() bool {
 	return false
 }
 
-// StringNode type of string node
+// StringNode type of string node.
 type StringNode struct {
 	BaseNode
 	Token *token.Token
 	Value string
 }
 
-// Type returns StringType
+// Type returns StringType.
 func (n *StringNode) Type() NodeType { return StringType }
 
-// GetToken returns token instance
+// GetToken returns token instance.
 func (n *StringNode) GetToken() *token.Token {
 	return n.Token
 }
 
-// GetValue returns string value
+// GetValue returns string value.
 func (n *StringNode) GetValue() any {
 	return n.Value
 }
@@ -962,7 +962,7 @@ func (n *StringNode) stringWithoutComment() string {
 	return n.Value
 }
 
-// LiteralNode type of literal node
+// LiteralNode type of literal node.
 type LiteralNode struct {
 	BaseNode
 	Start *token.Token
@@ -980,20 +980,20 @@ type LiteralNode struct {
 	Source string
 }
 
-// Type returns LiteralType
+// Type returns LiteralType.
 func (n *LiteralNode) Type() NodeType { return LiteralType }
 
-// GetToken returns token instance
+// GetToken returns token instance.
 func (n *LiteralNode) GetToken() *token.Token {
 	return n.Start
 }
 
-// GetValue returns string value
+// GetValue returns string value.
 func (n *LiteralNode) GetValue() any {
 	return n.String()
 }
 
-// String literal to text
+// String literal to text.
 func (n *LiteralNode) String() string {
 	return defaultRenderer.String(n)
 }
@@ -1007,26 +1007,26 @@ func (n *LiteralNode) IsMergeKey() bool {
 	return false
 }
 
-// MergeKeyNode type of merge key node
+// MergeKeyNode type of merge key node.
 type MergeKeyNode struct {
 	BaseNode
 	Token *token.Token
 }
 
-// Type returns MergeKeyType
+// Type returns MergeKeyType.
 func (n *MergeKeyNode) Type() NodeType { return MergeKeyType }
 
-// GetToken returns token instance
+// GetToken returns token instance.
 func (n *MergeKeyNode) GetToken() *token.Token {
 	return n.Token
 }
 
-// GetValue returns '<<' value
+// GetValue returns '<<' value.
 func (n *MergeKeyNode) GetValue() any {
 	return n.Token.Value
 }
 
-// String returns '<<' value
+// String returns '<<' value.
 func (n *MergeKeyNode) String() string {
 	return n.stringWithoutComment()
 }
@@ -1040,27 +1040,27 @@ func (n *MergeKeyNode) IsMergeKey() bool {
 	return true
 }
 
-// BoolNode type of boolean node
+// BoolNode type of boolean node.
 type BoolNode struct {
 	BaseNode
 	Token *token.Token
 	Value bool
 }
 
-// Type returns BoolType
+// Type returns BoolType.
 func (n *BoolNode) Type() NodeType { return BoolType }
 
-// GetToken returns token instance
+// GetToken returns token instance.
 func (n *BoolNode) GetToken() *token.Token {
 	return n.Token
 }
 
-// GetValue returns boolean value
+// GetValue returns boolean value.
 func (n *BoolNode) GetValue() any {
 	return n.Value
 }
 
-// String boolean to text
+// String boolean to text.
 func (n *BoolNode) String() string {
 	if n.Comment != nil {
 		return addCommentString(n.Token.Value, n.Comment)
@@ -1077,27 +1077,27 @@ func (n *BoolNode) IsMergeKey() bool {
 	return false
 }
 
-// InfinityNode type of infinity node
+// InfinityNode type of infinity node.
 type InfinityNode struct {
 	BaseNode
 	Token *token.Token
 	Value float64
 }
 
-// Type returns InfinityType
+// Type returns InfinityType.
 func (n *InfinityNode) Type() NodeType { return InfinityType }
 
-// GetToken returns token instance
+// GetToken returns token instance.
 func (n *InfinityNode) GetToken() *token.Token {
 	return n.Token
 }
 
-// GetValue returns math.Inf(0) or math.Inf(-1)
+// GetValue returns math.Inf(0) or math.Inf(-1).
 func (n *InfinityNode) GetValue() any {
 	return n.Value
 }
 
-// String infinity to text
+// String infinity to text.
 func (n *InfinityNode) String() string {
 	if n.Comment != nil {
 		return addCommentString(n.Token.Value, n.Comment)
@@ -1114,26 +1114,26 @@ func (n *InfinityNode) IsMergeKey() bool {
 	return false
 }
 
-// NanNode type of nan node
+// NanNode type of nan node.
 type NanNode struct {
 	BaseNode
 	Token *token.Token
 }
 
-// Type returns NanType
+// Type returns NanType.
 func (n *NanNode) Type() NodeType { return NanType }
 
-// GetToken returns token instance
+// GetToken returns token instance.
 func (n *NanNode) GetToken() *token.Token {
 	return n.Token
 }
 
-// GetValue returns math.NaN()
+// GetValue returns math.NaN().
 func (n *NanNode) GetValue() any {
 	return math.NaN()
 }
 
-// String returns .nan
+// String returns .nan.
 func (n *NanNode) String() string {
 	if n.Comment != nil {
 		return addCommentString(n.Token.Value, n.Comment)
@@ -1150,12 +1150,12 @@ func (n *NanNode) IsMergeKey() bool {
 	return false
 }
 
-// MapNode interface of MappingValueNode / MappingNode
+// MapNode interface of MappingValueNode / MappingNode.
 type MapNode interface {
 	MapRange() *MapNodeIter
 }
 
-// MapNodeIter is an iterator for ranging over a MapNode
+// MapNodeIter is an iterator for ranging over a MapNode.
 type MapNodeIter struct {
 	values []*MappingValueNode
 	idx    int
@@ -1277,10 +1277,10 @@ func (n *MappingNode) SetIsFlowStyle(isFlow bool) {
 	}
 }
 
-// Type returns MappingType
+// Type returns MappingType.
 func (n *MappingNode) Type() NodeType { return MappingType }
 
-// GetToken returns token instance
+// GetToken returns token instance.
 func (n *MappingNode) GetToken() *token.Token {
 	return n.Start
 }
@@ -1301,7 +1301,7 @@ func (n *MappingNode) String() string {
 	return defaultRenderer.String(n)
 }
 
-// MapRange implements MapNode protocol
+// MapRange implements MapNode protocol.
 func (n *MappingNode) MapRange() *MapNodeIter {
 	return &MapNodeIter{
 		idx:    startRangeIndex,
@@ -1309,22 +1309,22 @@ func (n *MappingNode) MapRange() *MapNodeIter {
 	}
 }
 
-// MappingKeyNode type of tag node
+// MappingKeyNode type of tag node.
 type MappingKeyNode struct {
 	BaseNode
 	Start *token.Token
 	Value Node
 }
 
-// Type returns MappingKeyType
+// Type returns MappingKeyType.
 func (n *MappingKeyNode) Type() NodeType { return MappingKeyType }
 
-// GetToken returns token instance
+// GetToken returns token instance.
 func (n *MappingKeyNode) GetToken() *token.Token {
 	return n.Start
 }
 
-// String tag to text
+// String tag to text.
 func (n *MappingKeyNode) String() string {
 	return defaultRenderer.String(n)
 }
@@ -1345,7 +1345,7 @@ func (n *MappingKeyNode) IsMergeKey() bool {
 	return key.IsMergeKey()
 }
 
-// MappingValueNode type of mapping value
+// MappingValueNode type of mapping value.
 type MappingValueNode struct {
 	BaseNode
 	Start        *token.Token // delimiter token ':'.
@@ -1380,10 +1380,10 @@ func (n *MappingValueNode) Replace(value Node) error {
 	return nil
 }
 
-// Type returns MappingValueType
+// Type returns MappingValueType.
 func (n *MappingValueNode) Type() NodeType { return MappingValueType }
 
-// GetToken returns token instance
+// GetToken returns token instance.
 func (n *MappingValueNode) GetToken() *token.Token {
 	return n.Start
 }
@@ -1401,12 +1401,12 @@ func (n *MappingValueNode) SetIsFlowStyle(isFlow bool) {
 	}
 }
 
-// String mapping value to text
+// String mapping value to text.
 func (n *MappingValueNode) String() string {
 	return defaultRenderer.String(n)
 }
 
-// MapRange implements MapNode protocol
+// MapRange implements MapNode protocol.
 func (n *MappingValueNode) MapRange() *MapNodeIter {
 	return &MapNodeIter{
 		idx:    startRangeIndex,
@@ -1414,12 +1414,12 @@ func (n *MappingValueNode) MapRange() *MapNodeIter {
 	}
 }
 
-// ArrayNode interface of SequenceNode
+// ArrayNode interface of SequenceNode.
 type ArrayNode interface {
 	ArrayRange() *ArrayNodeIter
 }
 
-// ArrayNodeIter is an iterator for ranging over a ArrayNode
+// ArrayNodeIter is an iterator for ranging over a ArrayNode.
 type ArrayNodeIter struct {
 	values []Node
 	idx    int
@@ -1438,12 +1438,12 @@ func (m *ArrayNodeIter) Value() Node {
 	return m.values[m.idx]
 }
 
-// Len returns length of array
+// Len returns length of array.
 func (m *ArrayNodeIter) Len() int {
 	return len(m.values)
 }
 
-// SequenceNode type of sequence node
+// SequenceNode type of sequence node.
 type SequenceNode struct {
 	BaseNode
 	Start             *token.Token
@@ -1593,10 +1593,10 @@ func (n *SequenceNode) SetIsFlowStyle(isFlow bool) {
 	}
 }
 
-// Type returns SequenceType
+// Type returns SequenceType.
 func (n *SequenceNode) Type() NodeType { return SequenceType }
 
-// GetToken returns token instance
+// GetToken returns token instance.
 func (n *SequenceNode) GetToken() *token.Token {
 	return n.Start
 }
@@ -1617,7 +1617,7 @@ func (n *SequenceNode) String() string {
 	return defaultRenderer.String(n)
 }
 
-// ArrayRange implements ArrayNode protocol
+// ArrayRange implements ArrayNode protocol.
 func (n *SequenceNode) ArrayRange() *ArrayNodeIter {
 	return &ArrayNodeIter{
 		idx:    startRangeIndex,
@@ -1634,17 +1634,17 @@ type SequenceEntryNode struct {
 	Value       Node              // value node.
 }
 
-// String node to text
+// String node to text.
 func (n *SequenceEntryNode) String() string {
 	return "" // TODO
 }
 
-// GetToken returns token instance
+// GetToken returns token instance.
 func (n *SequenceEntryNode) GetToken() *token.Token {
 	return n.Start
 }
 
-// Type returns type of node
+// Type returns type of node.
 func (n *SequenceEntryNode) Type() NodeType {
 	return SequenceEntryType
 }
@@ -1655,7 +1655,7 @@ func (n *SequenceEntryNode) SetComment(cm *CommentGroupNode) error {
 	return nil
 }
 
-// Comment returns comment token instance
+// Comment returns comment token instance.
 func (n *SequenceEntryNode) GetComment() *CommentGroupNode {
 	return n.LineComment
 }
@@ -1691,7 +1691,7 @@ func (n *SequenceMergeValueNode) MapRange() *MapNodeIter {
 	return ret
 }
 
-// AnchorNode type of anchor node
+// AnchorNode type of anchor node.
 type AnchorNode struct {
 	BaseNode
 	Start *token.Token
@@ -1715,10 +1715,10 @@ func (n *AnchorNode) SetName(name string) error {
 	return nil
 }
 
-// Type returns AnchorType
+// Type returns AnchorType.
 func (n *AnchorNode) Type() NodeType { return AnchorType }
 
-// GetToken returns token instance
+// GetToken returns token instance.
 func (n *AnchorNode) GetToken() *token.Token {
 	return n.Start
 }
@@ -1727,7 +1727,7 @@ func (n *AnchorNode) GetValue() any {
 	return n.Value.GetToken().Value
 }
 
-// String anchor to text
+// String anchor to text.
 func (n *AnchorNode) String() string {
 	return defaultRenderer.String(n)
 }
@@ -1744,7 +1744,7 @@ func (n *AnchorNode) IsMergeKey() bool {
 	return key.IsMergeKey()
 }
 
-// AliasNode type of alias node
+// AliasNode type of alias node.
 type AliasNode struct {
 	BaseNode
 	Start *token.Token
@@ -1786,10 +1786,10 @@ func (n *AliasNode) SetName(name string) error {
 	return nil
 }
 
-// Type returns AliasType
+// Type returns AliasType.
 func (n *AliasNode) Type() NodeType { return AliasType }
 
-// GetToken returns token instance
+// GetToken returns token instance.
 func (n *AliasNode) GetToken() *token.Token {
 	return n.Start
 }
@@ -1798,7 +1798,7 @@ func (n *AliasNode) GetValue() any {
 	return n.Value.GetToken().Value
 }
 
-// String alias to text
+// String alias to text.
 func (n *AliasNode) String() string {
 	return fmt.Sprintf("*%s", n.Value.String())
 }
@@ -1808,7 +1808,7 @@ func (n *AliasNode) IsMergeKey() bool {
 	return false
 }
 
-// DirectiveNode type of directive node
+// DirectiveNode type of directive node.
 type DirectiveNode struct {
 	BaseNode
 	// Start is '%' token.
@@ -1819,15 +1819,15 @@ type DirectiveNode struct {
 	Values []Node
 }
 
-// Type returns DirectiveType
+// Type returns DirectiveType.
 func (n *DirectiveNode) Type() NodeType { return DirectiveType }
 
-// GetToken returns token instance
+// GetToken returns token instance.
 func (n *DirectiveNode) GetToken() *token.Token {
 	return n.Start
 }
 
-// String directive to text
+// String directive to text.
 func (n *DirectiveNode) String() string {
 	values := make([]string, 0, len(n.Values))
 	for _, val := range n.Values {
@@ -1836,7 +1836,7 @@ func (n *DirectiveNode) String() string {
 	return strings.Join(append([]string{"%" + n.Name.String()}, values...), " ")
 }
 
-// TagNode type of tag node
+// TagNode type of tag node.
 type TagNode struct {
 	BaseNode
 	Start *token.Token
@@ -1901,15 +1901,15 @@ func (n *TagNode) stringWithoutComment() string {
 	return bareRenderer.String(n)
 }
 
-// Type returns TagType
+// Type returns TagType.
 func (n *TagNode) Type() NodeType { return TagType }
 
-// GetToken returns token instance
+// GetToken returns token instance.
 func (n *TagNode) GetToken() *token.Token {
 	return n.Start
 }
 
-// String tag to text
+// String tag to text.
 func (n *TagNode) String() string {
 	return defaultRenderer.String(n)
 }
@@ -1942,7 +1942,7 @@ func (n *TagNode) ArrayRange() *ArrayNodeIter {
 	return arr.ArrayRange()
 }
 
-// CommentNode type of comment node
+// CommentNode type of comment node.
 type CommentNode struct {
 	BaseNode
 	Token *token.Token
@@ -2025,13 +2025,13 @@ func (n *CommentNode) Text() string {
 	return n.Token.Value
 }
 
-// Type returns TagType
+// Type returns TagType.
 func (n *CommentNode) Type() NodeType { return CommentType }
 
-// GetToken returns token instance
+// GetToken returns token instance.
 func (n *CommentNode) GetToken() *token.Token { return n.Token }
 
-// String comment to text
+// String comment to text.
 func (n *CommentNode) String() string {
 	if n.Removed() {
 		return ""
@@ -2040,13 +2040,13 @@ func (n *CommentNode) String() string {
 	return "#" + n.Text()
 }
 
-// CommentGroupNode type of comment node
+// CommentGroupNode type of comment node.
 type CommentGroupNode struct {
 	BaseNode
 	Comments []*CommentNode
 }
 
-// Type returns TagType
+// Type returns TagType.
 func (n *CommentGroupNode) Type() NodeType { return CommentType }
 
 // SetComment rejects a comment on a comment.
@@ -2058,7 +2058,7 @@ func (n *CommentGroupNode) SetComment(*CommentGroupNode) error {
 	return errors.New("a comment group holds comments and does not carry one")
 }
 
-// GetToken returns token instance
+// GetToken returns token instance.
 func (n *CommentGroupNode) GetToken() *token.Token {
 	for _, comment := range n.Comments {
 		if !comment.Removed() {
@@ -2133,7 +2133,7 @@ func (n *CommentGroupNode) Remove() {
 	}
 }
 
-// String comment to text
+// String comment to text.
 func (n *CommentGroupNode) String() string {
 	values := []string{}
 	for _, comment := range n.Visible() {
@@ -2409,12 +2409,12 @@ func FilterFile(typ NodeType, file *File) []Node {
 	return results
 }
 
-type ErrInvalidMergeType struct {
+type InvalidMergeTypeError struct {
 	dst Node
 	src Node
 }
 
-func (e *ErrInvalidMergeType) Error() string {
+func (e *InvalidMergeTypeError) Error() string {
 	return fmt.Sprintf("cannot merge %s into %s", e.src.Type(), e.dst.Type())
 }
 
@@ -2423,7 +2423,7 @@ func Merge(dst Node, src Node) error {
 	if doc, ok := src.(*DocumentNode); ok {
 		src = doc.Body
 	}
-	err := &ErrInvalidMergeType{dst: dst, src: src}
+	err := &InvalidMergeTypeError{dst: dst, src: src}
 	switch dst.Type() {
 	case DocumentType:
 		node, _ := dst.(*DocumentNode)

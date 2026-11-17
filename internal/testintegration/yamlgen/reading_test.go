@@ -290,13 +290,23 @@ func holdsLegacySpelling(v yamlgen.Value) bool {
 // triage done without it, and the reference parser settled the key departure.
 func TestTheNumberFormsMeanUnder11WhatTheLibraryReads(t *testing.T) {
 	values := []yamlgen.Value{
-		yamlgen.Int{V: 0}, yamlgen.Int{V: 1}, yamlgen.Int{V: 31}, yamlgen.Int{V: 511},
-		yamlgen.Int{V: 1000}, yamlgen.Int{V: -31},
+		yamlgen.Int{V: 0},
+		yamlgen.Int{V: 1},
+		yamlgen.Int{V: 31},
+		yamlgen.Int{V: 511},
+		yamlgen.Int{V: 1000},
+		yamlgen.Int{V: -31},
 		// The leading zero's own corners: 9 writes "09", which 1.1 reads as a
 		// string, and 7 writes "07", which both read as 7.
-		yamlgen.Int{V: 9}, yamlgen.Int{V: 7}, yamlgen.Int{V: 777},
-		yamlgen.Float{V: 1.5}, yamlgen.Float{V: -1.5}, yamlgen.Float{V: 0.5},
-		yamlgen.Float{V: 1000}, yamlgen.Float{V: 1e-320}, yamlgen.Float{V: 0},
+		yamlgen.Int{V: 9},
+		yamlgen.Int{V: 7},
+		yamlgen.Int{V: 777},
+		yamlgen.Float{V: 1.5},
+		yamlgen.Float{V: -1.5},
+		yamlgen.Float{V: 0.5},
+		yamlgen.Float{V: 1000},
+		yamlgen.Float{V: 1e-320},
+		yamlgen.Float{V: 0},
 	}
 
 	forms := []yamlgen.NumberForm{

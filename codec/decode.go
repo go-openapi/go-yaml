@@ -1750,9 +1750,7 @@ func (d *Decoder) decodeByUnmarshaler(ctx context.Context, dst reflect.Value, sr
 	return errors.New("does not implemented GoYAMLUnmarshaler")
 }
 
-var (
-	astNodeType = reflect.TypeFor[ast.Node]()
-)
+var astNodeType = reflect.TypeFor[ast.Node]()
 
 func (d *Decoder) decodeValue(ctx context.Context, dst reflect.Value, src ast.Node) error {
 	d.stepIn()

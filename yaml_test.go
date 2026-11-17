@@ -368,12 +368,12 @@ c:
 }
 
 type rawYAMLWrapper struct {
-	StaticField  string           `json:"staticField" yaml:"staticField"`
+	StaticField  string           `json:"staticField"  yaml:"staticField"`
 	DynamicField codec.RawMessage `json:"dynamicField" yaml:"dynamicField"`
 }
 
 type rawJSONWrapper struct {
-	StaticField  string          `json:"staticField" yaml:"staticField"`
+	StaticField  string          `json:"staticField"  yaml:"staticField"`
 	DynamicField json.RawMessage `json:"dynamicField" yaml:"dynamicField"`
 }
 
