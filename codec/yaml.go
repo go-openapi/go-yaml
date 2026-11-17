@@ -68,17 +68,17 @@ import (
 //	}
 //	yaml.Marshal(&T{B: 2}) // Returns "b: 2\n"
 //	yaml.Marshal(&T{F: 1}) // Returns "a: 1\nb: 0\n"
-func Marshal(v interface{}) ([]byte, error) {
+func Marshal(v any) ([]byte, error) {
 	return MarshalWithOptions(v)
 }
 
 // MarshalWithOptions serializes the value provided into a YAML document with EncodeOptions.
-func MarshalWithOptions(v interface{}, opts ...EncodeOption) ([]byte, error) {
+func MarshalWithOptions(v any, opts ...EncodeOption) ([]byte, error) {
 	return MarshalContext(context.Background(), v, opts...)
 }
 
 // MarshalContext serializes the value provided into a YAML document with context.Context and EncodeOptions.
-func MarshalContext(ctx context.Context, v interface{}, opts ...EncodeOption) ([]byte, error) {
+func MarshalContext(ctx context.Context, v any, opts ...EncodeOption) ([]byte, error) {
 	var buf bytes.Buffer
 	if err := NewEncoder(&buf, opts...).EncodeContext(ctx, v); err != nil {
 		return nil, err
@@ -87,7 +87,7 @@ func MarshalContext(ctx context.Context, v interface{}, opts ...EncodeOption) ([
 }
 
 // ValueToNode convert from value to ast.Node.
-func ValueToNode(v interface{}, opts ...EncodeOption) (ast.Node, error) {
+func ValueToNode(v any, opts ...EncodeOption) (ast.Node, error) {
 	var buf bytes.Buffer
 	node, err := NewEncoder(&buf, opts...).EncodeToNode(v)
 	if err != nil {
@@ -118,18 +118,18 @@ func ValueToNode(v interface{}, opts ...EncodeOption) (ast.Node, error) {
 //
 // See the documentation of Marshal for the format of tags and a list of
 // supported tag options.
-func Unmarshal(data []byte, v interface{}) error {
+func Unmarshal(data []byte, v any) error {
 	return UnmarshalWithOptions(data, v)
 }
 
 // UnmarshalWithOptions decodes with DecodeOptions the first document found within the in byte slice
 // and assigns decoded values into the out value.
-func UnmarshalWithOptions(data []byte, v interface{}, opts ...DecodeOption) error {
+func UnmarshalWithOptions(data []byte, v any, opts ...DecodeOption) error {
 	return UnmarshalContext(context.Background(), data, v, opts...)
 }
 
 // UnmarshalContext decodes with context.Context and DecodeOptions.
-func UnmarshalContext(ctx context.Context, data []byte, v interface{}, opts ...DecodeOption) error {
+func UnmarshalContext(ctx context.Context, data []byte, v any, opts ...DecodeOption) error {
 	dec := NewDecoder(bytes.NewBuffer(data), opts...)
 	if err := dec.DecodeContext(ctx, v); err != nil {
 		if err == io.EOF {
@@ -141,7 +141,7 @@ func UnmarshalContext(ctx context.Context, data []byte, v interface{}, opts ...D
 }
 
 // NodeToValue converts node to the value pointed to by v.
-func NodeToValue(node ast.Node, v interface{}, opts ...DecodeOption) error {
+func NodeToValue(node ast.Node, v any, opts ...DecodeOption) error {
 	var buf bytes.Buffer
 	if err := NewDecoder(&buf, opts...).DecodeFromNode(node, v); err != nil {
 		return err
@@ -151,7 +151,7 @@ func NodeToValue(node ast.Node, v interface{}, opts ...DecodeOption) error {
 
 // FromJSON convert JSON bytes to YAML.
 func FromJSON(bytes []byte) ([]byte, error) {
-	var v interface{}
+	var v any
 	if err := UnmarshalWithOptions(bytes, &v, UseOrderedMap()); err != nil {
 		return nil, err
 	}

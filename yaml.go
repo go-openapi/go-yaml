@@ -113,14 +113,14 @@ import "github.com/go-openapi/go-yaml/codec"
 //
 // See [codec.Marshal] for how a Go value is mapped onto YAML and what the
 // struct tags mean.
-func Marshal(v interface{}) ([]byte, error) {
+func Marshal(v any) ([]byte, error) {
 	return codec.Marshal(v)
 }
 
 // Unmarshal decodes the YAML document data into the value pointed to by v.
 //
 // See [codec.Unmarshal] for how a YAML document is mapped onto a Go value.
-func Unmarshal(data []byte, v interface{}) error {
+func Unmarshal(data []byte, v any) error {
 	return codec.Unmarshal(data, v)
 }
 

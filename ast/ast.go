@@ -205,7 +205,7 @@ type MapKeyNode interface {
 // ScalarNode type for scalar node
 type ScalarNode interface {
 	MapKeyNode
-	GetValue() interface{}
+	GetValue() any
 	// Text returns the scalar as text, unconverted: the digits of a number as
 	// the document wrote them, a quoted string with its quotes and escapes
 	// resolved, a block scalar folded and chomped. Deciding what a number
@@ -668,7 +668,7 @@ func (n *NullNode) GetToken() *token.Token {
 }
 
 // GetValue returns nil value
-func (n *NullNode) GetValue() interface{} {
+func (n *NullNode) GetValue() any {
 	return nil
 }
 
@@ -732,7 +732,7 @@ func (n *IntegerNode) GetToken() *token.Token {
 // The parser types the scalar without converting it, so the conversion happens
 // here, each time it is asked for. Use [IntegerNode.Text] to read the digits as
 // the document wrote them.
-func (n *IntegerNode) GetValue() interface{} {
+func (n *IntegerNode) GetValue() any {
 	if n.Token == nil {
 		return nil
 	}
@@ -790,7 +790,7 @@ func (n *FloatNode) GetToken() *token.Token {
 // The parser types the scalar without converting it, so the conversion happens
 // here, each time it is asked for. Use [FloatNode.Text] to read the number as
 // the document wrote it.
-func (n *FloatNode) GetValue() interface{} {
+func (n *FloatNode) GetValue() any {
 	if n.Token == nil {
 		return float64(0)
 	}
@@ -842,7 +842,7 @@ func (n *StringNode) GetToken() *token.Token {
 }
 
 // GetValue returns string value
-func (n *StringNode) GetValue() interface{} {
+func (n *StringNode) GetValue() any {
 	return n.Value
 }
 
@@ -911,7 +911,7 @@ func (n *StringNode) String() string {
 		space := strings.Repeat(" ", int(n.Token.Position.Column)-1)
 		indent := strings.Repeat(" ", int(n.Token.Position.IndentNum()))
 		values := []string{}
-		for _, v := range strings.Split(n.Value, lbc) {
+		for v := range strings.SplitSeq(n.Value, lbc) {
 			values = append(values, fmt.Sprintf("%s%s%s", space, indent, v))
 		}
 		block := strings.TrimSuffix(strings.TrimSuffix(strings.Join(values, lbc), fmt.Sprintf("%s%s%s", lbc, indent, space)), fmt.Sprintf("%s%s", indent, space))
@@ -949,7 +949,7 @@ func (n *StringNode) stringWithoutComment() string {
 		space := strings.Repeat(" ", int(n.Token.Position.Column)-1)
 		indent := strings.Repeat(" ", int(n.Token.Position.IndentNum()))
 		values := []string{}
-		for _, v := range strings.Split(n.Value, lbc) {
+		for v := range strings.SplitSeq(n.Value, lbc) {
 			values = append(values, fmt.Sprintf("%s%s%s", space, indent, v))
 		}
 		block := strings.TrimSuffix(strings.TrimSuffix(strings.Join(values, lbc), fmt.Sprintf("%s%s%s", lbc, indent, space)), fmt.Sprintf("  %s", space))
@@ -989,7 +989,7 @@ func (n *LiteralNode) GetToken() *token.Token {
 }
 
 // GetValue returns string value
-func (n *LiteralNode) GetValue() interface{} {
+func (n *LiteralNode) GetValue() any {
 	return n.String()
 }
 
@@ -1022,7 +1022,7 @@ func (n *MergeKeyNode) GetToken() *token.Token {
 }
 
 // GetValue returns '<<' value
-func (n *MergeKeyNode) GetValue() interface{} {
+func (n *MergeKeyNode) GetValue() any {
 	return n.Token.Value
 }
 
@@ -1056,7 +1056,7 @@ func (n *BoolNode) GetToken() *token.Token {
 }
 
 // GetValue returns boolean value
-func (n *BoolNode) GetValue() interface{} {
+func (n *BoolNode) GetValue() any {
 	return n.Value
 }
 
@@ -1093,7 +1093,7 @@ func (n *InfinityNode) GetToken() *token.Token {
 }
 
 // GetValue returns math.Inf(0) or math.Inf(-1)
-func (n *InfinityNode) GetValue() interface{} {
+func (n *InfinityNode) GetValue() any {
 	return n.Value
 }
 
@@ -1129,7 +1129,7 @@ func (n *NanNode) GetToken() *token.Token {
 }
 
 // GetValue returns math.NaN()
-func (n *NanNode) GetValue() interface{} {
+func (n *NanNode) GetValue() any {
 	return math.NaN()
 }
 
@@ -1244,6 +1244,7 @@ type MappingNode struct {
 	StartComment *CommentGroupNode
 }
 
+//nolint:unused // not used yet
 func (n *MappingNode) startPos() token.Position {
 	if len(n.Values) == 0 {
 		return n.Start.Position

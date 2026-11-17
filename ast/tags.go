@@ -415,6 +415,8 @@ func taggedScalarText(n Node) (text string, scalar, empty bool) {
 // taggedScalarType is the type the scanner gave the scalar under a tag, which
 // records what base its digits are written in. It returns token.UnknownType
 // where the tag stands on no scalar of its own.
+//
+//nolint:unused // unused for now
 func taggedScalarType(n Node) token.Type {
 	switch v := n.(type) {
 	case nil:

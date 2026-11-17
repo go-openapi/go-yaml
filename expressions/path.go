@@ -112,7 +112,7 @@ func (b *PathBuilder) Build() *Path {
 // again. Rendering loses what the spelling does not carry: a block scalar
 // written "|" is clipped, so the break ending its last line belongs to the
 // value, and the node renders without it.
-func (p *Path) Read(r io.Reader, v interface{}) error {
+func (p *Path) Read(r io.Reader, v any) error {
 	node, err := p.ReadNode(r)
 	if err != nil {
 		return err
@@ -127,7 +127,7 @@ func (p *Path) Read(r io.Reader, v interface{}) error {
 
 // Filter encodes target, then decodes the value p addresses in the result
 // into v.
-func (p *Path) Filter(target, v interface{}) error {
+func (p *Path) Filter(target, v any) error {
 	b, err := codec.Marshal(target)
 	if err != nil {
 		return err

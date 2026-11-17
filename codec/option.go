@@ -267,7 +267,7 @@ func UseJSONUnmarshaler() DecodeOption {
 func CustomUnmarshaler[T any](unmarshaler func(*T, []byte) error) DecodeOption {
 	return func(d *Decoder) error {
 		var typ *T
-		d.customUnmarshalerMap[reflect.TypeOf(typ)] = func(ctx context.Context, v interface{}, b []byte) error {
+		d.customUnmarshalerMap[reflect.TypeOf(typ)] = func(ctx context.Context, v any, b []byte) error {
 			return unmarshaler(v.(*T), b)
 		}
 		return nil
@@ -279,7 +279,7 @@ func CustomUnmarshaler[T any](unmarshaler func(*T, []byte) error) DecodeOption {
 func CustomUnmarshalerContext[T any](unmarshaler func(context.Context, *T, []byte) error) DecodeOption {
 	return func(d *Decoder) error {
 		var typ *T
-		d.customUnmarshalerMap[reflect.TypeOf(typ)] = func(ctx context.Context, v interface{}, b []byte) error {
+		d.customUnmarshalerMap[reflect.TypeOf(typ)] = func(ctx context.Context, v any, b []byte) error {
 			return unmarshaler(ctx, v.(*T), b)
 		}
 		return nil
@@ -363,7 +363,7 @@ func JSON() EncodeOption {
 // under every name that points at it. Pass [ShareAliases] to Unmarshal for
 // that; without it each alias builds its own value and the anchored node is
 // written out in full at every one.
-func MarshalAnchor(callback func(*ast.AnchorNode, interface{}) error) EncodeOption {
+func MarshalAnchor(callback func(*ast.AnchorNode, any) error) EncodeOption {
 	return func(e *Encoder) error {
 		e.anchorCallback = callback
 		return nil
@@ -421,7 +421,7 @@ func WriteInferredNames(write bool) EncodeOption {
 func CustomMarshaler[T any](marshaler func(T) ([]byte, error)) EncodeOption {
 	return func(e *Encoder) error {
 		var typ T
-		e.customMarshalerMap[reflect.TypeOf(typ)] = func(ctx context.Context, v interface{}) ([]byte, error) {
+		e.customMarshalerMap[reflect.TypeOf(typ)] = func(ctx context.Context, v any) ([]byte, error) {
 			return marshaler(v.(T))
 		}
 		return nil
@@ -433,7 +433,7 @@ func CustomMarshaler[T any](marshaler func(T) ([]byte, error)) EncodeOption {
 func CustomMarshalerContext[T any](marshaler func(context.Context, T) ([]byte, error)) EncodeOption {
 	return func(e *Encoder) error {
 		var typ T
-		e.customMarshalerMap[reflect.TypeOf(typ)] = func(ctx context.Context, v interface{}) ([]byte, error) {
+		e.customMarshalerMap[reflect.TypeOf(typ)] = func(ctx context.Context, v any) ([]byte, error) {
 			return marshaler(ctx, v.(T))
 		}
 		return nil

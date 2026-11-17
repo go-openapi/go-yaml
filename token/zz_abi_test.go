@@ -56,7 +56,7 @@ func TestTokenFitsTheRegisterABI(t *testing.T) {
 	// it to nine puts the bool back on the stack.
 	const limit = 8
 
-	got := registers(reflect.TypeOf(token.Token{}))
+	got := registers(reflect.TypeFor[token.Token]())
 	require.LessOrEqualf(t, got, limit,
 		"token.Token needs %d registers and a call has %d, so every token crosses the boundary through memory",
 		got, limit)

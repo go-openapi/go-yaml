@@ -102,17 +102,17 @@ func cloneBase(n BaseNode) BaseNode {
 	}
 }
 
-func (n *DocumentNode) Clone() *DocumentNode {
-	if n == nil {
+func (d *DocumentNode) Clone() *DocumentNode {
+	if d == nil {
 		return nil
 	}
-	cloned := *n
-	cloned.BaseNode = cloneBase(n.BaseNode)
-	cloned.Start = n.Start.Detached()
-	cloned.End = n.End.Detached()
-	cloned.StartComment = n.StartComment.Clone()
-	cloned.EndComment = n.EndComment.Clone()
-	cloned.Body = cloneNode(n.Body)
+	cloned := *d
+	cloned.BaseNode = cloneBase(d.BaseNode)
+	cloned.Start = d.Start.Detached()
+	cloned.End = d.End.Detached()
+	cloned.StartComment = d.StartComment.Clone()
+	cloned.EndComment = d.EndComment.Clone()
+	cloned.Body = cloneNode(d.Body)
 
 	return &cloned
 }

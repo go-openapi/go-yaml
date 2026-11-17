@@ -73,7 +73,7 @@ store:
 	tests := []struct {
 		name     string
 		path     *expressions.Path
-		expected interface{}
+		expected any
 	}{
 		{
 			name:     "$.store.book[0].author",
@@ -88,17 +88,17 @@ store:
 		{
 			name:     "$.store.book[*].author",
 			path:     builder().Root().Child("store").Child("book").IndexAll().Child("author").Build(),
-			expected: []interface{}{"john", "ken"},
+			expected: []any{"john", "ken"},
 		},
 		{
 			name: "$.store.book[*]",
 			path: builder().Root().Child("store").Child("book").IndexAll().Build(),
-			expected: []interface{}{
-				map[string]interface{}{
+			expected: []any{
+				map[string]any{
 					"author": "john",
 					"price":  uint64(10),
 				},
-				map[string]interface{}{
+				map[string]any{
 					"author": "ken",
 					"price":  uint64(12),
 				},
@@ -107,13 +107,13 @@ store:
 		{
 			name: "$..book[*]",
 			path: builder().Root().Recursive("book").IndexAll().Build(),
-			expected: []interface{}{
-				[]interface{}{
-					map[string]interface{}{
+			expected: []any{
+				[]any{
+					map[string]any{
 						"author": "john",
 						"price":  uint64(10),
 					},
-					map[string]interface{}{
+					map[string]any{
 						"author": "ken",
 						"price":  uint64(12),
 					},
@@ -123,12 +123,12 @@ store:
 		{
 			name:     "$.store.book[0]",
 			path:     builder().Root().Child("store").Child("book").Index(0).Build(),
-			expected: map[string]interface{}{"author": "john", "price": uint64(10)},
+			expected: map[string]any{"author": "john", "price": uint64(10)},
 		},
 		{
 			name:     "$..author",
 			path:     builder().Root().Recursive("author").Build(),
-			expected: []interface{}{"john", "ken"},
+			expected: []any{"john", "ken"},
 		},
 		{
 			name:     "$.store.bicycle.price",
@@ -143,23 +143,23 @@ store:
 		{
 			name: "$",
 			path: builder().Root().Build(),
-			expected: map[string]interface{}{
-				"store": map[string]interface{}{
-					"book": []interface{}{
-						map[string]interface{}{
+			expected: map[string]any{
+				"store": map[string]any{
+					"book": []any{
+						map[string]any{
 							"author": "john",
 							"price":  uint64(10),
 						},
-						map[string]interface{}{
+						map[string]any{
 							"author": "ken",
 							"price":  uint64(12),
 						},
 					},
-					"bicycle": map[string]interface{}{
+					"bicycle": map[string]any{
 						"color": "red",
 						"price": 19.95,
 					},
-					"bicycle*unicycle": map[string]interface{}{
+					"bicycle*unicycle": map[string]any{
 						"price": 20.25,
 					},
 				},
@@ -191,7 +191,7 @@ store:
 	t.Run("read", func(t *testing.T) {
 		for _, test := range tests {
 			t.Run(test.name, func(t *testing.T) {
-				var v interface{}
+				var v any
 				if err := test.path.Read(strings.NewReader(yml), &v); err != nil {
 					t.Fatalf("%+v", err)
 				}
@@ -202,13 +202,13 @@ store:
 		}
 	})
 	t.Run("filter", func(t *testing.T) {
-		var target interface{}
+		var target any
 		if err := yaml.Unmarshal([]byte(yml), &target); err != nil {
 			t.Fatalf("failed to unmarshal: %+v", err)
 		}
 		for _, test := range tests {
 			t.Run(test.name, func(t *testing.T) {
-				var v interface{}
+				var v any
 				if err := test.path.Filter(target, &v); err != nil {
 					t.Fatalf("%+v", err)
 				}
@@ -301,7 +301,7 @@ func TestPath_ReservedKeyword(t *testing.T) {
 		name     string
 		path     string
 		src      string
-		expected interface{}
+		expected any
 		failure  bool
 	}{
 		{
@@ -357,7 +357,7 @@ a.b.c:
 					t.Fatalf("%+v", err)
 				}
 			}
-			var v interface{}
+			var v any
 			if err := path.Read(strings.NewReader(test.src), &v); err != nil {
 				t.Fatalf("%+v", err)
 			}
@@ -384,7 +384,7 @@ func TestPath_Invalid(t *testing.T) {
 			t.Fatal(err)
 		}
 		t.Run("path.Read", func(t *testing.T) {
-			var v interface{}
+			var v any
 			err := path.Read(strings.NewReader(test.src), &v)
 			if err == nil {
 				t.Fatal("expected error")
@@ -410,7 +410,7 @@ func TestPath_ReadNode(t *testing.T) {
 		name     string
 		path     string
 		src      string
-		expected interface{}
+		expected any
 	}{
 		{
 			name: "nested array sequence",
@@ -445,13 +445,13 @@ s:
 			// The expected values are
 			// - get1
 			// - get2
-			expected: []interface{}{
-				map[string]interface{}{
+			expected: []any{
+				map[string]any{
 					"b": "u1",
 					"c": "get1",
 					"d": "i1",
 				},
-				map[string]interface{}{
+				map[string]any{
 					"b": "u2",
 					"c": "get2",
 					"d": "i2",
@@ -475,7 +475,7 @@ s:
             c: get2
             d: i2
 `,
-			expected: []interface{}{"get1", "bad", "get2"},
+			expected: []any{"get1", "bad", "get2"},
 		},
 		{
 			name: "nested array sequence issue#281",
@@ -513,7 +513,7 @@ s:
             c: get2
             d: i2
 `,
-			expected: []interface{}{"get1"},
+			expected: []any{"get1"},
 		},
 	}
 	for _, test := range tests {
@@ -526,7 +526,7 @@ s:
 			if err != nil {
 				t.Fatal(err)
 			}
-			var v interface{}
+			var v any
 			err = yaml.Unmarshal([]byte(n.String()), &v)
 			if err != nil {
 				t.Fatal(err)

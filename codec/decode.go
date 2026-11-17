@@ -53,7 +53,7 @@ type Decoder struct {
 	// documents of a stream is not.
 	referenceAnchorNodeMap map[string]ast.Node
 	anchorValueMap         map[string]reflect.Value
-	customUnmarshalerMap   map[reflect.Type]func(context.Context, interface{}, []byte) error
+	customUnmarshalerMap   map[reflect.Type]func(context.Context, any, []byte) error
 	commentMaps            []CommentMap
 	toCommentMap           CommentMap
 	opts                   []DecodeOption
@@ -106,7 +106,7 @@ func NewDecoder(r io.Reader, opts ...DecodeOption) *Decoder {
 		anchorNodeMap:          map[string]ast.Node{},
 		referenceAnchorNodeMap: map[string]ast.Node{},
 		anchorValueMap:         map[string]reflect.Value{},
-		customUnmarshalerMap:   map[reflect.Type]func(context.Context, interface{}, []byte) error{},
+		customUnmarshalerMap:   map[reflect.Type]func(context.Context, any, []byte) error{},
 		opts:                   opts,
 		referenceReaders:       []io.Reader{},
 		referenceFiles:         []string{},
@@ -188,7 +188,7 @@ func (d *Decoder) refuseOverBudget(at ast.Node) error {
 	return yamlerrors.NewExcessiveAliasing(d.built, d.budget, tk)
 }
 
-func (d *Decoder) castToFloat(v interface{}) interface{} {
+func (d *Decoder) castToFloat(v any) any {
 	return castToFloatValue(v)
 }
 
@@ -1171,7 +1171,7 @@ func (d *Decoder) nodeToValue(ctx context.Context, node ast.Node) (any, error) {
 		if err != nil {
 			return nil, err
 		}
-		return map[string]interface{}{key: v}, nil
+		return map[string]any{key: v}, nil
 	case *ast.MappingNode:
 		if err := refuseDuplicateKeys(n); err != nil {
 			return nil, err
@@ -1196,7 +1196,7 @@ func (d *Decoder) nodeToValue(ctx context.Context, node ast.Node) (any, error) {
 		}
 		return m.value(), nil
 	case *ast.SequenceNode:
-		v := make([]interface{}, 0, len(n.Values))
+		v := make([]any, 0, len(n.Values))
 		for _, value := range n.Values {
 			vv, err := d.nodeToValue(ctx, value)
 			if err != nil {
@@ -1584,7 +1584,7 @@ func (d *Decoder) existsTypeInCustomUnmarshalerMap(t reflect.Type) bool {
 	return false
 }
 
-func (d *Decoder) unmarshalerFromCustomUnmarshalerMap(t reflect.Type) (func(context.Context, interface{}, []byte) error, bool) {
+func (d *Decoder) unmarshalerFromCustomUnmarshalerMap(t reflect.Type) (func(context.Context, any, []byte) error, bool) {
 	if unmarshaler, exists := d.customUnmarshalerMap[t]; exists {
 		return unmarshaler, exists
 	}
@@ -1664,7 +1664,7 @@ func (d *Decoder) decodeByUnmarshaler(ctx context.Context, dst reflect.Value, sr
 	}
 
 	if unmarshaler, ok := iface.(ContextGoYAMLUnmarshaler); ok {
-		if err := unmarshaler.UnmarshalYAML(ctx, func(v interface{}) error {
+		if err := unmarshaler.UnmarshalYAML(ctx, func(v any) error {
 			rv := reflect.ValueOf(v)
 			if rv.Type().Kind() != reflect.Pointer {
 				return ErrDecodeRequiredPointerType
@@ -1680,7 +1680,7 @@ func (d *Decoder) decodeByUnmarshaler(ctx context.Context, dst reflect.Value, sr
 	}
 
 	if unmarshaler, ok := iface.(GoYAMLUnmarshaler); ok {
-		if err := unmarshaler.UnmarshalYAML(func(v interface{}) error {
+		if err := unmarshaler.UnmarshalYAML(func(v any) error {
 			rv := reflect.ValueOf(v)
 			if rv.Type().Kind() != reflect.Pointer {
 				return ErrDecodeRequiredPointerType
@@ -1751,7 +1751,7 @@ func (d *Decoder) decodeByUnmarshaler(ctx context.Context, dst reflect.Value, sr
 }
 
 var (
-	astNodeType = reflect.TypeOf((*ast.Node)(nil)).Elem()
+	astNodeType = reflect.TypeFor[ast.Node]()
 )
 
 func (d *Decoder) decodeValue(ctx context.Context, dst reflect.Value, src ast.Node) error {
@@ -1824,13 +1824,13 @@ func (d *Decoder) decodeValue(ctx context.Context, dst reflect.Value, src ast.No
 	case reflect.Slice:
 		return d.decodeSlice(ctx, dst, src)
 	case reflect.Struct:
-		if mapSlice, ok := dst.Addr().Interface().(*MapSlice); ok {
+		if mapSlice, ok := reflect.TypeAssert[*MapSlice](dst.Addr()); ok {
 			return d.decodeMapSlice(ctx, mapSlice, src)
 		}
 		if seq, ok := reflect.TypeAssert[*MapSliceSeq](dst.Addr()); ok {
 			return d.decodeOrderedMapSeq(ctx, seq, src)
 		}
-		if mapItem, ok := dst.Addr().Interface().(*MapItem); ok {
+		if mapItem, ok := reflect.TypeAssert[*MapItem](dst.Addr()); ok {
 			return d.decodeMapItem(ctx, mapItem, src)
 		}
 		return d.decodeStruct(ctx, dst, src)
@@ -1962,7 +1962,7 @@ func (d *Decoder) castToAssignableValue(value reflect.Value, target reflect.Type
 
 	const maxAddrCount = 5
 
-	for i := 0; i < maxAddrCount; i++ {
+	for range maxAddrCount {
 		if value.Type().AssignableTo(target) {
 			break
 		}
@@ -2143,6 +2143,7 @@ func (d *Decoder) mergedKeyToNodeMap(
 	return keyToNodeMap, nil
 }
 
+/*
 func (d *Decoder) keyToKeyNodeMap(ctx context.Context, node ast.Node, ignoreMergeKey bool) (map[string]ast.Node, error) {
 	m, err := d.keyToNodeMap(ctx, node, ignoreMergeKey, func(nodeMap *ast.MapNodeIter) ast.Node { return nodeMap.Key() })
 	if err != nil {
@@ -2150,6 +2151,7 @@ func (d *Decoder) keyToKeyNodeMap(ctx context.Context, node ast.Node, ignoreMerg
 	}
 	return m, nil
 }
+*/
 
 func (d *Decoder) keyToValueNodeMap(ctx context.Context, node ast.Node, ignoreMergeKey bool) (map[string]ast.Node, error) {
 	m, err := d.keyToNodeMap(ctx, node, ignoreMergeKey, func(nodeMap *ast.MapNodeIter) ast.Node { return nodeMap.Value() })
@@ -2383,7 +2385,7 @@ func (d *Decoder) castToTime(ctx context.Context, src ast.Node) (time.Time, erro
 	}
 	s, ok := v.(string)
 	if !ok {
-		return time.Time{}, yamlerrors.NewTypeMismatch(reflect.TypeOf(time.Time{}), reflect.TypeOf(v), src.GetToken())
+		return time.Time{}, yamlerrors.NewTypeMismatch(reflect.TypeFor[time.Time](), reflect.TypeOf(v), src.GetToken())
 	}
 	if t, ok := ast.ParseTimestamp(s); ok {
 		return t, nil
@@ -2419,7 +2421,7 @@ func (d *Decoder) castToDuration(ctx context.Context, src ast.Node) (time.Durati
 	}
 	s, ok := v.(string)
 	if !ok {
-		return 0, yamlerrors.NewTypeMismatch(reflect.TypeOf(time.Duration(0)), reflect.TypeOf(v), src.GetToken())
+		return 0, yamlerrors.NewTypeMismatch(reflect.TypeFor[time.Duration](), reflect.TypeOf(v), src.GetToken())
 	}
 	t, err := time.ParseDuration(s)
 	if err != nil {
@@ -2930,7 +2932,7 @@ func (d *Decoder) decodeStruct(ctx context.Context, dst reflect.Value, src ast.N
 				// The entries are read here rather than during the decode: a
 				// document that validates never needs them.
 				for i := 0; i < ev.Len(); i++ {
-					fieldErr, ok := ev.Index(i).Interface().(FieldError)
+					fieldErr, ok := reflect.TypeAssert[FieldError](ev.Index(i))
 					if !ok {
 						continue
 					}
@@ -3923,13 +3925,13 @@ func (d *Decoder) decode(ctx context.Context, v reflect.Value) error {
 //
 // See the documentation for Unmarshal for details about the
 // conversion of YAML into a Go value.
-func (d *Decoder) Decode(v interface{}) error {
+func (d *Decoder) Decode(v any) error {
 	return d.DecodeContext(context.Background(), v)
 }
 
 // DecodeContext reads the next YAML-encoded value from its input
 // and stores it in the value pointed to by v with context.Context.
-func (d *Decoder) DecodeContext(ctx context.Context, v interface{}) error {
+func (d *Decoder) DecodeContext(ctx context.Context, v any) error {
 	rv := reflect.ValueOf(v)
 	if !rv.IsValid() || rv.Type().Kind() != reflect.Pointer {
 		return ErrDecodeRequiredPointerType
@@ -3951,12 +3953,12 @@ func (d *Decoder) DecodeContext(ctx context.Context, v interface{}) error {
 }
 
 // DecodeFromNode decodes node into the value pointed to by v.
-func (d *Decoder) DecodeFromNode(node ast.Node, v interface{}) error {
+func (d *Decoder) DecodeFromNode(node ast.Node, v any) error {
 	return d.DecodeFromNodeContext(context.Background(), node, v)
 }
 
 // DecodeFromNodeContext decodes node into the value pointed to by v with context.Context.
-func (d *Decoder) DecodeFromNodeContext(ctx context.Context, node ast.Node, v interface{}) error {
+func (d *Decoder) DecodeFromNodeContext(ctx context.Context, node ast.Node, v any) error {
 	rv := reflect.ValueOf(v)
 	if rv.Type().Kind() != reflect.Pointer {
 		return ErrDecodeRequiredPointerType

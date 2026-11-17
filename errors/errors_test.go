@@ -37,13 +37,13 @@ func TestErrorKind(t *testing.T) {
 		},
 		{
 			name: "type mismatch",
-			err:  errors.NewTypeMismatch(reflect.TypeOf(0), reflect.TypeOf(""), at(1, 1)),
+			err:  errors.NewTypeMismatch(reflect.TypeFor[int](), reflect.TypeFor[string](), at(1, 1)),
 			kind: errors.ErrTypeMismatch,
 			msg:  "cannot unmarshal string into Go value of type int",
 		},
 		{
 			name: "overflow",
-			err:  errors.NewOverflow(reflect.TypeOf(int8(0)), "300", at(1, 1)),
+			err:  errors.NewOverflow(reflect.TypeFor[int8](), "300", at(1, 1)),
 			kind: errors.ErrOverflow,
 			msg:  "cannot unmarshal 300 into Go value of type int8 ( overflow )",
 		},
@@ -114,7 +114,7 @@ func TestErrorPosition(t *testing.T) {
 }
 
 func TestStructField(t *testing.T) {
-	err := errors.NewTypeMismatch(reflect.TypeOf(0), reflect.TypeOf(""), at(1, 1))
+	err := errors.NewTypeMismatch(reflect.TypeFor[int](), reflect.TypeFor[string](), at(1, 1))
 
 	if got := err.StructField(); got != "" {
 		t.Errorf("StructField() = %q, want empty", got)

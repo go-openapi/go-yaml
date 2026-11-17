@@ -75,6 +75,7 @@ func (c *Context) clear() {
 	c.mstate = nil
 }
 
+/*
 // forgetTokens drops what the tokens already emitted say about the next one.
 func (c *Context) forgetTokens() {
 	c.lastTk, c.hasLastTk = token.Token{}, false
@@ -82,6 +83,7 @@ func (c *Context) forgetTokens() {
 	c.propRun = propertyRun{}
 	c.prevPropRun = propertyRun{}
 }
+*/
 
 // lastContentToken returns the last emitted token belonging to the document itself, skipping comments.
 func (c *Context) lastContentToken() *token.Token {

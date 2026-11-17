@@ -41,7 +41,7 @@ type unexportedStruct struct{}
 func TestEncoder(t *testing.T) {
 	tests := []struct {
 		source  string
-		value   interface{}
+		value   any
 		options []codec.EncodeOption
 	}{
 		{
@@ -66,7 +66,7 @@ func TestEncoder(t *testing.T) {
 		},
 		{
 			"v: true\n",
-			map[string]interface{}{"v": true},
+			map[string]any{"v": true},
 			nil,
 		},
 		{
@@ -91,7 +91,7 @@ func TestEncoder(t *testing.T) {
 		},
 		{
 			"v: 0.1\n",
-			map[string]interface{}{"v": 0.1},
+			map[string]any{"v": 0.1},
 			nil,
 		},
 		{
@@ -141,22 +141,22 @@ func TestEncoder(t *testing.T) {
 		},
 		{
 			"v: .inf\n",
-			map[string]interface{}{"v": math.Inf(0)},
+			map[string]any{"v": math.Inf(0)},
 			nil,
 		},
 		{
 			"v: -.inf\n",
-			map[string]interface{}{"v": math.Inf(-1)},
+			map[string]any{"v": math.Inf(-1)},
 			nil,
 		},
 		{
 			"v: .nan\n",
-			map[string]interface{}{"v": math.NaN()},
+			map[string]any{"v": math.NaN()},
 			nil,
 		},
 		{
 			"v: null\n",
-			map[string]interface{}{"v": nil},
+			map[string]any{"v": nil},
 			nil,
 		},
 		{
@@ -259,29 +259,29 @@ func TestEncoder(t *testing.T) {
 		},
 		{
 			"v: |-\n  username: hello\n  password: hello123\n",
-			map[string]interface{}{"v": "username: hello\npassword: hello123"},
+			map[string]any{"v": "username: hello\npassword: hello123"},
 			[]codec.EncodeOption{
 				codec.UseLiteralStyleIfMultiline(true),
 			},
 		},
 		{
 			"v: |-\n  # comment\n  username: hello\n  password: hello123\n",
-			map[string]interface{}{"v": "# comment\nusername: hello\npassword: hello123"},
+			map[string]any{"v": "# comment\nusername: hello\npassword: hello123"},
 			[]codec.EncodeOption{
 				codec.UseLiteralStyleIfMultiline(true),
 			},
 		},
 		{
 			"v: \"# comment\\nusername: hello\\npassword: hello123\"\n",
-			map[string]interface{}{"v": "# comment\nusername: hello\npassword: hello123"},
+			map[string]any{"v": "# comment\nusername: hello\npassword: hello123"},
 			[]codec.EncodeOption{
 				codec.UseLiteralStyleIfMultiline(false),
 			},
 		},
 		{
 			"v:\n- A\n- 1\n- B:\n  - 2\n  - 3\n",
-			map[string]interface{}{
-				"v": []interface{}{
+			map[string]any{
+				"v": []any{
 					"A",
 					1,
 					map[string][]int{
@@ -293,8 +293,8 @@ func TestEncoder(t *testing.T) {
 		},
 		{
 			"v:\n  - A\n  - 1\n  - B:\n      - 2\n      - 3\n  - 2\n",
-			map[string]interface{}{
-				"v": []interface{}{
+			map[string]any{
+				"v": []any{
 					"A",
 					1,
 					map[string][]int{
@@ -309,7 +309,7 @@ func TestEncoder(t *testing.T) {
 		},
 		{
 			"a:\n  b: c\n",
-			map[string]interface{}{
+			map[string]any{
 				"a": map[string]string{
 					"b": "c",
 				},
@@ -326,7 +326,7 @@ func TestEncoder(t *testing.T) {
 		},
 		{
 			"a:\n  b: c\n  d: e\n",
-			map[string]interface{}{
+			map[string]any{
 				"a": map[string]string{
 					"b": "c",
 					"d": "e",
@@ -388,7 +388,7 @@ func TestEncoder(t *testing.T) {
 		},
 		{
 			"a: 100.5\n",
-			map[string]interface{}{
+			map[string]any{
 				"a": 100.5,
 			},
 			nil,
@@ -400,7 +400,7 @@ func TestEncoder(t *testing.T) {
 		},
 		{
 			"a: 1\nb: 2\nc: 3\nd: 4\nsub:\n  e: 5\n",
-			map[string]interface{}{
+			map[string]any{
 				"a": 1,
 				"b": 2,
 				"c": 3,
@@ -434,9 +434,9 @@ func TestEncoder(t *testing.T) {
 		{
 			"a: {}\n",
 			struct {
-				A map[string]interface{}
+				A map[string]any
 			}{
-				map[string]interface{}{},
+				map[string]any{},
 			},
 			nil,
 		},
@@ -1167,20 +1167,20 @@ people:
 func TestEncodeWithNestedYAML(t *testing.T) {
 	// Represents objects containing stringified YAML, and special chars
 	tests := []struct {
-		value interface{}
+		value any
 		// If true, expects a different result between when using forced literal style or not
 		expectDifferent bool
 	}{
 		{
-			value:           map[string]interface{}{"v": "# comment\nname: hello\npassword: hello123\nspecial: \":ghost:\"\ntext: |\n  nested multiline!"},
+			value:           map[string]any{"v": "# comment\nname: hello\npassword: hello123\nspecial: \":ghost:\"\ntext: |\n  nested multiline!"},
 			expectDifferent: true,
 		},
 		{
-			value:           map[string]interface{}{"v": "# comment\nusername: hello\npassword: hello123"},
+			value:           map[string]any{"v": "# comment\nusername: hello\npassword: hello123"},
 			expectDifferent: true,
 		},
 		{
-			value:           map[string]interface{}{"v": "# comment\n"},
+			value:           map[string]any{"v": "# comment\n"},
 			expectDifferent: true,
 		},
 	}
@@ -1192,7 +1192,7 @@ func TestEncodeWithNestedYAML(t *testing.T) {
 		}
 
 		// Convert it back for proper equality testing
-		var unmarshaled interface{}
+		var unmarshaled any
 
 		if err := yaml.Unmarshal(yamlBytesForced, &unmarshaled); err != nil {
 			t.Fatalf("%+v", err)
@@ -1363,7 +1363,7 @@ func TestEncoder_JSON(t *testing.T) {
 		F        float64
 		Struct   *st
 		Slice    []int
-		Map      map[string]interface{}
+		Map      map[string]any
 		Time     time.Time
 		Duration time.Duration
 	}{
@@ -1377,7 +1377,7 @@ func TestEncoder_JSON(t *testing.T) {
 			F: 1.23,
 		},
 		Slice: []int{1, 2, 3, 4, 5},
-		Map: map[string]interface{}{
+		Map: map[string]any{
 			"a": 1,
 			"b": 1.23,
 			"c": "json",
@@ -1443,7 +1443,7 @@ func TestEncoder_MarshalAnchor(t *testing.T) {
 		},
 	}
 	hostIdx := 1
-	opt := codec.MarshalAnchor(func(anchor *ast.AnchorNode, value interface{}) error {
+	opt := codec.MarshalAnchor(func(anchor *ast.AnchorNode, value any) error {
 		if _, ok := value.(*Host); ok {
 			nameNode, _ := anchor.Name.(*ast.StringNode)
 			nameNode.Value = fmt.Sprintf("host%d", hostIdx)
@@ -1844,7 +1844,7 @@ func (v SlowMarshaler) MarshalYAML() ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-func (v FastMarshaler) MarshalYAML() (interface{}, error) {
+func (v FastMarshaler) MarshalYAML() (any, error) {
 	return mapSliceOf(
 		item("tags", []string{"fast-marshaler"}),
 		item("a", v.A),
@@ -1970,13 +1970,13 @@ func TestIssue356(t *testing.T) {
 func TestMarshalIndentWithMultipleText(t *testing.T) {
 	tests := []struct {
 		name   string
-		input  map[string]interface{}
+		input  map[string]any
 		indent codec.EncodeOption
 		want   string
 	}{
 		{
 			name: "depth1",
-			input: map[string]interface{}{
+			input: map[string]any{
 				"key": []string{`line1
 line2
 line3`},
@@ -1991,8 +1991,8 @@ line3`},
 		},
 		{
 			name: "depth2",
-			input: map[string]interface{}{
-				"key": map[string]interface{}{
+			input: map[string]any{
+				"key": map[string]any{
 					"key2": []string{`line1
 line2
 line3`},
@@ -2009,7 +2009,7 @@ line3`},
 		},
 		{
 			name: "raw string new lines",
-			input: map[string]interface{}{
+			input: map[string]any{
 				"key": "line1\nline2\nline3",
 			},
 			indent: codec.Indent(4),
@@ -2038,13 +2038,13 @@ line3`},
 type bytesMarshaler struct{}
 
 func (b *bytesMarshaler) MarshalYAML() ([]byte, error) {
-	return yaml.Marshal(map[string]interface{}{"d": "foo"})
+	return yaml.Marshal(map[string]any{"d": "foo"})
 }
 
 func TestBytesMarshaler(t *testing.T) {
-	b, err := yaml.Marshal(map[string]interface{}{
-		"a": map[string]interface{}{
-			"b": map[string]interface{}{
+	b, err := yaml.Marshal(map[string]any{
+		"a": map[string]any{
+			"b": map[string]any{
 				"c": &bytesMarshaler{},
 			},
 		},

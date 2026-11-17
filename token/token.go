@@ -1058,7 +1058,7 @@ func sexagesimalValue(digits string) (uint64, string, bool) {
 	}
 
 	var n uint64
-	for _, group := range strings.Split(digits, ":") {
+	for group := range strings.SplitSeq(digits, ":") {
 		g, err := strconv.ParseUint(group, 10, 64)
 		if err != nil {
 			return 0, "", false
@@ -1250,7 +1250,7 @@ func bigDigits(shape numberShape) (*big.Int, bool) {
 	n := new(big.Int)
 	group := new(big.Int)
 	base := big.NewInt(sexagesimalBase)
-	for _, text := range strings.Split(shape.digits, ":") {
+	for text := range strings.SplitSeq(shape.digits, ":") {
 		if _, ok := group.SetString(text, 10); !ok {
 			return nil, false
 		}

@@ -43,12 +43,12 @@ type ContextMarshaler interface {
 // This is github.com/go-yaml/yaml's shape. Prefer [Marshaler], which writes the
 // text and needs no second pass over what it returns.
 type GoYAMLMarshaler interface {
-	MarshalYAML() (interface{}, error)
+	MarshalYAML() (any, error)
 }
 
 // ContextGoYAMLMarshaler is [GoYAMLMarshaler] with a context.
 type ContextGoYAMLMarshaler interface {
-	MarshalYAML(context.Context) (interface{}, error)
+	MarshalYAML(context.Context) (any, error)
 }
 
 // The interfaces a type implements to decode itself.
@@ -76,12 +76,12 @@ type ContextUnmarshaler interface {
 // This is github.com/go-yaml/yaml's shape. Prefer [Unmarshaler], which is handed
 // the text directly.
 type GoYAMLUnmarshaler interface {
-	UnmarshalYAML(func(interface{}) error) error
+	UnmarshalYAML(func(any) error) error
 }
 
 // ContextGoYAMLUnmarshaler is [GoYAMLUnmarshaler] with a context.
 type ContextGoYAMLUnmarshaler interface {
-	UnmarshalYAML(context.Context, func(interface{}) error) error
+	UnmarshalYAML(context.Context, func(any) error) error
 }
 
 // NodeUnmarshaler is handed the node the value was read from.
@@ -164,8 +164,8 @@ func (b *Base64) UnmarshalJSON(data []byte) error {
 var (
 	globalCustomMarshalerMu    sync.Mutex
 	globalCustomUnmarshalerMu  sync.Mutex
-	globalCustomMarshalerMap   = map[reflect.Type]func(context.Context, interface{}) ([]byte, error){}
-	globalCustomUnmarshalerMap = map[reflect.Type]func(context.Context, interface{}, []byte) error{}
+	globalCustomMarshalerMap   = map[reflect.Type]func(context.Context, any) ([]byte, error){}
+	globalCustomUnmarshalerMap = map[reflect.Type]func(context.Context, any, []byte) error{}
 )
 
 // RegisterCustomMarshaler overrides any encoding process for the type specified in generics.
@@ -179,7 +179,7 @@ func RegisterCustomMarshaler[T any](marshaler func(T) ([]byte, error)) {
 	defer globalCustomMarshalerMu.Unlock()
 
 	var typ T
-	globalCustomMarshalerMap[reflect.TypeOf(typ)] = func(ctx context.Context, v interface{}) ([]byte, error) {
+	globalCustomMarshalerMap[reflect.TypeOf(typ)] = func(ctx context.Context, v any) ([]byte, error) {
 		return marshaler(v.(T))
 	}
 }
@@ -191,7 +191,7 @@ func RegisterCustomMarshalerContext[T any](marshaler func(context.Context, T) ([
 	defer globalCustomMarshalerMu.Unlock()
 
 	var typ T
-	globalCustomMarshalerMap[reflect.TypeOf(typ)] = func(ctx context.Context, v interface{}) ([]byte, error) {
+	globalCustomMarshalerMap[reflect.TypeOf(typ)] = func(ctx context.Context, v any) ([]byte, error) {
 		return marshaler(ctx, v.(T))
 	}
 }
@@ -206,7 +206,7 @@ func RegisterCustomUnmarshaler[T any](unmarshaler func(*T, []byte) error) {
 	defer globalCustomUnmarshalerMu.Unlock()
 
 	var typ *T
-	globalCustomUnmarshalerMap[reflect.TypeOf(typ)] = func(ctx context.Context, v interface{}, b []byte) error {
+	globalCustomUnmarshalerMap[reflect.TypeOf(typ)] = func(ctx context.Context, v any, b []byte) error {
 		return unmarshaler(v.(*T), b)
 	}
 }
@@ -218,7 +218,7 @@ func RegisterCustomUnmarshalerContext[T any](unmarshaler func(context.Context, *
 	defer globalCustomUnmarshalerMu.Unlock()
 
 	var typ *T
-	globalCustomUnmarshalerMap[reflect.TypeOf(typ)] = func(ctx context.Context, v interface{}, b []byte) error {
+	globalCustomUnmarshalerMap[reflect.TypeOf(typ)] = func(ctx context.Context, v any, b []byte) error {
 		return unmarshaler(ctx, v.(*T), b)
 	}
 }

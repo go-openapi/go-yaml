@@ -35,7 +35,7 @@ type TestString string
 func TestDecoder(t *testing.T) {
 	tests := []struct {
 		source string
-		value  interface{}
+		value  any
 		eof    bool
 	}{
 		{
@@ -56,7 +56,7 @@ func TestDecoder(t *testing.T) {
 		},
 		{
 			source: "v: true\n",
-			value:  map[string]interface{}{"v": true},
+			value:  map[string]any{"v": true},
 		},
 		{
 			source: "v: true\n",
@@ -100,33 +100,33 @@ func TestDecoder(t *testing.T) {
 		},
 		{
 			source: "v: 10",
-			value:  map[string]interface{}{"v": 10},
+			value:  map[string]any{"v": 10},
 		},
 		// YAML 1.1 wrote binary integers as "0b...". The 1.2 core schema has
 		// no such form, so these resolve to strings until WithYAML11 exists.
 		{
 			source: "v: 0b10",
-			value:  map[string]interface{}{"v": "0b10"},
+			value:  map[string]any{"v": "0b10"},
 		},
 		{
 			source: "v: -0b101010",
-			value:  map[string]interface{}{"v": "-0b101010"},
+			value:  map[string]any{"v": "-0b101010"},
 		},
 		{
 			source: "v: -0b1000000000000000000000000000000000000000000000000000000000000000",
-			value:  map[string]interface{}{"v": "-0b1000000000000000000000000000000000000000000000000000000000000000"},
+			value:  map[string]any{"v": "-0b1000000000000000000000000000000000000000000000000000000000000000"},
 		},
 		{
 			source: "v: 0xA",
-			value:  map[string]interface{}{"v": 10},
+			value:  map[string]any{"v": 10},
 		},
 		{
 			source: "v: .1",
-			value:  map[string]interface{}{"v": 0.1},
+			value:  map[string]any{"v": 0.1},
 		},
 		{
 			source: "v: -.1",
-			value:  map[string]interface{}{"v": -0.1},
+			value:  map[string]any{"v": -0.1},
 		},
 		{
 			source: "v: -10\n",
@@ -138,7 +138,7 @@ func TestDecoder(t *testing.T) {
 		},
 		{
 			source: "v: 0.1\n",
-			value:  map[string]interface{}{"v": 0.1},
+			value:  map[string]any{"v": 0.1},
 		},
 		{
 			source: "v: 0.99\n",
@@ -150,17 +150,17 @@ func TestDecoder(t *testing.T) {
 		},
 		{
 			source: "v: 6.8523e+5",
-			value:  map[string]interface{}{"v": 6.8523e+5},
+			value:  map[string]any{"v": 6.8523e+5},
 		},
 		// The "_" digit separator is YAML 1.1's. The 1.2 core schema has no
 		// separator, so a number written with one is a string.
 		{
 			source: "v: 685.230_15e+03",
-			value:  map[string]interface{}{"v": "685.230_15e+03"},
+			value:  map[string]any{"v": "685.230_15e+03"},
 		},
 		{
 			source: "v: 685_230.15",
-			value:  map[string]interface{}{"v": "685_230.15"},
+			value:  map[string]any{"v": "685_230.15"},
 		},
 		{
 			source: "v: 685_230.15",
@@ -168,33 +168,33 @@ func TestDecoder(t *testing.T) {
 		},
 		{
 			source: "v: 685230",
-			value:  map[string]interface{}{"v": 685230},
+			value:  map[string]any{"v": 685230},
 		},
 		{
 			source: "v: +685_230",
-			value:  map[string]interface{}{"v": "+685_230"},
+			value:  map[string]any{"v": "+685_230"},
 		},
 		// A leading zero made a number octal in YAML 1.1. In 1.2 the decimal
 		// form is "[-+]? [0-9]+", which reads the zero and nothing into it.
 		{
 			source: "v: 02472256",
-			value:  map[string]interface{}{"v": 2472256},
+			value:  map[string]any{"v": 2472256},
 		},
 		{
 			source: "v: 0o2472256",
-			value:  map[string]interface{}{"v": 685230},
+			value:  map[string]any{"v": 685230},
 		},
 		{
 			source: "v: 0x_0A_74_AE",
-			value:  map[string]interface{}{"v": "0x_0A_74_AE"},
+			value:  map[string]any{"v": "0x_0A_74_AE"},
 		},
 		{
 			source: "v: 0x0A74AE",
-			value:  map[string]interface{}{"v": 685230},
+			value:  map[string]any{"v": 685230},
 		},
 		{
 			source: "v: 0b1010_0111_0100_1010_1110",
-			value:  map[string]interface{}{"v": "0b1010_0111_0100_1010_1110"},
+			value:  map[string]any{"v": "0b1010_0111_0100_1010_1110"},
 		},
 		{
 			source: "v: +685_230",
@@ -204,31 +204,31 @@ func TestDecoder(t *testing.T) {
 		// Bools from spec
 		{
 			source: "v: True",
-			value:  map[string]interface{}{"v": true},
+			value:  map[string]any{"v": true},
 		},
 		{
 			source: "v: TRUE",
-			value:  map[string]interface{}{"v": true},
+			value:  map[string]any{"v": true},
 		},
 		{
 			source: "v: False",
-			value:  map[string]interface{}{"v": false},
+			value:  map[string]any{"v": false},
 		},
 		{
 			source: "v: FALSE",
-			value:  map[string]interface{}{"v": false},
+			value:  map[string]any{"v": false},
 		},
 		{
 			source: "v: y",
-			value:  map[string]interface{}{"v": "y"}, // y or yes or Yes is string
+			value:  map[string]any{"v": "y"}, // y or yes or Yes is string
 		},
 		{
 			source: "v: NO",
-			value:  map[string]interface{}{"v": "NO"}, // no or No or NO is string
+			value:  map[string]any{"v": "NO"}, // no or No or NO is string
 		},
 		{
 			source: "v: on",
-			value:  map[string]interface{}{"v": "on"}, // on is string
+			value:  map[string]any{"v": "on"}, // on is string
 		},
 
 		// Some cross type conversions
@@ -389,130 +389,130 @@ func TestDecoder(t *testing.T) {
 		// Single Quoted values.
 		{
 			source: `'1': '2'`,
-			value:  map[interface{}]interface{}{"1": `2`},
+			value:  map[any]any{"1": `2`},
 		},
 		{
 			source: `'1': '"2"'`,
-			value:  map[interface{}]interface{}{"1": `"2"`},
+			value:  map[any]any{"1": `"2"`},
 		},
 		{
 			source: `'1': ''''`,
-			value:  map[interface{}]interface{}{"1": `'`},
+			value:  map[any]any{"1": `'`},
 		},
 		{
 			source: `'1': '''2'''`,
-			value:  map[interface{}]interface{}{"1": `'2'`},
+			value:  map[any]any{"1": `'2'`},
 		},
 		{
 			source: `'1': 'B''z'`,
-			value:  map[interface{}]interface{}{"1": `B'z`},
+			value:  map[any]any{"1": `B'z`},
 		},
 		{
 			source: `'1': '\'`,
-			value:  map[interface{}]interface{}{"1": `\`},
+			value:  map[any]any{"1": `\`},
 		},
 		{
 			source: `'1': '\\'`,
-			value:  map[interface{}]interface{}{"1": `\\`},
+			value:  map[any]any{"1": `\\`},
 		},
 		{
 			source: `'1': '\"2\"'`,
-			value:  map[interface{}]interface{}{"1": `\"2\"`},
+			value:  map[any]any{"1": `\"2\"`},
 		},
 		{
 			source: `'1': '\\"2\\"'`,
-			value:  map[interface{}]interface{}{"1": `\\"2\\"`},
+			value:  map[any]any{"1": `\\"2\\"`},
 		},
 		{
 			source: "'1': '   1\n    2\n    3'",
-			value:  map[interface{}]interface{}{"1": "   1 2 3"},
+			value:  map[any]any{"1": "   1 2 3"},
 		},
 		{
 			source: "'1': '\n    2\n    3'",
-			value:  map[interface{}]interface{}{"1": " 2 3"},
+			value:  map[any]any{"1": " 2 3"},
 		},
 
 		// Double Quoted values.
 		{
 			source: `"1": "2"`,
-			value:  map[interface{}]interface{}{"1": `2`},
+			value:  map[any]any{"1": `2`},
 		},
 		{
 			source: `"1": "\"2\""`,
-			value:  map[interface{}]interface{}{"1": `"2"`},
+			value:  map[any]any{"1": `"2"`},
 		},
 		{
 			source: `"1": "\""`,
-			value:  map[interface{}]interface{}{"1": `"`},
+			value:  map[any]any{"1": `"`},
 		},
 		{
 			source: `"1": "X\"z"`,
-			value:  map[interface{}]interface{}{"1": `X"z`},
+			value:  map[any]any{"1": `X"z`},
 		},
 		{
 			source: `"1": "\\"`,
-			value:  map[interface{}]interface{}{"1": `\`},
+			value:  map[any]any{"1": `\`},
 		},
 		{
 			source: `"1": "\\\\"`,
-			value:  map[interface{}]interface{}{"1": `\\`},
+			value:  map[any]any{"1": `\\`},
 		},
 		{
 			source: `"1": "\\\"2\\\""`,
-			value:  map[interface{}]interface{}{"1": `\"2\"`},
+			value:  map[any]any{"1": `\"2\"`},
 		},
 		{
 			source: "'1': \"   1\n    2\n    3\"",
-			value:  map[interface{}]interface{}{"1": "   1 2 3"},
+			value:  map[any]any{"1": "   1 2 3"},
 		},
 		{
 			source: "'1': \"\n    2\n    3\"",
-			value:  map[interface{}]interface{}{"1": " 2 3"},
+			value:  map[any]any{"1": " 2 3"},
 		},
 		{
 			source: `"1": "a\x2Fb"`,
-			value:  map[interface{}]interface{}{"1": `a/b`},
+			value:  map[any]any{"1": `a/b`},
 		},
 		{
 			source: `"1": "a\u002Fb"`,
-			value:  map[interface{}]interface{}{"1": `a/b`},
+			value:  map[any]any{"1": `a/b`},
 		},
 		{
 			source: `"1": "a\x2Fb\u002Fc\U0000002Fd"`,
-			value:  map[interface{}]interface{}{"1": `a/b/c/d`},
+			value:  map[any]any{"1": `a/b/c/d`},
 		},
 		{
 			source: "'1': \"2\\n3\"",
-			value:  map[interface{}]interface{}{"1": "2\n3"},
+			value:  map[any]any{"1": "2\n3"},
 		},
 		{
 			source: "'1': \"2\\r\\n3\"",
-			value:  map[interface{}]interface{}{"1": "2\r\n3"},
+			value:  map[any]any{"1": "2\r\n3"},
 		},
 		{
 			source: "'1': \"a\\\nb\\\nc\"",
-			value:  map[interface{}]interface{}{"1": "abc"},
+			value:  map[any]any{"1": "abc"},
 		},
 		{
 			source: "'1': \"a\\\r\nb\\\r\nc\"",
-			value:  map[interface{}]interface{}{"1": "abc"},
+			value:  map[any]any{"1": "abc"},
 		},
 		{
 			source: "'1': \"a\\\rb\\\rc\"",
-			value:  map[interface{}]interface{}{"1": "abc"},
+			value:  map[any]any{"1": "abc"},
 		},
 
 		{
 			source: "a: -b_c",
-			value:  map[string]interface{}{"a": "-b_c"},
+			value:  map[string]any{"a": "-b_c"},
 		},
 		{
 			source: "a: +b_c",
-			value:  map[string]interface{}{"a": "+b_c"},
+			value:  map[string]any{"a": "+b_c"},
 		},
 		{
 			source: "a: 50cent_of_dollar",
-			value:  map[string]interface{}{"a": "50cent_of_dollar"},
+			value:  map[string]any{"a": "50cent_of_dollar"},
 		},
 
 		// Unconventional keys
@@ -544,15 +544,15 @@ func TestDecoder(t *testing.T) {
 		},
 		{
 			source: "v:",
-			value:  map[string]interface{}{"v": nil},
+			value:  map[string]any{"v": nil},
 		},
 		{
 			source: "v: ~",
-			value:  map[string]interface{}{"v": nil},
+			value:  map[string]any{"v": nil},
 		},
 		{
 			source: "~: null key",
-			value:  map[interface{}]string{nil: "null key"},
+			value:  map[any]string{nil: "null key"},
 		},
 		{
 			source: "v:",
@@ -568,15 +568,15 @@ func TestDecoder(t *testing.T) {
 		},
 		{
 			source: "v: null",
-			value:  map[string]interface{}{"v": nil},
+			value:  map[string]any{"v": nil},
 		},
 		{
 			source: "v: Null",
-			value:  map[string]interface{}{"v": nil},
+			value:  map[string]any{"v": nil},
 		},
 		{
 			source: "v: NULL",
-			value:  map[string]interface{}{"v": nil},
+			value:  map[string]any{"v": nil},
 		},
 		{
 			source: "v: ~",
@@ -589,57 +589,57 @@ func TestDecoder(t *testing.T) {
 
 		{
 			source: "v: .inf\n",
-			value:  map[string]interface{}{"v": math.Inf(0)},
+			value:  map[string]any{"v": math.Inf(0)},
 		},
 		{
 			source: "v: .Inf\n",
-			value:  map[string]interface{}{"v": math.Inf(0)},
+			value:  map[string]any{"v": math.Inf(0)},
 		},
 		{
 			source: "v: .INF\n",
-			value:  map[string]interface{}{"v": math.Inf(0)},
+			value:  map[string]any{"v": math.Inf(0)},
 		},
 		{
 			source: "v: -.inf\n",
-			value:  map[string]interface{}{"v": math.Inf(-1)},
+			value:  map[string]any{"v": math.Inf(-1)},
 		},
 		{
 			source: "v: -.Inf\n",
-			value:  map[string]interface{}{"v": math.Inf(-1)},
+			value:  map[string]any{"v": math.Inf(-1)},
 		},
 		{
 			source: "v: -.INF\n",
-			value:  map[string]interface{}{"v": math.Inf(-1)},
+			value:  map[string]any{"v": math.Inf(-1)},
 		},
 		{
 			source: "v: .nan\n",
-			value:  map[string]interface{}{"v": math.NaN()},
+			value:  map[string]any{"v": math.NaN()},
 		},
 		{
 			source: "v: .NaN\n",
-			value:  map[string]interface{}{"v": math.NaN()},
+			value:  map[string]any{"v": math.NaN()},
 		},
 		{
 			source: "v: .NAN\n",
-			value:  map[string]interface{}{"v": math.NaN()},
+			value:  map[string]any{"v": math.NaN()},
 		},
 
 		// Explicit tags.
 		{
 			source: "v: !!float '1.1'",
-			value:  map[string]interface{}{"v": 1.1},
+			value:  map[string]any{"v": 1.1},
 		},
 		{
 			source: "v: !!float 0",
-			value:  map[string]interface{}{"v": float64(0)},
+			value:  map[string]any{"v": float64(0)},
 		},
 		{
 			source: "v: !!float -1",
-			value:  map[string]interface{}{"v": float64(-1)},
+			value:  map[string]any{"v": float64(-1)},
 		},
 		{
 			source: "v: !!null ''",
-			value:  map[string]interface{}{"v": nil},
+			value:  map[string]any{"v": nil},
 		},
 		{
 			source: "v: !!timestamp \"2015-01-01\"",
@@ -702,7 +702,7 @@ merge:
 		// Flow sequence
 		{
 			source: "v: [A,B]",
-			value:  map[string]interface{}{"v": []interface{}{"A", "B"}},
+			value:  map[string]any{"v": []any{"A", "B"}},
 		},
 		{
 			source: "v: [A,B,C,]",
@@ -714,7 +714,7 @@ merge:
 		},
 		{
 			source: "v: [A,1,C]",
-			value:  map[string]interface{}{"v": []interface{}{"A", 1, "C"}},
+			value:  map[string]any{"v": []any{"A", 1, "C"}},
 		},
 		{
 			source: "v: [a: b, c: d]",
@@ -737,7 +737,7 @@ merge:
 		// Block sequence
 		{
 			source: "v:\n - A\n - B",
-			value:  map[string]interface{}{"v": []interface{}{"A", "B"}},
+			value:  map[string]any{"v": []any{"A", "B"}},
 		},
 		{
 			source: "v:\n - A\n - B\n - C",
@@ -749,13 +749,13 @@ merge:
 		},
 		{
 			source: "v:\n - A\n - 1\n - C",
-			value:  map[string]interface{}{"v": []interface{}{"A", 1, "C"}},
+			value:  map[string]any{"v": []any{"A", 1, "C"}},
 		},
 
 		// Map inside interface with no type hints.
 		{
 			source: "a: {b: c}",
-			value:  map[interface{}]interface{}{"a": map[interface{}]interface{}{"b": "c"}},
+			value:  map[any]any{"a": map[any]any{"b": "c"}},
 		},
 
 		{
@@ -849,8 +849,8 @@ merge:
 		},
 		{
 			source: "v:\n- A\n- 1\n- B:\n  - 2\n  - 3\n",
-			value: map[string]interface{}{
-				"v": []interface{}{
+			value: map[string]any{
+				"v": []any{
 					"A",
 					1,
 					map[string][]int{
@@ -861,7 +861,7 @@ merge:
 		},
 		{
 			source: "a:\n  b: c\n",
-			value: map[string]interface{}{
+			value: map[string]any{
 				"a": map[string]string{
 					"b": "c",
 				},
@@ -890,7 +890,7 @@ merge:
 		},
 		{
 			source: "a: {b: c, d: e}\n",
-			value: map[string]interface{}{
+			value: map[string]any{
 				"a": map[string]string{
 					"b": "c",
 					"d": "e",
@@ -925,7 +925,7 @@ merge:
 		},
 		{
 			source: "a: 100.5\n",
-			value: map[string]interface{}{
+			value: map[string]any{
 				"a": 100.5,
 			},
 		},
@@ -935,7 +935,7 @@ merge:
 		},
 		{
 			source: "b: 2\na: 1\nd: 4\nc: 3\nsub:\n  e: 5\n",
-			value: map[string]interface{}{
+			value: map[string]any{
 				"b": 2,
 				"a": 1,
 				"d": 4,
@@ -1163,12 +1163,12 @@ merge:
 		},
 		{
 			source: "v: [1,[2,[3,[4,5],6],7],8]",
-			value: map[string]interface{}{
-				"v": []interface{}{
+			value: map[string]any{
+				"v": []any{
 					1,
-					[]interface{}{
+					[]any{
 						2,
-						[]interface{}{
+						[]any{
 							3,
 							[]int{4, 5},
 							6,
@@ -1181,10 +1181,10 @@ merge:
 		},
 		{
 			source: "v: {a: {b: {c: {d: e},f: g},h: i},j: k}",
-			value: map[string]interface{}{
-				"v": map[string]interface{}{
-					"a": map[string]interface{}{
-						"b": map[string]interface{}{
+			value: map[string]any{
+				"v": map[string]any{
+					"a": map[string]any{
+						"b": map[string]any{
 							"c": map[string]string{
 								"d": "e",
 							},
@@ -1202,9 +1202,9 @@ merge:
     b:
 - c: d
 `,
-			value: []map[string]interface{}{
+			value: []map[string]any{
 				{
-					"a": map[string]interface{}{
+					"a": map[string]any{
 						"b": nil,
 					},
 				},
@@ -1219,8 +1219,8 @@ a:
   b:
 c: d
 `,
-			value: map[string]interface{}{
-				"a": map[string]interface{}{
+			value: map[string]any{
+				"a": map[string]any{
 					"b": nil,
 				},
 				"c": "d",
@@ -1232,7 +1232,7 @@ a:
 b:
 c:
 `,
-			value: map[string]interface{}{
+			value: map[string]any{
 				"a": nil,
 				"b": nil,
 				"c": nil,
@@ -1244,7 +1244,7 @@ a: go test ./...
 b:
 c:
 `,
-			value: map[string]interface{}{
+			value: map[string]any{
 				"a": "go test ./...",
 				"b": nil,
 				"c": nil,
@@ -1259,7 +1259,7 @@ a: |
 b:
 c:
 `,
-			value: map[string]interface{}{
+			value: map[string]any{
 				"a": "hello\n...\nworld\n",
 				"b": nil,
 				"c": nil,
@@ -1358,7 +1358,7 @@ func TestDecoder_Invalid(t *testing.T) {
 func TestDecoder_ScientificNotation(t *testing.T) {
 	tests := []struct {
 		source string
-		value  interface{}
+		value  any
 	}{
 		{
 			"v: 1e3",
@@ -1704,36 +1704,36 @@ items:
 	t.Run("decode with interface{}", func(t *testing.T) {
 		buf := bytes.NewBufferString(yml)
 		dec := codec.NewDecoder(buf)
-		var v interface{}
+		var v any
 		if err := dec.Decode(&v); err != nil {
 			t.Fatalf("%+v", err)
 		}
-		items, _ := v.(map[string]interface{})["items"].([]interface{})
+		items, _ := v.(map[string]any)["items"].([]any)
 		if len(items) != 2 {
 			t.Fatal("failed to decode with merge key")
 		}
-		b0 := items[0].(map[string]interface{})["b"]
+		b0 := items[0].(map[string]any)["b"]
 		if _, ok := b0.(uint64); !ok {
 			t.Fatal("failed to decode with merge key")
 		}
 		if b0.(uint64) != 1 {
 			t.Fatal("failed to decode with merge key")
 		}
-		c0 := items[0].(map[string]interface{})["c"]
+		c0 := items[0].(map[string]any)["c"]
 		if _, ok := c0.(string); !ok {
 			t.Fatal("failed to decode with merge key")
 		}
 		if c0.(string) != "hello" {
 			t.Fatal("failed to decode with merge key")
 		}
-		b1 := items[1].(map[string]interface{})["b"]
+		b1 := items[1].(map[string]any)["b"]
 		if _, ok := b1.(uint64); !ok {
 			t.Fatal("failed to decode with merge key")
 		}
 		if b1.(uint64) != 1 {
 			t.Fatal("failed to decode with merge key")
 		}
-		c1 := items[1].(map[string]interface{})["c"]
+		c1 := items[1].(map[string]any)["c"]
 		if _, ok := c1.(string); !ok {
 			t.Fatal("failed to decode with merge key")
 		}
@@ -1743,7 +1743,7 @@ items:
 	})
 	t.Run("decode with map", func(t *testing.T) {
 		var v struct {
-			Items []map[string]interface{}
+			Items []map[string]any
 		}
 		buf := bytes.NewBufferString(yml)
 		dec := codec.NewDecoder(buf)
@@ -2884,7 +2884,7 @@ e:
   h: i
 j: k
 `
-	var v interface{}
+	var v any
 	if err := codec.NewDecoder(strings.NewReader(yml), codec.UseOrderedMap()).Decode(&v); err != nil {
 		t.Fatalf("%+v", err)
 	}
@@ -2949,10 +2949,10 @@ func (v *unmarshalYAMLWithAliasString) UnmarshalYAML(b []byte) error {
 	return nil
 }
 
-type unmarshalYAMLWithAliasMap map[string]interface{}
+type unmarshalYAMLWithAliasMap map[string]any
 
 func (v *unmarshalYAMLWithAliasMap) UnmarshalYAML(b []byte) error {
-	var m map[string]interface{}
+	var m map[string]any
 	if err := yaml.Unmarshal(b, &m); err != nil {
 		return err
 	}
@@ -2996,7 +2996,7 @@ map:
 			// handed over.
 			expectedValue: value{
 				String: unmarshalYAMLWithAliasString(`"hello" "world"`),
-				Map: unmarshalYAMLWithAliasMap(map[string]interface{}{
+				Map: unmarshalYAMLWithAliasMap(map[string]any{
 					"a": "b",
 					"c": "d",
 					"d": `"hello" "world"`,
@@ -3207,7 +3207,7 @@ func TestDecoder_Canonical(t *testing.T) {
 	// The "!!null" key resolves to nil, so the mapping is keyed by any: a key
 	// keeps the value it resolves to, and only a mapping whose keys are all
 	// strings comes back as a map[string]any.
-	var v interface{}
+	var v any
 	if err := yaml.Unmarshal([]byte(yml), &v); err != nil {
 		t.Fatalf("%+v", err)
 	}
@@ -3425,10 +3425,10 @@ steps:
 	type mappedSteps struct {
 		Steps codec.MapSlice `yaml:"steps,omitempty"`
 	}
-	for i := 0; i < 100; i++ {
+	for i := range 100 {
 		t.Run(fmt.Sprintf("i=%d", i), func(t *testing.T) {
 			t.Parallel()
-			for i := 0; i < 10; i++ {
+			for range 10 {
 				var m mappedSteps
 				if err := yaml.Unmarshal([]byte(content), &m); err != nil {
 					t.Fatal(err)

@@ -303,13 +303,14 @@ func (b *valueBuilder) aliasValue(n *ast.AliasNode) any {
 		// rather than rebuilt. See codec.ShareAliases.
 		return b.copyValue(v, n)
 	}
+
 	if slices.Contains(b.open, name) {
 		// The anchor is being read right now, so the alias stands inside what
-		// its own anchor names. A Go value is built by walking and has nowhere
-		// to put a cycle. AliasNode.Target does not answer this during a walk:
-		// the parser fills it at the document's end, which is after the alias
-		// has been handed over.
-		b.fail(yamlerrors.NewRecursiveAlias(name, n.GetToken()))
+		// its own anchor names.
+		// A Go value is built by walking and has nowhere to put a cycle.
+		// AliasNode.Target does not answer this during a walk:
+		// the parser fills it at the document's end, which is after the alias has been handed over.
+		_ = b.fail(yamlerrors.NewRecursiveAlias(name, n.GetToken()))
 
 		return nil
 	}
@@ -329,7 +330,7 @@ func (b *valueBuilder) aliasValue(n *ast.AliasNode) any {
 		return b.copyValue(v, n)
 	}
 
-	b.fail(yamlerrors.NewUnknownAnchor(name, n.GetToken()))
+	_ = b.fail(yamlerrors.NewUnknownAnchor(name, n.GetToken()))
 
 	return nil
 }
@@ -373,7 +374,7 @@ func (b *valueBuilder) copyValue(v any, at ast.Node) any {
 	}
 	b.built++
 	if b.budget > 0 && b.built > b.budget {
-		b.fail(yamlerrors.NewExcessiveAliasing(b.built, b.budget, at.GetToken()))
+		_ = b.fail(yamlerrors.NewExcessiveAliasing(b.built, b.budget, at.GetToken()))
 
 		return nil
 	}

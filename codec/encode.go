@@ -39,8 +39,8 @@ type Encoder struct {
 	aliasRefToName             map[uintptr]string
 	anchorRefToName            map[uintptr]string
 	anchorNameMap              map[string]struct{}
-	anchorCallback             func(*ast.AnchorNode, interface{}) error
-	customMarshalerMap         map[reflect.Type]func(context.Context, interface{}) ([]byte, error)
+	anchorCallback             func(*ast.AnchorNode, any) error
+	customMarshalerMap         map[reflect.Type]func(context.Context, any) ([]byte, error)
 	omitZero                   bool
 	omitEmpty                  bool
 	writeJSONTags              bool
@@ -64,7 +64,7 @@ func NewEncoder(w io.Writer, opts ...EncodeOption) *Encoder {
 	return &Encoder{
 		writer:             w,
 		opts:               opts,
-		customMarshalerMap: map[reflect.Type]func(context.Context, interface{}) ([]byte, error){},
+		customMarshalerMap: map[reflect.Type]func(context.Context, any) ([]byte, error){},
 		line:               1,
 		column:             1,
 		offset:             0,
@@ -87,12 +87,12 @@ func (e *Encoder) Close() error {
 // but the first will not.
 //
 // See the documentation for Marshal for details about the conversion of Go values to YAML.
-func (e *Encoder) Encode(v interface{}) error {
+func (e *Encoder) Encode(v any) error {
 	return e.EncodeContext(context.Background(), v)
 }
 
 // EncodeContext writes the YAML encoding of v to the stream with context.Context.
-func (e *Encoder) EncodeContext(ctx context.Context, v interface{}) error {
+func (e *Encoder) EncodeContext(ctx context.Context, v any) error {
 	node, err := e.EncodeToNodeContext(ctx, v)
 	if err != nil {
 		return err
@@ -121,12 +121,12 @@ func (e *Encoder) EncodeContext(ctx context.Context, v interface{}) error {
 }
 
 // EncodeToNode convert v to ast.Node.
-func (e *Encoder) EncodeToNode(v interface{}) (ast.Node, error) {
+func (e *Encoder) EncodeToNode(v any) (ast.Node, error) {
 	return e.EncodeToNodeContext(context.Background(), v)
 }
 
 // EncodeToNodeContext convert v to ast.Node with context.Context.
-func (e *Encoder) EncodeToNodeContext(ctx context.Context, v interface{}) (ast.Node, error) {
+func (e *Encoder) EncodeToNodeContext(ctx context.Context, v any) (ast.Node, error) {
 	for _, opt := range e.opts {
 		if err := opt(e); err != nil {
 			return nil, err
@@ -327,7 +327,7 @@ func (e *Encoder) existsTypeInCustomMarshalerMap(t reflect.Type) bool {
 	return false
 }
 
-func (e *Encoder) marshalerFromCustomMarshalerMap(t reflect.Type) (func(context.Context, interface{}) ([]byte, error), bool) {
+func (e *Encoder) marshalerFromCustomMarshalerMap(t reflect.Type) (func(context.Context, any) ([]byte, error), bool) {
 	if marshaler, exists := e.customMarshalerMap[t]; exists {
 		return marshaler, exists
 	}
@@ -576,10 +576,10 @@ func (e *Encoder) encodeValue(ctx context.Context, v reflect.Value, column int) 
 			if seq, ok := reflect.TypeAssert[MapSliceSeq](v); ok {
 				return e.encodeOrderedMapSeq(ctx, seq, column)
 			}
-			if mapItem, ok := v.Interface().(MapItem); ok {
+			if mapItem, ok := reflect.TypeAssert[MapItem](v); ok {
 				return e.encodeMapItem(ctx, mapItem, column)
 			}
-			if t, ok := v.Interface().(time.Time); ok {
+			if t, ok := reflect.TypeAssert[time.Time](v); ok {
 				return e.encodeTime(t, column), nil
 			}
 		}
@@ -828,7 +828,7 @@ func (e *Encoder) jsonKeyNode(key ast.MapKeyNode, column int) ast.MapKeyNode {
 
 func (e *Encoder) encodeMap(ctx context.Context, value reflect.Value, column int) (ast.Node, error) {
 	node := ast.Mapping(token.New("", "", e.pos(column)), e.isFlowStyle)
-	keys := make([]interface{}, len(value.MapKeys()))
+	keys := make([]any, len(value.MapKeys()))
 	for i, k := range value.MapKeys() {
 		keys[i] = k.Interface()
 	}
@@ -948,7 +948,7 @@ type IsZeroer interface {
 func (e *Encoder) isOmittedByOmitZero(v reflect.Value) bool {
 	kind := v.Kind()
 	if v.CanInterface() {
-		if z, ok := v.Interface().(IsZeroer); ok {
+		if z, ok := reflect.TypeAssert[IsZeroer](v); ok {
 			if (kind == reflect.Pointer || kind == reflect.Interface) && v.IsNil() {
 				return true
 			}
@@ -1012,7 +1012,7 @@ func (e *Encoder) isOmittedByOmitEmptyOption(v reflect.Value) bool {
 // the struct itself will also be excluded. These behaviors are originally the functionality of omitzero.
 func (e *Encoder) isOmittedByOmitEmptyTag(v reflect.Value) bool {
 	kind := v.Kind()
-	if z, ok := v.Interface().(IsZeroer); ok {
+	if z, ok := reflect.TypeAssert[IsZeroer](v); ok {
 		if (kind == reflect.Pointer || kind == reflect.Interface) && v.IsNil() {
 			return true
 		}

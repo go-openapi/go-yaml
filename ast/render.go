@@ -1627,6 +1627,7 @@ func blankLineBefore(n Node) string {
 	return ""
 }
 
+/*
 // splitLeadingBlank separates a leading blank line from the text it precedes.
 func splitLeadingBlank(text string) (string, string) {
 	if rest, found := strings.CutPrefix(text, "\n"); found {
@@ -1635,6 +1636,7 @@ func splitLeadingBlank(text string) (string, string) {
 
 	return "", text
 }
+*/
 
 // flowComments gathers the comment slots a flow collection carries outside its
 // entries: the one on the opening bracket's line, the ones written above an
@@ -1764,6 +1766,8 @@ func (r *Renderer) indented(text string) string {
 
 // hangingIndent shifts every line but the first, for text placed after a marker
 // that already occupies the first line -- "- " or "? ".
+//
+//nolint:unused // unused for now
 func (r *Renderer) hangingIndent(text string) string {
 	first, rest, found := strings.Cut(text, "\n")
 	if !found {
@@ -1819,7 +1823,7 @@ func introducedIndent(origin, value, lbc string) int {
 // commonIndent returns the indentation shared by every line that has content.
 func commonIndent(text, lbc string) int {
 	common := -1
-	for _, line := range strings.Split(text, lbc) {
+	for line := range strings.SplitSeq(text, lbc) {
 		trimmed := strings.TrimLeft(line, " ")
 		if trimmed == "" {
 			continue
