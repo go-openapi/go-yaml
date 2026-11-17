@@ -5,6 +5,7 @@ package token
 
 import (
 	"fmt"
+	"io"
 	"math"
 	"math/big"
 	"strconv"
@@ -1923,9 +1924,9 @@ func (t *Token) Clone() *Token {
 	return &copied
 }
 
-// Dump outputs token information to stdout for debugging.
-func (t *Token) Dump() {
-	fmt.Printf(
+// Dump writes one line describing the token to w, for debugging.
+func (t *Token) Dump(w io.Writer) {
+	fmt.Fprintf(w,
 		"[TYPE]:%q [CHARTYPE]:%q [INDICATOR]:%q [VALUE]:%q [POS(line:column:offset:end)]: %d:%d:%d:%d\n",
 		t.Type, t.Type.CharacterType(), t.Type.Indicator(), t.Value,
 		t.Position.Line, t.Position.Column, t.Position.Offset(), t.EndOffset(),
@@ -1955,11 +1956,11 @@ func (t *Tokens) Add(tks ...*Token) {
 	}
 }
 
-// Dump dump all token structures for debugging.
-func (t Tokens) Dump() {
+// Dump writes one line per token to w, each prefixed with "- ", for debugging.
+func (t Tokens) Dump(w io.Writer) {
 	for _, tk := range t {
-		fmt.Print("- ")
-		tk.Dump()
+		fmt.Fprint(w, "- ")
+		tk.Dump(w)
 	}
 }
 

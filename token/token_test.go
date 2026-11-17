@@ -4,9 +4,11 @@
 package token_test
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/go-openapi/testify/v2/assert"
+	"github.com/go-openapi/testify/v2/require"
 
 	"github.com/go-openapi/go-yaml/token"
 )
@@ -65,7 +67,11 @@ func TestToken(t *testing.T) {
 		token.Tag("!!float", "!!float", pos),
 		token.Tag("!hoge", "!hoge", pos),
 	}
-	tokens.Dump()
+	var dump strings.Builder
+	tokens.Dump(&dump)
+	lines := strings.Split(strings.TrimSuffix(dump.String(), "\n"), "\n")
+	require.Lenf(t, lines, len(tokens), "Dump writes one line per token")
+	assert.Truef(t, strings.HasPrefix(lines[0], `- [TYPE]:"SequenceEntry"`), "Dump line: %q", lines[0])
 	tokens.Add(token.New("hoge", "hoge", pos))
 
 	// What a token follows is read off the stream by position: a token does not
