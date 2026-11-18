@@ -513,7 +513,11 @@ func (s *Scanner) scan(ctx *Context) error {
 		//
 		// The guard is here and not inside alnumRun so that a document of
 		// punctuation pays a load and a compare rather than a call.
-		if alnumFastPath && ctx.idx < ctx.size && isAlnum(ctx.src[ctx.idx]) {
+		//
+		// A tab in a line's leading whitespace falls to this arm too, and
+		// leaves isFirstCharAtLine standing: the next character is then the
+		// first of the line's content, and updateIndent has to read it.
+		if alnumFastPath && !s.isFirstCharAtLine && ctx.idx < ctx.size && isAlnum(ctx.src[ctx.idx]) {
 			s.takeAlnumRun(ctx, s.alnumRun(ctx))
 		}
 	}

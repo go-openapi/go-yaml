@@ -62,9 +62,9 @@ func (s *Scanner) alnumRun(ctx *Context) int32 {
 //   - addOriginBuf moves originEnd by one byte per character, which is what skipOrigin does for the run at once. It is
 //     one byte per character because the run is ASCII by construction.
 //   - progressColumn moves the column and the index by one apiece, likewise.
-//   - updateIndent, reached with isFirstCharAtLine already false -- the first character of the line's content cleared
-//     it before the switch handed here -- sets the indent state to Keep and returns. Setting it once stands for
-//     setting it n times.
+//   - updateIndent, reached with isFirstCharAtLine already false, sets the indent state to Keep and returns. Setting it
+//     once stands for setting it n times. The caller guarantees the flag is false: a tab in the leading whitespace
+//     falls to the default arm and leaves it standing, so after "\t" the run waits for the byte loop.
 func (s *Scanner) takeAlnumRun(ctx *Context, n int32) {
 	if probe.Enabled {
 		probe.Count("scan.alnum.runs", 1)
