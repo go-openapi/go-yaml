@@ -2777,18 +2777,9 @@ func (d *Decoder) decodeInlineFields(
 	for _, sf := range fields.inline {
 		fieldValue := dst.Field(sf.Index)
 		if sf.IsAutoAlias {
-			if aliasName == "" {
-				continue
-			}
-			newFieldValue := d.anchorValueMap[aliasName]
-			if !newFieldValue.IsValid() {
-				continue
-			}
-			value, err := d.castToAssignableValue(newFieldValue, fieldValue.Type(), d.anchorNodeMap[aliasName])
-			if err != nil {
+			if err := d.setAliasedField(fieldValue, aliasName); err != nil {
 				return err
 			}
-			fieldValue.Set(value)
 
 			continue
 		}
@@ -2817,14 +2808,7 @@ func (d *Decoder) decodeInlineFields(
 				return err
 			}
 		}
-		mapNode := ast.Mapping(nil, false)
-		for k, v := range entries {
-			if takesUnclaimed && fields.claims(k) {
-				continue
-			}
-			key := &ast.StringNode{Value: k}
-			mapNode.Values = append(mapNode.Values, ast.MappingValue(nil, key, v))
-		}
+		mapNode := inlineMapNode(entries, fields, takesUnclaimed)
 		if takesUnclaimed && len(mapNode.Values) == 0 {
 			// Every entry went to a field, so the map stays nil rather than
 			// becoming an empty one. A caller can then tell a mapping that
@@ -2839,21 +2823,14 @@ func (d *Decoder) decodeInlineFields(
 			}
 		}
 		if err != nil {
-			if *foundErr != nil {
-				continue
-			}
-			var te *yamlerrors.Error
-			if errors.As(err, &te) && errors.Is(te, yamlerrors.ErrTypeMismatch) {
+			recordFieldError(foundErr, err, func(te *yamlerrors.Error) string {
 				leaf := te.StructField()
 				if leaf == "" {
 					leaf = sf.FieldName
 				}
-				te.SetStructField(structType.Name() + "." + leaf)
-				*foundErr = te
 
-				continue
-			}
-			*foundErr = err
+				return structType.Name() + "." + leaf
+			})
 
 			continue
 		}
@@ -2861,6 +2838,56 @@ func (d *Decoder) decodeInlineFields(
 	}
 
 	return nil
+}
+
+// setAliasedField sets a field carrying `,alias` to the value of the anchor the mapping's "<<" names.
+// It leaves the field as it is where the mapping merges no alias, or the anchor holds no value.
+func (d *Decoder) setAliasedField(fieldValue reflect.Value, aliasName string) error {
+	if aliasName == "" {
+		return nil
+	}
+	anchored := d.anchorValueMap[aliasName]
+	if !anchored.IsValid() {
+		return nil
+	}
+	value, err := d.castToAssignableValue(anchored, fieldValue.Type(), d.anchorNodeMap[aliasName])
+	if err != nil {
+		return err
+	}
+	fieldValue.Set(value)
+
+	return nil
+}
+
+// inlineMapNode builds the mapping an inline field decodes: every entry, or with takesUnclaimed only the entries
+// no field of fields claims.
+func inlineMapNode(entries map[string]ast.Node, fields *readFields, takesUnclaimed bool) *ast.MappingNode {
+	mapNode := ast.Mapping(nil, false)
+	for k, v := range entries {
+		if takesUnclaimed && fields.claims(k) {
+			continue
+		}
+		key := &ast.StringNode{Value: k}
+		mapNode.Values = append(mapNode.Values, ast.MappingValue(nil, key, v))
+	}
+
+	return mapNode
+}
+
+// recordFieldError keeps err in foundErr unless an earlier field error is there already. A type mismatch is
+// tagged with the struct field fieldName returns for it.
+func recordFieldError(foundErr *error, err error, fieldName func(*yamlerrors.Error) string) {
+	if *foundErr != nil {
+		return
+	}
+	var te *yamlerrors.Error
+	if errors.As(err, &te) && errors.Is(te, yamlerrors.ErrTypeMismatch) {
+		te.SetStructField(fieldName(te))
+		*foundErr = te
+
+		return
+	}
+	*foundErr = err
 }
 
 // sequenceEntryToken returns the '-' that writes entry idx of node, where the
@@ -2982,16 +3009,8 @@ func (d *Decoder) decodeStruct(ctx context.Context, dst reflect.Value, src ast.N
 		newFieldValue, err := d.createDecodedNewValue(ctx, fieldValue.Type(), fieldValue, valueNode)
 		d.entry = prevEntry
 		if err != nil {
-			if foundErr != nil {
-				return nil //nolint:nilerr // only the first field error is kept; decoding continues as encoding/json does
-			}
-			var te *yamlerrors.Error
-			if errors.As(err, &te) && errors.Is(te, yamlerrors.ErrTypeMismatch) {
-				te.SetStructField(found.name(structType))
-				foundErr = te
-			} else {
-				foundErr = err
-			}
+			// Only the first field error is kept, and decoding goes on, as encoding/json does.
+			recordFieldError(&foundErr, err, func(*yamlerrors.Error) string { return found.name(structType) })
 
 			return nil
 		}
@@ -3423,73 +3442,16 @@ func (d *Decoder) decodeMap(ctx context.Context, dst reflect.Value, src ast.Node
 			// sequence that define one key is what the sequence is for, and a
 			// merged key equal to an own key is the override the type
 			// describes -- neither is the repeated key 3.2.1.1 refuses.
-			if err := d.decodeMap(withMerge(ctx), dst, value); err != nil {
+			if err := d.mergeIntoMap(ctx, dst, mapValue, value); err != nil {
 				return err
-			}
-			iter := dst.MapRange()
-			for iter.Next() {
-				if mapValue.MapIndex(iter.Key()).IsValid() {
-					continue
-				}
-				mapValue.SetMapIndex(iter.Key(), iter.Value())
 			}
 
 			continue
 		}
 
-		decodeKeyAs := keyType
-		if d.useStringKeys && keyType.Kind() == reflect.Interface {
-			// The map takes any key, so a scalar would otherwise arrive with
-			// the Go type its text resolves to. Read it as a string instead,
-			// through the same path a map[string]any takes, so the two agree
-			// on the spelling.
-			decodeKeyAs = stringType
-		}
-		k := d.createDecodableValue(decodeKeyAs)
-		switch {
-		case d.canDecodeByUnmarshaler(k):
-			if err := d.decodeByUnmarshaler(ctx, k, key); err != nil {
-				return err
-			}
-		case decodeKeyAs.Kind() == reflect.String:
-			// Read the key the way nodeToValue reads it for the map[string]any
-			// it builds, so a document decoded into either gives the same keys.
-			// Decoding a null through createDecodedNewValue gave "", the Go
-			// zero, which collides with the empty key: "null: a" and "\"\": b"
-			// are two entries and were read as one, so the document was refused
-			// as holding a duplicate key.
-			keyValue, err := d.nodeToValue(ctx, key)
-			if err != nil {
-				return err
-			}
-			if _, named := ast.KeyName(key); named == token.KeyOther &&
-				keyValue != nil && !reflect.TypeOf(keyValue).Comparable() {
-				// A sequence or a mapping used as a key. mapKeyString would
-				// give it the spelling Go prints, "[a b]", which no reader
-				// takes apart again.
-				//
-				// The destination is keyed by a string, so what matters is
-				// whether the key can be named, not whether the value it
-				// resolves to is comparable. ast.KeyName names every scalar,
-				// and returns token.KeyOther for a collection alone -- which
-				// is where mapKeyString falls back to Go's printing. Asking
-				// comparability instead refused "!!binary aGVsbG8=: x", whose
-				// name is the base64 the document wrote: the same document
-				// read into an any gives {"aGVsbG8=": "x"}, and the two
-				// destinations disagreed over a []byte neither had to hash.
-				return yamlerrors.NewUnhashableKey(reflect.TypeOf(keyValue), key.GetToken())
-			}
-			name, err := mapKeyString(key, keyValue)
-			if err != nil {
-				return err
-			}
-			k = reflect.ValueOf(d.strs.clone(name)).Convert(decodeKeyAs)
-		default:
-			keyVal, err := d.createDecodedNewValue(ctx, decodeKeyAs, reflect.Value{}, key)
-			if err != nil {
-				return err
-			}
-			k = keyVal
+		k, decodeKeyAs, err := d.decodeMapKey(ctx, keyType, key)
+		if err != nil {
+			return err
 		}
 
 		if seen, err := d.admitMapKey(mapValue, keyMap, k, key, folded); err != nil {
@@ -3524,10 +3486,96 @@ func (d *Decoder) decodeMap(ctx context.Context, dst reflect.Value, src ast.Node
 		mapValue.SetMapIndex(k, dstValue)
 	}
 	dst.Set(mapValue)
-	if foundErr != nil {
-		return foundErr
+
+	return foundErr
+}
+
+// mergeIntoMap decodes the mapping a "<<" brings in, value, and copies into mapValue each of its entries whose key
+// mapValue does not hold yet.
+func (d *Decoder) mergeIntoMap(ctx context.Context, dst, mapValue reflect.Value, value ast.Node) error {
+	if err := d.decodeMap(withMerge(ctx), dst, value); err != nil {
+		return err
 	}
+	iter := dst.MapRange()
+	for iter.Next() {
+		if mapValue.MapIndex(iter.Key()).IsValid() {
+			continue
+		}
+		mapValue.SetMapIndex(iter.Key(), iter.Value())
+	}
+
 	return nil
+}
+
+// decodeMapKey decodes key into a map whose keys are of keyType, and returns the key with the type it was decoded as.
+// Under UseStringKeys a map that takes any key reads its keys as strings.
+func (d *Decoder) decodeMapKey(ctx context.Context, keyType reflect.Type, key ast.Node) (reflect.Value, reflect.Type, error) {
+	decodeKeyAs := keyType
+	if d.useStringKeys && keyType.Kind() == reflect.Interface {
+		// The map takes any key, so a scalar would otherwise arrive with
+		// the Go type its text resolves to. Read it as a string instead,
+		// through the same path a map[string]any takes, so the two agree
+		// on the spelling.
+		decodeKeyAs = stringType
+	}
+	k := d.createDecodableValue(decodeKeyAs)
+	switch {
+	case d.canDecodeByUnmarshaler(k):
+		if err := d.decodeByUnmarshaler(ctx, k, key); err != nil {
+			return reflect.Value{}, nil, err
+		}
+	case decodeKeyAs.Kind() == reflect.String:
+		name, err := d.stringMapKey(ctx, key)
+		if err != nil {
+			return reflect.Value{}, nil, err
+		}
+		k = reflect.ValueOf(name).Convert(decodeKeyAs)
+	default:
+		keyVal, err := d.createDecodedNewValue(ctx, decodeKeyAs, reflect.Value{}, key)
+		if err != nil {
+			return reflect.Value{}, nil, err
+		}
+		k = keyVal
+	}
+
+	return k, decodeKeyAs, nil
+}
+
+// stringMapKey returns the name a map keyed by a string kind stores key under.
+//
+// It reads the key the way nodeToValue reads it for the map[string]any
+// it builds, so a document decoded into either gives the same keys.
+// Decoding a null through createDecodedNewValue gave "", the Go
+// zero, which collides with the empty key: "null: a" and "\"\": b"
+// are two entries and were read as one, so the document was refused
+// as holding a duplicate key.
+func (d *Decoder) stringMapKey(ctx context.Context, key ast.Node) (string, error) {
+	keyValue, err := d.nodeToValue(ctx, key)
+	if err != nil {
+		return "", err
+	}
+	if _, named := ast.KeyName(key); named == token.KeyOther &&
+		keyValue != nil && !reflect.TypeOf(keyValue).Comparable() {
+		// A sequence or a mapping used as a key. mapKeyString would
+		// give it the spelling Go prints, "[a b]", which no reader
+		// takes apart again.
+		//
+		// The destination is keyed by a string, so what matters is
+		// whether the key can be named, not whether the value it
+		// resolves to is comparable. ast.KeyName names every scalar,
+		// and returns token.KeyOther for a collection alone -- which
+		// is where mapKeyString falls back to Go's printing. Asking
+		// comparability instead refused "!!binary aGVsbG8=: x", whose
+		// name is the base64 the document wrote: the same document
+		// read into an any gives {"aGVsbG8=": "x"}, and the two
+		// destinations disagreed over a []byte neither had to hash.
+		return "", yamlerrors.NewUnhashableKey(reflect.TypeOf(keyValue), key.GetToken())
+	}
+	name, err := mapKeyString(key, keyValue)
+	if err != nil {
+		return "", err
+	}
+	return d.strs.clone(name), nil
 }
 
 func (d *Decoder) fileToReader(file string) (io.Reader, error) {
