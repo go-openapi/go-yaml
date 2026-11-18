@@ -17,26 +17,11 @@ func (p *Parser) parseTokenNode(ctx context, tk *group.TapeToken) (ast.Node, err
 	case group.TokenGroupMapKey, group.TokenGroupMapKeyValue:
 		return p.parseMap(ctx)
 	case group.TokenGroupDirective:
-		node, err := p.parseDirective(ctx.withGroup(p, tk.Group), tk.Group)
-		if err != nil {
-			return nil, err
-		}
-		ctx.goNext()
-		return node, nil
+		return ctx.passed(p.parseDirective(ctx.withGroup(p, tk.Group), tk.Group))
 	case group.TokenGroupDirectiveName:
-		node, err := p.parseDirectiveName(ctx.withGroup(p, tk.Group))
-		if err != nil {
-			return nil, err
-		}
-		ctx.goNext()
-		return node, nil
+		return ctx.passed(p.parseDirectiveName(ctx.withGroup(p, tk.Group)))
 	case group.TokenGroupAnchor:
-		node, err := p.parseAnchor(ctx.withGroup(p, tk.Group), tk.Group)
-		if err != nil {
-			return nil, err
-		}
-		ctx.goNext()
-		return node, nil
+		return ctx.passed(p.parseAnchor(ctx.withGroup(p, tk.Group), tk.Group))
 	case group.TokenGroupAnchorName:
 		anchor, err := p.parseAnchorName(ctx.withGroup(p, tk.Group))
 		if err != nil {
@@ -50,26 +35,11 @@ func (p *Parser) parseTokenNode(ctx context, tk *group.TapeToken) (ast.Node, err
 		anchor.Value = value
 		return anchor, nil
 	case group.TokenGroupAlias:
-		node, err := p.parseAlias(ctx.withGroup(p, tk.Group))
-		if err != nil {
-			return nil, err
-		}
-		ctx.goNext()
-		return node, nil
+		return ctx.passed(p.parseAlias(ctx.withGroup(p, tk.Group)))
 	case group.TokenGroupLiteral, group.TokenGroupFolded:
-		node, err := p.parseLiteral(ctx.withGroup(p, tk.Group))
-		if err != nil {
-			return nil, err
-		}
-		ctx.goNext()
-		return node, nil
+		return ctx.passed(p.parseLiteral(ctx.withGroup(p, tk.Group)))
 	case group.TokenGroupScalarTag:
-		node, err := p.parseTag(ctx.withGroup(p, tk.Group))
-		if err != nil {
-			return nil, err
-		}
-		ctx.goNext()
-		return node, nil
+		return ctx.passed(p.parseTag(ctx.withGroup(p, tk.Group)))
 	default:
 		// nothing to do
 	}

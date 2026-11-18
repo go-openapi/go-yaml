@@ -2331,23 +2331,8 @@ func (f *parentFinder) walk(parent, node Node) Node {
 		return parent
 	}
 	switch n := node.(type) {
-	case *CommentNode:
-		return nil
-	case *NullNode:
-		return nil
-	case *IntegerNode:
-		return nil
-	case *FloatNode:
-		return nil
-	case *StringNode:
-		return nil
-	case *MergeKeyNode:
-		return nil
-	case *BoolNode:
-		return nil
-	case *InfinityNode:
-		return nil
-	case *NanNode:
+	case *CommentNode, *NullNode, *IntegerNode, *FloatNode, *StringNode,
+		*MergeKeyNode, *BoolNode, *InfinityNode, *NanNode:
 		return nil
 	case *LiteralNode:
 		return f.walk(node, n.Value)

@@ -285,6 +285,17 @@ func (c context) takeLineComment(tk *group.TapeToken) *token.Token {
 	return comment
 }
 
+// passed moves past the group a parse function has just read, and returns that
+// function's node and error. It does not move on an error.
+func (c context) passed(node ast.Node, err error) (ast.Node, error) {
+	if err != nil {
+		return nil, err
+	}
+	c.goNext()
+
+	return node, nil
+}
+
 func (c context) goNext() {
 	ref := c.tokenRef
 	// The lookahead is the token the parser is about to stand on.

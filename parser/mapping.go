@@ -592,19 +592,18 @@ func (p *Parser) parseMapValue(ctx context, key ast.MapKeyNode, colonTk *group.T
 	}
 
 	if next := ctx.nextNotCommentToken(); tk.Line() == keyLine && tk.GroupType() == group.TokenGroupAnchorName &&
-		next.Column() == keyCol && isMapToken(next) {
+		(next.Column() == keyCol && isMapToken(next) || next.Column() < keyCol) {
 		// key: &anchor
+		// next
+		//
+		//   key: &anchor
 		// next
 		//
 		// A comment may stand between the two. It belongs to the entry below,
 		// so the search for what follows the anchor skips it.
 		group := group.NewTokenGroup(group.TokenGroupAnchor, []*group.TapeToken{tk, ctx.createImplicitNullToken(tk)})
-		anchor, err := p.parseAnchor(ctx.withGroup(p, group), group)
-		if err != nil {
-			return nil, err
-		}
-		ctx.goNext()
-		return anchor, nil
+
+		return ctx.passed(p.parseAnchor(ctx.withGroup(p, group), group))
 	}
 
 	if tk.Column() <= keyCol && tk.GroupType() == group.TokenGroupAnchorName {
@@ -635,19 +634,6 @@ func (p *Parser) parseMapValue(ctx context, key ast.MapKeyNode, colonTk *group.T
 		// Only a plain or quoted key is measured this way.
 		// A key with a property or a '?' starts with that token, and its column does not mark where the entry begins.
 		return nil, yamlerrors.NewSyntax("value is not indented past its key", tk.RawToken())
-	}
-
-	if tk.Line() == keyLine && tk.GroupType() == group.TokenGroupAnchorName &&
-		ctx.nextNotCommentToken().Column() < keyCol {
-		//   key: &anchor
-		// next
-		group := group.NewTokenGroup(group.TokenGroupAnchor, []*group.TapeToken{tk, ctx.createImplicitNullToken(tk)})
-		anchor, err := p.parseAnchor(ctx.withGroup(p, group), group)
-		if err != nil {
-			return nil, err
-		}
-		ctx.goNext()
-		return anchor, nil
 	}
 
 	value, err := p.parseToken(ctx, ctx.currentToken())
