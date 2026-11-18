@@ -155,7 +155,7 @@ func (s *Scanner) scanSingleQuote(ctx *Context) (token.Token, error) {
 
 // TODO(perf): same remark as above.
 //
-//nolint:mnd // we have a lot of runes to check and making them constants won't really improve readability.
+//nolint:mnd,gocyclo,cyclop // a case per rune to check and per escape sequence; named constants would not read better
 func (s *Scanner) scanDoubleQuote(ctx *Context) (token.Token, error) {
 	ctx.addOriginBuf('"')
 	baseIndent := s.contentIndent()

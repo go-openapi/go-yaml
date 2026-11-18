@@ -1046,6 +1046,7 @@ func (d *Decoder) addCommentToMap(path string, comment *Comment) {
 	})
 }
 
+//nolint:gocyclo,cyclop // one case per node kind, and the tag case one per ast.TagNode.Resolve verdict
 func (d *Decoder) nodeToValue(ctx context.Context, node ast.Node) (any, error) {
 	d.stepIn()
 	defer d.stepOut()
@@ -1818,6 +1819,7 @@ func (d *Decoder) unmarshalJSON(unmarshaler jsonUnmarshaler, src ast.Node) error
 	return unmarshaler.UnmarshalJSON(bytes.TrimRight(jsonBytes, "\n"))
 }
 
+//nolint:gocyclo,cyclop // one case per reflect.Kind of the destination
 func (d *Decoder) decodeValue(ctx context.Context, dst reflect.Value, src ast.Node) error {
 	d.stepIn()
 	defer d.stepOut()

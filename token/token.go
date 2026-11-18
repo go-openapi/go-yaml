@@ -138,6 +138,8 @@ const (
 )
 
 // String type identifier to text.
+//
+//nolint:cyclop // one case per token type
 func (t Type) String() string {
 	switch t {
 	case UnknownType:

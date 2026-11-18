@@ -255,6 +255,8 @@ func (s *Scanner) Reset() {
 //
 // The character that produced the token is fully consumed before scan returns, so nothing has to be re-read; emitted
 // counts the tokens ctx already held, so a token another call left behind does not end this one straight away.
+//
+//nolint:gocyclo,cyclop // one case per YAML indicator character
 func (s *Scanner) scan(ctx *Context) error {
 	emitted := ctx.buffered()
 
