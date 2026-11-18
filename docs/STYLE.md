@@ -13,7 +13,7 @@ Prefer disabling a linter here over scattering the same directive across the cod
 A function here returns `nil, nil` in two cases, and both are results, not omissions:
 
 - the value is nil: a YAML null decodes to a Go nil, as in `nodeToValue`, `scalarValue` or a `!!null` tag;
-- nothing is there: an empty stream (`WalkValue`), a null where an array is read (`getArrayNode`), a drained
+- nothing is there: an empty stream (`walkFirst` in the codec tests), a null where an array is read (`getArrayNode`), a drained
   reader (`reader.peek`), or no entry node when comments are off (`sequenceEntry`).
 
 A sentinel error would cost an allocation at the return and an `errors.Is` at every caller, and in the first case

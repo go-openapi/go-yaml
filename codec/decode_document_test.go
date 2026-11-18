@@ -212,10 +212,10 @@ func TestFixedADirectiveNamedLikeAnAliasIsIgnored(t *testing.T) {
 }
 
 // decodeStream reads every document of src.
-func decodeStream(t *testing.T, src string) []any {
+func decodeStream(t *testing.T, src string, opts ...codec.DecodeOption) []any {
 	t.Helper()
 
-	dec := codec.NewDecoder(bytes.NewBufferString(src))
+	dec := codec.NewDecoder(bytes.NewBufferString(src), opts...)
 
 	var out []any
 	for range 32 {

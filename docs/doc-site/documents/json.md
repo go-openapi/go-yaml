@@ -49,12 +49,12 @@ A non-string scalar key is stringified, which can produce a duplicate JSON name:
 `parser.WithJSONCompatible` reports that pair as `ErrNotJSON` rather than letting
 it through.
 
-## Walking to Go values instead
+## Go values from a tree
 
-`codec.WalkValue` and `WalkValues` read a source straight to `any`, one document
-or the whole stream, without the reflection the decoder does for typed
-destinations. `codec.NodeToValue` fills a Go value from a node you already have,
-and `ValueToNode` builds a subtree from a Go value.
+`codec.NodeToValue` fills a Go value from a node you already have, and
+`ValueToNode` builds a subtree from a Go value. To read a source straight to
+`any`, call `yaml.Unmarshal` with a `*any`: the decoder then builds the values as
+the parser reads the document and builds no tree.
 
 ## Conformance
 

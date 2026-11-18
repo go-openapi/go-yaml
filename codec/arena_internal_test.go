@@ -63,7 +63,7 @@ func walkStrings(v any, out *[]string) {
 func TestDecodedStringsLeaveTheDocument(t *testing.T) {
 	t.Run("walk", func(t *testing.T) {
 		src := []byte(arenaSrc)
-		v, err := WalkValue(src)
+		v, err := walkFirst(src)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -218,7 +218,7 @@ func TestNoDecodedStringReadsTheDocument(t *testing.T) {
 			continue
 		}
 
-		if v, err := WalkValue([]byte(src.text)); err == nil {
+		if v, err := walkFirst([]byte(src.text)); err == nil {
 			if held := pinnedStrings(v, []byte(src.text)); len(held) > 0 {
 				t.Errorf("%s: walk left %q reading the document", src.name, held)
 			}

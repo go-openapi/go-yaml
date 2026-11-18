@@ -48,6 +48,17 @@ func decodedStream(src string) ([]any, error) {
 	}
 }
 
+// walkFirst reads the first document of src by walking it, and nil for an empty
+// stream.
+func walkFirst(src []byte) (any, error) {
+	docs, err := walkValues(src, false)
+	if err != nil || len(docs) == 0 {
+		return nil, err
+	}
+
+	return docs[0], nil
+}
+
 // TestReferenceStreamBuildsATree holds treeDecoder to its name. Without it a
 // change to canWalk would leave TestWalkMatchesTheStream comparing the walk
 // against itself, and passing.
@@ -181,7 +192,7 @@ func TestWalkMatchesTheStream(t *testing.T) {
 		}
 
 		want, wantErr := decodedStream(src.text)
-		got, gotErr := WalkValues([]byte(src.text))
+		got, gotErr := walkValues([]byte(src.text), false)
 
 		switch {
 		case wantErr != nil && gotErr != nil:

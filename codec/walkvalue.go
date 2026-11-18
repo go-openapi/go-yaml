@@ -798,25 +798,10 @@ func orderedMapOfWalked(value any, n *ast.TagNode) (any, error) {
 	return MapSliceSeq(m), nil
 }
 
-// WalkValue reads the first document of src by walking it. EXPERIMENT.
-func WalkValue(src []byte) (any, error) {
-	docs, err := WalkValues(src)
-	if err != nil {
-		return nil, err
-	}
-	if len(docs) == 0 {
-		return nil, nil
-	}
-
-	return docs[0], nil
-}
-
-// WalkValues reads every document of src by walking it, without building a
-// tree.
-func WalkValues(src []byte, opts ...parser.Option) ([]any, error) {
-	return walkValues(src, false, opts...)
-}
-
+// walkValues reads every document of src into a Go value by walking the parse,
+// without building a tree. Decoder.decodeInit calls it for a decode into a bare
+// interface; see canWalk. share hands every alias of one anchor the same value,
+// as ShareAliases asks.
 func walkValues(src []byte, share bool, opts ...parser.Option) ([]any, error) {
 	opts = append(opts, parser.WithOmitNodePaths())
 	p := parser.New(opts...)

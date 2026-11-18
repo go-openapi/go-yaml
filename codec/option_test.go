@@ -138,13 +138,6 @@ func TestADeclaredAnchorReachesTheWalk(t *testing.T) {
 	const src = "a: *x\nb: *x\nc: *n\n"
 	want := map[string]any{"a": map[string]any{"k": "v"}, "b": map[string]any{"k": "v"}, "c": "given"}
 
-	t.Run("WalkValues", func(t *testing.T) {
-		docs, err := codec.WalkValues([]byte(src), parser.WithAnchors(anchors))
-		require.NoError(t, err)
-		require.Len(t, docs, 1)
-		assert.Equal(t, want, docs[0])
-	})
-
 	decode := func(t *testing.T, opts ...codec.DecodeOption) map[string]any {
 		t.Helper()
 		var got any
@@ -170,14 +163,12 @@ func TestADeclaredAnchorReachesTheWalk(t *testing.T) {
 	})
 
 	t.Run("the document's own anchor hides the declared one", func(t *testing.T) {
-		docs, err := codec.WalkValues([]byte("own: &x 1\na: *x\n"), parser.WithAnchors(anchors))
-		require.NoError(t, err)
+		docs := decodeStream(t, "own: &x 1\na: *x\n", codec.WithParserOptions(parser.WithAnchors(anchors)))
 		assert.Equal(t, map[string]any{"own": uint64(1), "a": uint64(1)}, docs[0])
 	})
 
 	t.Run("every document of the stream reaches it", func(t *testing.T) {
-		docs, err := codec.WalkValues([]byte("a: *n\n---\nb: *n\n"), parser.WithAnchors(anchors))
-		require.NoError(t, err)
+		docs := decodeStream(t, "a: *n\n---\nb: *n\n", codec.WithParserOptions(parser.WithAnchors(anchors)))
 		assert.Equal(t, []any{map[string]any{"a": "given"}, map[string]any{"b": "given"}}, docs)
 	})
 }
