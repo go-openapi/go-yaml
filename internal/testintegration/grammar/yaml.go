@@ -98,6 +98,11 @@ func yamlPatches() []Patch {
 			Apply:   patchBlockCollectionProperties,
 		},
 		{
+			Rule:    "ns-reserved-directive",
+			Because: "YAML and TAG are the names of the two directives the spec defines, so neither names a reserved one",
+			Apply:   patchReservedDirective,
+		},
+		{
 			Rule:    "ns-plain-first",
 			Because: "a lone \"?\" is a plain scalar where a flow collection ends, on the evidence of every implementation rather than of the prose",
 			Apply:   patchPlainQuestionMark,

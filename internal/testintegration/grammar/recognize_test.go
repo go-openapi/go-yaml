@@ -174,6 +174,20 @@ var streamCases = []struct {
 	{"comment run into a yaml directive", "%YAML 1.1#...\n---\n", false},
 	{"a reserved directive takes parameters", "%FOO bar baz\n---\n", true},
 
+	// Commitment covers only a YAML or TAG directive whose own production
+	// matched. One that fails on its first parameter falls through to
+	// ns-reserved-directive, whose name matches "TAG" as well as any other, so
+	// patchReservedDirective keeps the two defined names out of it.
+	{"a tag prefix opening on a flow indicator", "%TAG !e! [x\n---\n", false},
+	{"a tag prefix opening on a comma", "%TAG !e! ,x\n---\n", false},
+	{"a tag prefix with a flow indicator after its first character", "%TAG !e! x[1],y\n---\n", true},
+	{"a tag directive with no prefix", "%TAG !e!\n---\n", false},
+	{"a tag directive alone", "%TAG\n---\n", false},
+	{"a yaml directive alone", "%YAML\n---\n", false},
+	{"a yaml directive with a bad version", "%YAML .12\n---\n", false},
+	{"a reserved directive named like tag", "%TAGS x\n---\n", true},
+	{"a reserved directive named like yaml", "%YAMLX 1\n---\n", true},
+
 	// A byte order mark stands in front of a document without putting anything
 	// on the line, so what follows it still begins one. l-document-prefix
 	// admits one before every document, not only the first.

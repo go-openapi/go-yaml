@@ -77,7 +77,8 @@ func patchBlockIndented(body any) bool {
 // costs one extra copy of s-b-comment. It is done here rather than in allForm
 // because a choice inside a sequence is not generally distributive: l-directive
 // depends on ns-yaml-directive winning over ns-reserved-directive and staying
-// won, and "%YAML 1.2 foo" is refused only because of it.
+// won, and "%YAML 1.2 foo" is refused because of it, as well as because of
+// patchReservedDirective.
 func patchBlockHeader(body any) bool {
 	m, ok := body.(map[string]any)
 	if !ok {
@@ -260,6 +261,40 @@ func patchDirectivesEnd(body any) bool {
 	}
 
 	m["(all)"] = append(steps, whitespaceAhead())
+
+	return true
+}
+
+// patchReservedDirective keeps the names YAML and TAG out of a reserved
+// directive, and returns whether it found the rule's shape.
+//
+// l-directive is a choice of ns-yaml-directive, ns-tag-directive and
+// ns-reserved-directive, and ns-directive-name is ns-char+, which "TAG" and
+// "YAML" match as well as any other name. So a TAG directive its own production
+// refuses was taken as a reserved one, to be ignored: "%TAG !e! [x", whose
+// global prefix opens on a flow indicator [40], and "%TAG ! " with no prefix at
+// all, were read. §6.8 defines the two directives and reserves the others "for
+// future use", so a malformed one is an error, not an unknown directive.
+//
+// The guard is the name followed by whitespace, a break or the end, so
+// "%TAGS x" and "%YAMLX 1" stay reserved. yaml-reference-parser compiles the
+// same rule and reads "%TAG !e! [x" the same way when nothing uses the handle.
+func patchReservedDirective(body any) bool {
+	m, ok := body.(map[string]any)
+	if !ok {
+		return false
+	}
+
+	steps, ok := m["(all)"].([]any)
+	if !ok || len(steps) != 2 || steps[0] != "ns-directive-name" {
+		return false
+	}
+
+	predefined := map[string]any{"(any)": []any{
+		map[string]any{"(all)": []any{"Y", "A", "M", "L", whitespaceAhead()}},
+		map[string]any{"(all)": []any{"T", "A", "G", whitespaceAhead()}},
+	}}
+	m["(all)"] = slices.Insert(steps, 0, any(map[string]any{"(!==)": predefined}))
 
 	return true
 }

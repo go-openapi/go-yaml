@@ -259,12 +259,12 @@ func Refusals() []Refusal {
 			WellFormed: true,
 		},
 		{
-			// Also well formed. The grammar takes a directive it does not
-			// recognize as a reserved one and moves on, so the shape of a %TAG
-			// is a rule stated in 6.8.2.2 and nowhere in the productions.
+			// The published grammar took a TAG directive its own production
+			// refuses as a reserved one, because ns-directive-name matches
+			// "TAG". patchReservedDirective keeps YAML and TAG out of a
+			// reserved directive, so the grammar refuses it too.
 			Name: "a TAG directive with no prefix",
 			Src:  "%TAG !e!\n---\nx\n", Says: "unexpected format TAG directive",
-			WellFormed: true,
 		},
 		{
 			Name: "a reserved character opening a document",
