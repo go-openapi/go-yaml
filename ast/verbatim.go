@@ -249,6 +249,10 @@ type verbatimWriter struct {
 	// keys counts the mapping keys being written, since a key may hold a
 	// collection whose entries have keys of their own.
 	keys int
+	// flow counts the flow collections being written. A mapping that is not
+	// written in flow but stands inside one is a pair of a flow sequence, as in
+	// "[a: b]", and takes an inserted entry the way a flow mapping does.
+	flow int
 	// dropping says a node the caller replaced has been written and the text it
 	// replaced is still ahead of the copy. See take.
 	dropping bool
@@ -937,6 +941,11 @@ func (vw *verbatimWriter) tokenEnd(tk *token.Token) int {
 	switch {
 	case vw.removalAt(end):
 		return text
+	case vw.flow > 0 && text > start && end < len(vw.src) && vw.src[end] == '#':
+		// Inside a flow collection, the spacing in front of a comment goes out with the comment. An entry inserted
+		// after this token then lands on the token, "{a: b, c: d # x", and not against the "#", where "d# x" reads as
+		// a scalar and the comment is gone.
+		return text
 	case text == start:
 		// The token is spacing through and through -- a block scalar holding a
 		// line of blanks -- and holding all of it back left nothing to hand over.
@@ -1115,18 +1124,7 @@ func (r *Renderer) write(vw *verbatimWriter, n Node) {
 		r.writeInPlaceOf(vw, v.Body, false)
 		r.writeTokenOf(vw, v.End, v)
 	case *MappingNode:
-		if v.IsFlowStyle {
-			r.writeTokenOf(vw, v.Start, v)
-		}
-		for i, entry := range v.Values {
-			r.writeEntry(vw, entry, collection{
-				siblings: mappingSiblings(v.Values),
-				flow:     v.IsFlowStyle,
-			}, i)
-		}
-		if v.IsFlowStyle {
-			r.writeTokenOf(vw, v.End, v)
-		}
+		r.writeMapping(vw, v)
 	case *MappingValueNode:
 		r.writeTokenOf(vw, v.CollectEntry, v)
 		vw.keys++
@@ -1140,11 +1138,13 @@ func (r *Renderer) write(vw *verbatimWriter, n Node) {
 	case *SequenceNode:
 		if v.IsFlowStyle {
 			r.writeTokenOf(vw, v.Start, v)
+			vw.flow++
 		}
 		for i, value := range v.Values {
 			r.writeSequenceEntry(vw, v, value, i)
 		}
 		if v.IsFlowStyle {
+			vw.flow--
 			r.writeTokenOf(vw, v.End, v)
 		}
 	case *AnchorNode:
@@ -1178,6 +1178,48 @@ func (r *Renderer) write(vw *verbatimWriter, n Node) {
 		}
 	default:
 		r.writeTokenOf(vw, n.GetToken(), n)
+	}
+}
+
+// writeMapping writes a mapping's entries, inside its brackets where it has them.
+//
+// A pair of a flow sequence, "[a: b]", is a mapping of one entry written without brackets. A second entry cannot
+// join it as it stands: "[a: b, c: d]" is two pairs, and a block line inside the brackets is no YAML at all. So a pair
+// that holds more than one entry is written as the flow mapping it has become, "[{a: b, c: d}]", and each entry a
+// caller put in goes in as a flow entry does.
+func (r *Renderer) writeMapping(vw *verbatimWriter, v *MappingNode) {
+	pair := !v.IsFlowStyle && vw.flow > 0
+	braced := pair && len(v.Values) > 1
+	siblings := mappingSiblings(v.Values)
+
+	if v.IsFlowStyle {
+		r.writeTokenOf(vw, v.Start, v)
+	}
+	if braced {
+		// The brace goes in front of the first entry the document holds, past the comma or the '[' before it.
+		if first, found := nextFlowFromSource(siblings, -1); found {
+			vw.settleGap(int(first.from))
+			vw.upTo(int(first.from))
+		}
+		vw.raw("{")
+	}
+	if v.IsFlowStyle || pair {
+		vw.flow++
+	}
+	for i, entry := range v.Values {
+		r.writeEntry(vw, entry, collection{
+			siblings: siblings,
+			flow:     v.IsFlowStyle || pair,
+		}, i)
+	}
+	if v.IsFlowStyle || pair {
+		vw.flow--
+	}
+	if braced {
+		vw.raw("}")
+	}
+	if v.IsFlowStyle {
+		r.writeTokenOf(vw, v.End, v)
 	}
 }
 

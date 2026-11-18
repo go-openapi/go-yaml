@@ -211,6 +211,60 @@ func TestVerbatimPlacesAnInsertedEntry(t *testing.T) {
 	}
 }
 
+// TestVerbatimBracesAPairThatGainsAnEntry covers an entry inserted into a pair of a flow sequence, as in "[a: b]".
+//
+// The pair is a mapping of one entry written without braces. The entry went in on a block line inside the brackets,
+// which no parser reads, and a pair standing under a block key had it go in below the key instead. A pair holding a
+// second entry is the flow mapping it has become, so it is written in braces and the entry goes in as a flow entry.
+//
+// A flow entry inserted in front of a comment landed against the "#", where "1# note" reads as one scalar and the
+// comment is lost; the last case holds that.
+func TestVerbatimBracesAPairThatGainsAnEntry(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name    string
+		src     string
+		element int
+		at      int
+		want    string
+	}{
+		{"the only pair, after its entry", "[a: b]\n", 0, 1, "[{a: b, x: 9}]\n"},
+		{"the only pair, in front of its entry", "[a: b]\n", 0, 0, "[{x: 9, a: b}]\n"},
+		{"a pair before another element", "[a: b, c]\n", 0, 1, "[{a: b, x: 9}, c]\n"},
+		{"a pair after another element", "[c, a: b]\n", 1, 1, "[c, {a: b, x: 9}]\n"},
+		{"a pair whose value is a collection", "[a: [1, 2], c]\n", 0, 1, "[{a: [1, 2], x: 9}, c]\n"},
+		{"a pair on a line of its own", "[\n  a: b,\n  c\n]\n", 0, 1, "[\n  {a: b, x: 9},\n  c\n]\n"},
+		{"a pair with a comment beside it", "[a: b # note\n, c]\n", 0, 1, "[{a: b, x: 9} # note\n, c]\n"},
+		{"a pair under a block key", "k: [a: b]\n", -1, 1, "k: [{a: b, x: 9}]\n"},
+		{"a flow mapping with a comment beside its last entry", "{a: 1 # note\n}\n", -2, 1, "{a: 1, x: 9 # note\n}\n"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			file, err := parser.ParseBytes([]byte(tc.src), parser.WithComments())
+			require.NoError(t, err)
+
+			body := file.Docs[0].Body
+			switch tc.element {
+			case -2: // the document is the mapping
+			case -1: // the pair is the first element of the only key's flow sequence
+				body = onlyValueOf(t, body).(*ast.SequenceNode).Values[0]
+			default:
+				body = body.(*ast.SequenceNode).Values[tc.element]
+			}
+			insertInto(t, body, tc.at)
+
+			var out bytes.Buffer
+			require.NoError(t, ast.NewRenderer(ast.WithSource([]byte(tc.src))).VerbatimFile(&out, file))
+			require.Equal(t, tc.want, out.String())
+
+			_, err = parser.ParseBytes(out.Bytes())
+			require.NoError(t, err)
+		})
+	}
+}
+
 // insertInto puts an entry into a collection at index at.
 func insertInto(t *testing.T, body ast.Node, at int) {
 	t.Helper()
@@ -324,10 +378,24 @@ type placement struct {
 // the entry goes in as a block line inside a single pair of a flow sequence.
 // The parser read that rendering as a nested pair and refuses it now, and
 // yaml/yaml-reference-parser refuses each of the 51 renderings that moved.
+//
+// 1779 stays 1779 when an entry inserted into a pair of a flow sequence began to
+// go in as a flow entry, the pair braced into the flow mapping it becomes, and
+// an entry inserted before a comment in a flow collection stopped landing
+// against the "#". Unreadable fell 63 -> 1 at the front and the middle and
+// 59 -> 4 at the back. Disturbed rose 0 -> 64, 17 -> 81 and 135 -> 190, and
+// that is the measure: withoutMarkerLines takes out the line the marker stands
+// on, and a flow entry shares its line with the entries around it, so each
+// document that reads now counts as disturbed -- every one of the 64 at the
+// front, 79 of the 81 in the middle and 110 of the 190 at the back. What still
+// fails is seed/10848, a mapping standing as an explicit "?" key, and at the
+// back an entry after a "|+" scalar holding one empty line and after a
+// double-quoted scalar over two lines. yaml/yaml-reference-parser reads both of
+// those renderings, and the parser refuses them.
 var insertionCensus = map[string]placement{
-	"front":  {tested: 1779, unreadable: 63, disturbed: 0},
-	"middle": {tested: 1779, unreadable: 63, disturbed: 17},
-	"back":   {tested: 1779, unreadable: 59, disturbed: 135},
+	"front":  {tested: 1779, unreadable: 1, disturbed: 64},
+	"middle": {tested: 1779, unreadable: 1, disturbed: 81},
+	"back":   {tested: 1779, unreadable: 4, disturbed: 190},
 }
 
 // TestInsertingIntoTheCorpus puts one entry into every document the corpus holds
