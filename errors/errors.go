@@ -35,8 +35,8 @@ import (
 	"reflect"
 
 	"github.com/go-openapi/go-yaml/ast"
+	"github.com/go-openapi/go-yaml/internal/excerpt"
 	"github.com/go-openapi/go-yaml/internal/nocopy"
-	"github.com/go-openapi/go-yaml/printer"
 	"github.com/go-openapi/go-yaml/token"
 )
 
@@ -326,15 +326,14 @@ func FormatErrorAtToken(msg string, tk *token.Token, source []byte, colored, inc
 }
 
 func formatError(errMsg string, tk *token.Token, src Source, colored, inclSource bool) string {
-	var pp printer.Printer
 	if tk == nil {
-		return pp.PrintErrorMessage(errMsg, colored)
+		return excerpt.Message(errMsg, colored)
 	}
 
 	pos := fmt.Sprintf("[%d:%d] ", tk.Position.Line, tk.Position.Column)
-	msg := pp.PrintErrorMessage(pos+errMsg, colored)
+	msg := excerpt.Message(pos+errMsg, colored)
 	if inclSource && src.Text != "" {
-		msg += "\n" + pp.PrintErrorSource(src.Text, src.FirstLine, tk, colored)
+		msg += "\n" + excerpt.Source(src.Text, src.FirstLine, tk, colored)
 	}
 
 	return msg

@@ -175,7 +175,7 @@ func keyTokenAt(m *ast.MappingNode, d ast.DuplicateKey) *token.Token {
 	// A walk hands the mapping over without gathering its entries, so the token
 	// is not to hand. The position was recorded when the repeat was read, and
 	// token.New fills in the rest: a token built as a struct literal carries no
-	// spans, its EndLine reads 0, and printer.PrintErrorSource then draws a
+	// spans, its EndLine reads 0, and excerpt.Source then draws a
 	// window that closes before it opens and shows nothing.
 	return token.New(d.Name, d.Name, pos)
 }

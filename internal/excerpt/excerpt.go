@@ -1,64 +1,43 @@
 // SPDX-FileCopyrightText: Copyright 2025 go-swagger maintainers
 // SPDX-License-Identifier: Apache-2.0
 
-// Package printer renders YAML nodes and error sources as text, with optional
-// ANSI colors.
-package printer
+// Package excerpt draws the lines of a document around a token, which is what
+// an error prints under its message.
+package excerpt
 
 import (
 	"fmt"
 	"strings"
 
-	"github.com/go-openapi/go-yaml/ast"
 	"github.com/go-openapi/go-yaml/token"
 )
 
-// Property additional property set for each the token.
-type Property struct {
-	Prefix string
-	Suffix string
-}
+// The ANSI escapes a colored excerpt uses. The line number is bold bright
+// white, and the message bright red.
+const (
+	lineNumberOn  = "\x1b[1;97m"
+	lineNumberOff = "\x1b[22;0m"
+	messageOn     = "\x1b[91m"
+	messageOff    = "\x1b[0m"
+)
 
-// PrintFunc returns property instance.
-type PrintFunc func() *Property
-
-// Printer create text from token collection or ast.
-type Printer struct {
-	LineNumber       bool
-	LineNumberFormat func(num int) string
-	MapKey           PrintFunc
-	Anchor           PrintFunc
-	Alias            PrintFunc
-	Bool             PrintFunc
-	String           PrintFunc
-	Number           PrintFunc
-	Comment          PrintFunc
-}
-
-// PrintNode create text from ast.Node.
-func (p *Printer) PrintNode(node ast.Node) []byte {
-	return []byte(fmt.Sprintf("%+v\n", node))
-}
-
-func (p *Printer) PrintErrorMessage(msg string, isColored bool) string {
-	if isColored {
-		return fmt.Sprintf("%s%s%s",
-			format(ColorFgHiRed),
-			msg,
-			format(ColorReset),
-		)
+// Message returns msg, in red when colored is set.
+func Message(msg string, colored bool) string {
+	if !colored {
+		return msg
 	}
-	return msg
+
+	return messageOn + msg + messageOff
 }
 
-// PrintErrorSource draws the lines of src around tk, with tk's line marked and
-// a caret under its column.
+// Source draws the lines of src around tk, with tk's line marked and a caret
+// under its column.
 //
 // src is the document the token was read from, or a window of it; firstLine is
 // the line number src starts at. The lines come from the document itself rather
 // than from the tokens read out of it, so what a reader sees under an error is
 // what they wrote.
-func (p *Printer) PrintErrorSource(src string, firstLine int, tk *token.Token, isColored bool) string {
+func Source(src string, firstLine int, tk *token.Token, colored bool) string {
 	const context = 3
 
 	lines := splitLines(src)
@@ -88,7 +67,6 @@ func (p *Printer) PrintErrorSource(src string, firstLine int, tk *token.Token, i
 	for from < errLine && from-firstLine < len(lines) && strings.TrimSpace(lines[from-firstLine]) == "" {
 		from++
 	}
-	p.setupErrorTokenFormat(errLine, isColored)
 
 	var out strings.Builder
 	prefixLen := len(fmt.Sprintf("  %2d | ", errLine))
@@ -99,7 +77,7 @@ func (p *Printer) PrintErrorSource(src string, firstLine int, tk *token.Token, i
 			// leaves the caret hanging past the text.
 			line = strings.TrimRight(line, " \t")
 		}
-		out.WriteString(p.LineNumberFormat(num))
+		out.WriteString(lineNumber(num, errLine, colored))
 		out.WriteString(line)
 		out.WriteString("\n")
 		// The caret follows the last line the token covers, not the first: a
@@ -120,70 +98,17 @@ func (p *Printer) PrintErrorSource(src string, firstLine int, tk *token.Token, i
 	return strings.TrimSuffix(out.String(), "\n")
 }
 
-func (p *Printer) setDefaultColorSet() {
-	p.Bool = func() *Property {
-		return &Property{
-			Prefix: format(ColorFgHiMagenta),
-			Suffix: format(ColorReset),
-		}
+// lineNumber is the margin of line num, marked when it is the line in error.
+func lineNumber(num, errLine int, colored bool) string {
+	margin := fmt.Sprintf("  %2d | ", num)
+	if num == errLine {
+		margin = fmt.Sprintf("> %2d | ", num)
 	}
-	p.Number = func() *Property {
-		return &Property{
-			Prefix: format(ColorFgHiMagenta),
-			Suffix: format(ColorReset),
-		}
+	if !colored {
+		return margin
 	}
-	p.MapKey = func() *Property {
-		return &Property{
-			Prefix: format(ColorFgHiCyan),
-			Suffix: format(ColorReset),
-		}
-	}
-	p.Anchor = func() *Property {
-		return &Property{
-			Prefix: format(ColorFgHiYellow),
-			Suffix: format(ColorReset),
-		}
-	}
-	p.Alias = func() *Property {
-		return &Property{
-			Prefix: format(ColorFgHiYellow),
-			Suffix: format(ColorReset),
-		}
-	}
-	p.String = func() *Property {
-		return &Property{
-			Prefix: format(ColorFgHiGreen),
-			Suffix: format(ColorReset),
-		}
-	}
-	p.Comment = func() *Property {
-		return &Property{
-			Prefix: format(ColorFgHiBlack),
-			Suffix: format(ColorReset),
-		}
-	}
-}
 
-func (p *Printer) setupErrorTokenFormat(annotateLine int, isColored bool) {
-	prefix := func(annotateLine, num int) string {
-		if annotateLine == num {
-			return fmt.Sprintf("> %2d | ", num)
-		}
-
-		return fmt.Sprintf("  %2d | ", num)
-	}
-	p.LineNumber = true
-	p.LineNumberFormat = func(num int) string {
-		if isColored {
-			return colorize(prefix(annotateLine, num), ColorBold, ColorFgHiWhite)
-		}
-
-		return prefix(annotateLine, num)
-	}
-	if isColored {
-		p.setDefaultColorSet()
-	}
+	return lineNumberOn + margin + lineNumberOff
 }
 
 // splitLines cuts src where the scanner counts a line break: "\r\n", "\r" or

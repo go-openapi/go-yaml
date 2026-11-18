@@ -11,9 +11,9 @@ import (
 	"strings"
 
 	"github.com/go-openapi/go-yaml/ast"
+	"github.com/go-openapi/go-yaml/internal/excerpt"
 	"github.com/go-openapi/go-yaml/internal/nocopy"
 	"github.com/go-openapi/go-yaml/parser"
-	"github.com/go-openapi/go-yaml/printer"
 )
 
 // PathString create Path from string
@@ -364,9 +364,7 @@ func (p *Path) AnnotateSource(source []byte, colored bool) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	var pp printer.Printer
-
-	return []byte(pp.PrintErrorSource(nocopy.String(source), 1, node.GetToken(), colored)), nil
+	return []byte(excerpt.Source(nocopy.String(source), 1, node.GetToken(), colored)), nil
 }
 
 // errNotFound refuses a path that addresses no node of any document.

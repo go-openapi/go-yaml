@@ -111,6 +111,5 @@ the value.
 | [`token`](tokens/) | a token, its position, and its text as written |
 | [`expressions`](yamlpath/) | `Path` and `PathString`, to address a node by path |
 | [`codec`](json/) | `ToJSON` and `FromJSON`, which convert without building a Go value |
-| [`printer`](printer/) | draws a document, or one line of it under an error |
 
 {{< children type="card" description="true" >}}

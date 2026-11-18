@@ -1,16 +1,16 @@
 // SPDX-FileCopyrightText: Copyright 2025 go-swagger maintainers
 // SPDX-License-Identifier: Apache-2.0
 
-package printer_test
+package excerpt_test
 
 import (
 	"fmt"
 	"testing"
 
-	"github.com/go-openapi/go-yaml/printer"
+	"github.com/go-openapi/go-yaml/internal/excerpt"
 )
 
-func Test_Printer(t *testing.T) {
+func TestSource(t *testing.T) {
 	yml := `---
 text: aaaa
 text2: aaaa
@@ -30,8 +30,7 @@ alias: *x
 `
 	t.Run("print starting from tokens[3]", func(t *testing.T) {
 		tokens := tokenize(t, yml)
-		var p printer.Printer
-		actual := "\n" + p.PrintErrorSource(yml, 1, tokens[3], false)
+		actual := "\n" + excerpt.Source(yml, 1, tokens[3], false)
 		expect := `
    1 | ---
 >  2 | text: aaaa
@@ -45,8 +44,7 @@ alias: *x
 	})
 	t.Run("print starting from tokens[4]", func(t *testing.T) {
 		tokens := tokenize(t, yml)
-		var p printer.Printer
-		actual := "\n" + p.PrintErrorSource(yml, 1, tokens[4], false)
+		actual := "\n" + excerpt.Source(yml, 1, tokens[4], false)
 		expect := `
    1 | ---
    2 | text: aaaa
@@ -61,8 +59,7 @@ alias: *x
 	})
 	t.Run("print starting from tokens[6]", func(t *testing.T) {
 		tokens := tokenize(t, yml)
-		var p printer.Printer
-		actual := "\n" + p.PrintErrorSource(yml, 1, tokens[6], false)
+		actual := "\n" + excerpt.Source(yml, 1, tokens[6], false)
 		expect := `
    1 | ---
    2 | text: aaaa
@@ -99,8 +96,7 @@ a:
    7 |  eeee
    8 | text3: ffff
    9 |  gggg`
-		var p printer.Printer
-		actual := "\n" + p.PrintErrorSource(yml, 1, tokens[12], false)
+		actual := "\n" + excerpt.Source(yml, 1, tokens[12], false)
 		if actual != expect {
 			t.Fatalf("unexpected output: expect:[%s]\n actual:[%s]", expect, actual)
 		}
@@ -108,32 +104,30 @@ a:
 	t.Run("output with color", func(t *testing.T) {
 		t.Run("token6", func(t *testing.T) {
 			tokens := tokenize(t, yml)
-			var p printer.Printer
-			t.Logf("\n%s", p.PrintErrorSource(yml, 1, tokens[6], true))
+			t.Logf("\n%s", excerpt.Source(yml, 1, tokens[6], true))
 		})
 		t.Run("token9", func(t *testing.T) {
 			tokens := tokenize(t, yml)
-			var p printer.Printer
-			t.Logf("\n%s", p.PrintErrorSource(yml, 1, tokens[9], true))
+			t.Logf("\n%s", excerpt.Source(yml, 1, tokens[9], true))
 		})
 		t.Run("token12", func(t *testing.T) {
 			tokens := tokenize(t, yml)
-			var p printer.Printer
-			t.Logf("\n%s", p.PrintErrorSource(yml, 1, tokens[12], true))
+			t.Logf("\n%s", excerpt.Source(yml, 1, tokens[12], true))
 		})
 	})
 	t.Run("print error message", func(t *testing.T) {
-		var p printer.Printer
 		src := "message"
-		msg := p.PrintErrorMessage(src, false)
+		msg := excerpt.Message(src, false)
 		if msg != src {
 			t.Fatal("unexpected result")
 		}
-		p.PrintErrorMessage(src, true)
+		if got := excerpt.Message(src, true); got != "\x1b[91mmessage\x1b[0m" {
+			t.Fatalf("colored message: %q", got)
+		}
 	})
 }
 
-func Test_Printer_Multiline(t *testing.T) {
+func TestSourceMultiline(t *testing.T) {
 	yml := `
 text1: 'aaaa
  bbbb
@@ -197,11 +191,10 @@ text3: hello
 		name := fmt.Sprintf("print starting from tokens[%d]", tt.token)
 		t.Run(name, func(t *testing.T) {
 			tokens := tokenize(t, yml)
-			var p printer.Printer
-			got := "\n" + p.PrintErrorSource(yml, 1, tokens[tt.token], false)
+			got := "\n" + excerpt.Source(yml, 1, tokens[tt.token], false)
 			want := tt.want
 			if got != want {
-				t.Fatalf("PrintErrorSource() got: %s\n want: %s\n", got, want)
+				t.Fatalf("Source() got: %s\n want: %s\n", got, want)
 			}
 		})
 	}

@@ -59,7 +59,7 @@ experiment; it does not bound what the parse holds. See
 
 ## The packages, in dependency order
 
-`token` → `ast` → `printer` → `errors` → `parser` → `codec` → `expressions`
+`token` → `ast` → `errors` → `parser` → `codec` → `expressions`
 
 No package imports one to its right. The root package
 (`github.com/go-openapi/go-yaml`) re-exports `Marshal`, `Unmarshal`, `ToJSON` and

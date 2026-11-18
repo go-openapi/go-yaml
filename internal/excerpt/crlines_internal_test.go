@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: Copyright 2025 go-swagger maintainers
 // SPDX-License-Identifier: Apache-2.0
 
-package printer
+package excerpt
 
 import (
 	"strings"
@@ -10,13 +10,13 @@ import (
 	"github.com/go-openapi/go-yaml/token"
 )
 
-// TestSplitLinesCutsWhereTheScannerDoes checks the printer counts lines the way
+// TestSplitLinesCutsWhereTheScannerDoes checks the excerpt counts lines the way
 // the scanner does.
 //
 // The scanner ends a line at "\r" as well as at "\n". Splitting on "\n" alone
 // gave fewer lines than a token's Position.Line counts, so drawing the window
 // around an error read past the end of the text: "\r\r\r\r0\n " is five lines
-// to the scanner and two to strings.Split, and PrintErrorSource panicked with
+// to the scanner and two to strings.Split, and Source panicked with
 // an index out of range on the second of them.
 func TestSplitLinesCutsWhereTheScannerDoes(t *testing.T) {
 	for _, test := range []struct {
@@ -44,21 +44,20 @@ func TestSplitLinesCutsWhereTheScannerDoes(t *testing.T) {
 	}
 }
 
-// TestPrintErrorSourceSurvivesACarriageReturnDocument draws the window for a
+// TestSourceSurvivesACarriageReturnDocument draws the window for a
 // token whose line only exists once "\r" is counted as a break.
 //
 // It is the shape FuzzUnmarshalToMap found: the seed is kept at
 // testdata/fuzz/FuzzUnmarshalToMap/d0a27960c094cb4d.
-func TestPrintErrorSourceSurvivesACarriageReturnDocument(_ *testing.T) {
+func TestSourceSurvivesACarriageReturnDocument(_ *testing.T) {
 	for _, src := range []string{
 		"\r\r\r\r0\n ", "\r\r\ra: [\n", "\r\n\r\n\ta: 1\n", "\r0\r\r\r\r\r\r{",
 		strings.Repeat("\r", 40) + "0\n",
 	} {
 		for line := 1; line <= 8; line++ {
-			var p Printer
 			tk := tokenAt(src, line)
 			// It must not panic, whatever line the token claims.
-			_ = p.PrintErrorSource(src, 1, tk, false)
+			_ = Source(src, 1, tk, false)
 		}
 	}
 }
