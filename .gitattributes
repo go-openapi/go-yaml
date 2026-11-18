@@ -8,5 +8,5 @@
 *.gz binary
 
 # Fixtures whose line breaks are what they test keep their bytes.
-parser/testdata/crlf.yml -text
-parser/testdata/cr.yml -text
+testdata/parser/crlf.yml -text
+testdata/parser/cr.yml -text

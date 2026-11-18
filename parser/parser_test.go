@@ -1175,7 +1175,7 @@ func TestNewLineChar(t *testing.T) {
 		"cr.yml",
 		"crlf.yml",
 	} {
-		buf, err := os.ReadFile(filepath.Join("testdata", f))
+		buf, err := os.ReadFile(filepath.Join("..", "testdata", "parser", f))
 		require.NoError(t, err)
 		ast, err := parser.ParseBytes(buf)
 		require.NoError(t, err)

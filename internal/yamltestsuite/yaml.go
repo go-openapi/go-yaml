@@ -39,13 +39,12 @@ func (t *TestSuite) HasExpectation() bool {
 	return t.Error || t.hasJSON || t.OutYAML != nil
 }
 
-// fixturesDir is the vendored copy of the YAML Test Suite, held in this
-// package's testdata directory so that the fixtures sit beside the loader that
-// reads them.
+// fixturesDir is the vendored copy of the YAML Test Suite, held in the
+// module's testdata directory at testdata/internal/yamltestsuite.
 func fixturesDir() string {
 	_, file, _, _ := runtime.Caller(0) //nolint:dogsled
 
-	return filepath.Join(filepath.Dir(file), "testdata")
+	return filepath.Join(filepath.Dir(file), "..", "..", "testdata", "internal", "yamltestsuite")
 }
 
 // TestSuites reads the vendored YAML Test Suite.

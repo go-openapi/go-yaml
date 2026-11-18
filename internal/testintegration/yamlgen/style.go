@@ -90,7 +90,7 @@ func (f FlowEmpty) String() string {
 //
 // YAML 1.2 reads all three as the same break and normalizes them to \n, so the
 // value is the same whichever one is used. The parser has never agreed for
-// free: parser/testdata holds cr.yml, crlf.yml and lf.yml because it is
+// free: testdata/parser holds cr.yml, crlf.yml and lf.yml because it is
 // sensitive to the difference, and two defects found during the parser rewrite
 // were reachable only with a lone carriage return.
 type Break string

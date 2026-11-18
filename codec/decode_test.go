@@ -1916,7 +1916,7 @@ func conversionTimeCases() iter.Seq[conversionErrorCase] {
 
 func TestDecoder_AnchorReferenceDirs(t *testing.T) {
 	buf := bytes.NewBufferString("a: *a\n")
-	dec := codec.NewDecoder(buf, codec.ReferenceDirs("testdata"))
+	dec := codec.NewDecoder(buf, codec.ReferenceDirs("../testdata/codec"))
 	var v struct {
 		A struct {
 			B int
@@ -1938,7 +1938,7 @@ func TestDecoder_AnchorReferenceDirsRecursive(t *testing.T) {
 	buf := bytes.NewBufferString("a: *a\n")
 	dec := codec.NewDecoder(
 		buf,
-		codec.ReferenceDirs("testdata"),
+		codec.ReferenceDirs("../testdata/codec"),
 	)
 	var v struct {
 		A struct {
@@ -1959,7 +1959,7 @@ func TestDecoder_AnchorReferenceDirsRecursive(t *testing.T) {
 
 func TestDecoder_AnchorFiles(t *testing.T) {
 	buf := bytes.NewBufferString("a: *a\n")
-	dec := codec.NewDecoder(buf, codec.ReferenceFiles("testdata/anchor.yml"))
+	dec := codec.NewDecoder(buf, codec.ReferenceFiles("../testdata/codec/anchor.yml"))
 	var v struct {
 		A struct {
 			B int

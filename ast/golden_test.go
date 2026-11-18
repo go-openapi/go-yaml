@@ -21,9 +21,9 @@ import (
 	"github.com/go-openapi/go-yaml/parser"
 )
 
-var updateGolden = flag.Bool("update", false, "rewrite ast/testdata/render_golden.tsv from what the renderer does now")
+var updateGolden = flag.Bool("update", false, "rewrite testdata/ast/render_golden.tsv from what the renderer does now")
 
-const goldenPath = "testdata/render_golden.tsv"
+const goldenPath = "../testdata/ast/render_golden.tsv"
 
 // renderConfigs are the option sets the golden covers, so that a caller driving
 // the renderer themselves is held as well as the default path.

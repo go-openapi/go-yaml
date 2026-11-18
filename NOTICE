@@ -53,13 +53,13 @@ permits that, and requires its copyright notice and permission notice to be
 kept with the code it covers; they are reproduced in full above.
 
 
-github.com/yaml/yaml-test-suite -- internal/yamltestsuite/testdata/
+github.com/yaml/yaml-test-suite -- testdata/internal/yamltestsuite/
 ------------------------------------------------------------
 
-The conformance fixtures under internal/yamltestsuite/testdata are used unmodified from
+The conformance fixtures under testdata/internal/yamltestsuite are used unmodified from
 https://github.com/yaml/yaml-test-suite, under the MIT License. A copy of that
 license is provided verbatim below and vendored alongside the fixtures at
-internal/yamltestsuite/testdata/LICENSE.
+testdata/internal/yamltestsuite/LICENSE.
 
 (internal/yamltestsuite/yaml.go is not part of the suite: it is this project's
 loader for the fixtures, and is covered by the root LICENSE.)
