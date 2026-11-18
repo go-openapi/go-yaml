@@ -38,7 +38,10 @@ import (
 //
 // 12680 -> 12679 the same day, when a comment holding a byte order mark began to be refused: seed/7167 opens on
 // "#\ufeff%YAML 1.1", and c-nb-comment-text takes nb-char, which leaves the mark out.
-var withoutCommentsCensus = struct{ tested, differing int }{tested: 12679, differing: 0}
+//
+// 12679 -> 12668 the same day, when a "%YAML" with no version began to be refused: eleven seeds open on a bare
+// "%YAML", and ns-yaml-directive requires the version.
+var withoutCommentsCensus = struct{ tested, differing int }{tested: 12668, differing: 0}
 
 func TestVerbatimRebuildsTheCorpusParsedWithoutComments(t *testing.T) {
 	t.Parallel()

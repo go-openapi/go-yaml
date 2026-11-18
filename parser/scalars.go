@@ -19,7 +19,7 @@ func (p *Parser) parseTokenNode(ctx context, tk *group.TapeToken) (ast.Node, err
 	case group.TokenGroupDirective:
 		return ctx.passed(p.parseDirective(ctx.withGroup(p, tk.Group), tk.Group))
 	case group.TokenGroupDirectiveName:
-		return ctx.passed(p.parseDirectiveName(ctx.withGroup(p, tk.Group)))
+		return ctx.passed(p.parseBareDirective(ctx.withGroup(p, tk.Group)))
 	case group.TokenGroupAnchor:
 		return ctx.passed(p.parseAnchor(ctx.withGroup(p, tk.Group), tk.Group))
 	case group.TokenGroupAnchorName:

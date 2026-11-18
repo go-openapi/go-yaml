@@ -22,7 +22,9 @@ import (
 //   - A "%TAG" prefix is "!" ns-uri-char* or ns-tag-char ns-uri-char*, so a "|" in it, or a '%' without two hex
 //     digits, is not one. "%7C" spells the same character and reads.
 //
-// A reserved directive such as "%1" or "%FOO bar baz" reads: section 6.8 has processors ignore it.
+// A reserved directive such as "%1" or "%FOO bar baz" reads: section 6.8 has processors ignore it. "%YAML" and "%TAG"
+// name the two directives section 6.8 defines, so neither is reserved, and either one alone is refused for lacking the
+// parameters its production requires; "%TAGS" and "%YAMLX" are reserved and read.
 //
 // yaml/yaml-reference-parser gives every verdict here on the directives. It takes a byte order mark only straight
 // before a "---" or a directive, and refuses one before a bare document or a comment, "\ufeffa: 1" included, which
@@ -44,6 +46,9 @@ func TestADirectiveIsHeldToItsProductions(t *testing.T) {
 		{"bar-in-a-local-prefix", "%TAG ! t|\n---\n", `[1:8] found invalid tag character "|"`},
 		{"bar-in-a-global-prefix", "%TAG !e! tag:x,2000:|\n---\n", `[1:10] found invalid tag character "|"`},
 		{"bar-after-a-local-bang", "%TAG !e! !lo|cal\n---\n", `[1:10] found invalid tag character "|"`},
+		{"yaml-with-no-version", "%YAML\n---\n", "[1:1] unexpected format YAML directive"},
+		{"yaml-with-a-comment-for-a-version", "%YAML # c\n---\n", "[1:1] unexpected format YAML directive"},
+		{"tag-with-no-handle", "%TAG \n---\n", "[1:1] unexpected format TAG directive"},
 	} {
 		t.Run("refused/"+tc.name, func(t *testing.T) {
 			t.Parallel()
@@ -66,6 +71,8 @@ func TestADirectiveIsHeldToItsProductions(t *testing.T) {
 		{"escaped-bar-in-a-prefix", "%TAG ! t%7C\n---\n"},
 		{"local-prefix", "%TAG !e! !local-\n---\n"},
 		{"yaml-directive", "%YAML 1.2\n---\n"},
+		{"reserved-directive-named-like-tag", "%TAGS\n---\n"},
+		{"reserved-directive-named-like-yaml", "%YAMLX 1\n---\n"},
 	} {
 		t.Run("read/"+tc.name, func(t *testing.T) {
 			t.Parallel()

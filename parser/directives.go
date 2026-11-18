@@ -99,6 +99,24 @@ func (p *Parser) parseDirective(ctx context, g *group.TokenGroup) (*ast.Directiv
 	return directive, nil
 }
 
+// parseBareDirective parses a directive written with no parameters.
+//
+// A reserved directive may have none, but "%YAML" takes a version and "%TAG" a handle and a prefix, so either one
+// alone is refused, as parseDirective refuses them with the wrong number of parameters.
+func (p *Parser) parseBareDirective(ctx context) (*ast.DirectiveNode, error) {
+	directive, err := p.parseDirectiveName(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	switch name := directive.Name.String(); name {
+	case "YAML", "TAG":
+		return nil, yamlerrors.NewSyntax(fmt.Sprintf("unexpected format %s directive", name), directive.GetToken())
+	default:
+		return directive, nil
+	}
+}
+
 func (p *Parser) parseDirectiveName(ctx context) (*ast.DirectiveNode, error) {
 	// emitDirective wraps a group.TokenGroupDirective only around a directive with values of its own.
 	// A directive without them arrives as a bare group.TokenGroupDirectiveName and skips parseDirective,
