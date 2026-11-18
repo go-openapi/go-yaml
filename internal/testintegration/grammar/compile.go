@@ -4,6 +4,7 @@
 package grammar
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
@@ -55,6 +56,11 @@ type Grammar struct {
 // A corpus is a cache of what a grammar said, so the corpus has to record which
 // grammar. When this changes, every stored verdict is suspect and the corpus
 // has to be regenerated and compared rather than trusted.
+//
+// The digest reads the file with its line breaks as LF. A Windows checkout
+// with core.autocrlf writes the embedded JSON with CRLF, which is the same
+// grammar, and hashing the bytes as they stood told every stored corpus it had
+// been built against another one.
 func (g *Grammar) Digest() string { return g.digest }
 
 // Unreferenced names the productions no other production refers to, in name
@@ -110,7 +116,7 @@ func Compile(name string, spec []byte, patches ...Patch) (*Grammar, error) {
 
 	return &Grammar{
 		name:         name,
-		digest:       fmt.Sprintf("sha256:%x", sha256.Sum256(spec)),
+		digest:       fmt.Sprintf("sha256:%x", sha256.Sum256(bytes.ReplaceAll(spec, []byte("\r\n"), []byte("\n")))),
 		slots:        c.slots,
 		raw:          c.raw,
 		unreferenced: c.unreferenced(),
