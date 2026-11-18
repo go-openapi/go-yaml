@@ -94,3 +94,31 @@ func TestAFlowEntryHoldsOnePair(t *testing.T) {
 		})
 	}
 }
+
+// TestAMissingCommaNamesTheColonThatEndsTheEntry covers the complaint for a ": " after a flow mapping's value.
+//
+// The usual cause is a comma left out between two entries, and the entry ends where the second ':' stands, so the
+// complaint asks for a ',' or a '}' there. It was "mapping value is not allowed in this context", at the value.
+func TestAMissingCommaNamesTheColonThatEndsTheEntry(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name string
+		src  string
+		at   string
+	}{
+		{"comma-left-out-between-two-lines", "---\n{\n foo: 1\n bar: 2 }", "[4:5]"},
+		{"value-on-the-line-below-its-key", "{a:\nb: c, x: y}", "[2:2]"},
+		{"two-words-then-a-colon", "{a: b c: d}", "[1:8]"},
+		{"nested-flow-mapping", "{x: {a: b: c, d: e}}", "[1:10]"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			var got any
+			err := yaml.Unmarshal([]byte(tc.src), &got)
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), tc.at+" ',' or '}' must be specified")
+		})
+	}
+}

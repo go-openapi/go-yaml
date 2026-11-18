@@ -127,9 +127,9 @@ func TestTheWalkHandsOverTheSameTree(t *testing.T) {
 // Re-baselined on 2026-11-18 when a plain scalar inside a flow collection began to run onto a line left of the
 // last ':', and a flow mapping entry stopped taking a second pair as its value. One source moved,
 // suite/flow-mapping-missing-a-separating-comma, which is still refused: the scalar now folds "1" and "bar" into
-// one value, and the ':' after it is refused at the value, "[3:7] mapping value is not allowed in this context",
-// where "[4:2] ',' or '}' must be specified" named the line below. No other source walks differently.
-const fixedWalkDigest = "5cfd1c1f9e58363a7a903e5d683ebfab4973fb635138d7ce7f3719ca143102fb"
+// one value, and the complaint "',' or '}' must be specified" moved from "bar" at [4:2] to the ':' after it at
+// [4:5], where the entry ends. No other source walks differently.
+const fixedWalkDigest = "9fc325a91cc159979cf931b7a0692775c74f02195bec642a26cc09a4a358cd43"
 
 // digestVisitor writes each node it is handed, so a node the walk reads from a reused cell changes the digest.
 type digestVisitor struct {

@@ -243,10 +243,28 @@ func (p *Parser) flowMapValue(ctx context, colonTk *group.TapeToken, omitted boo
 		// "{a: b: c}": a flow mapping entry holds one pair, and its value is a node, not another pair.
 		// parseMapValue refuses the same in block context, where the pair has to stand on the key's line;
 		// in a flow collection the value may run onto the next line, so the line is not asked.
-		return nil, yamlerrors.NewSyntax("mapping value is not allowed in this context", tk.RawToken())
+		//
+		// The entry ends where the second ':' stands, and a comma left out between two entries is the usual cause:
+		// "foo: 1" over "bar: 2" reads "1 bar" as foo's value. The message is the one the loop gives for a missing
+		// comma, and the caret goes on that ':'.
+		return nil, yamlerrors.NewSyntax("',' or '}' must be specified", pairColon(tk).RawToken())
 	}
 
 	return p.parseToken(ctx, ctx.currentToken())
+}
+
+// pairColon returns the ':' of the pair tk opens, or tk itself where the grouping holds none.
+// A key-value group holds its key group first, and a key group ends on its ':'.
+func pairColon(tk *group.TapeToken) *group.TapeToken {
+	g := tk.Group
+	if g != nil && g.Type == group.TokenGroupMapKeyValue && g.First() != nil {
+		g = g.First().Group
+	}
+	if g == nil || g.Type != group.TokenGroupMapKey || g.Last() == nil {
+		return tk
+	}
+
+	return g.Last()
 }
 
 // unclosed names why a flow collection ran out of tokens before its closer.
