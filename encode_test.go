@@ -8,9 +8,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"iter"
 	"math"
 	"net/netip"
 	"reflect"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -40,207 +42,370 @@ type TestTextUnmarshalerContainer struct {
 
 type unexportedStruct struct{}
 
+// encodeCase is a value, the options it is encoded with, and the document the encoder writes for it.
+type encodeCase struct {
+	name    string
+	source  string
+	value   any
+	options []codec.EncodeOption
+}
+
+// TestEncoder encodes the value of each case and compares the document with the case's source.
+//
+// Each case is named "theme/what", so go test -run 'TestEncoder/omitzero-tag/' runs one theme.
 func TestEncoder(t *testing.T) {
-	tests := []struct {
-		source  string
-		value   any
-		options []codec.EncodeOption
-	}{
+	seen := make(map[string]bool)
+	for tc := range encoderCases() {
+		if seen[tc.name] {
+			t.Fatalf("two cases are named %q", tc.name)
+		}
+		seen[tc.name] = true
+
+		t.Run(tc.name, testEncode(tc))
+	}
+}
+
+func testEncode(tc encodeCase) func(*testing.T) {
+	return func(t *testing.T) {
+		var buf bytes.Buffer
+		enc := codec.NewEncoder(&buf, tc.options...)
+		if err := enc.Encode(tc.value); err != nil {
+			t.Fatalf("%+v", err)
+		}
+		if tc.source != buf.String() {
+			t.Fatalf("expect = [%s], actual = [%s]", tc.source, buf.String())
+		}
+	}
+}
+
+func encoderCases() iter.Seq[encodeCase] {
+	return concatCases(
+		encodeScalarCases(),
+		encodeStringCases(),
+		encodeMultiLineCases(),
+		encodeCollectionCases(),
+		encodeStructCases(),
+		encodeOmitEmptyTagCases(),
+		encodeOmitZeroTagCases(),
+		encodeOmitOptionCases(),
+		encodeFlowCases(),
+		encodeMarshalerCases(),
+	)
+}
+
+// concatCases runs the cases of each table in turn.
+func concatCases[T any](tables ...iter.Seq[T]) iter.Seq[T] {
+	return func(yield func(T) bool) {
+		for _, table := range tables {
+			for tc := range table {
+				if !yield(tc) {
+					return
+				}
+			}
+		}
+	}
+}
+
+// encodeScalarCases covers null, booleans, integers, floats and the special float values.
+func encodeScalarCases() iter.Seq[encodeCase] {
+	return slices.Values([]encodeCase{
 		{
+			"scalar/nil-struct-pointer",
 			"null\n",
 			(*struct{})(nil),
 			nil,
 		},
 		{
+			"scalar/string",
 			"v: hi\n",
 			map[string]string{"v": "hi"},
 			nil,
 		},
 		{
+			"scalar/string-true-quoted",
 			"v: \"true\"\n",
 			map[string]string{"v": "true"},
 			nil,
 		},
 		{
+			"scalar/string-false-quoted",
 			"v: \"false\"\n",
 			map[string]string{"v": "false"},
 			nil,
 		},
 		{
+			"scalar/bool-true",
 			"v: true\n",
 			map[string]any{"v": true},
 			nil,
 		},
 		{
+			"scalar/bool-false",
 			"v: false\n",
 			map[string]bool{"v": false},
 			nil,
 		},
 		{
+			"scalar/int",
 			"v: 10\n",
 			map[string]int{"v": 10},
 			nil,
 		},
 		{
+			"scalar/negative-int",
 			"v: -10\n",
 			map[string]int{"v": -10},
 			nil,
 		},
 		{
+			"scalar/int64-above-32-bits",
 			"v: 4294967296\n",
 			map[string]int64{"v": int64(4294967296)},
 			nil,
 		},
 		{
+			"scalar/float",
 			"v: 0.1\n",
 			map[string]any{"v": 0.1},
 			nil,
 		},
 		{
+			"scalar/float32",
 			"v: 0.99\n",
 			map[string]float32{"v": 0.99},
 			nil,
 		},
 		{
+			"scalar/float32-small-exponent",
 			"v: 1e-06\n",
 			map[string]float32{"v": 1e-06},
 			nil,
 		},
 		{
+			"scalar/float64-small-decimal",
 			"v: 1e-06\n",
 			map[string]float64{"v": 0.000001},
 			nil,
 		},
 		{
+			"scalar/float64-many-digits",
 			"v: 0.123456789\n",
 			map[string]float64{"v": 0.123456789},
 			nil,
 		},
 		{
+			"scalar/negative-float",
 			"v: -0.1\n",
 			map[string]float64{"v": -0.1},
 			nil,
 		},
 		{
+			"scalar/float-whole-number",
 			"v: 1.0\n",
 			map[string]float64{"v": 1.0},
 			nil,
 		},
 		{
+			"scalar/float-large-exponent",
 			"v: 1e+06\n",
 			map[string]float64{"v": 1000000},
 			nil,
 		},
 		{
-			"v: 1e-06\n",
-			map[string]float64{"v": 0.000001},
-			nil,
-		},
-		{
+			"scalar/float64-small-exponent",
 			"v: 1e-06\n",
 			map[string]float64{"v": 1e-06},
 			nil,
 		},
 		{
+			"scalar/positive-infinity",
 			"v: .inf\n",
 			map[string]any{"v": math.Inf(0)},
 			nil,
 		},
 		{
+			"scalar/negative-infinity",
 			"v: -.inf\n",
 			map[string]any{"v": math.Inf(-1)},
 			nil,
 		},
 		{
+			"scalar/nan",
 			"v: .nan\n",
 			map[string]any{"v": math.NaN()},
 			nil,
 		},
 		{
+			"scalar/null",
 			"v: null\n",
 			map[string]any{"v": nil},
 			nil,
 		},
 		{
+			"scalar/empty-string",
 			"v: \"\"\n",
 			map[string]string{"v": ""},
 			nil,
 		},
 		{
-			"v:\n- A\n- B\n",
-			map[string][]string{"v": {"A", "B"}},
-			nil,
-		},
-		{
-			"v:\n  - A\n  - B\n",
-			map[string][]string{"v": {"A", "B"}},
-			[]codec.EncodeOption{
-				codec.IndentSequence(true),
-			},
-		},
-		{
-			"v:\n- A\n- B\n",
-			map[string][2]string{"v": {"A", "B"}},
-			nil,
-		},
-		{
-			"v:\n  - A\n  - B\n",
-			map[string][2]string{"v": {"A", "B"}},
-			[]codec.EncodeOption{
-				codec.IndentSequence(true),
-			},
-		},
-		{
-			"a: \"-\"\n",
-			map[string]string{"a": "-"},
-			nil,
-		},
-		{
-			"1: v\n",
-			map[int]string{1: "v"},
-			nil,
-		},
-		{
-			"1.1: v\n",
-			map[float64]string{1.1: "v"},
-			nil,
-		},
-		{
-			"true: v\n",
-			map[bool]string{true: "v"},
-			nil,
-		},
-		{
-			"2015-01-01T00:00:00Z: v\n",
-			map[time.Time]string{time.Date(2015, 1, 1, 0, 0, 0, 0, time.UTC): "v"},
-			nil,
-		},
-		{
+			"scalar/bare-int",
 			"123\n",
 			123,
 			nil,
 		},
 		{
-			"hello: world\n",
-			map[string]string{"hello": "world"},
+			"scalar/float-in-any-map",
+			"a: 100.5\n",
+			map[string]any{
+				"a": 100.5,
+			},
+			nil,
+		},
+	})
+}
+
+// encodeStringCases covers when a string is written plain and when it is quoted, and the quote style options.
+func encodeStringCases() iter.Seq[encodeCase] {
+	return slices.Values([]encodeCase{
+		{
+			"string/dash-quoted",
+			"a: \"-\"\n",
+			map[string]string{"a": "-"},
 			nil,
 		},
 		{
+			"string/timestamp-quoted",
+			"t2: \"2018-01-09T10:40:47Z\"\nt4: \"2098-01-09T10:40:47Z\"\n",
+			map[string]string{
+				"t2": "2018-01-09T10:40:47Z",
+				"t4": "2098-01-09T10:40:47Z",
+			},
+			nil,
+		},
+		{
+			"string/duration-plain",
+			"a: 3s\n",
+			map[string]string{
+				"a": "3s",
+			},
+			nil,
+		},
+		{
+			"string/angle-brackets-plain",
+			"a: <foo>\n",
+			map[string]string{"a": "<foo>"},
+			nil,
+		},
+		{
+			"string/colon-without-space-quoted",
+			"a: \"1:1\"\n",
+			map[string]string{"a": "1:1"},
+			nil,
+		},
+		{
+			"string/dotted-quad-plain",
+			"a: 1.2.3.4\n",
+			map[string]string{"a": "1.2.3.4"},
+			nil,
+		},
+		{
+			"string/colon-space-quoted",
+			"a: \"b: c\"\n",
+			map[string]string{"a": "b: c"},
+			nil,
+		},
+		{
+			"string/hash-after-space-quoted",
+			"a: \"Hello #comment\"\n",
+			map[string]string{"a": "Hello #comment"},
+			nil,
+		},
+		{
+			"string/leading-space-quoted",
+			"a: \" b\"\n",
+			map[string]string{"a": " b"},
+			nil,
+		},
+		{
+			"string/trailing-space-quoted",
+			"a: \"b \"\n",
+			map[string]string{"a": "b "},
+			nil,
+		},
+		{
+			"string/surrounding-spaces-quoted",
+			"a: \" b \"\n",
+			map[string]string{"a": " b "},
+			nil,
+		},
+		{
+			"string/leading-backquote-quoted",
+			"a: \"`b` c\"\n",
+			map[string]string{"a": "`b` c"},
+			nil,
+		},
+		{
+			"string/backslash-quoted",
+			"a: \"\\\\0\"\n",
+			map[string]string{"a": "\\0"},
+			nil,
+		},
+		{
+			"string/multibyte-plain",
+			"v: あいうえお\nv2: かきくけこ\n",
+			map[string]string{"v": "あいうえお", "v2": "かきくけこ"},
+			nil,
+		},
+		{
+			"quote-style/single-doubles-inner-quotes",
+			`v: '''a''b'` + "\n",
+			map[string]string{"v": `'a'b`},
+			[]codec.EncodeOption{
+				codec.UseSingleQuote(true),
+			},
+		},
+		{
+			"quote-style/double-keeps-inner-single-quotes",
+			`v: "'a'b"` + "\n",
+			map[string]string{"v": `'a'b`},
+			[]codec.EncodeOption{
+				codec.UseSingleQuote(false),
+			},
+		},
+		{
+			"quote-style/single-keeps-backslash",
+			`a: '\.yaml'` + "\n",
+			map[string]string{"a": `\.yaml`},
+			[]codec.EncodeOption{
+				codec.UseSingleQuote(true),
+			},
+		},
+	})
+}
+
+// encodeMultiLineCases covers strings holding line breaks: literal block scalars and their chomping, carriage returns, and UseLiteralStyleIfMultiline.
+func encodeMultiLineCases() iter.Seq[encodeCase] {
+	return slices.Values([]encodeCase{
+		{
+			"multi-line/literal-clip",
 			"hello: |\n  hello\n  world\n",
 			map[string]string{"hello": "hello\nworld\n"},
 			nil,
 		},
 		{
+			"multi-line/literal-strip",
 			"hello: |-\n  hello\n  world\n",
 			map[string]string{"hello": "hello\nworld"},
 			nil,
 		},
 		{
+			"multi-line/literal-keep",
 			"hello: |+\n  hello\n  world\n\n",
 			map[string]string{"hello": "hello\nworld\n\n"},
 			nil,
 		},
 		{
+			"multi-line/literal-nested",
 			"hello:\n  hello: |\n    hello\n    world\n",
 			map[string]map[string]string{"hello": {"hello": "hello\nworld\n"}},
 			nil,
@@ -250,16 +415,19 @@ func TestEncoder(t *testing.T) {
 		// be written as read back without the CRs. See
 		// TestMarshalStringHoldingCarriageReturn.
 		{
+			"multi-line/carriage-return-double-quoted",
 			"hello: \"hello\\rworld\\r\"\n",
 			map[string]string{"hello": "hello\rworld\r"},
 			nil,
 		},
 		{
+			"multi-line/crlf-double-quoted",
 			"hello: \"hello\\r\\nworld\\r\\n\"\n",
 			map[string]string{"hello": "hello\r\nworld\r\n"},
 			nil,
 		},
 		{
+			"multi-line/literal-style-option",
 			"v: |-\n  username: hello\n  password: hello123\n",
 			map[string]any{"v": "username: hello\npassword: hello123"},
 			[]codec.EncodeOption{
@@ -267,6 +435,7 @@ func TestEncoder(t *testing.T) {
 			},
 		},
 		{
+			"multi-line/literal-style-option-with-hash-line",
 			"v: |-\n  # comment\n  username: hello\n  password: hello123\n",
 			map[string]any{"v": "# comment\nusername: hello\npassword: hello123"},
 			[]codec.EncodeOption{
@@ -274,13 +443,49 @@ func TestEncoder(t *testing.T) {
 			},
 		},
 		{
+			"multi-line/literal-style-option-off",
 			"v: \"# comment\\nusername: hello\\npassword: hello123\"\n",
 			map[string]any{"v": "# comment\nusername: hello\npassword: hello123"},
 			[]codec.EncodeOption{
 				codec.UseLiteralStyleIfMultiline(false),
 			},
 		},
+	})
+}
+
+// encodeCollectionCases covers block sequences, arrays, mappings and the key types a map may have.
+func encodeCollectionCases() iter.Seq[encodeCase] {
+	return slices.Values([]encodeCase{
 		{
+			"sequence/slice",
+			"v:\n- A\n- B\n",
+			map[string][]string{"v": {"A", "B"}},
+			nil,
+		},
+		{
+			"sequence/slice-indented",
+			"v:\n  - A\n  - B\n",
+			map[string][]string{"v": {"A", "B"}},
+			[]codec.EncodeOption{
+				codec.IndentSequence(true),
+			},
+		},
+		{
+			"sequence/array",
+			"v:\n- A\n- B\n",
+			map[string][2]string{"v": {"A", "B"}},
+			nil,
+		},
+		{
+			"sequence/array-indented",
+			"v:\n  - A\n  - B\n",
+			map[string][2]string{"v": {"A", "B"}},
+			[]codec.EncodeOption{
+				codec.IndentSequence(true),
+			},
+		},
+		{
+			"sequence/mixed-with-nested-mapping",
 			"v:\n- A\n- 1\n- B:\n  - 2\n  - 3\n",
 			map[string]any{
 				"v": []any{
@@ -294,6 +499,7 @@ func TestEncoder(t *testing.T) {
 			nil,
 		},
 		{
+			"sequence/mixed-indented",
 			"v:\n  - A\n  - 1\n  - B:\n      - 2\n      - 3\n  - 2\n",
 			map[string]any{
 				"v": []any{
@@ -310,6 +516,37 @@ func TestEncoder(t *testing.T) {
 			},
 		},
 		{
+			"key/int",
+			"1: v\n",
+			map[int]string{1: "v"},
+			nil,
+		},
+		{
+			"key/float",
+			"1.1: v\n",
+			map[float64]string{1.1: "v"},
+			nil,
+		},
+		{
+			"key/bool",
+			"true: v\n",
+			map[bool]string{true: "v"},
+			nil,
+		},
+		{
+			"key/time",
+			"2015-01-01T00:00:00Z: v\n",
+			map[time.Time]string{time.Date(2015, 1, 1, 0, 0, 0, 0, time.UTC): "v"},
+			nil,
+		},
+		{
+			"mapping/one-entry",
+			"hello: world\n",
+			map[string]string{"hello": "world"},
+			nil,
+		},
+		{
+			"mapping/nested",
 			"a:\n  b: c\n",
 			map[string]any{
 				"a": map[string]string{
@@ -319,14 +556,7 @@ func TestEncoder(t *testing.T) {
 			nil,
 		},
 		{
-			"t2: \"2018-01-09T10:40:47Z\"\nt4: \"2098-01-09T10:40:47Z\"\n",
-			map[string]string{
-				"t2": "2018-01-09T10:40:47Z",
-				"t4": "2098-01-09T10:40:47Z",
-			},
-			nil,
-		},
-		{
+			"mapping/nested-two-entries",
 			"a:\n  b: c\n  d: e\n",
 			map[string]any{
 				"a": map[string]string{
@@ -337,70 +567,7 @@ func TestEncoder(t *testing.T) {
 			nil,
 		},
 		{
-			"a: 3s\n",
-			map[string]string{
-				"a": "3s",
-			},
-			nil,
-		},
-		{
-			"a: <foo>\n",
-			map[string]string{"a": "<foo>"},
-			nil,
-		},
-		{
-			"a: \"1:1\"\n",
-			map[string]string{"a": "1:1"},
-			nil,
-		},
-		{
-			"a: 1.2.3.4\n",
-			map[string]string{"a": "1.2.3.4"},
-			nil,
-		},
-		{
-			"a: \"b: c\"\n",
-			map[string]string{"a": "b: c"},
-			nil,
-		},
-		{
-			"a: \"Hello #comment\"\n",
-			map[string]string{"a": "Hello #comment"},
-			nil,
-		},
-		{
-			"a: \" b\"\n",
-			map[string]string{"a": " b"},
-			nil,
-		},
-		{
-			"a: \"b \"\n",
-			map[string]string{"a": "b "},
-			nil,
-		},
-		{
-			"a: \" b \"\n",
-			map[string]string{"a": " b "},
-			nil,
-		},
-		{
-			"a: \"`b` c\"\n",
-			map[string]string{"a": "`b` c"},
-			nil,
-		},
-		{
-			"a: 100.5\n",
-			map[string]any{
-				"a": 100.5,
-			},
-			nil,
-		},
-		{
-			"a: \"\\\\0\"\n",
-			map[string]string{"a": "\\0"},
-			nil,
-		},
-		{
+			"mapping/sorted-keys-with-submapping",
 			"a: 1\nb: 2\nc: 3\nd: 4\nsub:\n  e: 5\n",
 			map[string]any{
 				"a": 1,
@@ -413,7 +580,14 @@ func TestEncoder(t *testing.T) {
 			},
 			nil,
 		},
+	})
+}
+
+// encodeStructCases covers struct fields with no flag: empty and nil values, pointers, renaming and skipping.
+func encodeStructCases() iter.Seq[encodeCase] {
+	return slices.Values([]encodeCase{
 		{
+			"struct/nil-slice",
 			"a: 1\nb: []\n",
 			struct {
 				A int
@@ -424,6 +598,7 @@ func TestEncoder(t *testing.T) {
 			nil,
 		},
 		{
+			"struct/empty-slice",
 			"a: 1\nb: []\n",
 			struct {
 				A int
@@ -434,6 +609,7 @@ func TestEncoder(t *testing.T) {
 			nil,
 		},
 		{
+			"struct/empty-map",
 			"a: {}\n",
 			struct {
 				A map[string]any
@@ -443,6 +619,7 @@ func TestEncoder(t *testing.T) {
 			nil,
 		},
 		{
+			"struct/tag-renames-field",
 			"a: b\nc: d\n",
 			struct {
 				A string
@@ -453,6 +630,7 @@ func TestEncoder(t *testing.T) {
 			nil,
 		},
 		{
+			"struct/dash-tag-skips-field",
 			"a: 1\n",
 			struct {
 				A int
@@ -463,6 +641,7 @@ func TestEncoder(t *testing.T) {
 			nil,
 		},
 		{
+			"struct/empty-string",
 			"a: \"\"\n",
 			struct {
 				A string
@@ -472,6 +651,7 @@ func TestEncoder(t *testing.T) {
 			nil,
 		},
 		{
+			"struct/nil-string-pointer",
 			"a: null\n",
 			struct {
 				A *string
@@ -481,6 +661,7 @@ func TestEncoder(t *testing.T) {
 			nil,
 		},
 		{
+			"struct/pointer-to-empty-string",
 			"a: \"\"\n",
 			struct {
 				A *string
@@ -490,6 +671,7 @@ func TestEncoder(t *testing.T) {
 			nil,
 		},
 		{
+			"struct/nil-int-pointer",
 			"a: null\n",
 			struct {
 				A *int
@@ -499,6 +681,7 @@ func TestEncoder(t *testing.T) {
 			nil,
 		},
 		{
+			"struct/pointer-to-zero",
 			"a: 0\n",
 			struct {
 				A *int
@@ -507,9 +690,16 @@ func TestEncoder(t *testing.T) {
 			},
 			nil,
 		},
+	})
+}
 
-		// Omitempty flag.
+// encodeOmitEmptyTagCases covers the omitempty tag flag.
+//
+//nolint:dupl // mirrors encodeOmitZeroTagCases case for case: a struct tag is a literal, so the flag cannot be a parameter
+func encodeOmitEmptyTagCases() iter.Seq[encodeCase] {
+	return slices.Values([]encodeCase{
 		{
+			"omitempty-tag/skips-zero-int",
 			"a: 1\n",
 			struct {
 				A int `yaml:"a,omitempty"`
@@ -518,6 +708,7 @@ func TestEncoder(t *testing.T) {
 			nil,
 		},
 		{
+			"omitempty-tag/skips-all-zero",
 			"{}\n",
 			struct {
 				A int `yaml:"a,omitempty"`
@@ -526,6 +717,7 @@ func TestEncoder(t *testing.T) {
 			nil,
 		},
 		{
+			"omitempty-tag/nested-pointer-keeps-untagged",
 			"a:\n  \"y\": \"\"\n",
 			struct {
 				A *struct {
@@ -539,6 +731,7 @@ func TestEncoder(t *testing.T) {
 			nil,
 		},
 		{
+			"omitempty-tag/nested-pointer-all-empty",
 			"a: {}\n",
 			struct {
 				A *struct {
@@ -552,6 +745,7 @@ func TestEncoder(t *testing.T) {
 			nil,
 		},
 		{
+			"omitempty-tag/flow-pointer",
 			"a: {x: 1}\n",
 			struct {
 				A *struct{ X, y int } `yaml:"a,omitempty,flow"`
@@ -559,6 +753,7 @@ func TestEncoder(t *testing.T) {
 			nil,
 		},
 		{
+			"omitempty-tag/flow-nil-pointer",
 			"{}\n",
 			struct {
 				A *struct{ X, y int } `yaml:"a,omitempty,flow"`
@@ -566,6 +761,7 @@ func TestEncoder(t *testing.T) {
 			nil,
 		},
 		{
+			"omitempty-tag/flow-pointer-to-zero-struct",
 			"a: {x: 0}\n",
 			struct {
 				A *struct{ X, y int } `yaml:"a,omitempty,flow"`
@@ -573,6 +769,7 @@ func TestEncoder(t *testing.T) {
 			nil,
 		},
 		{
+			"omitempty-tag/flow-struct",
 			"a: {x: 1}\n",
 			struct {
 				A struct{ X, y int } `yaml:"a,omitempty,flow"`
@@ -580,6 +777,7 @@ func TestEncoder(t *testing.T) {
 			nil,
 		},
 		{
+			"omitempty-tag/flow-struct-with-only-unexported-set",
 			"{}\n",
 			struct {
 				A struct{ X, y int } `yaml:"a,omitempty,flow"`
@@ -587,6 +785,7 @@ func TestEncoder(t *testing.T) {
 			nil,
 		},
 		{
+			"omitempty-tag/skips-zero-float",
 			"a: 1.0\n",
 			struct {
 				A float64 `yaml:"a,omitempty"`
@@ -595,6 +794,7 @@ func TestEncoder(t *testing.T) {
 			nil,
 		},
 		{
+			"omitempty-tag/skips-empty-slice",
 			"a: 1\n",
 			struct {
 				A int
@@ -607,6 +807,7 @@ func TestEncoder(t *testing.T) {
 		// Highlighting differences of go-yaml omitempty vs std encoding/json
 		// omitempty. Encoding/json will emit the following fields: https://go.dev/play/p/VvNpdM0GD4d
 		{
+			"omitempty-tag/skips-zero-netip-and-struct",
 			"{}\n",
 			struct {
 				// This type has a custom IsZero method.
@@ -615,9 +816,16 @@ func TestEncoder(t *testing.T) {
 			}{},
 			nil,
 		},
+	})
+}
 
-		// omitzero flag.
+// encodeOmitZeroTagCases covers the omitzero tag flag.
+//
+//nolint:dupl // mirrors encodeOmitEmptyTagCases case for case: a struct tag is a literal, so the flag cannot be a parameter
+func encodeOmitZeroTagCases() iter.Seq[encodeCase] {
+	return slices.Values([]encodeCase{
 		{
+			"omitzero-tag/skips-zero-int",
 			"a: 1\n",
 			struct {
 				A int `yaml:"a,omitzero"`
@@ -626,6 +834,7 @@ func TestEncoder(t *testing.T) {
 			nil,
 		},
 		{
+			"omitzero-tag/skips-all-zero",
 			"{}\n",
 			struct {
 				A int `yaml:"a,omitzero"`
@@ -634,6 +843,7 @@ func TestEncoder(t *testing.T) {
 			nil,
 		},
 		{
+			"omitzero-tag/nested-pointer-keeps-untagged",
 			"a:\n  \"y\": \"\"\n",
 			struct {
 				A *struct {
@@ -647,6 +857,7 @@ func TestEncoder(t *testing.T) {
 			nil,
 		},
 		{
+			"omitzero-tag/nested-pointer-all-zero",
 			"a: {}\n",
 			struct {
 				A *struct {
@@ -660,6 +871,7 @@ func TestEncoder(t *testing.T) {
 			nil,
 		},
 		{
+			"omitzero-tag/flow-pointer",
 			"a: {x: 1}\n",
 			struct {
 				A *struct{ X, y int } `yaml:"a,omitzero,flow"`
@@ -667,6 +879,7 @@ func TestEncoder(t *testing.T) {
 			nil,
 		},
 		{
+			"omitzero-tag/flow-nil-pointer",
 			"{}\n",
 			struct {
 				A *struct{ X, y int } `yaml:"a,omitzero,flow"`
@@ -674,6 +887,7 @@ func TestEncoder(t *testing.T) {
 			nil,
 		},
 		{
+			"omitzero-tag/flow-pointer-to-zero-struct",
 			"a: {x: 0}\n",
 			struct {
 				A *struct{ X, y int } `yaml:"a,omitzero,flow"`
@@ -681,6 +895,7 @@ func TestEncoder(t *testing.T) {
 			nil,
 		},
 		{
+			"omitzero-tag/flow-struct",
 			"a: {x: 1}\n",
 			struct {
 				A struct{ X, y int } `yaml:"a,omitzero,flow"`
@@ -688,6 +903,7 @@ func TestEncoder(t *testing.T) {
 			nil,
 		},
 		{
+			"omitzero-tag/flow-struct-with-only-unexported-set",
 			"{}\n",
 			struct {
 				A struct{ X, y int } `yaml:"a,omitzero,flow"`
@@ -695,6 +911,7 @@ func TestEncoder(t *testing.T) {
 			nil,
 		},
 		{
+			"omitzero-tag/skips-zero-float",
 			"a: 1.0\n",
 			struct {
 				A float64 `yaml:"a,omitzero"`
@@ -703,6 +920,7 @@ func TestEncoder(t *testing.T) {
 			nil,
 		},
 		{
+			"omitzero-tag/keeps-empty-slice",
 			"a: 1\nb: []\n",
 			struct {
 				A int
@@ -713,6 +931,7 @@ func TestEncoder(t *testing.T) {
 			nil,
 		},
 		{
+			"omitzero-tag/skips-zero-netip-and-struct",
 			"{}\n",
 			struct {
 				A netip.Addr         `yaml:"a,omitzero"`
@@ -720,9 +939,14 @@ func TestEncoder(t *testing.T) {
 			}{},
 			nil,
 		},
+	})
+}
 
-		// OmitEmpty global option.
+// encodeOmitOptionCases covers the OmitEmpty and OmitZero encoder options.
+func encodeOmitOptionCases() iter.Seq[encodeCase] {
+	return slices.Values([]encodeCase{
 		{
+			"omitempty-option/skips-zero-int",
 			"a: 1\n",
 			struct {
 				A int
@@ -733,6 +957,7 @@ func TestEncoder(t *testing.T) {
 			},
 		},
 		{
+			"omitempty-option/skips-all-zero",
 			"{}\n",
 			struct {
 				A int
@@ -743,6 +968,7 @@ func TestEncoder(t *testing.T) {
 			},
 		},
 		{
+			"omitempty-option/keeps-netip-and-struct",
 			"a: \"\"\nb: {}\n",
 			struct {
 				A netip.Addr         `yaml:"a"`
@@ -752,9 +978,8 @@ func TestEncoder(t *testing.T) {
 				codec.OmitEmpty(),
 			},
 		},
-
-		// OmitZero global option.
 		{
+			"omitzero-option/skips-zero-int",
 			"a: 1\n",
 			struct {
 				A int
@@ -765,6 +990,7 @@ func TestEncoder(t *testing.T) {
 			},
 		},
 		{
+			"omitzero-option/skips-all-zero",
 			"{}\n",
 			struct {
 				A int
@@ -775,6 +1001,7 @@ func TestEncoder(t *testing.T) {
 			},
 		},
 		{
+			"omitzero-option/skips-zero-netip-and-struct",
 			"{}\n",
 			struct {
 				A netip.Addr         `yaml:"a"`
@@ -785,6 +1012,7 @@ func TestEncoder(t *testing.T) {
 			},
 		},
 		{
+			"omitzero-option/skips-empty-embedded-struct",
 			"{}\n",
 			struct {
 				unexportedStruct
@@ -793,9 +1021,14 @@ func TestEncoder(t *testing.T) {
 				codec.OmitZero(),
 			},
 		},
+	})
+}
 
-		// Flow flag.
+// encodeFlowCases covers the flow tag flag, and which flow scalars are quoted.
+func encodeFlowCases() iter.Seq[encodeCase] {
+	return slices.Values([]encodeCase{
 		{
+			"flow/sequence",
 			"a: [1, 2]\n",
 			struct {
 				A []int `yaml:"a,flow"`
@@ -803,6 +1036,7 @@ func TestEncoder(t *testing.T) {
 			nil,
 		},
 		{
+			"flow/mapping-through-pointer",
 			"a: {b: c, d: e}\n",
 			&struct {
 				A map[string]string `yaml:"a,flow"`
@@ -810,6 +1044,7 @@ func TestEncoder(t *testing.T) {
 			nil,
 		},
 		{
+			"flow/struct",
 			"a: {b: c, d: e}\n",
 			struct {
 				A struct {
@@ -818,8 +1053,8 @@ func TestEncoder(t *testing.T) {
 			}{struct{ B, D string }{"c", "e"}},
 			nil,
 		},
-		// Quoting in flow mode
 		{
+			"flow/double-quotes-comma",
 			`a: [b, "c,d", e]` + "\n",
 			struct {
 				A []string `yaml:"a,flow"`
@@ -829,6 +1064,7 @@ func TestEncoder(t *testing.T) {
 			},
 		},
 		{
+			"flow/double-quotes-bracket",
 			`a: [b, "c]", d]` + "\n",
 			struct {
 				A []string `yaml:"a,flow"`
@@ -838,6 +1074,7 @@ func TestEncoder(t *testing.T) {
 			},
 		},
 		{
+			"flow/double-quotes-brace",
 			`a: [b, "c}", d]` + "\n",
 			struct {
 				A []string `yaml:"a,flow"`
@@ -847,6 +1084,7 @@ func TestEncoder(t *testing.T) {
 			},
 		},
 		{
+			"flow/double-quotes-double-quote",
 			`a: [b, "c\"", d]` + "\n",
 			struct {
 				A []string `yaml:"a,flow"`
@@ -856,6 +1094,7 @@ func TestEncoder(t *testing.T) {
 			},
 		},
 		{
+			"flow/double-quotes-single-quote",
 			`a: [b, "c'", d]` + "\n",
 			struct {
 				A []string `yaml:"a,flow"`
@@ -864,8 +1103,8 @@ func TestEncoder(t *testing.T) {
 				codec.UseSingleQuote(false),
 			},
 		},
-		// No quoting in non-flow mode
 		{
+			"flow/block-sequence-leaves-comma-plain",
 			"a:\n- b\n- c,d\n- e\n",
 			struct {
 				A []string `yaml:"a"`
@@ -873,6 +1112,7 @@ func TestEncoder(t *testing.T) {
 			nil,
 		},
 		{
+			"flow/default-quotes-bracket",
 			`a: [b, "c]", d]` + "\n",
 			struct {
 				A []string `yaml:"a,flow"`
@@ -880,6 +1120,7 @@ func TestEncoder(t *testing.T) {
 			nil,
 		},
 		{
+			"flow/default-quotes-brace",
 			`a: [b, "c}", d]` + "\n",
 			struct {
 				A []string `yaml:"a,flow"`
@@ -887,6 +1128,7 @@ func TestEncoder(t *testing.T) {
 			nil,
 		},
 		{
+			"flow/default-quotes-double-quote",
 			`a: [b, "c\"", d]` + "\n",
 			struct {
 				A []string `yaml:"a,flow"`
@@ -894,101 +1136,74 @@ func TestEncoder(t *testing.T) {
 			nil,
 		},
 		{
+			"flow/default-quotes-single-quote",
 			`a: [b, "c'", d]` + "\n",
 			struct {
 				A []string `yaml:"a,flow"`
 			}{[]string{"b", "c'", "d"}},
 			nil,
 		},
+	})
+}
 
-		// Multi bytes
+// encodeMarshalerCases covers time.Time, time.Duration and an encoding.TextMarshaler.
+func encodeMarshalerCases() iter.Seq[encodeCase] {
+	return slices.Values([]encodeCase{
 		{
-			"v: あいうえお\nv2: かきくけこ\n",
-			map[string]string{"v": "あいうえお", "v2": "かきくけこ"},
-			nil,
-		},
-
-		// time value
-		{
+			"time/zero",
 			"v: 0001-01-01T00:00:00Z\n",
 			map[string]time.Time{"v": {}},
 			nil,
 		},
 		{
+			"time/pointer-to-zero",
 			"v: 0001-01-01T00:00:00Z\n",
 			map[string]*time.Time{"v": {}},
 			nil,
 		},
 		{
+			"time/nil-pointer",
 			"v: null\n",
 			map[string]*time.Time{"v": nil},
 			nil,
 		},
 		{
+			"duration/value",
 			"v: 30s\n",
 			map[string]time.Duration{"v": 30 * time.Second},
 			nil,
 		},
 		{
+			"duration/pointer",
 			"v: 30s\n",
 			map[string]*time.Duration{"v": new(30 * time.Second)},
 			nil,
 		},
 		{
+			"duration/nil-pointer",
 			"v: null\n",
 			map[string]*time.Duration{"v": nil},
 			nil,
 		},
 		{
+			"text-marshaler/word",
 			"v: test\n",
 			TestTextUnmarshalerContainer{V: "test"},
 			nil,
 		},
 		{
+			"text-marshaler/digit-quoted",
 			"v: \"1\"\n",
 			TestTextUnmarshalerContainer{V: "1"},
 			nil,
 		},
 		{
+			"text-marshaler/hash-quoted",
 			"v: \"#\"\n",
 			TestTextUnmarshalerContainer{V: "#"},
 			nil,
 		},
-		// Quote style
-		{
-			`v: '''a''b'` + "\n",
-			map[string]string{"v": `'a'b`},
-			[]codec.EncodeOption{
-				codec.UseSingleQuote(true),
-			},
-		},
-		{
-			`v: "'a'b"` + "\n",
-			map[string]string{"v": `'a'b`},
-			[]codec.EncodeOption{
-				codec.UseSingleQuote(false),
-			},
-		},
-		{
-			`a: '\.yaml'` + "\n",
-			map[string]string{"a": `\.yaml`},
-			[]codec.EncodeOption{
-				codec.UseSingleQuote(true),
-			},
-		},
-	}
-	for _, test := range tests {
-		t.Run(test.source, func(t *testing.T) {
-			var buf bytes.Buffer
-			enc := codec.NewEncoder(&buf, test.options...)
-			if err := enc.Encode(test.value); err != nil {
-				t.Fatalf("%+v", err)
-			}
-			if test.source != buf.String() {
-				t.Fatalf("expect = [%s], actual = [%s]", test.source, buf.String())
-			}
-		})
-	}
+	})
 }
 
 func TestEncodeStructIncludeMap(t *testing.T) {
