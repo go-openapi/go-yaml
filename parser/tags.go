@@ -205,7 +205,7 @@ func (p *Parser) tagPrefix(handle, fallback string) string {
 //
 // Every branch settles the cursor itself.
 // A branch that reads tk steps past it, and a branch that builds a node from nothing does not.
-// So parseScalarValue, parseAnchor and parseLiteral are each followed by ctx.goNext.
+// So parseScalarValue, parseAnchor, parseLiteral and newStringNode each go through ctx.passed, which steps past tk.
 // newTagDefaultScalarValueNode is not, because it stands the tag on the empty node and tk belongs to what comes next.
 //
 // parseToken, parseMap, parseSequence and the two flow readers settle the cursor themselves.
@@ -233,42 +233,7 @@ func (p *Parser) parseTagValue(ctx context, uri string, tagRawTk *token.Token, t
 		}
 		return p.parseMap(ctx)
 	case token.IntegerTag, token.FloatTag, token.StringTag, token.BinaryTag, token.TimestampTag, token.BooleanTag, token.NullTag:
-		if tk.GroupType() == group.TokenGroupLiteral || tk.GroupType() == group.TokenGroupFolded {
-			// A block scalar written on the line below the tag.
-			// The grouping joins a tag only to a scalar on its own line,
-			// so "!!null" over ">" arrives as a tag then a folded group.
-			// The cursor steps past the folded group, as parseToken does for it.
-			literal, err := p.parseLiteral(ctx.withGroup(p, tk.Group))
-			if err != nil {
-				return nil, err
-			}
-			ctx.goNext()
-
-			return literal, nil
-		}
-		if endsValue(tk) || (startsEntry(tk) && !p.tagStandsOver(tk, tagRawTk)) {
-			// Nothing here is the tag's value: punctuation closes the enclosing collection, or its next entry has begun.
-			// The tag stands on the empty node.
-			return newTagDefaultScalarValueNode(ctx, uri, tagRawTk)
-		}
-		if group, ends := p.anchorNamesNothing(ctx, tk); ends {
-			anchor, err := p.parseAnchor(ctx.withGroup(p, group), group)
-			if err != nil {
-				return nil, err
-			}
-			ctx.goNext()
-
-			return anchor, nil
-		}
-		if opensCollection(tk) || isMapToken(tk) {
-			return p.parseTaggedOtherKind(ctx, uri, tagRawTk, tk)
-		}
-		scalar, err := p.parseScalarValue(ctx, tk)
-		if err != nil {
-			return nil, err
-		}
-		ctx.goNext()
-		return scalar, nil
+		return p.parseScalarTagValue(ctx, uri, tagRawTk, tk)
 	case token.SequenceTag, token.OrderedMapTag:
 		if tag == token.OrderedMapTag {
 			// An ordered map's keys are unique across its entries, and each entry is a mapping of its own.
@@ -287,6 +252,39 @@ func (p *Parser) parseTagValue(ctx context, uri string, tagRawTk *token.Token, t
 	default:
 		// nothing to do
 	}
+
+	return p.parseUnresolvedTagValue(ctx, uri, tagRawTk, tk)
+}
+
+// parseScalarTagValue reads the node a scalar tag, such as "!!int" or "!!str", stands on: a block scalar on the
+// line below, the empty node where nothing follows, an anchor naming nothing, or a scalar.
+// A collection under a scalar tag goes to parseTaggedOtherKind.
+func (p *Parser) parseScalarTagValue(ctx context, uri string, tagRawTk *token.Token, tk *group.TapeToken) (ast.Node, error) {
+	if tk.GroupType() == group.TokenGroupLiteral || tk.GroupType() == group.TokenGroupFolded {
+		// A block scalar written on the line below the tag.
+		// The grouping joins a tag only to a scalar on its own line,
+		// so "!!null" over ">" arrives as a tag then a folded group.
+		// The cursor steps past the folded group, as parseToken does for it.
+		return ctx.passed(p.parseLiteral(ctx.withGroup(p, tk.Group)))
+	}
+	if endsValue(tk) || (startsEntry(tk) && !p.tagStandsOver(tk, tagRawTk)) {
+		// Nothing here is the tag's value: punctuation closes the enclosing collection, or its next entry has begun.
+		// The tag stands on the empty node.
+		return newTagDefaultScalarValueNode(ctx, uri, tagRawTk)
+	}
+	if group, ends := p.anchorNamesNothing(ctx, tk); ends {
+		return ctx.passed(p.parseAnchor(ctx.withGroup(p, group), group))
+	}
+	if opensCollection(tk) || isMapToken(tk) {
+		return p.parseTaggedOtherKind(ctx, uri, tagRawTk, tk)
+	}
+
+	return ctx.passed(p.parseScalarValue(ctx, tk))
+}
+
+// parseUnresolvedTagValue reads the node a tag the core schema does not resolve stands on: the non-specific "!",
+// a local tag, or a "!!" tag a "%TAG" line repoints.
+func (p *Parser) parseUnresolvedTagValue(ctx context, uri string, tagRawTk *token.Token, tk *group.TapeToken) (ast.Node, error) {
 	if endsValue(tk) {
 		// A tag the core schema does not resolve (the non-specific "!", or a local tag),
 		// followed by punctuation that closes the enclosing collection, stands on the empty node: "[!]", "{a: !}".
@@ -303,13 +301,7 @@ func (p *Parser) parseTagValue(ctx context, uri string, tagRawTk *token.Token, t
 		// A tag the core schema does not resolve leaves its scalar as text: "!thing 12" is the string "12".
 		// The parser applies this and not the scanner, because only the parser holds the "%TAG" lines:
 		// under "%TAG !! !local-", "!!int" names !local-int and resolves to nothing.
-		node, err := newStringNode(ctx, tk)
-		if err != nil {
-			return nil, err
-		}
-		ctx.goNext()
-
-		return node, nil
+		return ctx.passed(newStringNode(ctx, tk))
 	}
 	if scalar := anchoredScalar(tk); scalar != nil && resolvedBySchema(scalar) {
 		// The same rule, with an anchor between the tag and the scalar: "!foo &a1 true" is the string "true",
