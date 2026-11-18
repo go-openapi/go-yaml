@@ -402,10 +402,16 @@ type placement struct {
 // column twice. Two seeds holding one read now, and at the back 2 -> 0
 // unreadable: the two documents ending on "bar" over " \t \t baz \t \t \"" took
 // the entry after them as standing on the scalar's line. Nothing else moved.
+//
+// 1781 -> 1780 when a node property standing before an explicit key's "?" on
+// the same line began to be refused. seed/10848 writes "!!null ?", which
+// yaml/yaml-reference-parser and libfyaml refuse, and it was the document left
+// unreadable at the front and the middle: the entry went in after the tag and
+// the tag was copied in front of the line it pushed down. Nothing fails now.
 var insertionCensus = map[string]placement{
-	"front":  {tested: 1781, unreadable: 1, disturbed: 64},
-	"middle": {tested: 1781, unreadable: 1, disturbed: 81},
-	"back":   {tested: 1781, unreadable: 0, disturbed: 190},
+	"front":  {tested: 1780, unreadable: 0, disturbed: 64},
+	"middle": {tested: 1780, unreadable: 0, disturbed: 81},
+	"back":   {tested: 1780, unreadable: 0, disturbed: 190},
 }
 
 // TestInsertingIntoTheCorpus puts one entry into every document the corpus holds

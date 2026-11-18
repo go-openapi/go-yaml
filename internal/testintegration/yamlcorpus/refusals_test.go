@@ -183,6 +183,11 @@ func TestARefusalSignatureKeepsTheParserAndDropsTheDocument(t *testing.T) {
 // when a pair inside a flow sequence began to be refused for a key that starts
 // on a line above its ':', as in "[a" over " b: c]". The check read only the
 // line the key ends on, so such a key was read as "a b".
+//
+// "explicit keys are not allowed after a tag on the same line" and its anchor
+// twin arrived the same day, when a node property standing before a "?" on its
+// line began to be refused as one before a "-" was: "!!null ?" was read as a
+// tagged mapping, and "k: &m ? a" as {k: {a: null}}.
 var parserComplaints = []string{
 	"YAML version has already been specified",
 	"_ is a reserved character",
@@ -214,6 +219,8 @@ var parserComplaints = []string{
 	"could not find flow map content",
 	"could not find flow mapping end token _",
 	"could not find map value",
+	"explicit keys are not allowed after a tag on the same line",
+	"explicit keys are not allowed after anchor on the same line",
 	"found a byte order mark inside a line, where a node may not hold one",
 	"found a byte that is part of no character",
 	"found a character that is not a hexadecimal digit in escaped N-bit character",

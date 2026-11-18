@@ -142,6 +142,13 @@ func (g *Grouper) property(at int, tk *TapeToken, out []*TapeToken) ([]*TapeToke
 	}
 }
 
+// The complaints for an explicit key's "?" written on the line of a node's properties, which 8.2.2 keeps off it as
+// 8.2.1 keeps a sequence entry's "-": the properties of a block mapping stand on a line of their own.
+const (
+	explicitKeyAfterTag    = "explicit keys are not allowed after a tag on the same line"
+	explicitKeyAfterAnchor = "explicit keys are not allowed after anchor on the same line"
+)
+
 // tagOrLetGo joins a tag with what it tags, or hands the tag on where it tags
 // nothing -- a tag on its own line, or one before a flow indicator.
 func (g *Grouper) tagOrLetGo(at int, tk *TapeToken, out []*TapeToken) ([]*TapeToken, bool) {
@@ -152,6 +159,15 @@ func (g *Grouper) tagOrLetGo(at int, tk *TapeToken, out []*TapeToken) ([]*TapeTo
 		// caught there: "!!int - 8" was refused as `value is not allowed in
 		// this context` and "!foo - 1" was read as [1].
 		g.fail(yamlerrors.NewSyntax("sequence entries are not allowed after a tag on the same line", tk.RawToken()))
+
+		return out, false
+	}
+	if tk.Type() == token.MappingKeyType && g.tag.Line() == tk.Line() {
+		// The same holds for a block mapping opened by an explicit key: its
+		// properties stand on a line of their own, as in "!!map" over "? a".
+		// "!!null ?" was read as a tagged mapping, and "k: !!map ? a" as
+		// {k: {a: null}}.
+		g.fail(yamlerrors.NewSyntax(explicitKeyAfterTag, tk.RawToken()))
 
 		return out, false
 	}
@@ -191,6 +207,13 @@ func (g *Grouper) anchorNames(at int, tk *TapeToken, out []*TapeToken) ([]*TapeT
 
 		return out, false
 
+	case sameLine && tk.Type() == token.MappingKeyType:
+		// As for a tag: "&m" over "? a" anchors the mapping, and "&m ? a" is
+		// no document.
+		g.fail(yamlerrors.NewSyntax(explicitKeyAfterAnchor, tk.RawToken()))
+
+		return out, false
+
 	case sameLine && tk.Type() == token.TagType:
 		g.tag, g.prop = tk, propAnchorAndTag
 
@@ -215,6 +238,12 @@ func (g *Grouper) anchorNames(at int, tk *TapeToken, out []*TapeToken) ([]*TapeT
 // anchorNamesTagged settles an anchor and a tag standing together: the scalar
 // after them belongs to both.
 func (g *Grouper) anchorNamesTagged(at int, tk *TapeToken, out []*TapeToken) ([]*TapeToken, bool) {
+	if tk.Type() == token.MappingKeyType && g.tag.Line() == tk.Line() {
+		g.fail(yamlerrors.NewSyntax(explicitKeyAfterTag, tk.RawToken()))
+
+		return out, false
+	}
+
 	grouped, ok := g.taggedScalar(g.tag, tk)
 	if !ok {
 		return out, false
@@ -244,6 +273,11 @@ func (g *Grouper) taggedAnchorNames(at int, tk *TapeToken, out []*TapeToken) ([]
 		// its own line is what the anchor names, and a '-' opens an entry
 		// rather than naming anything.
 		g.fail(yamlerrors.NewSyntax("sequence entries are not allowed after anchor on the same line", tk.RawToken()))
+
+		return out, false
+	}
+	if g.name.Line() == tk.Line() && tk.Type() == token.MappingKeyType {
+		g.fail(yamlerrors.NewSyntax(explicitKeyAfterAnchor, tk.RawToken()))
 
 		return out, false
 	}
