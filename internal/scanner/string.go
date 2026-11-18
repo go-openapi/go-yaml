@@ -4,8 +4,8 @@
 package scanner
 
 import (
+	"bytes"
 	"fmt"
-	"slices"
 	"unicode/utf8"
 
 	"github.com/go-openapi/go-yaml/token"
@@ -78,36 +78,12 @@ func (s *Scanner) scanSingleQuote(ctx *Context) (token.Token, error) {
 		switch {
 		case isNewLineChar(c):
 			keep(idx)
-			notSpaceIdx := -1
-			for i, v := range slices.Backward(value) {
-				if v == ' ' {
-					continue
-				}
-
-				notSpaceIdx = i
-				break
+			var err error
+			if value, err = s.foldQuotedLineBreak(ctx, value, isFirstLineChar, src[idx+int32(width):], baseIndent); err != nil {
+				return token.Token{}, err
 			}
-
-			if len(value) > notSpaceIdx {
-				value = value[:notSpaceIdx+1]
-			}
-			if isFirstLineChar {
-				value = append(value, '\n')
-			} else {
-				value = append(value, ' ')
-			}
-
 			isFirstLineChar = true
 			isNewLine = true
-			s.progressLine(ctx)
-			if idx+int32(width) < size {
-				if err := s.validateDocumentSeparatorMarker(ctx, src[idx+int32(width):]); err != nil {
-					return token.Token{}, err
-				}
-				if err := s.checkContinuationIndent(ctx, src[idx+int32(width):], baseIndent); err != nil {
-					return token.Token{}, err
-				}
-			}
 
 			continue
 		case isFirstLineChar && c == ' ':
@@ -153,6 +129,30 @@ func (s *Scanner) scanSingleQuote(ctx *Context) (token.Token, error) {
 	return token.Token{}, ErrInvalidToken("could not find end character of single-quoted text", token.Invalid(ctx.origin(), srcpos))
 }
 
+// foldQuotedLineBreak folds the line break a quoted scalar reads into value: it drops the spaces ending the line,
+// and appends a space, or a line feed where the line held nothing but the break. It then checks rest, the text after
+// the break, for a document marker and for a continuation line not indented past baseIndent.
+func (s *Scanner) foldQuotedLineBreak(ctx *Context, value []byte, emptyLine bool, rest string, baseIndent int32) ([]byte, error) {
+	value = bytes.TrimRight(value, " ")
+	if emptyLine {
+		value = append(value, '\n')
+	} else {
+		value = append(value, ' ')
+	}
+	s.progressLine(ctx)
+	if rest == "" {
+		return value, nil
+	}
+	if err := s.validateDocumentSeparatorMarker(ctx, rest); err != nil {
+		return nil, err
+	}
+	if err := s.checkContinuationIndent(ctx, rest, baseIndent); err != nil {
+		return nil, err
+	}
+
+	return value, nil
+}
+
 // TODO(perf): same remark as above.
 //
 //nolint:mnd,gocyclo,cyclop,maintidx,gocognit // a case per rune to check and per escape sequence; named constants would not read better
@@ -191,33 +191,13 @@ func (s *Scanner) scanDoubleQuote(ctx *Context) (token.Token, error) {
 		switch {
 		case isNewLineChar(c):
 			keep(idx)
-			notSpaceIdx := -1
-			for i, v := range slices.Backward(value) {
-				if v == ' ' {
-					continue
-				}
-				notSpaceIdx = i
-				break
-			}
-			if len(value) > notSpaceIdx {
-				value = value[:notSpaceIdx+1]
-			}
-			if isFirstLineChar {
-				value = append(value, '\n')
-			} else {
-				value = utf8.AppendRune(value, ' ')
+			var err error
+			if value, err = s.foldQuotedLineBreak(ctx, value, isFirstLineChar, src[idx+int32(width):], baseIndent); err != nil {
+				return token.Token{}, err
 			}
 			isFirstLineChar = true
 			isNewLine = true
-			s.progressLine(ctx)
-			if idx+int32(width) < size {
-				if err := s.validateDocumentSeparatorMarker(ctx, src[idx+int32(width):]); err != nil {
-					return token.Token{}, err
-				}
-				if err := s.checkContinuationIndent(ctx, src[idx+int32(width):], baseIndent); err != nil {
-					return token.Token{}, err
-				}
-			}
+
 			continue
 		case isFirstLineChar && c == ' ':
 			continue
