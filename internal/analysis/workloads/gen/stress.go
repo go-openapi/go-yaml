@@ -5,6 +5,7 @@ package main
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 )
@@ -36,7 +37,7 @@ func stress(dir string) error {
 			return fmt.Errorf("writing %s: %w", name, err)
 		}
 
-		fmt.Printf("%-18s %8d bytes, %d lines\n", name, len(src), strings.Count(string(src), "\n"))
+		fmt.Fprintf(os.Stdout, "%-18s %8d bytes, %d lines\n", name, len(src), strings.Count(string(src), "\n"))
 	}
 
 	return nil
@@ -74,11 +75,11 @@ func flowWide() string {
 func flowNested() string {
 	const depth, entries = 120, 300
 
-	open, close := strings.Repeat("[", depth), strings.Repeat("]", depth)
+	opening, closing := strings.Repeat("[", depth), strings.Repeat("]", depth)
 
 	var b strings.Builder
 	for i := range entries {
-		fmt.Fprintf(&b, "k%04d: %s%d%s\n", i, open, i, close)
+		fmt.Fprintf(&b, "k%04d: %s%d%s\n", i, opening, i, closing)
 	}
 
 	return b.String()
@@ -176,7 +177,8 @@ func mapWide() string {
 	const keys = 50000
 
 	var b strings.Builder
-	b.Grow(keys * 22)
+	const bytesPerKey = len("key000000: value000000\n")
+	b.Grow(keys * bytesPerKey)
 	for i := range keys {
 		fmt.Fprintf(&b, "key%06d: value%06d\n", i, i)
 	}

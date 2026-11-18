@@ -50,7 +50,7 @@ func TestWriteChurnProfile(t *testing.T) {
 	// as churn and the whole measurement inverts.
 	runtime.GC()
 
-	out, err := os.Create(path)
+	out, err := os.Create(path) //nolint:gosec // the heap profile goes where the person running the test asked for it
 	require.NoError(t, err)
 	require.NoError(t, pprof.Lookup("heap").WriteTo(out, 0))
 	require.NoError(t, out.Close())

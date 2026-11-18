@@ -35,10 +35,10 @@ type (
 		ID          int64   `yaml:"id"`
 		Logo        *string `yaml:"logo"`
 		Name        string  `yaml:"name"`
-		SubTopicIds []int64 `yaml:"subTopicIds"`
+		SubTopicIDs []int64 `yaml:"subTopicIds"`
 		SubjectCode *string `yaml:"subjectCode"`
 		Subtitle    *string `yaml:"subtitle"`
-		TopicIds    []int64 `yaml:"topicIds"`
+		TopicIDs    []int64 `yaml:"topicIds"`
 	}
 
 	citmPerformance struct {

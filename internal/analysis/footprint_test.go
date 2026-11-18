@@ -93,7 +93,7 @@ func TestRetainedByLayer(t *testing.T) {
 
 type nodeCounter struct{ n *int }
 
-func (c nodeCounter) Visit(node ast.Node) ast.Visitor { *c.n++; return c }
+func (c nodeCounter) Visit(_ ast.Node) ast.Visitor { *c.n++; return c }
 
 func countNodes(t *testing.T, src []byte) int {
 	t.Helper()

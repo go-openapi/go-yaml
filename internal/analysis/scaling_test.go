@@ -75,7 +75,7 @@ func TestStageAttribution(t *testing.T) {
 		ts := timeIt(t, func() {
 			var sc scanner.Scanner
 			sc.Init([]byte(src))
-			for range sc.Tokens() { //nolint:revive // draining the stream is the measurement
+			for range sc.Tokens() {
 			}
 			if err := sc.Err(); err != nil {
 				t.Fatal(err)

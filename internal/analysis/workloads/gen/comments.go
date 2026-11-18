@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 	"reflect"
 	"strings"
@@ -43,7 +44,7 @@ func annotate(dir string) error {
 		return err
 	}
 
-	fmt.Printf("%-18s %8d bytes -> %8d with comments (%d lines, %d of them comment)\n",
+	fmt.Fprintf(os.Stdout, "%-18s %8d bytes -> %8d with comments (%d lines, %d of them comment)\n",
 		commentedFrom, len(src), len(out), lineCount(out), commentLines(out))
 
 	return writeGzip(filepath.Join(dir, commentedName+".yaml.gz"), out)
@@ -181,7 +182,9 @@ func phrase(set []string, key string, n int) string {
 // its own and takes the deepest, so it never reads as the end of a block.
 func indentOf(line string) int {
 	if strings.TrimSpace(line) == "" {
-		return 1 << 30
+		const deepestIndent = 1 << 30
+
+		return deepestIndent
 	}
 
 	return len(line) - len(strings.TrimLeft(line, " "))
@@ -227,7 +230,7 @@ func lineCount(data []byte) int { return bytes.Count(data, []byte("\n")) }
 
 func commentLines(data []byte) int {
 	var n int
-	for _, line := range bytes.Split(data, []byte("\n")) {
+	for line := range bytes.SplitSeq(data, []byte("\n")) {
 		if bytes.HasPrefix(bytes.TrimLeft(line, " "), []byte("#")) {
 			n++
 		}

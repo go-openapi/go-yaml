@@ -93,7 +93,7 @@ func rewrite(from, to string) error {
 		return fmt.Errorf("writing YAML: %w", err)
 	}
 
-	fmt.Printf("%-18s %8d bytes of JSON -> %8d of YAML\n", filepath.Base(from), len(raw), len(out))
+	fmt.Fprintf(os.Stdout, "%-18s %8d bytes of JSON -> %8d of YAML\n", filepath.Base(from), len(raw), len(out))
 
 	return writeGzip(to, out)
 }
@@ -121,7 +121,11 @@ func ordered(dec *json.Decoder) (any, error) {
 				if err != nil {
 					return nil, err
 				}
-				if err := items.Set(key.(string), value); err != nil {
+				name, ok := key.(string)
+				if !ok {
+					return nil, fmt.Errorf("an object key decoded as %T", key)
+				}
+				if err := items.Set(name, value); err != nil {
 					return nil, err
 				}
 			}
@@ -160,6 +164,7 @@ func ordered(dec *json.Decoder) (any, error) {
 // them.
 type rawNumber string
 
+//nolint:unparam // the error result is the BytesMarshaler signature
 func (n rawNumber) MarshalYAML() ([]byte, error) { return []byte(n), nil }
 
 // yamlString returns s, or a forced double-quoted spelling of it when the
@@ -189,6 +194,7 @@ func yamlString(s string) any {
 // quoted is a YAML double-quoted scalar holding s.
 type quoted string
 
+//nolint:unparam // the error result is the BytesMarshaler signature
 func (q quoted) MarshalYAML() ([]byte, error) {
 	var b strings.Builder
 
@@ -202,7 +208,7 @@ func (q quoted) MarshalYAML() ([]byte, error) {
 			b.WriteString(`\n`)
 		case r == '\t':
 			b.WriteString(`\t`)
-		case r < 0x20:
+		case r < ' ':
 			fmt.Fprintf(&b, `\x%02x`, r)
 		default:
 			b.WriteRune(r)
@@ -248,5 +254,7 @@ func writeGzip(name string, data []byte) error {
 		return err
 	}
 
-	return os.WriteFile(name, buf.Bytes(), 0o600)
+	const outputPerm = 0o600
+
+	return os.WriteFile(name, buf.Bytes(), outputPerm)
 }

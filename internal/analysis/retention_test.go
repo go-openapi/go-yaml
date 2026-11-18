@@ -96,7 +96,7 @@ func (r *retainer) Visit(n ast.Node) ast.Visitor {
 	return r
 }
 
-var tokenPtrType = reflect.TypeOf((*token.Token)(nil))
+var tokenPtrType = reflect.TypeFor[*token.Token]()
 
 func (r *retainer) scan(v reflect.Value, depth int) {
 	if depth > 8 || !v.IsValid() {
@@ -117,8 +117,8 @@ func (r *retainer) scan(v reflect.Value, depth int) {
 			r.scan(v.Elem(), depth+1)
 		}
 	case reflect.Struct:
-		for i := range v.NumField() {
-			r.scan(v.Field(i), depth+1)
+		for _, field := range v.Fields() {
+			r.scan(field, depth+1)
 		}
 	case reflect.Slice:
 		for i := range v.Len() {
@@ -128,6 +128,8 @@ func (r *retainer) scan(v reflect.Value, depth int) {
 		if !v.IsNil() {
 			r.scan(v.Elem(), depth+1)
 		}
+	default:
+		// nothing to do
 	}
 }
 

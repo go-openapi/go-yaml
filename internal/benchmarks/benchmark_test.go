@@ -31,7 +31,7 @@ elements:
 
 	b.Run("gopkg.in/yaml.v2", func(b *testing.B) {
 		var t T
-		for i := 0; i < b.N; i++ {
+		for range b.N {
 			if err := goyaml2.Unmarshal([]byte(src), &t); err != nil {
 				b.Fatal(err)
 			}
@@ -39,7 +39,7 @@ elements:
 	})
 	b.Run("gopkg.in/yaml.v3", func(b *testing.B) {
 		var t T
-		for i := 0; i < b.N; i++ {
+		for range b.N {
 			if err := goyaml3.Unmarshal([]byte(src), &t); err != nil {
 				b.Fatal(err)
 			}
@@ -47,7 +47,7 @@ elements:
 	})
 	b.Run("github.com/go-openapi/go-yaml", func(b *testing.B) {
 		var t T
-		for i := 0; i < b.N; i++ {
+		for range b.N {
 			if err := yaml.Unmarshal([]byte(src), &t); err != nil {
 				b.Fatal(err)
 			}

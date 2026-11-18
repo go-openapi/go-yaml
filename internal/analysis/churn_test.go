@@ -104,6 +104,8 @@ func (c *shapeCounter) Visit(n ast.Node) ast.Visitor {
 		c.anchors++
 	case ast.AliasType:
 		c.aliases++
+	default:
+		// nothing to do
 	}
 
 	return c
