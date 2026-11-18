@@ -1,0 +1,12 @@
+# Test fixtures are compared byte for byte, and some are hashed: a Windows
+# checkout with core.autocrlf rewrote them with CRLF line breaks, and the tests
+# read another document than the one committed. Keep LF on every checkout.
+# text=auto leaves a file git detects as binary alone.
+**/testdata/** text=auto eol=lf
+
+# Compressed corpora.
+*.gz binary
+
+# Fixtures whose line breaks are what they test keep their bytes.
+parser/testdata/crlf.yml -text
+parser/testdata/cr.yml -text
