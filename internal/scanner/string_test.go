@@ -105,8 +105,14 @@ func TestTokenizeQuotedScalars(t *testing.T) {
 }
 
 func quotedScalarTestCases() iter.Seq[testscanner.Case] {
+	return testscanner.Concat(doubleQuotedCases(), singleQuotedCases())
+}
+
+// doubleQuotedCases reads double-quoted scalars, as keys and values, with and without escapes.
+func doubleQuotedCases() iter.Seq[testscanner.Case] {
 	return slices.Values([]testscanner.Case{
 		{
+			Name: "double/tab-escape",
 			YAML: `"hello\tworld"`,
 			Tokens: []testscanner.WantToken{
 				{
@@ -117,6 +123,7 @@ func quotedScalarTestCases() iter.Seq[testscanner.Case] {
 			},
 		},
 		{
+			Name: "double/true",
 			YAML: `v: "true"`,
 			Tokens: []testscanner.WantToken{
 				{
@@ -137,6 +144,7 @@ func quotedScalarTestCases() iter.Seq[testscanner.Case] {
 			},
 		},
 		{
+			Name: "double/false",
 			YAML: `v: "false"`,
 			Tokens: []testscanner.WantToken{
 				{
@@ -157,6 +165,7 @@ func quotedScalarTestCases() iter.Seq[testscanner.Case] {
 			},
 		},
 		{
+			Name: "double/number",
 			YAML: `v: "10"`,
 			Tokens: []testscanner.WantToken{
 				{
@@ -177,6 +186,7 @@ func quotedScalarTestCases() iter.Seq[testscanner.Case] {
 			},
 		},
 		{
+			Name: "double/multi-line-with-escapes",
 			YAML: `
 a:
   "bbb  \
@@ -206,6 +216,7 @@ a:
 			},
 		},
 		{
+			Name: "double/empty",
 			YAML: `v: ""`,
 			Tokens: []testscanner.WantToken{
 				{
@@ -226,26 +237,7 @@ a:
 			},
 		},
 		{
-			YAML: `a: '-'`,
-			Tokens: []testscanner.WantToken{
-				{
-					Type:   token.StringType,
-					Value:  "a",
-					Origin: "a",
-				},
-				{
-					Type:   token.MappingValueType,
-					Value:  ":",
-					Origin: ":",
-				},
-				{
-					Type:   token.SingleQuoteType,
-					Value:  "-",
-					Origin: " '-'",
-				},
-			},
-		},
-		{
+			Name: "double/colon-inside",
 			YAML: `a: "1:1"`,
 			Tokens: []testscanner.WantToken{
 				{
@@ -266,6 +258,7 @@ a:
 			},
 		},
 		{
+			Name: "double/null-escape",
 			YAML: `a: "\0"`,
 			Tokens: []testscanner.WantToken{
 				{
@@ -286,6 +279,7 @@ a:
 			},
 		},
 		{
+			Name: "double/timestamp",
 			YAML: `a: "2015-02-24T18:19:39Z"`,
 			Tokens: []testscanner.WantToken{
 				{
@@ -306,46 +300,7 @@ a:
 			},
 		},
 		{
-			YAML: `a: 'b: c'`,
-			Tokens: []testscanner.WantToken{
-				{
-					Type:   token.StringType,
-					Value:  "a",
-					Origin: "a",
-				},
-				{
-					Type:   token.MappingValueType,
-					Value:  ":",
-					Origin: ":",
-				},
-				{
-					Type:   token.SingleQuoteType,
-					Value:  "b: c",
-					Origin: " 'b: c'",
-				},
-			},
-		},
-		{
-			YAML: `a: 'Hello #comment'`,
-			Tokens: []testscanner.WantToken{
-				{
-					Type:   token.StringType,
-					Value:  "a",
-					Origin: "a",
-				},
-				{
-					Type:   token.MappingValueType,
-					Value:  ":",
-					Origin: ":",
-				},
-				{
-					Type:   token.SingleQuoteType,
-					Value:  "Hello #comment",
-					Origin: " 'Hello #comment'",
-				},
-			},
-		},
-		{
+			Name: "double/as-key",
 			YAML: `"a": double quoted map key`,
 			Tokens: []testscanner.WantToken{
 				{
@@ -366,26 +321,7 @@ a:
 			},
 		},
 		{
-			YAML: `'a': single quoted map key`,
-			Tokens: []testscanner.WantToken{
-				{
-					Type:   token.SingleQuoteType,
-					Value:  "a",
-					Origin: "'a'",
-				},
-				{
-					Type:   token.MappingValueType,
-					Value:  ":",
-					Origin: ":",
-				},
-				{
-					Type:   token.StringType,
-					Value:  "single quoted map key",
-					Origin: " single quoted map key",
-				},
-			},
-		},
-		{
+			Name: "double/two-values",
 			YAML: `
 a: "double quoted"
 b: "value map"`,
@@ -423,6 +359,118 @@ b: "value map"`,
 			},
 		},
 		{
+			Name: "double/escaped-quotes",
+			YAML: `json: "\"expression\": \"thi:\""`,
+			Tokens: []testscanner.WantToken{
+				{
+					Type:   token.StringType,
+					Value:  "json",
+					Origin: "json",
+				},
+				{
+					Type:   token.MappingValueType,
+					Value:  ":",
+					Origin: ":",
+				},
+				{
+					Type:   token.DoubleQuoteType,
+					Value:  "\"expression\": \"thi:\"",
+					Origin: " \"\\\"expression\\\": \\\"thi:\\\"\"",
+				},
+			},
+		},
+	})
+}
+
+// singleQuotedCases reads single-quoted scalars, as keys and values.
+func singleQuotedCases() iter.Seq[testscanner.Case] {
+	return slices.Values([]testscanner.Case{
+		{
+			Name: "single/dash",
+			YAML: `a: '-'`,
+			Tokens: []testscanner.WantToken{
+				{
+					Type:   token.StringType,
+					Value:  "a",
+					Origin: "a",
+				},
+				{
+					Type:   token.MappingValueType,
+					Value:  ":",
+					Origin: ":",
+				},
+				{
+					Type:   token.SingleQuoteType,
+					Value:  "-",
+					Origin: " '-'",
+				},
+			},
+		},
+		{
+			Name: "single/colon-space-inside",
+			YAML: `a: 'b: c'`,
+			Tokens: []testscanner.WantToken{
+				{
+					Type:   token.StringType,
+					Value:  "a",
+					Origin: "a",
+				},
+				{
+					Type:   token.MappingValueType,
+					Value:  ":",
+					Origin: ":",
+				},
+				{
+					Type:   token.SingleQuoteType,
+					Value:  "b: c",
+					Origin: " 'b: c'",
+				},
+			},
+		},
+		{
+			Name: "single/hash-inside",
+			YAML: `a: 'Hello #comment'`,
+			Tokens: []testscanner.WantToken{
+				{
+					Type:   token.StringType,
+					Value:  "a",
+					Origin: "a",
+				},
+				{
+					Type:   token.MappingValueType,
+					Value:  ":",
+					Origin: ":",
+				},
+				{
+					Type:   token.SingleQuoteType,
+					Value:  "Hello #comment",
+					Origin: " 'Hello #comment'",
+				},
+			},
+		},
+		{
+			Name: "single/as-key",
+			YAML: `'a': single quoted map key`,
+			Tokens: []testscanner.WantToken{
+				{
+					Type:   token.SingleQuoteType,
+					Value:  "a",
+					Origin: "'a'",
+				},
+				{
+					Type:   token.MappingValueType,
+					Value:  ":",
+					Origin: ":",
+				},
+				{
+					Type:   token.StringType,
+					Value:  "single quoted map key",
+					Origin: " single quoted map key",
+				},
+			},
+		},
+		{
+			Name: "single/two-values",
 			YAML: `
 a: 'single quoted'
 b: 'value map'`,
@@ -460,6 +508,7 @@ b: 'value map'`,
 			},
 		},
 		{
+			Name: "single/backslashes-and-quotes",
 			YAML: `json: '\"expression\": \"thi:\"'`,
 			Tokens: []testscanner.WantToken{
 				{
@@ -476,26 +525,6 @@ b: 'value map'`,
 					Type:   token.SingleQuoteType,
 					Value:  "\\\"expression\\\": \\\"thi:\\\"",
 					Origin: " '\\\"expression\\\": \\\"thi:\\\"'",
-				},
-			},
-		},
-		{
-			YAML: `json: "\"expression\": \"thi:\""`,
-			Tokens: []testscanner.WantToken{
-				{
-					Type:   token.StringType,
-					Value:  "json",
-					Origin: "json",
-				},
-				{
-					Type:   token.MappingValueType,
-					Value:  ":",
-					Origin: ":",
-				},
-				{
-					Type:   token.DoubleQuoteType,
-					Value:  "\"expression\": \"thi:\"",
-					Origin: " \"\\\"expression\\\": \\\"thi:\\\"\"",
 				},
 			},
 		},

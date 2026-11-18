@@ -59,8 +59,14 @@ func TestTokenizeBlockScalars(t *testing.T) {
 }
 
 func blockScalarTestCases() iter.Seq[testscanner.Case] {
+	return testscanner.Concat(literalScalarCases(), foldedHeaderCases(), foldedLineCases())
+}
+
+// literalScalarCases reads literal block scalars, written with "|".
+func literalScalarCases() iter.Seq[testscanner.Case] {
 	return slices.Values([]testscanner.Case{
 		{
+			Name: "literal/strip-in-sequence",
 			YAML: `
 v:
 - A
@@ -107,6 +113,7 @@ v:
 			},
 		},
 		{
+			Name: "literal/binary-tagged",
 			YAML: `
 a: !!binary |
  kJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJ
@@ -141,6 +148,7 @@ a: !!binary |
 			},
 		},
 		{
+			Name: "literal/trailing-spaces-and-blank-lines",
 			YAML: `
 a: |
  b   
@@ -189,6 +197,234 @@ e: f
 			},
 		},
 		{
+			Name: "literal/explicit-indent-and-strip",
+			YAML: `
+|2-
+
+                  text
+`,
+			Tokens: []testscanner.WantToken{
+				{
+					Type:   token.LiteralType,
+					Value:  "|2-",
+					Origin: "\n|2-\n",
+				},
+				{
+					Type:   token.StringType,
+					Value:  "\n                 text",
+					Origin: "\n                  text\n",
+				},
+			},
+		},
+		{
+			Name: "literal/trailing-blank-lines",
+			YAML: `
+|
+  a
+
+
+
+`,
+			Tokens: []testscanner.WantToken{
+				{
+					Type:   token.LiteralType,
+					Value:  "|",
+					Origin: "\n|\n",
+				},
+				{
+					Type:   token.StringType,
+					Value:  "a\n",
+					Origin: "  a\n\n\n\n",
+				},
+			},
+		},
+		{
+			Name: "literal/header-with-tabs-and-comment",
+			YAML: `
+|  		  # comment
+  foo
+`,
+			Tokens: []testscanner.WantToken{
+				{
+					Type:   token.LiteralType,
+					Value:  "|",
+					Origin: "\n|  		  ",
+				},
+				{
+					Type:   token.CommentType,
+					Value:  " comment",
+					Origin: "# comment\n",
+				},
+				{
+					Type:   token.StringType,
+					Value:  "foo\n",
+					Origin: "  foo\n",
+				},
+			},
+		},
+	})
+}
+
+// foldedHeaderCases reads folded block scalars, written with ">", whose header carries an indentation or chomping indicator, a comment, or nothing.
+func foldedHeaderCases() iter.Seq[testscanner.Case] {
+	return slices.Values([]testscanner.Case{
+		{
+			Name: "folded/no-final-break",
+			YAML: `
+a: >
+  Text`,
+			Tokens: []testscanner.WantToken{
+				{
+					Type:   token.StringType,
+					Value:  "a",
+					Origin: "\na",
+				},
+				{
+					Type:   token.MappingValueType,
+					Value:  ":",
+					Origin: ":",
+				},
+				{
+					Type:   token.FoldedType,
+					Value:  ">",
+					Origin: " >\n",
+				},
+				{
+					Type:   token.StringType,
+					Value:  "Text",
+					Origin: "  Text",
+				},
+			},
+		},
+		{
+			Name: "folded/one-line",
+			YAML: `
+s: >
+        1s
+`,
+			Tokens: []testscanner.WantToken{
+				{
+					Type:   token.StringType,
+					Value:  "s",
+					Origin: "\ns",
+				},
+				{
+					Type:   token.MappingValueType,
+					Value:  ":",
+					Origin: ":",
+				},
+				{
+					Type:   token.FoldedType,
+					Value:  ">",
+					Origin: " >\n",
+				},
+				{
+					Type:   token.StringType,
+					Value:  "1s\n",
+					Origin: "        1s\n",
+				},
+			},
+		},
+		{
+			Name: "folded/explicit-indent-and-comment",
+			YAML: `
+s: >1        # comment
+        1s
+`,
+			Tokens: []testscanner.WantToken{
+				{
+					Type:   token.StringType,
+					Value:  "s",
+					Origin: "\ns",
+				},
+				{
+					Type:   token.MappingValueType,
+					Value:  ":",
+					Origin: ":",
+				},
+				{
+					Type:   token.FoldedType,
+					Value:  ">1",
+					Origin: " >1        ",
+				},
+				{
+					Type:   token.CommentType,
+					Value:  " comment",
+					Origin: "# comment\n",
+				},
+				{
+					Type:   token.StringType,
+					Value:  "       1s\n",
+					Origin: "        1s\n",
+				},
+			},
+		},
+		{
+			Name: "folded/keep-and-explicit-indent",
+			YAML: `
+s: >+2
+        1s
+`,
+			Tokens: []testscanner.WantToken{
+				{
+					Type:   token.StringType,
+					Value:  "s",
+					Origin: "\ns",
+				},
+				{
+					Type:   token.MappingValueType,
+					Value:  ":",
+					Origin: ":",
+				},
+				{
+					Type:   token.FoldedType,
+					Value:  ">+2",
+					Origin: " >+2\n",
+				},
+				{
+					Type:   token.StringType,
+					Value:  "      1s\n",
+					Origin: "        1s\n",
+				},
+			},
+		},
+		{
+			Name: "folded/strip-and-explicit-indent",
+			YAML: `
+s: >-3
+        1s
+`,
+			Tokens: []testscanner.WantToken{
+				{
+					Type:   token.StringType,
+					Value:  "s",
+					Origin: "\ns",
+				},
+				{
+					Type:   token.MappingValueType,
+					Value:  ":",
+					Origin: ":",
+				},
+				{
+					Type:   token.FoldedType,
+					Value:  ">-3",
+					Origin: " >-3\n",
+				},
+				{
+					Type:   token.StringType,
+					Value:  "     1s",
+					Origin: "        1s\n",
+				},
+			},
+		},
+	})
+}
+
+// foldedLineCases reads folded block scalars over several lines, some more indented than the rest.
+func foldedLineCases() iter.Seq[testscanner.Case] {
+	return slices.Values([]testscanner.Case{
+		{
+			Name: "folded/trailing-spaces-and-blank-lines",
 			YAML: `
 a: >
  b   
@@ -237,150 +473,7 @@ e: f
 			},
 		},
 		{
-			YAML: `
-a: >
-  Text`,
-			Tokens: []testscanner.WantToken{
-				{
-					Type:   token.StringType,
-					Value:  "a",
-					Origin: "\na",
-				},
-				{
-					Type:   token.MappingValueType,
-					Value:  ":",
-					Origin: ":",
-				},
-				{
-					Type:   token.FoldedType,
-					Value:  ">",
-					Origin: " >\n",
-				},
-				{
-					Type:   token.StringType,
-					Value:  "Text",
-					Origin: "  Text",
-				},
-			},
-		},
-		{
-			YAML: `
-s: >
-        1s
-`,
-			Tokens: []testscanner.WantToken{
-				{
-					Type:   token.StringType,
-					Value:  "s",
-					Origin: "\ns",
-				},
-				{
-					Type:   token.MappingValueType,
-					Value:  ":",
-					Origin: ":",
-				},
-				{
-					Type:   token.FoldedType,
-					Value:  ">",
-					Origin: " >\n",
-				},
-				{
-					Type:   token.StringType,
-					Value:  "1s\n",
-					Origin: "        1s\n",
-				},
-			},
-		},
-		{
-			YAML: `
-s: >1        # comment
-        1s
-`,
-			Tokens: []testscanner.WantToken{
-				{
-					Type:   token.StringType,
-					Value:  "s",
-					Origin: "\ns",
-				},
-				{
-					Type:   token.MappingValueType,
-					Value:  ":",
-					Origin: ":",
-				},
-				{
-					Type:   token.FoldedType,
-					Value:  ">1",
-					Origin: " >1        ",
-				},
-				{
-					Type:   token.CommentType,
-					Value:  " comment",
-					Origin: "# comment\n",
-				},
-				{
-					Type:   token.StringType,
-					Value:  "       1s\n",
-					Origin: "        1s\n",
-				},
-			},
-		},
-		{
-			YAML: `
-s: >+2
-        1s
-`,
-			Tokens: []testscanner.WantToken{
-				{
-					Type:   token.StringType,
-					Value:  "s",
-					Origin: "\ns",
-				},
-				{
-					Type:   token.MappingValueType,
-					Value:  ":",
-					Origin: ":",
-				},
-				{
-					Type:   token.FoldedType,
-					Value:  ">+2",
-					Origin: " >+2\n",
-				},
-				{
-					Type:   token.StringType,
-					Value:  "      1s\n",
-					Origin: "        1s\n",
-				},
-			},
-		},
-		{
-			YAML: `
-s: >-3
-        1s
-`,
-			Tokens: []testscanner.WantToken{
-				{
-					Type:   token.StringType,
-					Value:  "s",
-					Origin: "\ns",
-				},
-				{
-					Type:   token.MappingValueType,
-					Value:  ":",
-					Origin: ":",
-				},
-				{
-					Type:   token.FoldedType,
-					Value:  ">-3",
-					Origin: " >-3\n",
-				},
-				{
-					Type:   token.StringType,
-					Value:  "     1s",
-					Origin: "        1s\n",
-				},
-			},
-		},
-		{
+			Name: "folded/two-lines",
 			YAML: `
 s: >
     1s
@@ -410,6 +503,7 @@ s: >
 			},
 		},
 		{
+			Name: "folded/more-indented-line",
 			YAML: `
 s: >
     1s
@@ -440,6 +534,7 @@ s: >
 			},
 		},
 		{
+			Name: "folded/more-indented-lines",
 			YAML: `
 s: >
     1s
@@ -472,6 +567,7 @@ s: >
 			},
 		},
 		{
+			Name: "folded/more-indented-lines-and-strip",
 			YAML: `
 s: >-3
     1s
@@ -500,69 +596,6 @@ s: >-3
 					Type:   token.StringType,
 					Value:  " 1s\n   2s\n   3s\n 4s\n 5s",
 					Origin: "    1s\n      2s\n      3s\n    4s\n    5s\n",
-				},
-			},
-		},
-		{
-			YAML: `
-|2-
-
-                  text
-`,
-			Tokens: []testscanner.WantToken{
-				{
-					Type:   token.LiteralType,
-					Value:  "|2-",
-					Origin: "\n|2-\n",
-				},
-				{
-					Type:   token.StringType,
-					Value:  "\n                 text",
-					Origin: "\n                  text\n",
-				},
-			},
-		},
-		{
-			YAML: `
-|
-  a
-
-
-
-`,
-			Tokens: []testscanner.WantToken{
-				{
-					Type:   token.LiteralType,
-					Value:  "|",
-					Origin: "\n|\n",
-				},
-				{
-					Type:   token.StringType,
-					Value:  "a\n",
-					Origin: "  a\n\n\n\n",
-				},
-			},
-		},
-		{
-			YAML: `
-|  		  # comment
-  foo
-`,
-			Tokens: []testscanner.WantToken{
-				{
-					Type:   token.LiteralType,
-					Value:  "|",
-					Origin: "\n|  		  ",
-				},
-				{
-					Type:   token.CommentType,
-					Value:  " comment",
-					Origin: "# comment\n",
-				},
-				{
-					Type:   token.StringType,
-					Value:  "foo\n",
-					Origin: "  foo\n",
 				},
 			},
 		},

@@ -34,30 +34,35 @@ func TestTokenizeDocumentMarkers(t *testing.T) {
 func documentMarkerTestCases() iter.Seq[testscanner.Case] {
 	return slices.Values([]testscanner.Case{
 		{
+			Name: "header/alone",
 			YAML: "---\n",
 			Tokens: []testscanner.WantToken{
 				{Type: token.DocumentHeaderType, Value: "---", Origin: "---"},
 			},
 		},
 		{
+			Name: "end/alone",
 			YAML: "...\n",
 			Tokens: []testscanner.WantToken{
 				{Type: token.DocumentEndType, Value: "...", Origin: "..."},
 			},
 		},
 		{
+			Name: "header/at-end-of-input",
 			YAML: "---",
 			Tokens: []testscanner.WantToken{
 				{Type: token.DocumentHeaderType, Value: "---", Origin: "---"},
 			},
 		},
 		{
+			Name: "end/at-end-of-input",
 			YAML: "...",
 			Tokens: []testscanner.WantToken{
 				{Type: token.DocumentEndType, Value: "...", Origin: "..."},
 			},
 		},
 		{
+			Name: "header/before-mapping",
 			YAML: "---\na: 1\n",
 			Tokens: []testscanner.WantToken{
 				{Type: token.DocumentHeaderType, Value: "---", Origin: "---"},
@@ -67,6 +72,7 @@ func documentMarkerTestCases() iter.Seq[testscanner.Case] {
 			},
 		},
 		{
+			Name: "end/after-mapping",
 			YAML: "a: 1\n...\n",
 			Tokens: []testscanner.WantToken{
 				{Type: token.StringType, Value: "a", Origin: "a"},
@@ -76,6 +82,7 @@ func documentMarkerTestCases() iter.Seq[testscanner.Case] {
 			},
 		},
 		{
+			Name: "header/mapping-on-same-line",
 			YAML: "--- a: 1\n",
 			Tokens: []testscanner.WantToken{
 				{Type: token.DocumentHeaderType, Value: "---", Origin: "---"},
@@ -85,6 +92,7 @@ func documentMarkerTestCases() iter.Seq[testscanner.Case] {
 			},
 		},
 		{
+			Name: "stream/two-documents",
 			YAML: "a: 1\n...\n---\nb: 2\n",
 			Tokens: []testscanner.WantToken{
 				{Type: token.StringType, Value: "a", Origin: "a"},
@@ -98,6 +106,7 @@ func documentMarkerTestCases() iter.Seq[testscanner.Case] {
 			},
 		},
 		{
+			Name: "stream/empty-document",
 			YAML: "---\n...\n",
 			Tokens: []testscanner.WantToken{
 				{Type: token.DocumentHeaderType, Value: "---", Origin: "---"},
@@ -105,6 +114,7 @@ func documentMarkerTestCases() iter.Seq[testscanner.Case] {
 			},
 		},
 		{
+			Name: "stream/two-empty-documents",
 			YAML: "---\n---\n",
 			Tokens: []testscanner.WantToken{
 				{Type: token.DocumentHeaderType, Value: "---", Origin: "---"},
@@ -112,12 +122,14 @@ func documentMarkerTestCases() iter.Seq[testscanner.Case] {
 			},
 		},
 		{
+			Name: "end/trailing-tab",
 			YAML: "...\t\n",
 			Tokens: []testscanner.WantToken{
 				{Type: token.DocumentEndType, Value: "...", Origin: "..."},
 			},
 		},
 		{
+			Name: "header/scalar-on-same-line",
 			YAML: "--- x\n",
 			Tokens: []testscanner.WantToken{
 				{Type: token.DocumentHeaderType, Value: "---", Origin: "---"},
@@ -125,6 +137,7 @@ func documentMarkerTestCases() iter.Seq[testscanner.Case] {
 			},
 		},
 		{
+			Name: "end/content-on-same-line",
 			YAML: "... x\n",
 			Tokens: []testscanner.WantToken{
 				{Type: token.DocumentEndType, Value: "...", Origin: "..."},
@@ -132,18 +145,21 @@ func documentMarkerTestCases() iter.Seq[testscanner.Case] {
 			},
 		},
 		{
+			Name: "not-a-marker/dots-glued-to-text",
 			YAML: "...x\n",
 			Tokens: []testscanner.WantToken{
 				{Type: token.StringType, Value: "...x", Origin: "...x"},
 			},
 		},
 		{
+			Name: "not-a-marker/dashes-glued-to-text",
 			YAML: "---x\n",
 			Tokens: []testscanner.WantToken{
 				{Type: token.StringType, Value: "---x", Origin: "---x"},
 			},
 		},
 		{
+			Name: "not-a-marker/dots-as-key",
 			YAML: "...:\n",
 			Tokens: []testscanner.WantToken{
 				{Type: token.StringType, Value: "...", Origin: "..."},
@@ -151,6 +167,7 @@ func documentMarkerTestCases() iter.Seq[testscanner.Case] {
 			},
 		},
 		{
+			Name: "not-a-marker/dashes-as-key",
 			YAML: "---:\n",
 			Tokens: []testscanner.WantToken{
 				{Type: token.StringType, Value: "---", Origin: "---"},
@@ -158,24 +175,28 @@ func documentMarkerTestCases() iter.Seq[testscanner.Case] {
 			},
 		},
 		{
+			Name: "not-a-marker/four-dots",
 			YAML: "....\n",
 			Tokens: []testscanner.WantToken{
 				{Type: token.StringType, Value: "....", Origin: "...."},
 			},
 		},
 		{
+			Name: "not-a-marker/four-dashes",
 			YAML: "----\n",
 			Tokens: []testscanner.WantToken{
 				{Type: token.StringType, Value: "----", Origin: "----"},
 			},
 		},
 		{
+			Name: "not-a-marker/indented-dashes",
 			YAML: "  ---\n",
 			Tokens: []testscanner.WantToken{
 				{Type: token.StringType, Value: "---", Origin: "  ---"},
 			},
 		},
 		{
+			Name: "not-a-marker/dashes-as-value",
 			YAML: "a: ---\n",
 			Tokens: []testscanner.WantToken{
 				{Type: token.StringType, Value: "a", Origin: "a"},
@@ -184,6 +205,7 @@ func documentMarkerTestCases() iter.Seq[testscanner.Case] {
 			},
 		},
 		{
+			Name: "not-a-marker/dots-as-value",
 			YAML: "a: ...\n",
 			Tokens: []testscanner.WantToken{
 				{Type: token.StringType, Value: "a", Origin: "a"},
@@ -192,6 +214,7 @@ func documentMarkerTestCases() iter.Seq[testscanner.Case] {
 			},
 		},
 		{
+			Name: "header/trailing-comment",
 			YAML: "--- # c\n",
 			Tokens: []testscanner.WantToken{
 				{Type: token.DocumentHeaderType, Value: "---", Origin: "---"},

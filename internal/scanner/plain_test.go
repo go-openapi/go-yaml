@@ -238,19 +238,14 @@ func TestATabInsideAPlainScalarIsContent(t *testing.T) {
 }
 
 func plainScalarTestCases() iter.Seq[testscanner.Case] {
+	return testscanner.Concat(plainNumberCases(), plainValueCases(), plainOtherCases())
+}
+
+// plainNumberCases reads documents made of one plain scalar spelled like a number, well formed or not.
+func plainNumberCases() iter.Seq[testscanner.Case] {
 	return slices.Values([]testscanner.Case{
 		{
-			YAML: `null
-  `,
-			Tokens: []testscanner.WantToken{
-				{
-					Type:   token.NullType,
-					Value:  "null",
-					Origin: "null\n  ",
-				},
-			},
-		},
-		{
+			Name: "number/trailing-underscore",
 			// The "_" digit separator is YAML 1.1's; the 1.2 core schema has none.
 			YAML: `0_`,
 			Tokens: []testscanner.WantToken{
@@ -262,6 +257,7 @@ func plainScalarTestCases() iter.Seq[testscanner.Case] {
 			},
 		},
 		{
+			Name: "number/hex-with-underscores",
 			YAML: `0x_1A_2B_3C`,
 			Tokens: []testscanner.WantToken{
 				{
@@ -272,6 +268,7 @@ func plainScalarTestCases() iter.Seq[testscanner.Case] {
 			},
 		},
 		{
+			Name: "number/signed-binary",
 			// YAML 1.1 wrote a binary integer as "0b..."; 1.2 has no such form.
 			YAML: `+0b1010`,
 			Tokens: []testscanner.WantToken{
@@ -283,6 +280,7 @@ func plainScalarTestCases() iter.Seq[testscanner.Case] {
 			},
 		},
 		{
+			Name: "number/leading-zero",
 			// A leading zero made a number octal in YAML 1.1. The 1.2 decimal form is "[-+]?
 			// [0-9]+", which reads the zero and nothing into it.
 			YAML: `0100`,
@@ -295,6 +293,7 @@ func plainScalarTestCases() iter.Seq[testscanner.Case] {
 			},
 		},
 		{
+			Name: "number/octal",
 			YAML: `0o10`,
 			Tokens: []testscanner.WantToken{
 				{
@@ -305,6 +304,7 @@ func plainScalarTestCases() iter.Seq[testscanner.Case] {
 			},
 		},
 		{
+			Name: "number/float-with-exponent",
 			YAML: `0.123e+123`,
 			Tokens: []testscanner.WantToken{
 				{
@@ -315,6 +315,70 @@ func plainScalarTestCases() iter.Seq[testscanner.Case] {
 			},
 		},
 		{
+			Name: "number/decimal",
+			YAML: `123`,
+			Tokens: []testscanner.WantToken{
+				{
+					Type:   token.IntegerType,
+					Value:  "123",
+					Origin: "123",
+				},
+			},
+		},
+		{
+			Name: "number/x-after-digit",
+			YAML: `1x0`,
+			Tokens: []testscanner.WantToken{
+				{
+					Type:   token.StringType,
+					Value:  "1x0",
+					Origin: "1x0",
+				},
+			},
+		},
+		{
+			Name: "number/binary-with-non-binary-digits",
+			YAML: `0b98765`,
+			Tokens: []testscanner.WantToken{
+				{
+					Type:   token.StringType,
+					Value:  "0b98765",
+					Origin: "0b98765",
+				},
+			},
+		},
+		{
+			Name: "number/leading-zero-with-non-octal-digits",
+			// 9 and 8 are not octal digits, so this was a string under YAML 1.1. Under 1.2 it is a decimal number that opens
+			// with a zero.
+			YAML: `098765`,
+			Tokens: []testscanner.WantToken{
+				{
+					Type:   token.IntegerType,
+					Value:  "098765",
+					Origin: "098765",
+				},
+			},
+		},
+		{
+			Name: "number/octal-with-non-octal-digits",
+			YAML: `0o98765`,
+			Tokens: []testscanner.WantToken{
+				{
+					Type:   token.StringType,
+					Value:  "0o98765",
+					Origin: "0o98765",
+				},
+			},
+		},
+	})
+}
+
+// plainValueCases reads a plain scalar written as the value of key v, one per core schema type.
+func plainValueCases() iter.Seq[testscanner.Case] {
+	return slices.Values([]testscanner.Case{
+		{
+			Name: "value/true",
 			YAML: `v: true`,
 			Tokens: []testscanner.WantToken{
 				{
@@ -335,6 +399,7 @@ func plainScalarTestCases() iter.Seq[testscanner.Case] {
 			},
 		},
 		{
+			Name: "value/false",
 			YAML: `v: false`,
 			Tokens: []testscanner.WantToken{
 				{
@@ -355,6 +420,7 @@ func plainScalarTestCases() iter.Seq[testscanner.Case] {
 			},
 		},
 		{
+			Name: "value/int-10",
 			YAML: `v: 10`,
 			Tokens: []testscanner.WantToken{
 				{
@@ -375,6 +441,7 @@ func plainScalarTestCases() iter.Seq[testscanner.Case] {
 			},
 		},
 		{
+			Name: "value/negative-int",
 			YAML: `v: -10`,
 			Tokens: []testscanner.WantToken{
 				{
@@ -395,6 +462,7 @@ func plainScalarTestCases() iter.Seq[testscanner.Case] {
 			},
 		},
 		{
+			Name: "value/int-42",
 			YAML: `v: 42`,
 			Tokens: []testscanner.WantToken{
 				{
@@ -415,6 +483,7 @@ func plainScalarTestCases() iter.Seq[testscanner.Case] {
 			},
 		},
 		{
+			Name: "value/int-above-32-bits",
 			YAML: `v: 4294967296`,
 			Tokens: []testscanner.WantToken{
 				{
@@ -435,6 +504,7 @@ func plainScalarTestCases() iter.Seq[testscanner.Case] {
 			},
 		},
 		{
+			Name: "value/float-0.1",
 			YAML: `v: 0.1`,
 			Tokens: []testscanner.WantToken{
 				{
@@ -455,6 +525,7 @@ func plainScalarTestCases() iter.Seq[testscanner.Case] {
 			},
 		},
 		{
+			Name: "value/float-0.99",
 			YAML: `v: 0.99`,
 			Tokens: []testscanner.WantToken{
 				{
@@ -475,6 +546,7 @@ func plainScalarTestCases() iter.Seq[testscanner.Case] {
 			},
 		},
 		{
+			Name: "value/negative-float",
 			YAML: `v: -0.1`,
 			Tokens: []testscanner.WantToken{
 				{
@@ -495,6 +567,7 @@ func plainScalarTestCases() iter.Seq[testscanner.Case] {
 			},
 		},
 		{
+			Name: "value/positive-infinity",
 			YAML: `v: .inf`,
 			Tokens: []testscanner.WantToken{
 				{
@@ -515,6 +588,7 @@ func plainScalarTestCases() iter.Seq[testscanner.Case] {
 			},
 		},
 		{
+			Name: "value/negative-infinity",
 			YAML: `v: -.inf`,
 			Tokens: []testscanner.WantToken{
 				{
@@ -535,6 +609,7 @@ func plainScalarTestCases() iter.Seq[testscanner.Case] {
 			},
 		},
 		{
+			Name: "value/nan",
 			YAML: `v: .nan`,
 			Tokens: []testscanner.WantToken{
 				{
@@ -555,6 +630,7 @@ func plainScalarTestCases() iter.Seq[testscanner.Case] {
 			},
 		},
 		{
+			Name: "value/null",
 			YAML: `v: null`,
 			Tokens: []testscanner.WantToken{
 				{
@@ -574,17 +650,26 @@ func plainScalarTestCases() iter.Seq[testscanner.Case] {
 				},
 			},
 		},
+	})
+}
+
+// plainOtherCases reads plain scalars the core schema types as null or as a string.
+func plainOtherCases() iter.Seq[testscanner.Case] {
+	return slices.Values([]testscanner.Case{
 		{
-			YAML: `123`,
+			Name: "scalar/null-then-indent",
+			YAML: `null
+  `,
 			Tokens: []testscanner.WantToken{
 				{
-					Type:   token.IntegerType,
-					Value:  "123",
-					Origin: "123",
+					Type:   token.NullType,
+					Value:  "null",
+					Origin: "null\n  ",
 				},
 			},
 		},
 		{
+			Name: "scalar/null-under-key-a",
 			YAML: `a: null`,
 			Tokens: []testscanner.WantToken{
 				{
@@ -605,6 +690,7 @@ func plainScalarTestCases() iter.Seq[testscanner.Case] {
 			},
 		},
 		{
+			Name: "scalar/timestamps",
 			YAML: `
 t2: 2018-01-09T10:40:47Z
 t4: 2098-01-09T10:40:47Z
@@ -643,6 +729,7 @@ t4: 2098-01-09T10:40:47Z
 			},
 		},
 		{
+			Name: "scalar/duration",
 			YAML: `a: 3s`,
 			Tokens: []testscanner.WantToken{
 				{
@@ -663,6 +750,7 @@ t4: 2098-01-09T10:40:47Z
 			},
 		},
 		{
+			Name: "scalar/dotted-quad",
 			YAML: `a: 1.2.3.4`,
 			Tokens: []testscanner.WantToken{
 				{
@@ -683,6 +771,7 @@ t4: 2098-01-09T10:40:47Z
 			},
 		},
 		{
+			Name: "scalar/float-under-key-a",
 			YAML: `a: 100.5`,
 			Tokens: []testscanner.WantToken{
 				{
@@ -703,6 +792,7 @@ t4: 2098-01-09T10:40:47Z
 			},
 		},
 		{
+			Name: "scalar/word",
 			YAML: `a: bogus`,
 			Tokens: []testscanner.WantToken{
 				{
@@ -719,48 +809,6 @@ t4: 2098-01-09T10:40:47Z
 					Type:   token.StringType,
 					Value:  "bogus",
 					Origin: " bogus",
-				},
-			},
-		},
-		{
-			YAML: `1x0`,
-			Tokens: []testscanner.WantToken{
-				{
-					Type:   token.StringType,
-					Value:  "1x0",
-					Origin: "1x0",
-				},
-			},
-		},
-		{
-			YAML: `0b98765`,
-			Tokens: []testscanner.WantToken{
-				{
-					Type:   token.StringType,
-					Value:  "0b98765",
-					Origin: "0b98765",
-				},
-			},
-		},
-		{
-			// 9 and 8 are not octal digits, so this was a string under YAML 1.1. Under 1.2 it is a decimal number that opens
-			// with a zero.
-			YAML: `098765`,
-			Tokens: []testscanner.WantToken{
-				{
-					Type:   token.IntegerType,
-					Value:  "098765",
-					Origin: "098765",
-				},
-			},
-		},
-		{
-			YAML: `0o98765`,
-			Tokens: []testscanner.WantToken{
-				{
-					Type:   token.StringType,
-					Value:  "0o98765",
-					Origin: "0o98765",
 				},
 			},
 		},

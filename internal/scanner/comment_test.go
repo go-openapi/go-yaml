@@ -33,30 +33,35 @@ func TestTokenizeComments(t *testing.T) {
 func commentTestCases() iter.Seq[testscanner.Case] {
 	return slices.Values([]testscanner.Case{
 		{
+			Name: "own-line/with-break",
 			YAML: "# c\n",
 			Tokens: []testscanner.WantToken{
 				{Type: token.CommentType, Value: " c", Origin: "# c\n"},
 			},
 		},
 		{
+			Name: "own-line/at-end-of-input",
 			YAML: "# c",
 			Tokens: []testscanner.WantToken{
 				{Type: token.CommentType, Value: " c", Origin: "# c"},
 			},
 		},
 		{
+			Name: "own-line/empty",
 			YAML: "#\n",
 			Tokens: []testscanner.WantToken{
 				{Type: token.CommentType, Value: "", Origin: "#\n"},
 			},
 		},
 		{
+			Name: "own-line/no-space-after-hash",
 			YAML: "#c\n",
 			Tokens: []testscanner.WantToken{
 				{Type: token.CommentType, Value: "c", Origin: "#c\n"},
 			},
 		},
 		{
+			Name: "own-line/two-above-key",
 			YAML: "# one\n# two\na: 1\n",
 			Tokens: []testscanner.WantToken{
 				{Type: token.CommentType, Value: " one", Origin: "# one\n"},
@@ -67,6 +72,7 @@ func commentTestCases() iter.Seq[testscanner.Case] {
 			},
 		},
 		{
+			Name: "own-line/indented-above-key",
 			YAML: "  # indented\na: 1\n",
 			Tokens: []testscanner.WantToken{
 				{Type: token.CommentType, Value: " indented", Origin: "  # indented\n"},
@@ -76,6 +82,7 @@ func commentTestCases() iter.Seq[testscanner.Case] {
 			},
 		},
 		{
+			Name: "trailing/after-value",
 			YAML: "a: 1 # c\n",
 			Tokens: []testscanner.WantToken{
 				{Type: token.StringType, Value: "a", Origin: "a"},
@@ -85,6 +92,7 @@ func commentTestCases() iter.Seq[testscanner.Case] {
 			},
 		},
 		{
+			Name: "trailing/empty",
 			YAML: "a: 1 #\n",
 			Tokens: []testscanner.WantToken{
 				{Type: token.StringType, Value: "a", Origin: "a"},
@@ -94,6 +102,7 @@ func commentTestCases() iter.Seq[testscanner.Case] {
 			},
 		},
 		{
+			Name: "trailing/extra-spaces",
 			YAML: "a: 1  #  spaced\n",
 			Tokens: []testscanner.WantToken{
 				{Type: token.StringType, Value: "a", Origin: "a"},
@@ -103,6 +112,7 @@ func commentTestCases() iter.Seq[testscanner.Case] {
 			},
 		},
 		{
+			Name: "trailing/after-colon",
 			YAML: "a: #c\n",
 			Tokens: []testscanner.WantToken{
 				{Type: token.StringType, Value: "a", Origin: "a"},
@@ -111,6 +121,7 @@ func commentTestCases() iter.Seq[testscanner.Case] {
 			},
 		},
 		{
+			Name: "trailing/after-colon-before-nested-mapping",
 			YAML: "a: # c\n  b: 2\n",
 			Tokens: []testscanner.WantToken{
 				{Type: token.StringType, Value: "a", Origin: "a"},
@@ -122,6 +133,7 @@ func commentTestCases() iter.Seq[testscanner.Case] {
 			},
 		},
 		{
+			Name: "own-line/after-last-entry",
 			YAML: "a: 1\n# t\n",
 			Tokens: []testscanner.WantToken{
 				{Type: token.StringType, Value: "a", Origin: "a"},
@@ -131,6 +143,7 @@ func commentTestCases() iter.Seq[testscanner.Case] {
 			},
 		},
 		{
+			Name: "own-line/inside-nested-mapping",
 			YAML: "a:\n  # c\n  b: 2\n",
 			Tokens: []testscanner.WantToken{
 				{Type: token.StringType, Value: "a", Origin: "a"},
@@ -142,6 +155,7 @@ func commentTestCases() iter.Seq[testscanner.Case] {
 			},
 		},
 		{
+			Name: "not-a-comment/hash-in-plain-value",
 			YAML: "a: b#c\n",
 			Tokens: []testscanner.WantToken{
 				{Type: token.StringType, Value: "a", Origin: "a"},
@@ -150,6 +164,7 @@ func commentTestCases() iter.Seq[testscanner.Case] {
 			},
 		},
 		{
+			Name: "not-a-comment/hash-in-plain-key",
 			YAML: "a#b: 1\n",
 			Tokens: []testscanner.WantToken{
 				{Type: token.StringType, Value: "a#b", Origin: "a#b"},
@@ -158,6 +173,7 @@ func commentTestCases() iter.Seq[testscanner.Case] {
 			},
 		},
 		{
+			Name: "not-a-comment/hash-in-double-quotes",
 			YAML: "a: \"b # c\"\n",
 			Tokens: []testscanner.WantToken{
 				{Type: token.StringType, Value: "a", Origin: "a"},
@@ -166,6 +182,7 @@ func commentTestCases() iter.Seq[testscanner.Case] {
 			},
 		},
 		{
+			Name: "not-a-comment/hash-in-single-quotes",
 			YAML: "a: 'b # c'\n",
 			Tokens: []testscanner.WantToken{
 				{Type: token.StringType, Value: "a", Origin: "a"},
@@ -174,6 +191,7 @@ func commentTestCases() iter.Seq[testscanner.Case] {
 			},
 		},
 		{
+			Name: "trailing/after-sequence-entry",
 			YAML: "- a # c\n",
 			Tokens: []testscanner.WantToken{
 				{Type: token.SequenceEntryType, Value: "-", Origin: "-"},
@@ -182,6 +200,7 @@ func commentTestCases() iter.Seq[testscanner.Case] {
 			},
 		},
 		{
+			Name: "trailing/after-flow-mapping",
 			YAML: "{a: 1} # c\n",
 			Tokens: []testscanner.WantToken{
 				{Type: token.MappingStartType, Value: "{", Origin: "{"},
@@ -193,6 +212,7 @@ func commentTestCases() iter.Seq[testscanner.Case] {
 			},
 		},
 		{
+			Name: "not-a-comment/hash-in-literal-scalar",
 			YAML: "a: |\n  # not a comment\n",
 			Tokens: []testscanner.WantToken{
 				{Type: token.StringType, Value: "a", Origin: "a"},

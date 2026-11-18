@@ -95,8 +95,14 @@ func TestAMergeKeyTakesATabAsSeparation(t *testing.T) {
 }
 
 func blockMappingTestCases() iter.Seq[testscanner.Case] {
+	return testscanner.Concat(blockMappingEntryCases(), blockMappingValueCases())
+}
+
+// blockMappingEntryCases reads a key and its value on one line, and mappings nested under a key.
+func blockMappingEntryCases() iter.Seq[testscanner.Case] {
 	return slices.Values([]testscanner.Case{
 		{
+			Name: "entry/plain-value",
 			YAML: `v: hi`,
 			Tokens: []testscanner.WantToken{
 				{
@@ -117,6 +123,7 @@ func blockMappingTestCases() iter.Seq[testscanner.Case] {
 			},
 		},
 		{
+			Name: "entry/tab-after-colon",
 			YAML: `v:	a`,
 			Tokens: []testscanner.WantToken{
 				{
@@ -138,16 +145,14 @@ func blockMappingTestCases() iter.Seq[testscanner.Case] {
 			},
 		},
 		{
-			YAML: `
-v:
-- A
-- B
+			Name: "entry/with-line-break",
+			YAML: `hello: world
 `,
 			Tokens: []testscanner.WantToken{
 				{
 					Type:   token.StringType,
-					Value:  "v",
-					Origin: "\nv",
+					Value:  "hello",
+					Origin: "hello",
 				},
 				{
 					Type:   token.MappingValueType,
@@ -155,105 +160,14 @@ v:
 					Origin: ":",
 				},
 				{
-					Type:   token.SequenceEntryType,
-					Value:  "-",
-					Origin: "\n-",
-				},
-				{
 					Type:   token.StringType,
-					Value:  "A",
-					Origin: " A\n",
-				},
-				{
-					Type:   token.SequenceEntryType,
-					Value:  "-",
-					Origin: "-",
-				},
-				{
-					Type:   token.StringType,
-					Value:  "B",
-					Origin: " B",
+					Value:  "world",
+					Origin: " world",
 				},
 			},
 		},
 		{
-			YAML: `
-v:
-- A
-- 1
-- B:
- - 2
- - 3
-`,
-			Tokens: []testscanner.WantToken{
-				{
-					Type:   token.StringType,
-					Value:  "v",
-					Origin: "\nv",
-				},
-				{
-					Type:   token.MappingValueType,
-					Value:  ":",
-					Origin: ":",
-				},
-				{
-					Type:   token.SequenceEntryType,
-					Value:  "-",
-					Origin: "\n-",
-				},
-				{
-					Type:   token.StringType,
-					Value:  "A",
-					Origin: " A\n",
-				},
-				{
-					Type:   token.SequenceEntryType,
-					Value:  "-",
-					Origin: "-",
-				},
-				{
-					Type:   token.IntegerType,
-					Value:  "1",
-					Origin: " 1\n",
-				},
-				{
-					Type:   token.SequenceEntryType,
-					Value:  "-",
-					Origin: "-",
-				},
-				{
-					Type:   token.StringType,
-					Value:  "B",
-					Origin: " B",
-				},
-				{
-					Type:   token.MappingValueType,
-					Value:  ":",
-					Origin: ":",
-				},
-				{
-					Type:   token.SequenceEntryType,
-					Value:  "-",
-					Origin: "\n -",
-				},
-				{
-					Type:   token.IntegerType,
-					Value:  "2",
-					Origin: " 2\n ",
-				},
-				{
-					Type:   token.SequenceEntryType,
-					Value:  "-",
-					Origin: "-",
-				},
-				{
-					Type:   token.IntegerType,
-					Value:  "3",
-					Origin: " 3",
-				},
-			},
-		},
-		{
+			Name: "nested/one-space-indent",
 			YAML: `
 a:
  b: c
@@ -287,27 +201,7 @@ a:
 			},
 		},
 		{
-			YAML: `hello: world
-`,
-			Tokens: []testscanner.WantToken{
-				{
-					Type:   token.StringType,
-					Value:  "hello",
-					Origin: "hello",
-				},
-				{
-					Type:   token.MappingValueType,
-					Value:  ":",
-					Origin: ":",
-				},
-				{
-					Type:   token.StringType,
-					Value:  "world",
-					Origin: " world",
-				},
-			},
-		},
-		{
+			Name: "nested/keys-out-of-order-with-submapping",
 			YAML: `
 b: 2
 a: 1
@@ -404,7 +298,132 @@ sub:
 				},
 			},
 		},
+	})
+}
+
+// blockMappingValueCases reads a value written on the lines below its key: a block sequence, or a plain scalar running over several lines.
+func blockMappingValueCases() iter.Seq[testscanner.Case] {
+	return slices.Values([]testscanner.Case{
 		{
+			Name: "sequence-value/two-strings",
+			YAML: `
+v:
+- A
+- B
+`,
+			Tokens: []testscanner.WantToken{
+				{
+					Type:   token.StringType,
+					Value:  "v",
+					Origin: "\nv",
+				},
+				{
+					Type:   token.MappingValueType,
+					Value:  ":",
+					Origin: ":",
+				},
+				{
+					Type:   token.SequenceEntryType,
+					Value:  "-",
+					Origin: "\n-",
+				},
+				{
+					Type:   token.StringType,
+					Value:  "A",
+					Origin: " A\n",
+				},
+				{
+					Type:   token.SequenceEntryType,
+					Value:  "-",
+					Origin: "-",
+				},
+				{
+					Type:   token.StringType,
+					Value:  "B",
+					Origin: " B",
+				},
+			},
+		},
+		{
+			Name: "sequence-value/mixed-with-nested-mapping",
+			YAML: `
+v:
+- A
+- 1
+- B:
+ - 2
+ - 3
+`,
+			Tokens: []testscanner.WantToken{
+				{
+					Type:   token.StringType,
+					Value:  "v",
+					Origin: "\nv",
+				},
+				{
+					Type:   token.MappingValueType,
+					Value:  ":",
+					Origin: ":",
+				},
+				{
+					Type:   token.SequenceEntryType,
+					Value:  "-",
+					Origin: "\n-",
+				},
+				{
+					Type:   token.StringType,
+					Value:  "A",
+					Origin: " A\n",
+				},
+				{
+					Type:   token.SequenceEntryType,
+					Value:  "-",
+					Origin: "-",
+				},
+				{
+					Type:   token.IntegerType,
+					Value:  "1",
+					Origin: " 1\n",
+				},
+				{
+					Type:   token.SequenceEntryType,
+					Value:  "-",
+					Origin: "-",
+				},
+				{
+					Type:   token.StringType,
+					Value:  "B",
+					Origin: " B",
+				},
+				{
+					Type:   token.MappingValueType,
+					Value:  ":",
+					Origin: ":",
+				},
+				{
+					Type:   token.SequenceEntryType,
+					Value:  "-",
+					Origin: "\n -",
+				},
+				{
+					Type:   token.IntegerType,
+					Value:  "2",
+					Origin: " 2\n ",
+				},
+				{
+					Type:   token.SequenceEntryType,
+					Value:  "-",
+					Origin: "-",
+				},
+				{
+					Type:   token.IntegerType,
+					Value:  "3",
+					Origin: " 3",
+				},
+			},
+		},
+		{
+			Name: "multi-line-plain/blank-line-inside",
 			YAML: `
 a:
  b
@@ -430,6 +449,7 @@ a:
 			},
 		},
 		{
+			Name: "multi-line-plain/trailing-spaces-and-blank-lines",
 			YAML: `
 a:   
  b   

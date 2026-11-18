@@ -25,6 +25,7 @@ func TestTokenizeTags(t *testing.T) {
 func tagTestCases() iter.Seq[testscanner.Case] {
 	return slices.Values([]testscanner.Case{
 		{
+			Name: "not-a-tag/verbatim-without-bang",
 			YAML: `a: <foo>`,
 			Tokens: []testscanner.WantToken{
 				{
@@ -45,6 +46,7 @@ func tagTestCases() iter.Seq[testscanner.Case] {
 			},
 		},
 		{
+			Name: "tag/secondary-handle-before-value",
 			YAML: `a: !!binary gIGC`,
 			Tokens: []testscanner.WantToken{
 				{

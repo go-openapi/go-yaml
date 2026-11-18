@@ -22,6 +22,7 @@ func TestTokenizeFlowCollections(t *testing.T) {
 func flowCollectionTestCases() iter.Seq[testscanner.Case] {
 	return slices.Values([]testscanner.Case{
 		{
+			Name: "mapping/empty",
 			YAML: `{}
   `,
 			Tokens: []testscanner.WantToken{
@@ -38,6 +39,7 @@ func flowCollectionTestCases() iter.Seq[testscanner.Case] {
 			},
 		},
 		{
+			Name: "mapping/one-entry-as-value",
 			YAML: `a: {x: 1}`,
 			Tokens: []testscanner.WantToken{
 				{
@@ -78,6 +80,7 @@ func flowCollectionTestCases() iter.Seq[testscanner.Case] {
 			},
 		},
 		{
+			Name: "sequence/two-items-as-value",
 			YAML: `a: [1, 2]`,
 			Tokens: []testscanner.WantToken{
 				{
@@ -118,6 +121,7 @@ func flowCollectionTestCases() iter.Seq[testscanner.Case] {
 			},
 		},
 		{
+			Name: "mapping/two-entries-as-value",
 			YAML: `a: {b: c, d: e}`,
 			Tokens: []testscanner.WantToken{
 				{

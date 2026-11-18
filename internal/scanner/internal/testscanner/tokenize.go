@@ -43,9 +43,26 @@ type WantToken struct {
 }
 
 // Case is one document and the tokens a scan of it returns.
+//
+// Name names the subtest. It reads "theme/what", as in "folded/more-indented-line", so that
+// go test -run 'TestTokenizeBlockScalars/folded/' runs one theme.
 type Case struct {
+	Name   string
 	YAML   string
 	Tokens []WantToken
+}
+
+// Concat runs the cases of each table in turn.
+func Concat(tables ...iter.Seq[Case]) iter.Seq[Case] {
+	return func(yield func(Case) bool) {
+		for _, table := range tables {
+			for test := range table {
+				if !yield(test) {
+					return
+				}
+			}
+		}
+	}
 }
 
 // ScanFunc scans src and returns the tokens it holds, or the error the scanner stopped on.
@@ -56,12 +73,18 @@ type ScanFunc func(src string) ([]token.Token, error)
 
 // RunCases scans each case and compares the type, the value and the source text of every token it returns.
 //
-// It names each subtest after the document, so a failure prints the YAML that produced it.
+// It names each subtest after [Case.Name], and fails on a case with no name or with the name of an earlier one.
+// A failure message quotes the YAML that produced it.
 func RunCases(t *testing.T, scan ScanFunc, cases iter.Seq[Case]) {
 	t.Helper()
 
+	seen := make(map[string]bool)
 	for test := range cases {
-		t.Run(test.YAML, func(t *testing.T) {
+		require.NotEmptyf(t, test.Name, "a case has no name: %q", test.YAML)
+		require.Falsef(t, seen[test.Name], "two cases are named %q", test.Name)
+		seen[test.Name] = true
+
+		t.Run(test.Name, func(t *testing.T) {
 			tokens, err := scan(test.YAML)
 			require.NoErrorf(t, err,
 				"scanning %q: %v",
