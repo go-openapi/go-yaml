@@ -49,7 +49,7 @@ type Strictness struct {
 //
 // The two entries found on 2026-09-07 and 2026-09-13 -- "{{\"\": 0}}" and "{[a" over "b]: 1}", a flow collection
 // as a flow mapping's key -- had been parsed for some time when, on 2026-11-18, the check stopped asking the decoder:
-// a collection key decodes into no Go map, so Unmarshal kept refusing them. parser/zz_flowcollectionkey_test.go holds
+// a collection key decodes into no Go map, so Unmarshal kept refusing them. parser/flowcollectionkey_test.go holds
 // both documents now, with the ruling the second one carried.
 //
 // Deliberately no expected value on an entry. An empty key in a Go map is a

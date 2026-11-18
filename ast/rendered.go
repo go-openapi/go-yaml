@@ -22,7 +22,7 @@ import (
 // spans and leads are what the layout decisions used to ask the finished string:
 // whether a value renders over more than one line, and whether it opens with a
 // line break. They are kept as pieces are put together, so the question is
-// answered before anything is written rather than after. zz_rendered_test.go
+// answered before anything is written rather than after. rendered_test.go
 // holds both against the text the piece flattens to.
 type rendered struct {
 	// text is a leaf's own text. It is empty for a piece holding parts.

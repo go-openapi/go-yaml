@@ -21,8 +21,8 @@ import (
 // value is everything after the "#" to the line break, its own leading space included, so "#  spaced" is "  spaced".
 //
 // The package's other comment assertions sit in two places: multiline_test.go holds three where a comment follows a
-// "|" or a ">" on a block-scalar header, and zz_plaincomment_test.go holds four for a "#" ending a multi-line plain
-// scalar. Neither reaches a comment standing on its own line, one after a value or a key, or the "#" characters that
+// "|" or a ">" on a block-scalar header, and TestFixedAPlainScalarEndsAtAComment below holds four for a "#" ending a
+// multi-line plain scalar. Neither reaches a comment standing on its own line, one after a value or a key, or the "#" characters that
 // open nothing.
 func TestTokenizeComments(t *testing.T) {
 	t.Parallel()

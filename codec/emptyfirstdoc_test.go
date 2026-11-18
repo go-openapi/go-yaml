@@ -25,7 +25,7 @@ import (
 // it saw, and a document written as nothing between its markers hands over no
 // node, so the count never moved for it. parser.Step.Document now says which
 // document a node belongs to, and the writer reads that instead.
-// codec/zz_tojsonstream_test.go holds the whole contract; what this file keeps
+// codec/tojsonstream_test.go holds the whole contract; what this file keeps
 // is the agreement between the two converters, which is what found it.
 //
 // Found on 2026-09-13 by the stream axis, once the corpus carried a document

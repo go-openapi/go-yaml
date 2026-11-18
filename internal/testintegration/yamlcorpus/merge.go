@@ -153,7 +153,7 @@ func MergeShapes() []stance.Shape {
 		{
 			// An alias and a mapping written in place in one sequence, which
 			// is where codec.ToJSON writes JSON that will not parse. See
-			// codec/zz_merge_test.go.
+			// codec/merge_test.go.
 			Name:   "a merge from an alias beside a mapping written in place",
 			Src:    []byte("b: &b {q: 1}\nd:\n  <<: [*b, {a: 1}]\n"),
 			Intent: []stance.Tag{TagMergeInline, TagMergeSequence},
