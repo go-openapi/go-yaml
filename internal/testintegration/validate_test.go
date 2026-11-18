@@ -22,7 +22,7 @@ func TestStructValidator(t *testing.T) {
 		TestName    string
 		YAMLContent string
 		ExpectedErr string
-		Instance    interface{}
+		Instance    any
 	}{
 		{
 			TestName: "Test Simple Validation",
@@ -42,8 +42,8 @@ func TestStructValidator(t *testing.T) {
    6 | - name: ken
    7 |   age: 10`,
 			Instance: &[]struct {
-				Name string `yaml:"name" validate:"required"`
-				Age  int    `yaml:"age" validate:"gte=0,lt=120"`
+				Name string `validate:"required"     yaml:"name"`
+				Age  int    `validate:"gte=0,lt=120" yaml:"age"`
 			}{},
 		},
 		{
@@ -64,8 +64,8 @@ func TestStructValidator(t *testing.T) {
          ^
 `,
 			Instance: &[]struct {
-				Name string `yaml:"name" validate:"required"`
-				Age  int    `yaml:"age" validate:"gte=0,lt=120"`
+				Name string `validate:"required"     yaml:"name"`
+				Age  int    `validate:"gte=0,lt=120" yaml:"age"`
 			}{},
 		},
 		{
@@ -83,11 +83,11 @@ addr:
            ^
    5 |   number: seven`,
 			Instance: &struct {
-				Name string `yaml:"name" validate:"required"`
-				Age  int    `yaml:"age" validate:"gte=0,lt=120"`
+				Name string `validate:"required"     yaml:"name"`
+				Age  int    `validate:"gte=0,lt=120" yaml:"age"`
 				Addr struct {
-					Number string `yaml:"number" validate:"required"`
-					State  string `yaml:"state" validate:"required"`
+					Number string `validate:"required" yaml:"number"`
+					State  string `validate:"required" yaml:"state"`
 				} `yaml:"addr"`
 			}{},
 		},
@@ -109,12 +109,12 @@ addr:
          ^
 `,
 			Instance: &struct {
-				Name string `yaml:"name" validate:"required"`
-				Age  int    `yaml:"age" validate:"gte=0,lt=120"`
+				Name string `validate:"required"     yaml:"name"`
+				Age  int    `validate:"gte=0,lt=120" yaml:"age"`
 				Addr *struct {
-					Number string `yaml:"number" validate:"required"`
-					State  string `yaml:"state" validate:"required"`
-				} `yaml:"addr" validate:"required"`
+					Number string `validate:"required" yaml:"number"`
+					State  string `validate:"required" yaml:"state"`
+				} `validate:"required" yaml:"addr"`
 			}{},
 		},
 		{
@@ -162,9 +162,9 @@ age: 20
        ^
    3 | age: 20`,
 			Instance: &struct {
-				Name  string `yaml:"name" validate:"required"`
-				Age   int    `yaml:"age" validate:"gte=0,lt=120"`
-				Inner `yaml:",inline"`
+				Name  string           `validate:"required"     yaml:"name"`
+				Age   int              `validate:"gte=0,lt=120" yaml:"age"`
+				Inner `yaml:",inline"` //nolint:embeddedstructfieldcheck // the embedded field follows the regular ones on purpose: the fixture covers that order
 			}{},
 		},
 		{
@@ -183,9 +183,9 @@ lt10: 20
              ^
 `,
 			Instance: &struct {
-				Name  string `yaml:"name" validate:"required"`
-				Age   int    `yaml:"age" validate:"gte=0,lt=120"`
-				Inner `yaml:",inline"`
+				Name  string           `validate:"required"     yaml:"name"`
+				Age   int              `validate:"gte=0,lt=120" yaml:"age"`
+				Inner `yaml:",inline"` //nolint:embeddedstructfieldcheck // the embedded field follows the regular ones on purpose: the fixture covers that order
 			}{},
 		},
 		{
@@ -201,7 +201,7 @@ map:
    4 |   hello2: hello`,
 			Instance: &struct {
 				// Make sure that this map is not set
-				Map map[string]string `yaml:"map" validate:"eq=0"`
+				Map map[string]string `validate:"eq=0" yaml:"map"`
 			}{},
 		},
 		{
@@ -216,13 +216,12 @@ map:
    3 |   - value`,
 			Instance: &struct {
 				// Make sure that this map is not set
-				Map []string `yaml:"map" validate:"eq=0"`
+				Map []string `validate:"eq=0" yaml:"map"`
 			}{},
 		},
 	}
 
 	for _, tc := range cases {
-		tc := tc // NOTE: https://github.com/golang/go/wiki/CommonMistakes#using-goroutines-on-loop-iterator-variables
 		t.Run(tc.TestName, func(t *testing.T) {
 			validate := validator.New()
 			dec := codec.NewDecoder(

@@ -5,7 +5,7 @@ package yamlcorpus
 
 import "github.com/go-openapi/go-yaml/internal/testintegration/stance"
 
-// Separation: where a tab may stand and where it may not.
+// SeparationShapes records where a tab may stand and where it may not.
 //
 // # One rule, and everything here follows from it
 //

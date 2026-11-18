@@ -673,7 +673,7 @@ var awkwardStrings = []string{
 	"[a]", "{a}", "&a", "*a", "!a", "|a", ">a", "'a", `"a`, "%a", "@a", "`a",
 	"a\nb", "a\n\nb", "a\nb\n", "line\n", "\nlead", "trail\n\n",
 	"---", "...", "a---b", "a...b",
-	"café", "日本語", "é", " nbsp", "emoji 🙂",
+	"café", "日本語", "é", " nbsp", "emoji 🙂", //nolint:gosmopolitan // non-Latin text, on purpose: the generator draws strings outside ASCII
 	"a\\b", "a\"b", "a'b", "a''b", `a\nb`,
 	"2001-12-14", "12:34:56", "a: b: c",
 }
@@ -1250,10 +1250,10 @@ func values(depth int) *rapid.Generator[Value] {
 			return rapid.OneOf(scalars...)
 		}
 
-		return rapid.OneOf(append(scalars,
+		return rapid.OneOf(slices.Concat(scalars, []*rapid.Generator[Value]{
 			rapid.Custom(func(t *rapid.T) Value { return drawSeq(t, depth) }),
 			rapid.Custom(func(t *rapid.T) Value { return drawMap(t, depth) }),
-		)...)
+		})...)
 	})
 }
 
@@ -1311,12 +1311,12 @@ func drawTime(t *rapid.T) time.Time {
 
 	var (
 		hour     = rapid.IntRange(0, 23).Draw(t, "hour")
-		min      = rapid.IntRange(0, 59).Draw(t, "minute")
+		minute   = rapid.IntRange(0, 59).Draw(t, "minute")
 		sec      = rapid.IntRange(0, 59).Draw(t, "second")
 		hundreds = rapid.IntRange(0, 99).Draw(t, "hundredths")
 	)
 
-	return time.Date(year, time.Month(month), day, hour, min, sec, hundreds*int(10*time.Millisecond), time.UTC)
+	return time.Date(year, time.Month(month), day, hour, minute, sec, hundreds*int(10*time.Millisecond), time.UTC)
 }
 
 func drawSeq(t *rapid.T, depth int) Value {

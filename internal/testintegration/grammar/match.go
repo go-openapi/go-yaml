@@ -268,8 +268,8 @@ func (c *compiler) charRange(pair []any) expr {
 		panic("grammar: a code point range takes exactly two bounds")
 	}
 
-	lo := decodeHex(pair[0].(string))
-	hi := decodeHex(pair[1].(string))
+	lo := decodeHex(asType[string](pair[0]))
+	hi := decodeHex(asType[string](pair[1]))
 
 	return func(s *state, e env) (env, bool) {
 		r, size := s.rune()

@@ -12,6 +12,7 @@ package yamlcorpus
 import (
 	"bytes"
 	"fmt"
+	"maps"
 
 	"github.com/go-openapi/go-yaml/internal/testintegration/stance"
 )
@@ -155,25 +156,15 @@ func Vocabulary() stance.Vocabulary {
 	// Schema resolution is a separate family with its own file, and every one
 	// of its questions arises at the same place, but it is one vocabulary
 	// because a consumer has one.
-	for tag, at := range SchemaVocabulary() {
-		out[tag] = at
-	}
+	maps.Copy(out, SchemaVocabulary())
 
-	for tag, at := range TagVocabulary() {
-		out[tag] = at
-	}
+	maps.Copy(out, TagVocabulary())
 
-	for tag, at := range KeyVocabulary() {
-		out[tag] = at
-	}
+	maps.Copy(out, KeyVocabulary())
 
-	for tag, at := range MergeVocabulary() {
-		out[tag] = at
-	}
+	maps.Copy(out, MergeVocabulary())
 
-	for tag, at := range DirectiveVocabulary() {
-		out[tag] = at
-	}
+	maps.Copy(out, DirectiveVocabulary())
 
 	return out
 }
@@ -420,6 +411,7 @@ func entry(key string, node []byte) []byte {
 	return []byte(fmt.Sprintf("%s: %s\n", key, node))
 }
 
+//nolint:unparam // the name is a parameter so a shape can anchor under any name, though every shape here uses "x"
 func anchor(name string, node []byte) []byte {
 	return concat([]byte("&"+name+" "), node)
 }

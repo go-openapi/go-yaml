@@ -8,7 +8,7 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
-	"io/fs"
+	"os"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -48,13 +48,20 @@ func messageTemplates(t *testing.T) []string {
 	for _, dir := range []string{"../../../parser", "../../../internal/scanner"} {
 		fset := token.NewFileSet()
 
-		pkgs, err := parser.ParseDir(fset, filepath.Clean(dir), func(fi fs.FileInfo) bool {
-			return !strings.HasSuffix(fi.Name(), "_test.go")
-		}, 0)
+		// File by file: parser.ParseDir is deprecated, and ast.Package with it.
+		entries, err := os.ReadDir(filepath.Clean(dir))
 		require.NoError(t, err, dir)
 
-		for _, pkg := range pkgs {
-			ast.Inspect(pkg, func(n ast.Node) bool {
+		for _, entry := range entries {
+			name := entry.Name()
+			if entry.IsDir() || !strings.HasSuffix(name, ".go") || strings.HasSuffix(name, "_test.go") {
+				continue
+			}
+
+			file, err := parser.ParseFile(fset, filepath.Join(dir, name), nil, 0)
+			require.NoError(t, err, name)
+
+			ast.Inspect(file, func(n ast.Node) bool {
 				call, ok := n.(*ast.CallExpr)
 				if !ok || len(call.Args) == 0 {
 					return true

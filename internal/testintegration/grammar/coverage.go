@@ -82,30 +82,6 @@ func (g *Grammar) NewCoverage() *Coverage {
 	}
 }
 
-func (c *Coverage) attempt(id int32, e env) {
-	at := bucketOf(id, e)
-	if c.attempts[at] == 0 && c.successes[at] == 0 {
-		c.touched = append(c.touched, int32(at))
-	}
-
-	c.attempts[at]++
-}
-
-// succeed never has to record a touch: a rule is attempted before it can
-// succeed, and both land on the same bucket.
-func (c *Coverage) succeed(id int32, e env) {
-	c.successes[bucketOf(id, e)]++
-}
-
-// bucketOf packs a production, the context it was entered in, and the classes
-// of its two indentation parameters into one index.
-func bucketOf(id int32, e env) int {
-	at := int(id)*numContexts + int(e.c)
-	at = at*numIndentBins + indentBin(e.n)
-
-	return at*numIndentBins + indentBin(e.m)
-}
-
 // Reset empties every bucket, keeping the allocation, so that a builder asking
 // about one document after another does not allocate per document.
 func (c *Coverage) Reset() {
@@ -124,6 +100,15 @@ func (c *Coverage) Reset() {
 // and most of those combinations do not exist -- 605 of YAML's 1,477 can be
 // entered. Score against [Reach] instead; see [Coverage.Against].
 func (c *Coverage) Buckets() int { return len(c.attempts) }
+
+// bucketOf packs a production, the context it was entered in, and the classes
+// of its two indentation parameters into one index.
+func bucketOf(id int32, e env) int {
+	at := int(id)*numContexts + int(e.c)
+	at = at*numIndentBins + indentBin(e.n)
+
+	return at*numIndentBins + indentBin(e.m)
+}
 
 // Reached is how many buckets have been entered at least once.
 func (c *Coverage) Reached() int { return len(c.touched) }
@@ -182,12 +167,6 @@ func (c *Coverage) AddsTo(seen *Coverage) bool {
 	}
 
 	return false
-}
-
-func (c *Coverage) mustAgree(o *Coverage) {
-	if c.g != o.g {
-		panic("grammar: coverage vectors from different grammars")
-	}
 }
 
 // Unreached names the productions no context has ever entered, in name order.
@@ -261,27 +240,6 @@ func (c *Coverage) Considered() []string {
 	return out
 }
 
-// span is every index belonging to one production, over all contexts and both
-// indentation classes. Folding it is how the coarse questions are answered from
-// the fine vector.
-func span(id int32) (from, to int) {
-	width := numContexts * numIndentBins * numIndentBins
-
-	return int(id) * width, (int(id) + 1) * width
-}
-
-func (c *Coverage) enteredAnywhere(id int32) bool {
-	from, to := span(id)
-
-	return slices.ContainsFunc(c.attempts[from:to], func(at uint32) bool { return at > 0 })
-}
-
-func (c *Coverage) matchedAnywhere(id int32) bool {
-	from, to := span(id)
-
-	return slices.ContainsFunc(c.successes[from:to], func(at uint32) bool { return at > 0 })
-}
-
 // Entered reports how often a production was entered and matched in one
 // context, naming the context the way the grammar does.
 func (c *Coverage) Entered(rule, ctx string) (attempts, matches uint32) {
@@ -350,6 +308,15 @@ func (c *Coverage) Report() string {
 	return b.String()
 }
 
+// span is every index belonging to one production, over all contexts and both
+// indentation classes. Folding it is how the coarse questions are answered from
+// the fine vector.
+func span(id int32) (from, to int) {
+	width := numContexts * numIndentBins * numIndentBins
+
+	return int(id) * width, (int(id) + 1) * width
+}
+
 // Signature digests which buckets were entered, so that two recognitions can be
 // compared for having gone the same way.
 //
@@ -381,6 +348,39 @@ func (c *Coverage) Signature() string {
 	}
 
 	return string(sum.Sum(nil))
+}
+
+func (c *Coverage) attempt(id int32, e env) {
+	at := bucketOf(id, e)
+	if c.attempts[at] == 0 && c.successes[at] == 0 {
+		c.touched = append(c.touched, int32(at))
+	}
+
+	c.attempts[at]++
+}
+
+// succeed never has to record a touch: a rule is attempted before it can
+// succeed, and both land on the same bucket.
+func (c *Coverage) succeed(id int32, e env) {
+	c.successes[bucketOf(id, e)]++
+}
+
+func (c *Coverage) mustAgree(o *Coverage) {
+	if c.g != o.g {
+		panic("grammar: coverage vectors from different grammars")
+	}
+}
+
+func (c *Coverage) enteredAnywhere(id int32) bool {
+	from, to := span(id)
+
+	return slices.ContainsFunc(c.attempts[from:to], func(at uint32) bool { return at > 0 })
+}
+
+func (c *Coverage) matchedAnywhere(id int32) bool {
+	from, to := span(id)
+
+	return slices.ContainsFunc(c.successes[from:to], func(at uint32) bool { return at > 0 })
 }
 
 // Names lists the grammar's productions in the order their ids run, which is

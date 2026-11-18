@@ -4,6 +4,7 @@
 package grammar_test
 
 import (
+	"slices"
 	"strings"
 	"testing"
 
@@ -130,13 +131,7 @@ func TestTheUnreachableProductionsAreTheOnesNothingRefers(t *testing.T) {
 }
 
 func contains(haystack []string, needle string) bool {
-	for _, s := range haystack {
-		if s == needle {
-			return true
-		}
-	}
-
-	return false
+	return slices.Contains(haystack, needle)
 }
 
 // everyEscape is one double-quoted scalar exercising every escape the grammar

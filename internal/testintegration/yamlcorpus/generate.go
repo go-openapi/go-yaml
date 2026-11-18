@@ -106,7 +106,7 @@ func meansOf(w yamlgen.Written) any {
 // document is what the emitter writes. That order is what makes the expectation
 // free -- generating text first would leave nothing to compare a decode against.
 func Generate(seed uint64, documents, mutantsEach int) []Entry {
-	rng := rand.New(rand.NewPCG(seed, 0x59414d4c))
+	rng := rand.New(rand.NewPCG(seed, 0x59414d4c)) //nolint:gosec // a seeded generator, so a corpus build is reproducible; nothing here is secret
 
 	values := yamlgen.Values()
 	styles := yamlgen.Styles()

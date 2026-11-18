@@ -79,22 +79,9 @@ func (g *Grammar) Reach(start, from string) *Reach {
 	return r
 }
 
-// enter marks a bucket and follows everything it can call, stopping when a
-// bucket is already marked. The grammar is cyclic, so that is what makes this
-// terminate.
-func (r *Reach) enter(name string, c ctxCode) {
-	s := r.g.slotFor(name)
-
-	at := int(s.id)*numContexts + int(c)
-	if r.in[at] {
-		return
-	}
-
-	r.in[at] = true
-	r.count++
-
-	r.g.calls(r.g.raw[name], c, r.enter)
-}
+// Buckets is how many production-by-context pairs a recognition from here can
+// enter. This is the denominator.
+func (r *Reach) Buckets() int { return r.count }
 
 // calls walks a rule body in one context and reports every production it can
 // enter, with the context it would be entered in.
@@ -275,10 +262,6 @@ func (g *Grammar) flipContext(rule string, in ctxCode) (ctxCode, bool) {
 	return 0, false
 }
 
-// Buckets is how many production-by-context pairs a recognition from here can
-// enter. This is the denominator.
-func (r *Reach) Buckets() int { return r.count }
-
 // Rules is how many distinct productions a recognition from here can enter, in
 // any context.
 func (r *Reach) Rules() int {
@@ -324,13 +307,30 @@ func (r *Reach) Unreachable() []string {
 	return out
 }
 
-func (r *Reach) anyContext(id int32) bool {
-	return slices.Contains(r.in[int(id)*numContexts:(int(id)+1)*numContexts], true)
-}
-
 func (r *Reach) String() string {
 	return fmt.Sprintf("%s from %s in %s: %d buckets over %d productions, %d productions unreachable",
 		r.g.name, r.start, quoteContext(r.from), r.count, r.Rules(), len(r.Unreachable()))
+}
+
+// enter marks a bucket and follows everything it can call, stopping when a
+// bucket is already marked. The grammar is cyclic, so that is what makes this
+// terminate.
+func (r *Reach) enter(name string, c ctxCode) {
+	s := r.g.slotFor(name)
+
+	at := int(s.id)*numContexts + int(c)
+	if r.in[at] {
+		return
+	}
+
+	r.in[at] = true
+	r.count++
+
+	r.g.calls(r.g.raw[name], c, r.enter)
+}
+
+func (r *Reach) anyContext(id int32) bool {
+	return slices.Contains(r.in[int(id)*numContexts:(int(id)+1)*numContexts], true)
 }
 
 func quoteContext(c string) string {
@@ -410,6 +410,21 @@ func (c *Coverage) Unmatched(r *Reach) []string {
 	return c.satisfied(r, func(live, matched bool) bool { return live && !matched })
 }
 
+// ReportAgainst is [Coverage.Report] with a denominator that means something.
+func (c *Coverage) ReportAgainst(r *Reach) string {
+	reached, matched, total := c.Against(r)
+
+	var b strings.Builder
+
+	fmt.Fprintf(&b, "%d/%d buckets entered, %d matched (%s)", reached, total, matched, r)
+
+	if missing := c.Missing(r); len(missing) > 0 {
+		fmt.Fprintf(&b, "\n\nnever entered (%d):\n  %s", len(missing), strings.Join(missing, "\n  "))
+	}
+
+	return b.String()
+}
+
 func (c *Coverage) buckets(r *Reach, want func(live, entered bool) bool) []string {
 	return c.over(r, c.attempts, want)
 }
@@ -441,12 +456,6 @@ func (c *Coverage) over(r *Reach, counts []uint32, want func(live, hit bool) boo
 	return out
 }
 
-func (c *Coverage) mustReach(r *Reach) {
-	if c.g != r.g {
-		panic("grammar: a coverage vector and a reachability set from different grammars")
-	}
-}
-
 // contextName is contextCode's inverse, for reporting.
 func contextName(code ctxCode) string {
 	for name, c := range contextCode {
@@ -458,17 +467,8 @@ func contextName(code ctxCode) string {
 	panic(fmt.Sprintf("grammar: no context with code %d", code))
 }
 
-// ReportAgainst is [Coverage.Report] with a denominator that means something.
-func (c *Coverage) ReportAgainst(r *Reach) string {
-	reached, matched, total := c.Against(r)
-
-	var b strings.Builder
-
-	fmt.Fprintf(&b, "%d/%d buckets entered, %d matched (%s)", reached, total, matched, r)
-
-	if missing := c.Missing(r); len(missing) > 0 {
-		fmt.Fprintf(&b, "\n\nnever entered (%d):\n  %s", len(missing), strings.Join(missing, "\n  "))
+func (c *Coverage) mustReach(r *Reach) {
+	if c.g != r.g {
+		panic("grammar: a coverage vector and a reachability set from different grammars")
 	}
-
-	return b.String()
 }

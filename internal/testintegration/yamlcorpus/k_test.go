@@ -9,7 +9,7 @@ import (
 	"errors"
 	"flag"
 	"io"
-	"sort"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -162,7 +162,7 @@ func TestTheCorpusNoLongerAccusesACorrectParser(t *testing.T) {
 		scored++
 
 		if _, err := readStream(c.Src); err != nil && want == stance.Accept && Mislabelled(err.Error()) {
-			accused = accused + 1
+			accused++
 
 			if accused < 4 {
 				t.Errorf("%s: expected to be read, and a correct parser refuses it: %v", c.Name, summarize(err))
@@ -329,7 +329,7 @@ func asTags(names []string) []stance.Tag {
 		out = append(out, stance.Tag(n))
 	}
 
-	sort.Slice(out, func(i, j int) bool { return out[i] < out[j] })
+	slices.Sort(out)
 
 	return out
 }

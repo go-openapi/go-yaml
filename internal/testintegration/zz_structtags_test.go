@@ -36,18 +36,21 @@ type (
 	}
 	TagInlined struct {
 		TagLeaf `yaml:",inline"`
-		Tail    string `yaml:"tail"`
+
+		Tail string `yaml:"tail"`
 	}
 	TagInlinedPtr struct {
 		*TagLeaf `yaml:",inline"`
-		Tail     string `yaml:"tail"`
+
+		Tail string `yaml:"tail"`
 	}
 	TagMid struct {
 		TagLeaf `yaml:",inline"`
 	}
 	TagDeep struct {
 		TagMid `yaml:",inline"`
-		Tail   string `yaml:"tail"`
+
+		Tail string `yaml:"tail"`
 	}
 	TagRest struct {
 		Known string         `yaml:"known"`
@@ -55,8 +58,9 @@ type (
 	}
 	TagRestAndEmbed struct {
 		TagLeaf `yaml:",inline"`
-		Known   string         `yaml:"known"`
-		Rest    map[string]any `yaml:",inline"`
+
+		Known string         `yaml:"known"`
+		Rest  map[string]any `yaml:",inline"`
 	}
 	TagIgnored struct {
 		Skipped string `yaml:"-"`
@@ -71,7 +75,8 @@ type (
 
 	TagOuterShadows struct {
 		TagLeaf `yaml:",inline"`
-		Name    string `yaml:"name"`
+
+		Name string `yaml:"name"`
 	}
 	TagSiblings struct {
 		TagLeaf  `yaml:",inline"`

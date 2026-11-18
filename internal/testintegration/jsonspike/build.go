@@ -45,25 +45,6 @@ type Build struct {
 	PerSignature int
 }
 
-// minimizing reports whether this build discards anything. A full build keeps
-// every document, valid ones included: a valid document that covers no new
-// production is still a distinct document, and the argument for keeping more
-// than one per failure signature applies to it just as well.
-func (b Build) minimizing() bool { return b.PerSignature > 0 }
-
-// Smoke is the corpus that lives in the repository: small enough to embed and
-// to run on every change, large enough to keep the defects the measurement says
-// it should.
-func Smoke() Build {
-	return Build{Tier: "smoke", Seed: 1, Documents: 8000, MutantsEach: 24, PerSignature: 16}
-}
-
-// Full is the corpus that ships as a release artifact, where nothing is
-// discarded but the documents that are still valid.
-func Full() Build {
-	return Build{Tier: "full", Seed: 1, Documents: 8000, MutantsEach: 24, PerSignature: 0}
-}
-
 // Write generates a corpus and writes it as an artifact.
 //
 // Nothing here consults a parser or a clock. The documents come from the seed,
@@ -96,6 +77,25 @@ func (b Build) Write(w io.Writer) error {
 
 	return out.Close()
 }
+
+// Smoke is the corpus that lives in the repository: small enough to embed and
+// to run on every change, large enough to keep the defects the measurement says
+// it should.
+func Smoke() Build {
+	return Build{Tier: "smoke", Seed: 1, Documents: 8000, MutantsEach: 24, PerSignature: 16}
+}
+
+// Full is the corpus that ships as a release artifact, where nothing is
+// discarded but the documents that are still valid.
+func Full() Build {
+	return Build{Tier: "full", Seed: 1, Documents: 8000, MutantsEach: 24, PerSignature: 0}
+}
+
+// minimizing reports whether this build discards anything. A full build keeps
+// every document, valid ones included: a valid document that covers no new
+// production is still a distinct document, and the argument for keeping more
+// than one per failure signature applies to it just as well.
+func (b Build) minimizing() bool { return b.PerSignature > 0 }
 
 // cases generates and selects, in one pass, keeping the order the generator
 // produced so that the artifact is stable.

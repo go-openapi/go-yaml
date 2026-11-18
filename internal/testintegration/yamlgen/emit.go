@@ -185,6 +185,8 @@ func (e *emitter) finish() string {
 			case BreakCR:
 				e.feat.add(FeatureBreakCR)
 			case BreakLF:
+			default:
+				panic(fmt.Sprintf("yamlgen: unknown line break %q", st.Break))
 			}
 		}
 
@@ -751,7 +753,7 @@ func (e *emitter) literal(s string, indent, stated int) {
 
 	e.buf.WriteString("\n")
 
-	for _, line := range strings.Split(body, "\n") {
+	for line := range strings.SplitSeq(body, "\n") {
 		if line != "" {
 			e.pad(indent)
 			e.buf.WriteString(line)
@@ -853,6 +855,8 @@ func (e *emitter) flowMap(n Map) string {
 
 				continue
 			case FlowNullSpelled:
+			default:
+				panic(fmt.Sprintf("yamlgen: unknown flow empty spelling %d", e.st.FlowEmpty))
 			}
 		}
 
@@ -1095,7 +1099,7 @@ func timestampText(v time.Time, st Style) string {
 
 // scalarString writes a string in the quoting the style asks for, falling back
 // to double quotes, which can express anything.
-func (e *emitter) scalarString(s string, flow, strTagged bool) string {
+func (e *emitter) scalarString(s string, _, strTagged bool) string {
 	switch e.st.Quoting {
 	case QuotePlain:
 		if canPlain(s, strTagged) {
@@ -1200,6 +1204,8 @@ func (e *emitter) number(text string, form NumberForm) string {
 	case NumberExponent:
 		e.feat.add(FeatureNumberExponent)
 	case NumberPlain:
+	default:
+		// nothing to do
 	}
 
 	e.reads.sawNumber(text)
@@ -1323,6 +1329,8 @@ func floatText(v float64, st Style) (string, NumberForm) {
 	case NumberExponent:
 		return withMantissaPoint(strconv.FormatFloat(v, 'e', -1, 64)), NumberExponent
 	case NumberPlain, NumberHex, NumberOctal:
+	default:
+		// nothing to do
 	}
 
 	return plainFloat(v), NumberPlain
@@ -1431,7 +1439,7 @@ func canLiteral(s string, indicator bool) bool {
 			return false
 		}
 
-		for _, line := range strings.Split(strings.TrimRight(s, "\n"), "\n") {
+		for line := range strings.SplitSeq(strings.TrimRight(s, "\n"), "\n") {
 			if strings.HasPrefix(line, " ") || strings.HasPrefix(line, "\t") {
 				return false
 			}
@@ -1672,7 +1680,7 @@ func canFolded(s string) bool {
 		return false
 	}
 
-	for _, line := range strings.Split(body, "\n") {
+	for line := range strings.SplitSeq(body, "\n") {
 		if line == "" || strings.TrimSpace(line) != line {
 			return false
 		}

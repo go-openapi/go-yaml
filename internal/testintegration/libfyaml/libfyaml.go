@@ -70,6 +70,7 @@ package libfyaml
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -177,7 +178,8 @@ func run(script, stdin string, args ...string) (string, error) {
 		return "", ErrNotInstalled
 	}
 
-	cmd := exec.Command("python3", append([]string{"-c", script}, args...)...)
+	argv := append([]string{"-c", script}, args...)
+	cmd := exec.CommandContext(context.Background(), "python3", argv...)
 	cmd.Env = append(os.Environ(), "PYTHONPATH="+home)
 	cmd.Stdin = strings.NewReader(stdin)
 

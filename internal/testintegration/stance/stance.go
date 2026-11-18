@@ -297,6 +297,8 @@ func (t Table) Expect(d Doc) (Outcome, string) {
 				return Undecided, string(tag) + ": " + t.Name + " tolerates this, and nothing here " +
 					"can say what the bytes denote without the decoder that would read them"
 			}
+		default:
+			panic(fmt.Sprintf("stance: unknown stand %d", t.Stand(tag)))
 		}
 	}
 

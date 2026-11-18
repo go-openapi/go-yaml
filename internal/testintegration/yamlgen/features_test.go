@@ -165,12 +165,12 @@ func plainBytes(s string) string {
 			return s
 		}
 
-		close := strings.Index(s[open:], ">")
-		if close < 0 {
+		closing := strings.Index(s[open:], ">")
+		if closing < 0 {
 			return s
 		}
 
-		s = s[:open] + s[open+close+1:]
+		s = s[:open] + s[open+closing+1:]
 	}
 }
 
@@ -312,6 +312,8 @@ func TestNoLabelOutrunsItsStyle(t *testing.T) {
 // can carry a raw carriage return through this emitter -- doubleQuote escapes
 // it, canSingle refuses it and writableRaw refuses it for both block styles --
 // so a "\r" in the output came from the break and from nothing else.
+//
+//nolint:gocognit // one check per kind of mark the emitter can leave in the bytes
 func TestEveryMarkInTheBytesIsLabeled(t *testing.T) {
 	rapid.Check(t, func(rt *rapid.T) {
 		v := yamlgen.Values().Draw(rt, "value")

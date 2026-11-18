@@ -93,8 +93,6 @@ func Full() Build {
 	return Build{Tier: "full", Seed: 1, Documents: 6000, MutantsEach: 12, PerSignature: 0}
 }
 
-func (b Build) minimizing() bool { return b.PerSignature > 0 }
-
 // Write generates a corpus and writes it as an artifact.
 func (b Build) Write(w io.Writer) error {
 	cases := b.cases()
@@ -127,6 +125,8 @@ func (b Build) Write(w io.Writer) error {
 
 	return out.Close()
 }
+
+func (b Build) minimizing() bool { return b.PerSignature > 0 }
 
 // cases puts the enumerated families in first and never discards them, then
 // draws documents and keeps the ones that earn a place.

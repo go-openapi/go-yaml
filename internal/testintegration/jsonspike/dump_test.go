@@ -51,7 +51,7 @@ func TestFreezeCorpus(t *testing.T) {
 			base64.StdEncoding.EncodeToString(e.Doc.Src),
 		}, "\t") + "\n")
 	}
-	if err := os.WriteFile(out, []byte(b.String()), 0o600); err != nil {
+	if err := os.WriteFile(out, []byte(b.String()), 0o600); err != nil { //nolint:gosec // the dump goes where the person running the test asked for it
 		t.Fatal(err)
 	}
 	t.Logf("%d entries -> %s", len(entries), out)

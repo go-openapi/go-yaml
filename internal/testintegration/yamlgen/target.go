@@ -454,6 +454,8 @@ func keyString(v reflect.Value) string {
 		return strconv.FormatUint(v.Uint(), 10)
 	case reflect.Float32, reflect.Float64:
 		return floatKeyText(v.Float())
+	default:
+		// nothing to do
 	}
 
 	if v.CanInterface() {

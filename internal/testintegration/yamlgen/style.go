@@ -542,9 +542,6 @@ type Style struct {
 	ExplicitKeys bool
 }
 
-// flowAt reports whether a node at this depth is written in flow style.
-func (s Style) flowAt(depth int) bool { return s.Flow && depth >= s.FlowFrom }
-
 // BoolSpelling returns how this style writes a boolean.
 func (s Style) BoolSpelling(v bool) string {
 	spellings := [][2]string{
@@ -615,6 +612,9 @@ func (s Style) String() string {
 		s.Escaping.String() + bomLabel(s.ByteOrderMark) + suffixLabel(s.DocumentSuffix) + tabLabel(s.TabSeparation) +
 		redeclareLabel(s.RedeclareDirectives)
 }
+
+// flowAt reports whether a node at this depth is written in flow style.
+func (s Style) flowAt(depth int) bool { return s.Flow && depth >= s.FlowFrom }
 
 // Styles generates a presentation.
 func Styles() *rapid.Generator[Style] {

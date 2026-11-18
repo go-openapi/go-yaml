@@ -185,6 +185,8 @@ func divergentForm(st yamlgen.Style, v yamlgen.Value) bool {
 	switch st.NumberForm {
 	case yamlgen.NumberOctal, yamlgen.NumberExponent, yamlgen.NumberLeadingZero:
 		return true
+	default:
+		// nothing to do
 	}
 
 	return holdsBigFloat(v)

@@ -32,6 +32,7 @@ package perlref
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -97,7 +98,7 @@ func Events(src []byte) (events []string, ok bool, err error) {
 		return nil, false, ErrNotInstalled
 	}
 
-	cmd := exec.Command("perl", filepath.Join(Home(), "bin", "yaml-parser"))
+	cmd := exec.CommandContext(context.Background(), "perl", filepath.Join(Home(), "bin", "yaml-parser")) //nolint:gosec // the reference parser the install script put under Home
 	cmd.Stdin = bytes.NewReader(src)
 
 	var out, errs bytes.Buffer
@@ -108,8 +109,7 @@ func Events(src []byte) (events []string, ok bool, err error) {
 	// the PASS/FAIL line is the answer either way, so the exit status is not
 	// consulted. Only a failure to run at all is an error.
 	if runErr := cmd.Run(); runErr != nil {
-		var exit *exec.ExitError
-		if !errors.As(runErr, &exit) {
+		if _, ok := errors.AsType[*exec.ExitError](runErr); !ok {
 			return nil, false, fmt.Errorf("perlref: %w: %s", runErr, strings.TrimSpace(errs.String()))
 		}
 	}

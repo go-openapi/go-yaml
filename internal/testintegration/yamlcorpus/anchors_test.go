@@ -5,6 +5,7 @@ package yamlcorpus_test
 
 import (
 	"bytes"
+	"slices"
 	"strconv"
 	"testing"
 
@@ -250,12 +251,8 @@ func TestTheTestSuiteHasNoCycleAtAll(t *testing.T) {
 	var cyclic int
 
 	for _, p := range yamlcorpus.Patterns() {
-		for _, tag := range p.Exhibits {
-			if tag == yamlcorpus.TagCyclicMeaning {
-				cyclic++
-
-				break
-			}
+		if slices.Contains(p.Exhibits, yamlcorpus.TagCyclicMeaning) {
+			cyclic++
 		}
 	}
 

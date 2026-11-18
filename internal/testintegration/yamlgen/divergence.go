@@ -285,33 +285,6 @@ func writesAsABlockScalar(v Value, st Style) bool {
 	return false
 }
 
-func holdsAPaddedBlockScalar(v Value, st Style) bool {
-	switch n := v.(type) {
-	case Str:
-		// Only "-" and clip are padded, and "+" is what a value with two or
-		// more trailing breaks needs.
-		return blockScalarIn(n.V, st) && len(n.V)-len(strings.TrimRight(n.V, "\n")) < 2
-	case Seq:
-		return slices.ContainsFunc(n.Items, func(item Value) bool {
-			return holdsAPaddedBlockScalar(item, st)
-		})
-	case Map:
-		for _, p := range n.Pairs {
-			if holdsAPaddedBlockScalar(p.Val, st) {
-				return true
-			}
-		}
-	case Anchored:
-		return holdsAPaddedBlockScalar(n.V, st)
-	case Alias:
-		return holdsAPaddedBlockScalar(n.V, st)
-	case Tagged:
-		return holdsAPaddedBlockScalar(n.V, st)
-	}
-
-	return false
-}
-
 // Known returns the ledger entry describing this pairing for the given
 // property, or nil.
 func Known(p Property, v Value, st Style) *Divergence {
@@ -346,32 +319,6 @@ func CommentsIn(src string) []string {
 }
 
 var commentMarker = regexp.MustCompile(`#\s*c\d+`)
-
-// holdsAMergeKey reports whether v writes a "<<" entry anywhere.
-func holdsAMergeKey(v Value) bool {
-	switch n := v.(type) {
-	case Map:
-		for _, p := range n.Pairs {
-			if _, isMerge := p.Key.(MergeKey); isMerge {
-				return true
-			}
-
-			if holdsAMergeKey(p.Key) || holdsAMergeKey(p.Val) {
-				return true
-			}
-		}
-	case Seq:
-		return slices.ContainsFunc(n.Items, holdsAMergeKey)
-	case Anchored:
-		return holdsAMergeKey(n.V)
-	case Alias:
-		return holdsAMergeKey(n.V)
-	case Tagged:
-		return holdsAMergeKey(n.V)
-	}
-
-	return false
-}
 
 // holdsACollectionKey reports whether a mapping's key is a collection anywhere
 // in v.

@@ -206,7 +206,7 @@ func TestFixedADocumentCarriesMoreThanOneDirective(t *testing.T) {
 //
 // §6.8.1 for the version and §6.8.2.2 for the handle: "It is an error to
 // specify more than one '%TAG' directive for the same handle in the same
-// document."
+// document.".
 func TestADirectiveIsStillDeclaredOnce(t *testing.T) {
 	for _, tc := range []struct{ src, want string }{
 		{src: "%YAML 1.2\n%YAML 1.1\n---\nk: 1\n", want: "YAML version has already been specified"},

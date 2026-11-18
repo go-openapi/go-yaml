@@ -37,10 +37,12 @@ type (
 	}
 	NmPromoted struct {
 		NmLeaf
+
 		Tail string `json:"tail"`
 	}
 	NmDeep struct {
 		NmMid
+
 		Tail string `json:"tail"`
 	}
 	NmDepthConflict struct {
@@ -54,7 +56,8 @@ type (
 	}
 	NmNamedEmbed struct {
 		NmLeaf `json:"leaf"`
-		Tail   string `json:"tail"`
+
+		Tail string `json:"tail"`
 	}
 	NmTagged struct {
 		Other string `json:"Name"`

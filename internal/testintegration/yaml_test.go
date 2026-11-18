@@ -17,6 +17,9 @@ import (
 	"github.com/go-openapi/go-yaml/codec"
 )
 
+// contextKey keys the values these tests put in a context.Context.
+type contextKey string
+
 func TestMarshal(t *testing.T) {
 	var v struct {
 		A int
@@ -67,7 +70,7 @@ func (t *marshalTest) MarshalYAML() ([]byte, error) {
 
 type marshalTest2 struct{}
 
-func (t *marshalTest2) MarshalYAML() (interface{}, error) {
+func (t *marshalTest2) MarshalYAML() (any, error) {
 	return codec.NewMapSlice(
 		codec.MapItem{Key: "a", Value: 2},
 		codec.MapItem{Key: "b", Value: "world"},
@@ -140,7 +143,7 @@ type unmarshalTest2 struct {
 	c bool
 }
 
-func (t *unmarshalTest2) UnmarshalYAML(unmarshal func(interface{}) error) error {
+func (t *unmarshalTest2) UnmarshalYAML(unmarshal func(any) error) error {
 	var v struct {
 		A int
 		B string
@@ -211,12 +214,12 @@ b:
 type (
 	ObjectMap  map[string]*Object
 	ObjectDecl struct {
-		Name    string `yaml:"-"`
-		*Object `yaml:",inline,anchor"`
+		Name    string                  `yaml:"-"`
+		*Object `yaml:",inline,anchor"` //nolint:embeddedstructfieldcheck // the embedded field follows the regular ones on purpose: the fixture covers that order
 	}
 )
 
-func (m ObjectMap) MarshalYAML() (interface{}, error) {
+func (m ObjectMap) MarshalYAML() (any, error) {
 	newMap := map[string]*ObjectDecl{}
 	for k, v := range m {
 		newMap[k] = &ObjectDecl{Name: k, Object: v}
@@ -230,8 +233,9 @@ type rootObject struct {
 }
 
 type Object struct {
-	*Object  `yaml:",omitempty,inline,alias"`
-	MapValue map[string]interface{} `yaml:",omitempty,inline"`
+	*Object `yaml:",omitempty,inline,alias"`
+
+	MapValue map[string]any `yaml:",omitempty,inline"`
 }
 
 func TestInlineAnchorAndAlias(t *testing.T) {
@@ -277,7 +281,7 @@ collection:
 		[]byte("%YAML 1.1\n"+yml), &v, codec.ShareAliases()); err != nil {
 		t.Fatal(err)
 	}
-	opt := codec.MarshalAnchor(func(anchor *ast.AnchorNode, value interface{}) error {
+	opt := codec.MarshalAnchor(func(anchor *ast.AnchorNode, value any) error {
 		if o, ok := value.(*ObjectDecl); ok {
 			return anchor.SetName(o.Name)
 		}
@@ -398,17 +402,18 @@ a: 1
 	}
 }
 
+//nolint:maintidx // a table of comment placements written inline
 func Test_WithCommentOption(t *testing.T) {
 	t.Run("line comment", func(t *testing.T) {
 		v := struct {
-			Foo string                 `yaml:"foo"`
-			Bar map[string]interface{} `yaml:"bar"`
+			Foo string         `yaml:"foo"`
+			Bar map[string]any `yaml:"bar"`
 			Baz struct {
 				X int `yaml:"x"`
 			} `yaml:"baz"`
 		}{
 			Foo: "aaa",
-			Bar: map[string]interface{}{"bbb": "ccc"},
+			Bar: map[string]any{"bbb": "ccc"},
 			Baz: struct {
 				X int `yaml:"x"`
 			}{X: 10},
@@ -438,10 +443,10 @@ baz:
 	})
 	t.Run("line comment2", func(t *testing.T) {
 		v := struct {
-			Foo map[string]interface{} `yaml:"foo"`
+			Foo map[string]any `yaml:"foo"`
 		}{
-			Foo: map[string]interface{}{
-				"bar": map[string]interface{}{
+			Foo: map[string]any{
+				"bar": map[string]any{
 					"baz": true,
 				},
 			},
@@ -468,14 +473,14 @@ foo:
 	})
 	t.Run("single head comment", func(t *testing.T) {
 		v := struct {
-			Foo string                 `yaml:"foo"`
-			Bar map[string]interface{} `yaml:"bar"`
+			Foo string         `yaml:"foo"`
+			Bar map[string]any `yaml:"bar"`
 			Baz struct {
 				X int `yaml:"x"`
 			} `yaml:"baz"`
 		}{
 			Foo: "aaa",
-			Bar: map[string]interface{}{"bbb": "ccc"},
+			Bar: map[string]any{"bbb": "ccc"},
 			Baz: struct {
 				X int `yaml:"x"`
 			}{X: 10},
@@ -511,14 +516,14 @@ baz:
 
 	t.Run("multiple head comment", func(t *testing.T) {
 		v := struct {
-			Foo string                 `yaml:"foo"`
-			Bar map[string]interface{} `yaml:"bar"`
+			Foo string         `yaml:"foo"`
+			Bar map[string]any `yaml:"bar"`
 			Baz struct {
 				X int `yaml:"x"`
 			} `yaml:"baz"`
 		}{
 			Foo: "aaa",
-			Bar: map[string]interface{}{"bbb": "ccc"},
+			Bar: map[string]any{"bbb": "ccc"},
 			Baz: struct {
 				X int `yaml:"x"`
 			}{X: 10},
@@ -577,10 +582,10 @@ baz:
 	})
 	t.Run("foot comment", func(t *testing.T) {
 		v := struct {
-			Bar map[string]interface{} `yaml:"bar"`
-			Baz []int                  `yaml:"baz"`
+			Bar map[string]any `yaml:"bar"`
+			Baz []int          `yaml:"baz"`
 		}{
-			Bar: map[string]interface{}{"bbb": "ccc"},
+			Bar: map[string]any{"bbb": "ccc"},
 			Baz: []int{1, 2},
 		}
 
@@ -613,23 +618,23 @@ baz:
 
 	t.Run("combination", func(t *testing.T) {
 		v := struct {
-			Foo  map[string]interface{} `yaml:"foo"`
-			O    map[string]interface{} `yaml:"o"`
-			T    map[string]bool        `yaml:"t"`
-			Bar  map[string]interface{} `yaml:"bar"`
-			Baz  []int                  `yaml:"baz"`
-			Hoge map[string]interface{} `yaml:"hoge"`
+			Foo  map[string]any  `yaml:"foo"`
+			O    map[string]any  `yaml:"o"`
+			T    map[string]bool `yaml:"t"`
+			Bar  map[string]any  `yaml:"bar"`
+			Baz  []int           `yaml:"baz"`
+			Hoge map[string]any  `yaml:"hoge"`
 		}{
-			Foo: map[string]interface{}{
-				"a": map[string]interface{}{
-					"b": map[string]interface{}{
+			Foo: map[string]any{
+				"a": map[string]any{
+					"b": map[string]any{
 						"c": "d",
 					},
 				},
 			},
-			O: map[string]interface{}{
-				"p": map[string]interface{}{
-					"q": map[string]interface{}{
+			O: map[string]any{
+				"p": map[string]any{
+					"q": map[string]any{
 						"r": "s",
 					},
 				},
@@ -637,9 +642,9 @@ baz:
 			T: map[string]bool{
 				"u": true,
 			},
-			Bar: map[string]interface{}{"bbb": "ccc"},
+			Bar: map[string]any{"bbb": "ccc"},
 			Baz: []int{1, 2},
-			Hoge: map[string]interface{}{
+			Hoge: map[string]any{
 				"moga": true,
 			},
 		}
@@ -970,7 +975,7 @@ hoge:
 			opts := []codec.DecodeOption{codec.CommentToMap(cm)}
 			opts = append(opts, tc.options...)
 
-			var v interface{}
+			var v any
 			if err := codec.UnmarshalWithOptions([]byte(tc.yml), &v, opts...); err != nil {
 				t.Fatal(err)
 			}
@@ -1099,12 +1104,12 @@ func TestRegisterCustomMarshalerContext(t *testing.T) {
 		Foo []byte `yaml:"foo"`
 	}
 	codec.RegisterCustomMarshalerContext[T](func(ctx context.Context, _ T) ([]byte, error) {
-		if ctx.Value("plop") != uint(42) {
+		if ctx.Value(contextKey("plop")) != uint(42) {
 			t.Fatalf("context value is not correct")
 		}
 		return []byte(`"override"`), nil
 	})
-	ctx := context.WithValue(context.Background(), "plop", uint(42))
+	ctx := context.WithValue(context.Background(), contextKey("plop"), uint(42))
 	b, err := codec.MarshalContext(ctx, &T{Foo: []byte("bar")})
 	if err != nil {
 		t.Fatal(err)
@@ -1136,14 +1141,14 @@ func TestRegisterCustomUnmarshalerContext(t *testing.T) {
 		Foo []byte `yaml:"foo"`
 	}
 	codec.RegisterCustomUnmarshalerContext[T](func(ctx context.Context, v *T, _ []byte) error {
-		if ctx.Value("plop") != uint(42) {
+		if ctx.Value(contextKey("plop")) != uint(42) {
 			t.Fatalf("context value is not correct")
 		}
 		v.Foo = []byte("override")
 		return nil
 	})
 	var v T
-	ctx := context.WithValue(context.Background(), "plop", uint(42))
+	ctx := context.WithValue(context.Background(), contextKey("plop"), uint(42))
 	if err := codec.UnmarshalContext(ctx, []byte(`"foo": "bar"`), &v); err != nil {
 		t.Fatal(err)
 	}

@@ -13,6 +13,8 @@ import (
 // It reaches into the state directly because that is the only way to ask the
 // question: the memo table is what the check is about, and the exported API
 // deliberately does not let a caller turn it off on a reusable recognizer.
+//
+//nolint:unparam // the rule is a parameter so a test can measure coverage from any production, though today every caller starts at the stream
 func coveredBy(t *testing.T, g *Grammar, rule, src string, n int, ctx string, memoize bool) *Coverage {
 	t.Helper()
 

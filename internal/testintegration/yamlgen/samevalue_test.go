@@ -32,6 +32,8 @@ import (
 // It is a *test* helper and not a method on Value, because "did this document
 // survive" and "are these two values equal" are different questions and only
 // the first wants NaN to match itself.
+//
+//nolint:gocognit,gocyclo,cyclop // one case per Go type a decoded value may hold, each compared its own way
 func sameValue(want, got any) bool {
 	if w, ok := want.(float64); ok && math.IsNaN(w) {
 		g, isFloat := got.(float64)

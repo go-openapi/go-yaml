@@ -218,7 +218,7 @@ func TestTheTwoReadingsActuallyDisagree(t *testing.T) {
 // held out is a document the rest of the suite still scores, and one let through
 // reports a known defect as a fresh disagreement.
 func propertyFollowedByTab(src string) bool {
-	for i := 0; i < len(src); i++ {
+	for i := range len(src) {
 		if src[i] != '&' && src[i] != '!' {
 			continue
 		}

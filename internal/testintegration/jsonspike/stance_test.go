@@ -6,6 +6,7 @@ package jsonspike_test
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"testing"
@@ -223,11 +224,5 @@ func TestOneCorpusScoresTwoStages(t *testing.T) {
 }
 
 func hasTag(tags []stance.Tag, want stance.Tag) bool {
-	for _, tag := range tags {
-		if tag == want {
-			return true
-		}
-	}
-
-	return false
+	return slices.Contains(tags, want)
 }

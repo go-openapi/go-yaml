@@ -51,6 +51,17 @@ type Grammar struct {
 	unreferenced []string
 }
 
+// MustCompile is Compile for a grammar that is embedded rather than supplied,
+// where a failure is a defect in this package rather than bad input.
+func MustCompile(name string, spec []byte, patches ...Patch) *Grammar {
+	g, err := Compile(name, spec, patches...)
+	if err != nil {
+		panic("grammar: " + err.Error())
+	}
+
+	return g
+}
+
 // Digest identifies the grammar file this was compiled from.
 //
 // A corpus is a cache of what a grammar said, so the corpus has to record which
@@ -171,17 +182,6 @@ func (c *compiler) unreferenced() []string {
 	return out
 }
 
-// MustCompile is Compile for a grammar that is embedded rather than supplied,
-// where a failure is a defect in this package rather than bad input.
-func MustCompile(name string, spec []byte, patches ...Patch) *Grammar {
-	g, err := Compile(name, spec, patches...)
-	if err != nil {
-		panic("grammar: " + err.Error())
-	}
-
-	return g
-}
-
 func newCompiler(spec []byte, patches []Patch) (*compiler, error) {
 	var raw map[string]any
 	if err := json.Unmarshal(spec, &raw); err != nil {
@@ -254,7 +254,7 @@ func declaredParams(body any) []string {
 	list, _ := decl.([]any)
 	params := make([]string, 0, len(list))
 	for _, p := range list {
-		params = append(params, p.(string))
+		params = append(params, asType[string](p))
 	}
 
 	return params
@@ -370,7 +370,7 @@ func (c *compiler) matchForm(form map[string]any) expr {
 		case "(case)":
 			return c.caseOf(arg)
 		case "(max)":
-			return limitTo(int(arg.(float64)))
+			return limitTo(int(asType[float64](arg)))
 		case "(exclude)":
 			return c.exclude(arg)
 		case "(<<<)":
@@ -628,7 +628,7 @@ func (c *compiler) valueForm(form map[string]any) value {
 		case "(len)":
 			inner := c.value(arg)
 
-			return func(s *state, e env) any { return len(inner(s, e).(string)) }
+			return func(s *state, e env) any { return len(asType[string](inner(s, e))) }
 		case "(ord)":
 			return c.ordinal(arg)
 		}
@@ -644,7 +644,7 @@ func (c *compiler) valueForm(form map[string]any) value {
 }
 
 func (c *compiler) arithmetic(arg any, sign int) value {
-	list := arg.([]any)
+	list := asType[[]any](arg)
 	left, right := c.value(list[0]), c.value(list[1])
 
 	return func(s *state, e env) any {
@@ -700,8 +700,8 @@ func (c *compiler) callValue(s *slot, arg any) value {
 // Every (flip) in the grammar switches on c, and the arms are indexed by
 // context code so that dispatching is an array load.
 func (c *compiler) flip(arg any) value {
-	form := arg.(map[string]any)
-	if name := form["var"].(string); name != "c" {
+	form := asType[map[string]any](arg)
+	if name := asType[string](form["var"]); name != "c" {
 		panic(fmt.Sprintf("grammar: (flip) switches on %q, only c was expected", name))
 	}
 
@@ -726,8 +726,8 @@ func (c *compiler) flip(arg any) value {
 // caseOf compiles the (case) form: a switch on one variable whose arms are
 // matchers.
 func (c *compiler) caseOf(arg any) expr {
-	form := arg.(map[string]any)
-	name := form["var"].(string)
+	form := asType[map[string]any](arg)
+	name := asType[string](form["var"])
 
 	var arms [numArms]expr
 	if name == "t" {
@@ -779,7 +779,7 @@ func armIndex(name string) uint8 {
 
 // subtract compiles (---): the first set, minus every set after it.
 func (c *compiler) subtract(arg any) expr {
-	list := arg.([]any)
+	list := asType[[]any](arg)
 	first := c.matcher(list[0])
 
 	minus := make([]expr, 0, len(list)-1)
@@ -832,7 +832,7 @@ func (c *compiler) repeatExactly(count string, inner expr) expr {
 // compare compiles (<) and (<=), which assert a relation between two argument
 // expressions and consume nothing.
 func (c *compiler) compare(arg any, orEqual bool) expr {
-	list := arg.([]any)
+	list := asType[[]any](arg)
 	left, right := c.value(list[0]), c.value(list[1])
 
 	return func(s *state, e env) (env, bool) {
@@ -856,9 +856,9 @@ func assign(e *env, param string, v any) {
 	case "m":
 		e.m = toInt(v)
 	case "c":
-		e.c = v.(ctxCode)
+		e.c = asType[ctxCode](v)
 	case "t":
-		e.t = v.(chompCodeT)
+		e.t = asType[chompCodeT](v)
 	default:
 		panic(fmt.Sprintf("grammar: unknown parameter %q", param))
 	}
@@ -913,4 +913,11 @@ func decodeHex(code string) rune {
 	}
 
 	return rune(n)
+}
+
+// asType asserts v to T. The values it reads come from the grammar file this package embeds and from the codes the
+// compiler itself puts in an env, so a value of another type is a malformed grammar or a compiler defect, and a panic
+// is the right failure for either.
+func asType[T any](v any) T {
+	return v.(T) //nolint:forcetypeassert // see above: a wrong type here is a bug, and panicking names it
 }

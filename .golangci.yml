@@ -63,6 +63,11 @@ linters:
       - linters:
         - gosec
         text: "G115:"
+      # The conformance harness's numbers are generator data -- random-draw bounds, Unicode block ranges, the grammar's
+      # context ids, corpus tiers -- and not tunables a name would explain.
+      - path: internal/testintegration/
+        linters:
+          - mnd
       # YAML fixtures repeat words on purpose ("hello:\n  hello:", "[x, x, x]").
       - path: _test\.go
         linters:

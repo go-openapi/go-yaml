@@ -37,7 +37,7 @@ type Entry struct {
 // valid are dropped -- accepting a valid document is not news -- and what
 // remains is the set worth asking a parser about.
 func Generate(seed uint64, documents, mutantsEach int) []Entry {
-	rng := rand.New(rand.NewPCG(seed, seed^0x9E3779B97F4A7C15))
+	rng := rand.New(rand.NewPCG(seed, seed^0x9E3779B97F4A7C15)) //nolint:gosec // a seeded generator, so a corpus build is reproducible; nothing here is secret
 	rec := NewRecognizer(1024)
 
 	var (
