@@ -31,7 +31,11 @@ import (
 // "---\n-\n" came back "---- \n".
 // TestVerbatimRebuildsABlockSequenceOfImplicitNulls holds those shapes now, and
 // the count has stood at 0 since 2026-09-13.
-var withoutCommentsCensus = struct{ tested, differing int }{tested: 12708, differing: 0}
+//
+// 12708 -> 12680 on 2026-11-18, when a directive with no name after its '%' and a "%TAG" prefix holding a character
+// outside ns-uri-char began to be refused. The 28 documents that left all hold one, and yaml/yaml-reference-parser
+// refuses each of them.
+var withoutCommentsCensus = struct{ tested, differing int }{tested: 12680, differing: 0}
 
 func TestVerbatimRebuildsTheCorpusParsedWithoutComments(t *testing.T) {
 	t.Parallel()

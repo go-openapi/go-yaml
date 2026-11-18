@@ -184,6 +184,12 @@ func TestARefusalSignatureKeepsTheParserAndDropsTheDocument(t *testing.T) {
 // on a line above its ':', as in "[a" over " b: c]". The check read only the
 // line the key ends on, so such a key was read as "a b".
 //
+// "a directive must be named right after its _" arrived on 2026-11-18, when the
+// scanner began refusing a "%" with nothing but a blank, a break or the end of
+// the stream after it, and "undefined directive value" left with it: the
+// grouping still refuses a "%" that never got a name, and no document reaches it
+// now that the scanner refuses the same "%" first.
+//
 // "explicit keys are not allowed after a tag on the same line" and its anchor
 // twin arrived the same day, when a node property standing before a "?" on its
 // line began to be refused as one before a "-" was: "!!null ?" was read as a
@@ -195,6 +201,7 @@ var parserComplaints = []string{
 	"_ or _ must be specified",
 	"a _ in a tag must be followed by two hexadecimal digits",
 	"a comment must be preceded by a space, and a scalar cannot begin with _",
+	"a directive must be named right after its _",
 	"a flow collection continues on a line that is not indented past the one it started on",
 	"a node takes at most one tag",
 	"a plain scalar cannot begin with _",
@@ -249,7 +256,6 @@ var parserComplaints = []string{
 	"tag is not allowed in this context",
 	"tag is not allowed in this sequence context",
 	"the content of a block scalar is indented less than the indicator in its header states",
-	"undefined directive value",
 	"unexpected directive value. document not started",
 	"unexpected format TAG directive",
 	"unexpected format YAML directive",

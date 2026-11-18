@@ -11,9 +11,9 @@ import "github.com/go-openapi/go-yaml/token"
 // Directive, a String and a Float.
 //
 // Example: "a: %foo" and "  %YAML 1.2" are both refused, a plain scalar not being allowed to begin with '%'.
-func (s *Scanner) scanDirective(ctx *Context) bool {
+func (s *Scanner) scanDirective(ctx *Context) (bool, error) {
 	if ctx.existsBuffer() {
-		return false
+		return false, nil
 	}
 
 	if s.indentNum != 0 || s.column != 1 {
@@ -25,7 +25,17 @@ func (s *Scanner) scanDirective(ctx *Context) bool {
 		// test refuses nothing the column test lets through.
 		//
 		// scanDocumentStart and scanDocumentEnd guard "---" and "..." with the same pair.
-		return false
+		return false, nil
+	}
+
+	switch ctx.nextChar() {
+	case ' ', '\t', '\n', '\r', rune(0):
+		// ns-directive-name is ns-char+ and follows the '%' straight away, so "% 1" and "%\t1" name nothing.
+		invalidTk := token.Invalid(ctx.origin(), s.pos())
+		s.progressColumn(ctx, 1)
+
+		return false, ErrInvalidToken("a directive must be named right after its '%'", invalidTk)
+	default:
 	}
 
 	s.addBufferedTokenIfExists(ctx)
@@ -34,6 +44,7 @@ func (s *Scanner) scanDirective(ctx *Context) bool {
 	s.progressColumn(ctx, 1)
 	ctx.clear()
 	s.isDirective = true
+	s.directivesOpen = true
 
-	return true
+	return true, nil
 }

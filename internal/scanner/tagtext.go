@@ -135,3 +135,22 @@ func checkURI(text string, admits func(byte) bool) string {
 
 	return ""
 }
+
+// CheckTagPrefix reports why the YAML 1.2 grammar does not admit prefix as the prefix of a "%TAG" directive, or ""
+// where it does.
+//
+//	ns-tag-prefix          ::= c-ns-local-tag-prefix | ns-global-tag-prefix
+//	c-ns-local-tag-prefix  ::= "!" ns-uri-char*
+//	ns-global-tag-prefix   ::= ns-tag-char ns-uri-char*
+//
+// The scanner reads a directive's parameters as plain text, so the parser asks this of the prefix once it has it.
+func CheckTagPrefix(prefix string) string {
+	if strings.HasPrefix(prefix, "!") {
+		return checkURI(prefix[1:], isURIChar)
+	}
+	if prefix != "" && prefix[0] != '%' && !isTagChar(prefix[0]) {
+		return fmt.Sprintf("found invalid tag character %q", string(prefix[0]))
+	}
+
+	return checkURI(prefix, isURIChar)
+}

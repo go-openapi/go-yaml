@@ -89,6 +89,10 @@ type Scanner struct {
 	isAlias     bool
 	isDirective bool
 	hasSavedPos bool
+	// directivesOpen records a directive read and the "---" that has to follow it not read yet. l-directives-document
+	// is l-directive+ l-explicit-document, with nothing between the two that a document prefix could be, so a byte
+	// order mark there opens no document.
+	directivesOpen bool
 }
 
 // Init sets s to read src from its first byte, and clears what a previous source left behind.
@@ -389,7 +393,11 @@ func (s *Scanner) scan(ctx *Context) error {
 				continue
 			}
 		case '%':
-			if s.scanDirective(ctx) {
+			scanned, err := s.scanDirective(ctx)
+			if err != nil {
+				return err
+			}
+			if scanned {
 				continue
 			}
 			if err := s.scanPlainFirst(ctx, c); err != nil {
@@ -657,6 +665,10 @@ func (s *Scanner) checkByteOrderMark(ctx *Context) error {
 // The look-ahead reaches no further than the blank and comment lines a prefix may carry: a document has to begin at the
 // first line that holds anything else.
 func (s *Scanner) documentOpensAtMark(ctx *Context) bool {
+	if s.directivesOpen {
+		// Directives stand before this line and their "---" after it: "%1" over a mark and "---" holds no prefix.
+		return false
+	}
 	if s.line == 1 {
 		// The prefix that opens the stream, where an editor writes its mark.
 		return true

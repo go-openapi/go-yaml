@@ -65,6 +65,7 @@ func (s *Scanner) scanDocumentStart(ctx *Context) bool {
 
 	s.addBufferedTokenIfExists(ctx)
 	ctx.addTokenValue(token.MakeDocumentHeader(ctx.origin()+startDocMarker, s.pos()))
+	s.directivesOpen = false
 	s.progressColumn(ctx, startDocMarkerLen)
 	ctx.clear()
 	s.clearState()

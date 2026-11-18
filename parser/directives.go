@@ -8,6 +8,7 @@ import (
 
 	"github.com/go-openapi/go-yaml/ast"
 	yamlerrors "github.com/go-openapi/go-yaml/errors"
+	"github.com/go-openapi/go-yaml/internal/scanner"
 	"github.com/go-openapi/go-yaml/parser/group"
 )
 
@@ -66,6 +67,10 @@ func (p *Parser) parseDirective(ctx context, g *group.TokenGroup) (*ast.Directiv
 		tagValue, err := newStringNode(ctx, g.At(2))
 		if err != nil {
 			return nil, err
+		}
+		if why := scanner.CheckTagPrefix(tagValue.Value); why != "" {
+			// "%TAG ! t|": the prefix takes URI characters only, and "|" is none.
+			return nil, yamlerrors.NewSyntax(why, g.At(2).RawToken())
 		}
 		if p.tagHandles == nil {
 			p.tagHandles = make(map[string]string)
