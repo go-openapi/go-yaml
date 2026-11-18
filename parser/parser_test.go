@@ -5,9 +5,11 @@ package parser_test
 
 import (
 	"fmt"
+	"iter"
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -218,12 +220,58 @@ func TestParseEmptyDocument(t *testing.T) {
 	})
 }
 
-func TestParseComplicatedDocument(t *testing.T) {
-	tests := []struct {
-		source string
-		expect string
-	}{
+// parseCase is a document and the text the parsed file renders it as.
+type parseCase struct {
+	name   string
+	source string
+	expect string
+}
+
+// TestParseRendering parses each case, renders the file, and compares the text with the case's expect.
+//
+// Each case is named "theme/what", so go test -run 'TestParseRendering/plain/' runs one theme.
+func TestParseRendering(t *testing.T) {
+	seen := make(map[string]bool)
+	for tc := range parseCases() {
+		if seen[tc.name] {
+			t.Fatalf("two cases are named %q", tc.name)
+		}
+		seen[tc.name] = true
+
+		t.Run(tc.name, testParseRendering(tc))
+	}
+}
+
+func testParseRendering(tc parseCase) func(*testing.T) {
+	return func(t *testing.T) {
+		f, err := parser.ParseBytes([]byte(tc.source))
+		if err != nil {
+			t.Fatalf("%+v", err)
+		}
+		got := f.String()
+		if got != strings.TrimPrefix(tc.expect, "\n") {
+			t.Fatalf("failed to parse comment:\nexpected:\n%s\ngot:\n%s", strings.TrimPrefix(tc.expect, "\n"), got)
+		}
+		var v Visitor
+		for _, doc := range f.Docs {
+			ast.Walk(&v, doc.Body)
+		}
+		expect := fmt.Sprintf("\n%+v", f)
+		if tc.expect != expect {
+			t.Fatalf("unexpected output: [%s] != [%s]", tc.expect, expect)
+		}
+	}
+}
+
+func parseCases() iter.Seq[parseCase] {
+	return slices.Values(slices.Concat(parseCollectionCases(), parsePlainCases(), parseMarkupCases()))
+}
+
+// parseCollectionCases covers block mappings and sequences nested in each other, at various indents.
+func parseCollectionCases() []parseCase {
+	return []parseCase{
 		{
+			"sequence/under-two-keys",
 			`
 american:
   - Boston Red Sox
@@ -245,6 +293,7 @@ national:
 `,
 		},
 		{
+			"mapping/nested-at-several-depths",
 			`
 a:
   b: c
@@ -272,6 +321,7 @@ r: s
 `,
 		},
 		{
+			"sequence/mapping-entry-holding-sequence",
 			`
 - a:
   - b
@@ -285,21 +335,7 @@ r: s
 `,
 		},
 		{
-			`
-- a
-- b
-- c
- - d
- - e
-- f
-`, `
-- a
-- b
-- c - d - e
-- f
-`,
-		},
-		{
+			"mapping/flow-mapping-under-sequence-entry",
 			`
 elem1:
   - elem2:
@@ -311,6 +347,7 @@ elem1:
 `,
 		},
 		{
+			"mapping/flow-sequence-under-sequence-entry",
 			`
 elem1:
   - elem2:
@@ -322,14 +359,7 @@ elem1:
 `,
 		},
 		{
-			`
-a: 0 - 1
-`,
-			`
-a: 0 - 1
-`,
-		},
-		{
+			"sequence/mappings-indented-past-entry",
 			`
 - a:
    b: c
@@ -346,26 +376,7 @@ a: 0 - 1
 `,
 		},
 		{
-			`
-a:
- b
- c
-d: e
-`, `
-a: b c
-d: e
-`,
-		},
-		{
-			`
-a
-b
-c
-`, `
-a b c
-`,
-		},
-		{
+			"sequence/indented-under-key",
 			`
 a:
  - b
@@ -377,6 +388,7 @@ a:
 `,
 		},
 		{
+			"sequence/spaces-around-key",
 			`
 -     a     :
       b: c
@@ -386,6 +398,126 @@ a:
 `,
 		},
 		{
+			"sequence/nested-sequences-under-key",
+			`
+a:
+- - b
+- - c
+  - d
+`,
+			`
+a:
+- - b
+- - c
+  - d
+`,
+		},
+		{
+			"mapping/nested-two-levels-then-key",
+			`
+a:
+  b:
+    c: d
+  e:
+    f: g
+    h: i
+j: k
+`,
+			`
+a:
+  b:
+    c: d
+  e:
+    f: g
+    h: i
+j: k
+`,
+		},
+		{
+			"mapping/trailing-spaces-after-colon",
+			`
+a:    
+  b: c
+`,
+			`
+a:
+  b: c
+`,
+		},
+		{
+			"sequence/entries-starting-on-next-line",
+			`
+a:
+-
+  b: c
+  d: e
+-
+  f: g
+  h: i
+`,
+			`
+a:
+- b: c
+  d: e
+- f: g
+  h: i
+`,
+		},
+	}
+}
+
+// parsePlainCases covers plain scalars over several lines, and dashes and other indicators inside a plain scalar.
+func parsePlainCases() []parseCase {
+	return []parseCase{
+		{
+			"plain/indented-dashes-fold-into-entry",
+			`
+- a
+- b
+- c
+ - d
+ - e
+- f
+`, `
+- a
+- b
+- c - d - e
+- f
+`,
+		},
+		{
+			"plain/dash-inside-value",
+			`
+a: 0 - 1
+`,
+			`
+a: 0 - 1
+`,
+		},
+		{
+			"plain/value-on-lines-below-key",
+			`
+a:
+ b
+ c
+d: e
+`, `
+a: b c
+d: e
+`,
+		},
+		{
+			"plain/document-over-three-lines",
+			`
+a
+b
+c
+`, `
+a b c
+`,
+		},
+		{
+			"plain/multi-line-value-in-sequence-entry",
 			`
 - a:
    b
@@ -398,6 +530,80 @@ a:
 `,
 		},
 		{
+			"plain/trailing-spaces-before-continuation",
+			`
+a: b    
+  c
+`,
+			`
+a: b c
+`,
+		},
+		{
+			"plain/trailing-spaces-before-next-key",
+			`
+a: b    
+c: d
+`,
+			`
+a: b
+c: d
+`,
+		},
+		{
+			"plain/dashes-inside-entries",
+			`
+- ab - cd
+- ef - gh
+`,
+			`
+- ab - cd
+- ef - gh
+`,
+		},
+		{
+			"plain/indented-digits-fold-into-entry",
+			`
+- 0 - 1
+ - 2 - 3
+`,
+			`
+- 0 - 1 - 2 - 3
+`,
+		},
+		{
+			"plain/dashes-inside-key",
+			`
+a - b - c: value
+`,
+			`
+a - b - c: value
+`,
+		},
+		{
+			"plain/parentheses-and-plus",
+			`
+- key1: val
+  key2:
+    (
+      foo
+      +
+      bar
+    )
+`,
+			`
+- key1: val
+  key2: ( foo + bar )
+`,
+		},
+	}
+}
+
+// parseMarkupCases covers comments, anchors and aliases, document markers, block scalars and quoted scalars.
+func parseMarkupCases() []parseCase {
+	return []parseCase{
+		{
+			"comment/hash-in-sequence-entries",
 			`
 - a # ' " # - : %
 - b # " # - : % '
@@ -416,6 +622,7 @@ a:
 `,
 		},
 		{
+			"comment/around-every-entry",
 			`
 # comment
 a: # comment
@@ -432,6 +639,7 @@ d: e
 `,
 		},
 		{
+			"comment/hash-glued-to-value",
 			`
 a: b#notcomment
 `,
@@ -440,6 +648,7 @@ a: b#notcomment
 `,
 		},
 		{
+			"anchor/anchor-and-alias",
 			`
 anchored: &anchor foo
 aliased: *anchor
@@ -450,6 +659,7 @@ aliased: *anchor
 `,
 		},
 		{
+			"anchor/merge-keys-from-the-spec",
 			`
 ---
 - &CENTER { x: 1, y: 2 }
@@ -500,40 +710,22 @@ aliased: *anchor
 `,
 		},
 		{
+			"anchor/on-empty-values",
 			`
 a:
-- - b
-- - c
-  - d
+ b: &anchor
+ c: &anchor2
+d: e
 `,
 			`
 a:
-- - b
-- - c
-  - d
-`,
-		},
-		{
-			`
-a:
-  b:
-    c: d
-  e:
-    f: g
-    h: i
-j: k
-`,
-			`
-a:
-  b:
-    c: d
-  e:
-    f: g
-    h: i
-j: k
+  b: &anchor
+  c: &anchor2
+d: e
 `,
 		},
 		{
+			"document/two-with-end-markers",
 			`
 ---
 a: 1
@@ -556,6 +748,7 @@ d: 4
 `,
 		},
 		{
+			"block/literal-holding-flow-indicators",
 			`
 a:
   b: |
@@ -574,6 +767,7 @@ a:
 `,
 		},
 		{
+			"block/literal-as-document",
 			`
 |
     hoge
@@ -587,6 +781,7 @@ a:
 `,
 		},
 		{
+			"block/literal-without-final-break",
 			`
 v: |
  a
@@ -599,8 +794,8 @@ v: |
   c
 `,
 		},
-
 		{
+			"block/literal-then-key",
 			`
 a: |
    bbbbbbb
@@ -619,80 +814,7 @@ d: eeeeeeeeeeeeeeeee
 `,
 		},
 		{
-			`
-a: b    
-  c
-`,
-			`
-a: b c
-`,
-		},
-		{
-			`
-a:    
-  b: c
-`,
-			`
-a:
-  b: c
-`,
-		},
-		{
-			`
-a: b    
-c: d
-`,
-			`
-a: b
-c: d
-`,
-		},
-		{
-			`
-- ab - cd
-- ef - gh
-`,
-			`
-- ab - cd
-- ef - gh
-`,
-		},
-		{
-			`
-- 0 - 1
- - 2 - 3
-`,
-			`
-- 0 - 1 - 2 - 3
-`,
-		},
-		{
-			`
-a - b - c: value
-`,
-			`
-a - b - c: value
-`,
-		},
-		{
-			`
-a:
--
-  b: c
-  d: e
--
-  f: g
-  h: i
-`,
-			`
-a:
-- b: c
-  d: e
-- f: g
-  h: i
-`,
-		},
-		{
+			"block/literal-strip",
 			`
 a: |-
   value
@@ -705,6 +827,7 @@ b: c
 `,
 		},
 		{
+			"block/literal-keep",
 			`
 a:  |+
   value
@@ -717,37 +840,7 @@ b: c
 `,
 		},
 		{
-			`
-- key1: val
-  key2:
-    (
-      foo
-      +
-      bar
-    )
-`,
-			`
-- key1: val
-  key2: ( foo + bar )
-`,
-		},
-		{
-			`
-"a": b
-'c': d
-"e": "f"
-g: "h"
-i: 'j'
-`,
-			`
-"a": b
-'c': d
-"e": "f"
-g: "h"
-i: 'j'
-`,
-		},
-		{
+			"block/explicit-indent-in-sequence",
 			`
 a:
   - |2
@@ -762,40 +855,22 @@ a:
 `,
 		},
 		{
+			"quoting/quoted-keys-and-values",
 			`
-a:
- b: &anchor
- c: &anchor2
-d: e
+"a": b
+'c': d
+"e": "f"
+g: "h"
+i: 'j'
 `,
 			`
-a:
-  b: &anchor
-  c: &anchor2
-d: e
+"a": b
+'c': d
+"e": "f"
+g: "h"
+i: 'j'
 `,
 		},
-	}
-
-	for _, test := range tests {
-		t.Run(test.source, func(t *testing.T) {
-			f, err := parser.ParseBytes([]byte(test.source))
-			if err != nil {
-				t.Fatalf("%+v", err)
-			}
-			got := f.String()
-			if got != strings.TrimPrefix(test.expect, "\n") {
-				t.Fatalf("failed to parse comment:\nexpected:\n%s\ngot:\n%s", strings.TrimPrefix(test.expect, "\n"), got)
-			}
-			var v Visitor
-			for _, doc := range f.Docs {
-				ast.Walk(&v, doc.Body)
-			}
-			expect := fmt.Sprintf("\n%+v", f)
-			if test.expect != expect {
-				t.Fatalf("unexpected output: [%s] != [%s]", test.expect, expect)
-			}
-		})
 	}
 }
 
