@@ -112,12 +112,10 @@ func (s *Scanner) closeMultiLineAtEOS(ctx *Context, state *MultiLineState, c run
 		if state.addIndent(ctx, s.column) {
 			state.beganSpace(s.pos())
 		}
-	} else {
+	} else if isNewLineChar(c) {
 		state.began(s.pos())
 		ctx.addBuf(c)
-	}
-
-	if !isNewLineChar(c) && !spaceOnlyLine {
+	} else {
 		// A line that ends here without content is empty, and an empty line is allowed less indentation than the header
 		// states: l-empty admits s-indent(<n).
 		// Holding it to the stated width refused every document whose block scalar both states its indentation and keeps its
@@ -130,6 +128,13 @@ func (s *Scanner) closeMultiLineAtEOS(ctx *Context, state *MultiLineState, c run
 		if err := state.validateIndentColumn(); err != nil {
 			return s.refuseMultiLine(ctx, err.Error())
 		}
+		// The character is content, and in a folded scalar the break in front of its line folds as readMultiLineContent
+		// folds it. Skipped here, a last line of one character kept that break: "k: >-" over " a" over " b" read as
+		// "a\nb" where "a b" is the value, and " bc" folded because its first character came through
+		// readMultiLineContent.
+		state.updateNewLineInFolded(ctx, s.column)
+		state.began(s.pos())
+		ctx.addBuf(c)
 	}
 
 	s.emitMultiLine(ctx, state)
