@@ -412,6 +412,7 @@ func (t dynamicField) Equals(o *dynamicField) bool {
 	return true
 }
 
+//nolint:gocognit // inline subtests, one per marshaler and RawMessage pairing
 func TestRawMessageJSONCompatibility(t *testing.T) {
 	rawData := []byte(`staticField: value
 dynamicField:

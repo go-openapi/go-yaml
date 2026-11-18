@@ -35,6 +35,8 @@ var keyIdentityCases = []string{
 // defect of this kind sat between two such rules, so for every scalar key the
 // corpus writes, the value the key decodes to must have the identity the key's
 // node has.
+//
+//nolint:gocognit // walks every scalar key of the corpus and compares its identity under each rule
 func TestAKeyNodeAndItsValueHaveOneIdentity(t *testing.T) {
 	srcs := corpusSources()
 	for i, text := range keyIdentityCases {

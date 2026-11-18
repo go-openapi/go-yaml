@@ -57,6 +57,7 @@ func TestPathBuilder(t *testing.T) {
 	}
 }
 
+//nolint:gocognit // inline subtests, one per path operation
 func TestPath(t *testing.T) {
 	yml := `
 store:

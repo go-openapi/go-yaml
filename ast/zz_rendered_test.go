@@ -25,6 +25,8 @@ import (
 // written, which is what lets a parent place a child without building it -- and
 // a piece whose answers drift from its own text puts a value on the wrong line
 // rather than merely costing time. This is the guard on that.
+//
+//nolint:gocognit // each renderer configuration checks both answers against the text of every piece
 func TestAPieceKnowsWhatItWrites(t *testing.T) {
 	t.Parallel()
 

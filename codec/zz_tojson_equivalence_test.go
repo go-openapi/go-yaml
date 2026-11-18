@@ -47,6 +47,8 @@ func toJSONViaValues(src []byte) ([]byte, error) {
 //
 // A document the value converter cannot write as JSON at all is skipped, named
 // in intendedJSONDivergence with what the folding converter does instead.
+//
+//nolint:gocognit // converts each corpus document both ways and compares them, minus the excused divergences
 func TestToJSONMatchesTheValueConverter(t *testing.T) {
 	t.Parallel()
 

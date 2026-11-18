@@ -1989,6 +1989,7 @@ func TestDecoder_AnchorFiles(t *testing.T) {
 	}
 }
 
+//nolint:gocognit // inline subtests, one per destination type
 func TestDecodeWithMergeKey(t *testing.T) {
 	// Read under YAML 1.1, where "<<" is the merge key. It is a 1.1 type, so
 	// under the core schema this document holds a key named "<<" and merges
@@ -2922,6 +2923,7 @@ type unmarshalableStringContainer struct {
 	B unmarshalableTextStringValue `yaml:"b"`
 }
 
+//nolint:gocognit // inline subtests, one per kind of string node
 func TestUnmarshalableString(t *testing.T) {
 	t.Run("empty string", func(t *testing.T) {
 		t.Parallel()
