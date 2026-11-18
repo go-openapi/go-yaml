@@ -53,7 +53,7 @@ func (p *PathNode) Key(parent *PathNode, key string) {
 // idx is held as an int32. A sequence long enough to overflow one cannot be
 // held in memory to begin with.
 func (p *PathNode) Index(parent *PathNode, idx uint) {
-	p.parent, p.elem, p.kind = parent, int32(idx), pathIndex //nolint:gosec // a sequence that long does not fit in memory
+	p.parent, p.elem, p.kind = parent, int32(idx), pathIndex
 }
 
 // Literal makes p a whole path, written out as path.

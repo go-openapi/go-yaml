@@ -80,7 +80,7 @@ func (b *block[T]) mark() blockMark {
 		return blockMark{}
 	}
 
-	return blockMark{at: int32(b.at), used: int32(len(b.chunks[b.at]) - len(b.free))} //nolint:gosec // a document with 2^31 nodes of one type does not fit in memory
+	return blockMark{at: int32(b.at), used: int32(len(b.chunks[b.at]) - len(b.free))}
 }
 
 // rewind hands the cells above m out again.

@@ -120,7 +120,7 @@ func readCensusSource(t *testing.T, path string) []byte {
 		return readGzipped(t, path)
 	}
 
-	src, err := os.ReadFile(path)
+	src, err := os.ReadFile(path) //nolint:gosec // a path from the test's own list of testdata files
 	require.NoError(t, err)
 
 	return src

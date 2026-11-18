@@ -166,7 +166,7 @@ func assertColumnsAddressTheToken(t *testing.T, src string) {
 			continue // an extent that leaves the source: extentLedger's ground, not this one
 		}
 
-		want := int32(utf8.RuneCountInString(src[lineStart[at]:at]) + 1) //nolint:gosec // a line longer than 2^31 characters does not fit in memory
+		want := int32(utf8.RuneCountInString(src[lineStart[at]:at]) + 1)
 
 		assert.Equalf(t, want, tk.Position.Column,
 			"a %v at offset %d stands %d characters into its line, so its column is %d: %q",

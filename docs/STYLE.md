@@ -35,3 +35,10 @@ A function holding one case per node kind, `reflect.Kind`, token type or rune ca
 The powers of two used for shifts and masks, and 10, are exempt: 2, 4, 8, 10, 16, 32, 63 and 64.
 The exclusion matches `Magic number: <n>,`, comma included, so that 24 or 1024 still report.
 Any other number gets a named constant.
+
+### gosec G115
+
+Integer conversions that may overflow are excluded by rule. Positions, offsets and indents are int32 throughout
+the scanner, the parser and `token.Position`: a document that overflows one does not fit in memory, and a token
+holds its position by value, so the width is the token's width. The exclusion goes with a move to int64, which
+is not studied yet.

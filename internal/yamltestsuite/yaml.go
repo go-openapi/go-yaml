@@ -70,7 +70,7 @@ func suitesIn(dir string) ([]*TestSuite, error) {
 		if _, exists := testMap[name]; !exists {
 			testMap[name] = &TestSuite{}
 		}
-		f, err := os.ReadFile(path)
+		f, err := os.ReadFile(path) //nolint:gosec // walks the YAML test suite checked out with the repository
 		if err != nil {
 			return err
 		}

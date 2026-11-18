@@ -58,6 +58,11 @@ linters:
       - linters:
         - mnd
         text: "Magic number: (2|4|8|10|16|32|63|64),"
+      # Positions and offsets are int32: a document that overflows one does not fit in memory.
+      # Revisit with the move to int64.
+      - linters:
+        - gosec
+        text: "G115:"
       # YAML fixtures repeat words on purpose ("hello:\n  hello:", "[x, x, x]").
       - path: _test\.go
         linters:
