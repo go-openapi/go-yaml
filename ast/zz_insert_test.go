@@ -392,10 +392,15 @@ type placement struct {
 // back an entry after a "|+" scalar holding one empty line and after a
 // double-quoted scalar over two lines. yaml/yaml-reference-parser reads both of
 // those renderings, and the parser refuses them.
+//
+// At the back, 4 -> 2 unreadable is the parser and not the renderer: a keep
+// scalar holding only empty lines, "keep: |+" over a blank line, was refused
+// once a key followed it, and the two documents ending on one now read with the
+// entry after them. Neither changed a line, so disturbed stands.
 var insertionCensus = map[string]placement{
 	"front":  {tested: 1779, unreadable: 1, disturbed: 64},
 	"middle": {tested: 1779, unreadable: 1, disturbed: 81},
-	"back":   {tested: 1779, unreadable: 4, disturbed: 190},
+	"back":   {tested: 1779, unreadable: 2, disturbed: 190},
 }
 
 // TestInsertingIntoTheCorpus puts one entry into every document the corpus holds

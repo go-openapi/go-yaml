@@ -195,7 +195,9 @@ func (s *Scanner) refuseMultiLine(ctx *Context, msg string) error {
 // added; but a literal/folded indicator at column 1 is invalid at the drop.
 func (s *Scanner) endMultiLine(ctx *Context) error {
 	if tk := ctx.lastToken(); tk != nil {
-		if tk.Position.Column == 1 {
+		// Only the header is asked about its column. A keep scalar holding nothing but empty lines, "keep: |+" over
+		// a blank line, has handed its content over already, and that token stands at column 1 of the blank line.
+		if tk.Position.Column == 1 && (tk.Type == token.LiteralType || tk.Type == token.FoldedType) {
 			return ErrInvalidToken("could not find multi-line content", token.Invalid(ctx.origin(), s.pos()))
 		}
 		if tk.Type != token.StringType {
