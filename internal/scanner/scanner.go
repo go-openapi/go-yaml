@@ -428,7 +428,11 @@ func (s *Scanner) scan(ctx *Context) error {
 				continue
 			}
 		case '#':
-			if s.scanComment(ctx) {
+			scanned, err := s.scanComment(ctx)
+			if err != nil {
+				return err
+			}
+			if scanned {
 				continue
 			}
 			if err := s.scanCommentIndicator(ctx); err != nil {

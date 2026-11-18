@@ -4,6 +4,7 @@
 package scanner
 
 import (
+	"strings"
 	"unicode/utf8"
 
 	"github.com/go-openapi/go-yaml/token"
@@ -41,9 +42,13 @@ func (s *Scanner) scanCommentIndicator(ctx *Context) error {
 //	#c          # Comment("c"): a '#' opening the stream starts a line
 //
 // The comment runs to the end of the line, or to the end of the source when no break follows.
-func (s *Scanner) scanComment(ctx *Context) bool {
+//
+// c-nb-comment-text is '#' nb-char*, and nb-char leaves out U+FEFF, so a comment holding a byte order mark is refused:
+// "#\ufeff" and "a: 1 # x\ufeff" are no documents. A mark before the '#' at the start of the stream is a document
+// prefix, and the comment after it reads.
+func (s *Scanner) scanComment(ctx *Context) (bool, error) {
 	if c := ctx.previousChar(); c != rune(0) && c != ' ' && c != '\t' && !isNewLineChar(c) {
-		return false
+		return false, nil
 	}
 
 	s.addBufferedTokenIfExists(ctx)
@@ -51,6 +56,11 @@ func (s *Scanner) scanComment(ctx *Context) bool {
 	// As in scanTag: the offset takes the '#', and the comment's own position is taken before the step.
 	commentPos := s.pos()
 	s.progress(ctx, 1) // skip '#' character
+
+	text, _, _ := strings.Cut(ctx.src[ctx.idx:], "\n")
+	if strings.ContainsRune(text, '\ufeff') {
+		return false, ErrInvalidToken("found a byte order mark inside a comment", token.Invalid(ctx.origin(), commentPos))
+	}
 
 	for idx, c := range ctx.src[ctx.idx:] {
 		ctx.addOriginBuf(c)
@@ -80,7 +90,7 @@ func (s *Scanner) scanComment(ctx *Context) bool {
 		}
 		ctx.clear()
 
-		return true
+		return true, nil
 	}
 
 	// document ends with comment.
@@ -91,5 +101,5 @@ func (s *Scanner) scanComment(ctx *Context) bool {
 	s.progressLine(ctx)
 	ctx.clear()
 
-	return true
+	return true, nil
 }

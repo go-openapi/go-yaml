@@ -190,6 +190,10 @@ func TestARefusalSignatureKeepsTheParserAndDropsTheDocument(t *testing.T) {
 // grouping still refuses a "%" that never got a name, and no document reaches it
 // now that the scanner refuses the same "%" first.
 //
+// "found a byte order mark inside a comment" arrived the same day, when a
+// comment holding U+FEFF began to be refused: c-nb-comment-text is '#'
+// nb-char*, and nb-char leaves the mark out.
+//
 // "explicit keys are not allowed after a tag on the same line" and its anchor
 // twin arrived the same day, when a node property standing before a "?" on its
 // line began to be refused as one before a "-" was: "!!null ?" was read as a
@@ -228,6 +232,7 @@ var parserComplaints = []string{
 	"could not find map value",
 	"explicit keys are not allowed after a tag on the same line",
 	"explicit keys are not allowed after anchor on the same line",
+	"found a byte order mark inside a comment",
 	"found a byte order mark inside a line, where a node may not hold one",
 	"found a byte that is part of no character",
 	"found a character that is not a hexadecimal digit in escaped N-bit character",

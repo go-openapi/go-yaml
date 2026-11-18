@@ -35,7 +35,10 @@ import (
 // 12708 -> 12680 on 2026-11-18, when a directive with no name after its '%' and a "%TAG" prefix holding a character
 // outside ns-uri-char began to be refused. The 28 documents that left all hold one, and yaml/yaml-reference-parser
 // refuses each of them.
-var withoutCommentsCensus = struct{ tested, differing int }{tested: 12680, differing: 0}
+//
+// 12680 -> 12679 the same day, when a comment holding a byte order mark began to be refused: seed/7167 opens on
+// "#\ufeff%YAML 1.1", and c-nb-comment-text takes nb-char, which leaves the mark out.
+var withoutCommentsCensus = struct{ tested, differing int }{tested: 12679, differing: 0}
 
 func TestVerbatimRebuildsTheCorpusParsedWithoutComments(t *testing.T) {
 	t.Parallel()
