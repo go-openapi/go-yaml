@@ -121,7 +121,12 @@ func NewDecoder(r io.Reader, opts ...DecodeOption) *Decoder {
 	}
 }
 
-const maxDecodeDepth = 10000
+const (
+	maxDecodeDepth = 10000
+
+	// aliasBudgetFloor is the budget of an empty document, which aliasBudget adds 32 a byte to.
+	aliasBudgetFloor = 1024
+)
 
 // aliasBudget bounds what a decode may build from a document of n bytes.
 //
@@ -141,7 +146,7 @@ const maxDecodeDepth = 10000
 // nothing extra, which is why that path does not reach this and why it reads a
 // 423-byte document naming 387 million values in no time at all.
 func aliasBudget(n int) int {
-	return 1024 + 32*n
+	return aliasBudgetFloor + 32*n
 }
 
 // Decode reads the next YAML-encoded value from its input

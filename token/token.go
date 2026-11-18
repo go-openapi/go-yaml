@@ -1786,9 +1786,12 @@ type Position struct {
 	where uint64
 }
 
+// offsetMask selects the low 32 bits of Position.where, which hold Offset.
+const offsetMask = 1<<32 - 1
+
 // Offset is the byte the token starts at, counting from 0, so that src[Offset:]
 // is the token.
-func (p Position) Offset() int32 { return int32(p.where & 0xFFFFFFFF) }
+func (p Position) Offset() int32 { return int32(p.where & offsetMask) }
 
 // IndentNum is the number of spaces the line the token stands on is indented
 // by.
@@ -1796,12 +1799,12 @@ func (p Position) IndentNum() int32 { return int32(p.where >> 32) }
 
 // SetOffset records the byte the token starts at.
 func (p *Position) SetOffset(offset int32) {
-	p.where = p.where&^0xFFFFFFFF | uint64(uint32(offset))
+	p.where = p.where&^offsetMask | uint64(uint32(offset))
 }
 
 // SetIndentNum records how far the token's line is indented.
 func (p *Position) SetIndentNum(indent int32) {
-	p.where = p.where&0xFFFFFFFF | uint64(uint32(indent))<<32
+	p.where = p.where&offsetMask | uint64(uint32(indent))<<32
 }
 
 // At builds a position, which the packed fields keep a literal from doing.

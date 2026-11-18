@@ -11,6 +11,9 @@ import (
 	"github.com/go-openapi/go-yaml/parser/group"
 )
 
+// tagDirectiveLen counts the tokens of a "%TAG" line: the directive, the handle and the prefix.
+const tagDirectiveLen = 3
+
 func (p *Parser) parseDirective(ctx context, g *group.TokenGroup) (*ast.DirectiveNode, error) {
 	// Section 6.8 puts a directive outside the node graph, so its name and arguments are not nodes of the document.
 	// Nothing built here goes to a walk: the caller hands over the DirectiveNode, and a walk skips it.
@@ -53,7 +56,7 @@ func (p *Parser) parseDirective(ctx context, g *group.TokenGroup) (*ast.Directiv
 		}
 		directive.Values = append(directive.Values, versionNode)
 	case "TAG":
-		if g.Len() != 3 {
+		if g.Len() != tagDirectiveLen {
 			return nil, yamlerrors.NewSyntax("unexpected format TAG directive", g.First().RawToken())
 		}
 		tagKey, err := newStringNode(ctx, g.At(1))

@@ -326,8 +326,11 @@ func (r *Renderer) renderNode(n Node) rendered {
 	}
 }
 
+// documentParts counts what a document renders: its "---", its body and its "...".
+const documentParts = 3
+
 func (r *Renderer) document(n *DocumentNode) rendered {
-	parts := make([]rendered, 0, 3)
+	parts := make([]rendered, 0, documentParts)
 	if n.Start != nil {
 		parts = append(parts, r.withComment(leaf(n.Start.Value), n.StartComment))
 	}

@@ -55,6 +55,9 @@ linters:
       - std-error-handling
     rules:
       # YAML fixtures repeat words on purpose ("hello:\n  hello:", "[x, x, x]").
+      - linters:
+        - mnd
+        text: "Magic number: (2|4|8|10|16|32|63|64),"
       - path: _test\.go
         linters:
           - dupword

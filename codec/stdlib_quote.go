@@ -23,6 +23,9 @@ const (
 	lowerhex = "0123456789abcdef"
 )
 
+// firstSupplementaryRune is the first rune outside the Basic Multilingual Plane, which a \\u escape cannot write.
+const firstSupplementaryRune = 0x10000
+
 func quoteWith(s string, quote byte) string {
 	return string(appendQuotedWith(make([]byte, 0, 3*len(s)/2), s, quote))
 }
@@ -103,7 +106,7 @@ func appendEscapedRune(buf []byte, r rune, quote byte) []byte {
 		case r > utf8.MaxRune:
 			r = 0xFFFD
 			fallthrough
-		case r < 0x10000:
+		case r < firstSupplementaryRune:
 			buf = append(buf, `\u`...)
 			for s := 12; s >= 0; s -= 4 {
 				buf = append(buf, lowerhex[r>>uint(s)&0xF])

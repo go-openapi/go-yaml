@@ -14,6 +14,7 @@ const (
 	startDocMarker    = "---"
 	endDocMarker      = "..."
 	startDocMarkerLen = int32(len(startDocMarker))
+	endDocMarkerLen   = int32(len(endDocMarker))
 )
 
 func (s *Scanner) validateDocumentSeparatorMarker(ctx *Context, src string) error {
@@ -100,7 +101,7 @@ func (s *Scanner) scanDocumentEnd(ctx *Context) bool {
 
 	s.addBufferedTokenIfExists(ctx)
 	ctx.addTokenValue(token.MakeDocumentEnd(ctx.origin()+endDocMarker, s.pos()))
-	s.progressColumn(ctx, 3)
+	s.progressColumn(ctx, endDocMarkerLen)
 	ctx.clear()
 	// A "..." closes the document, so what enclosed the node before it encloses
 	// nothing after it -- the same reason scanDocumentStart clears the state for

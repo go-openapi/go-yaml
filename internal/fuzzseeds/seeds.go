@@ -159,7 +159,8 @@ func corpusSeeds() ([]string, error) {
 
 	var seeds []string
 	lines := bufio.NewScanner(gz)
-	lines.Buffer(make([]byte, 0, 64*1024), maxCorpusLine)
+	const initialLineBuffer = 64 * 1024
+	lines.Buffer(make([]byte, 0, initialLineBuffer), maxCorpusLine)
 
 	for lines.Scan() {
 		var c corpusCase

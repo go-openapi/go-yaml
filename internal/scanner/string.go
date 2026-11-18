@@ -466,8 +466,6 @@ func isCodePointEscape(marker rune) bool {
 //
 // Answering that is the point: subtracting '0' from whatever turned up gave a number for every rune, so an escape whose
 // digits were not digits decoded to some other character instead of being refused.
-//
-//nolint:mnd // hex to int is fine, no need to redefine constants for these symbols
 func hexToInt(b rune) (int, bool) {
 	switch {
 	case b >= '0' && b <= '9':
@@ -490,7 +488,7 @@ func hexDigitsToInt(b string) (int, bool) {
 		if !isHex {
 			return 0, false
 		}
-		sum += digit << (uint(len(b)-i-1) * 4) //nolint:mnd // the shift is fine
+		sum += digit << (uint(len(b)-i-1) * 4)
 	}
 
 	return sum, true

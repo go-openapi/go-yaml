@@ -4,6 +4,7 @@
 package ast
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"io"
@@ -413,8 +414,8 @@ func (vw *verbatimWriter) holdsComment(from, to int) bool {
 	for at < to && (vw.src[at] == ' ' || vw.src[at] == '\t') {
 		at++
 	}
-	if at+3 <= to && afterByteOrderMark(vw.src, at+3) {
-		at += 3
+	if at+byteOrderMarkLen <= to && afterByteOrderMark(vw.src, at+byteOrderMarkLen) {
+		at += byteOrderMarkLen
 	}
 
 	if vw.held == nil {
@@ -530,21 +531,29 @@ func textIn(src []byte, from, to int, dashes bool) bool {
 	return false
 }
 
+const (
+	// byteOrderMark is the UTF-8 encoding of U+FEFF.
+	byteOrderMark    = "\xEF\xBB\xBF"
+	byteOrderMarkLen = len(byteOrderMark)
+
+	documentEndMarker = "..."
+)
+
 // afterByteOrderMark reports whether a byte order mark stands just before at.
 // A comment may open straight after one, at the start of a stream or of a
 // document.
 func afterByteOrderMark(src []byte, at int) bool {
-	return at >= 3 && src[at-3] == 0xEF && src[at-2] == 0xBB && src[at-1] == 0xBF
+	return at >= byteOrderMarkLen && string(src[at-byteOrderMarkLen:at]) == byteOrderMark
 }
 
 // isDocumentEnd reports whether line is a "..." marker, with nothing after it
 // but spacing and a comment.
 func isDocumentEnd(line []byte) bool {
-	if len(line) < 3 || string(line[:3]) != "..." {
+	if !bytes.HasPrefix(line, []byte(documentEndMarker)) {
 		return false
 	}
 
-	return !holdsText(line, 3, len(line))
+	return !holdsText(line, len(documentEndMarker), len(line))
 }
 
 // indexBreak is the offset of the first line break in src[from:to], or -1.
@@ -1762,10 +1771,13 @@ func sortByOffset(out []placedComment) {
 	})
 }
 
+// unplacedOffset sorts a comment the source did not write after every comment it did: no document reaches 1 TiB.
+const unplacedOffset = int64(1) << 40
+
 func offsetOf(c *CommentNode) int64 {
 	tk := c.GetToken()
 	if tk == nil || !tk.FromSource() {
-		return int64(1) << 40
+		return unplacedOffset
 	}
 
 	return int64(tk.Position.Offset())

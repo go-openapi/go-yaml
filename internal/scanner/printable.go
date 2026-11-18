@@ -99,7 +99,7 @@ func firstUnprintable(text string) int {
 func readNonASCII(text string, w uint64, i int) (int, int) {
 	// The ASCII bytes standing in front of the first one over 0x7f are read from the word as usual.
 	k := swar.FirstByte(w & swar.HighBits)
-	if m := (swar.ControlMask(w) &^ swar.AllowedControlMask(w)) & (1<<(8*k) - 1); m != 0 { //nolint:mnd // the shift is fine
+	if m := (swar.ControlMask(w) &^ swar.AllowedControlMask(w)) & (1<<(8*k) - 1); m != 0 {
 		return 0, i + swar.FirstByte(m)
 	}
 	i += k

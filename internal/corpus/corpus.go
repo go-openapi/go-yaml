@@ -29,7 +29,8 @@ import (
 // FlatMap builds a mapping of n sibling keys at one level.
 func FlatMap(n int) string {
 	var b strings.Builder
-	b.Grow(n * 24)
+	const entryBytes = 24 // the bytes one entry writes, rounded up
+	b.Grow(n * entryBytes)
 
 	for i := range n {
 		fmt.Fprintf(&b, "key%06d: value%06d\n", i, i)
@@ -42,7 +43,8 @@ func FlatMap(n int) string {
 // counterpart of FlatMap.
 func FlatSequence(n int) string {
 	var b strings.Builder
-	b.Grow(n * 16)
+	const entryBytes = 16 // the bytes one entry writes, rounded up
+	b.Grow(n * entryBytes)
 
 	for i := range n {
 		fmt.Fprintf(&b, "- value%06d\n", i)
@@ -55,7 +57,8 @@ func FlatSequence(n int) string {
 // small nested mapping.
 func NestedDoc(n int) string {
 	var b strings.Builder
-	b.Grow(n * 160)
+	const entryBytes = 160 // the bytes one entry writes, rounded up
+	b.Grow(n * entryBytes)
 	b.WriteString("openapi: 3.0.0\ninfo:\n  title: Corpus\n  version: 1.0.0\npaths:\n")
 
 	for i := range n {
@@ -72,7 +75,8 @@ func NestedDoc(n int) string {
 // which is the shape that pins content in memory for a streaming parser.
 func Anchored(n int) string {
 	var b strings.Builder
-	b.Grow(n * 32)
+	const entryBytes = 32 // the bytes one entry writes, rounded up
+	b.Grow(n * entryBytes)
 	b.WriteString("defaults: &defaults\n  timeout: 30\n  retries: 3\n  verbose: true\nitems:\n")
 
 	for i := range n {
@@ -85,7 +89,8 @@ func Anchored(n int) string {
 // BlockScalars builds a document of n literal block scalars, each a few lines.
 func BlockScalars(n int) string {
 	var b strings.Builder
-	b.Grow(n * 96)
+	const entryBytes = 96 // the bytes one entry writes, rounded up
+	b.Grow(n * entryBytes)
 
 	for i := range n {
 		fmt.Fprintf(&b, "text%06d: |\n  first line of block %d\n  second line, a little longer\n  third\n", i, i)
@@ -101,7 +106,8 @@ func BlockScalars(n int) string {
 // is worth.
 func Quoted(n int) string {
 	var b strings.Builder
-	b.Grow(n * 40)
+	const entryBytes = 40 // the bytes one entry writes, rounded up
+	b.Grow(n * entryBytes)
 
 	for i := range n {
 		fmt.Fprintf(&b, "key%06d: \"a plain enough value %06d\"\n", i, i)
@@ -118,7 +124,8 @@ func Quoted(n int) string {
 // is what escaping costs.
 func Escaped(n int) string {
 	var b strings.Builder
-	b.Grow(n * 56)
+	const entryBytes = 56 // the bytes one entry writes, rounded up
+	b.Grow(n * entryBytes)
 
 	for i := range n {
 		fmt.Fprintf(&b, "key%06d: \"a\\tvalue\\nwith \\\"escapes\\\" and \\u00e9 %06d\"\n", i, i)
@@ -131,7 +138,8 @@ func Escaped(n int) string {
 // each, the shape a hand-written configuration file has.
 func Commented(n int) string {
 	var b strings.Builder
-	b.Grow(n * 72)
+	const entryBytes = 72 // the bytes one entry writes, rounded up
+	b.Grow(n * entryBytes)
 
 	for i := range n {
 		fmt.Fprintf(&b, "# what key%06d is for\nkey%06d: value%06d # and why\n", i, i, i)
@@ -144,7 +152,8 @@ func Commented(n int) string {
 // the scanner counts brackets through rather than reading indentation.
 func Flow(n int) string {
 	var b strings.Builder
-	b.Grow(n * 56)
+	const entryBytes = 56 // the bytes one entry writes, rounded up
+	b.Grow(n * entryBytes)
 
 	for i := range n {
 		fmt.Fprintf(&b, "key%06d: {name: item%06d, tags: [a, b, c], on: true}\n", i, i)
@@ -167,7 +176,8 @@ func CRLF(n int) string {
 // things about what an escape costs, so both are measured.
 func EscapedDense(n int) string {
 	var b strings.Builder
-	b.Grow(n * 64)
+	const entryBytes = 64 // the bytes one entry writes, rounded up
+	b.Grow(n * entryBytes)
 
 	for i := range n {
 		fmt.Fprintf(&b, "key%06d: \"a\\tb\\nc\\\"d\\\\e\\tf\\ng\\\"h %06d\"\n", i, i)
@@ -183,7 +193,8 @@ func EscapedDense(n int) string {
 // says whether the lazy copy is reached late or early.
 func EscapedSparse(n int) string {
 	var b strings.Builder
-	b.Grow(n * 96)
+	const entryBytes = 96 // the bytes one entry writes, rounded up
+	b.Grow(n * entryBytes)
 
 	for i := range n {
 		fmt.Fprintf(&b, "key%06d: \"a long enough run of plain text to be worth windowing\\t%06d\"\n", i, i)
@@ -200,7 +211,8 @@ func EscapedSparse(n int) string {
 // settling how far it reaches only once its low half is read.
 func EscapedUnicode(n int) string {
 	var b strings.Builder
-	b.Grow(n * 72)
+	const entryBytes = 72 // the bytes one entry writes, rounded up
+	b.Grow(n * entryBytes)
 
 	for i := range n {
 		fmt.Fprintf(&b, "key%06d: \"\\x41\\u00e9\\U0001F600\\uD83D\\uDE00 %06d\"\n", i, i)
@@ -219,7 +231,8 @@ func EscapedUnicode(n int) string {
 // only on a long run is invisible to every other shape here.
 func DeepIndent(n int) string {
 	var b strings.Builder
-	b.Grow(n * 128)
+	const entryBytes = 128 // the bytes one entry writes, rounded up
+	b.Grow(n * entryBytes)
 	b.WriteString("root:\n  level1:\n    level2:\n      level3:\n        level4:\n          entries:\n")
 
 	for i := range n {

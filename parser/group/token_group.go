@@ -5,6 +5,7 @@ package group
 
 import (
 	"fmt"
+	"math"
 	"slices"
 	"strings"
 
@@ -204,7 +205,7 @@ func (g *TokenGroup) set(typ TokenGroupType, tks []*TapeToken) {
 		g.a, g.b, g.more, g.n = tks[0], tks[1], nil, 2
 	default:
 		held := tks
-		g.a, g.b, g.more, g.n = nil, nil, &held, uint8(min(len(tks), 255))
+		g.a, g.b, g.more, g.n = nil, nil, &held, uint8(min(len(tks), math.MaxUint8))
 	}
 }
 

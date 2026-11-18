@@ -81,9 +81,13 @@ type Set struct {
 // The kind occupies the low byte whole, so a filter match settles the kind and
 // only the text is left to confirm.
 func keyFilter(text string, kind token.KeyKind) uint32 {
-	f := uint32(kind) | uint32(len(text))<<8
+	// The byte of the word each part occupies, from the low byte up: the kind, the length, the first byte and
+	// the last.
+	const lenShift, firstShift, lastShift = 8, 16, 24
+
+	f := uint32(kind) | uint32(len(text))<<lenShift
 	if len(text) > 0 {
-		f |= uint32(text[0])<<16 | uint32(text[len(text)-1])<<24
+		f |= uint32(text[0])<<firstShift | uint32(text[len(text)-1])<<lastShift
 	}
 
 	return f
