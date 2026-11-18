@@ -155,7 +155,7 @@ func (s *Scanner) scanSingleQuote(ctx *Context) (token.Token, error) {
 
 // TODO(perf): same remark as above.
 //
-//nolint:mnd,gocyclo,cyclop,maintidx // a case per rune to check and per escape sequence; named constants would not read better
+//nolint:mnd,gocyclo,cyclop,maintidx,gocognit // a case per rune to check and per escape sequence; named constants would not read better
 func (s *Scanner) scanDoubleQuote(ctx *Context) (token.Token, error) {
 	ctx.addOriginBuf('"')
 	baseIndent := s.contentIndent()

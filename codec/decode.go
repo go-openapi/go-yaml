@@ -1046,7 +1046,7 @@ func (d *Decoder) addCommentToMap(path string, comment *Comment) {
 	})
 }
 
-//nolint:gocyclo,cyclop,maintidx // one case per node kind, and the tag case one per ast.TagNode.Resolve verdict
+//nolint:gocyclo,cyclop,maintidx,gocognit // one case per node kind, and the tag case one per ast.TagNode.Resolve verdict
 func (d *Decoder) nodeToValue(ctx context.Context, node ast.Node) (any, error) {
 	d.stepIn()
 	defer d.stepOut()
@@ -1694,6 +1694,7 @@ func (d *Decoder) canDecodeByUnmarshaler(dst reflect.Value) bool {
 	return false
 }
 
+//nolint:gocognit // one type assertion per unmarshaler interface, tried in order of precedence
 func (d *Decoder) decodeByUnmarshaler(ctx context.Context, dst reflect.Value, src ast.Node) error {
 	ptrValue := dst.Addr()
 	if unmarshaler, exists := d.unmarshalerFromCustomUnmarshalerMap(ptrValue.Type()); exists {
@@ -1819,7 +1820,7 @@ func (d *Decoder) unmarshalJSON(unmarshaler jsonUnmarshaler, src ast.Node) error
 	return unmarshaler.UnmarshalJSON(bytes.TrimRight(jsonBytes, "\n"))
 }
 
-//nolint:gocyclo,cyclop,maintidx // one case per reflect.Kind of the destination
+//nolint:gocyclo,cyclop,maintidx,gocognit // one case per reflect.Kind of the destination
 func (d *Decoder) decodeValue(ctx context.Context, dst reflect.Value, src ast.Node) error {
 	d.stepIn()
 	defer d.stepOut()

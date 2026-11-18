@@ -1152,7 +1152,7 @@ func (e *Encoder) tagMode() tagMode {
 	return mode
 }
 
-//nolint:gocyclo,cyclop // one branch per tag flag (omitempty, omitzero, flow, anchor, alias, inline)
+//nolint:gocyclo,cyclop,gocognit // one branch per tag flag (omitempty, omitzero, flow, anchor, alias, inline)
 func (e *Encoder) encodeStruct(ctx context.Context, value reflect.Value, column int) (ast.Node, error) {
 	node := ast.Mapping(token.New("", "", e.pos(column)), e.isFlowStyle)
 	structType := value.Type()
