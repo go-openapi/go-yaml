@@ -15,11 +15,16 @@ import (
 // TestEmptyBlockScalarSurvivesRendering checks the one block scalar that cannot
 // be written back as it was read.
 //
-// "|+" keeps every trailing line break, and the break that ends the header line
-// is one of them. A document written with a final break -- every document is --
-// reads "|+" with nothing after it back as "\n" rather than as the empty value.
-// The renderer drops the '+' where the value is empty: clipping an empty value
+// "|+" keeps every trailing line break of its content, and the break that ends
+// the header line is not one of them: it belongs to the header. "|+" with
+// nothing after it is the empty value whether the header ends the source or its
+// line, and an empty line under it holds the one break the value keeps. The
+// renderer drops the '+' where the value is empty: clipping an empty value
 // leaves it empty, and the document then survives being read back.
+//
+// The header's break was counted as content until 2026-11-18, so "--- |1+" over
+// a final break read as "\n" and rendered as "|3+" over an empty line.
+// yaml/yaml-reference-parser, go.yaml.in/yaml/v3 and PyYAML all read it as "".
 func TestEmptyBlockScalarSurvivesRendering(t *testing.T) {
 	tests := map[string]struct {
 		src    string
@@ -31,7 +36,7 @@ func TestEmptyBlockScalarSurvivesRendering(t *testing.T) {
 		},
 		"header ends the line": {
 			src:    "--- |1+\n",
-			render: "---\n|3+\n\n",
+			render: "---\n|3\n",
 		},
 		"a break and a blank line": {
 			src:    "- |+\n   ",

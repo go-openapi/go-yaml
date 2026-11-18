@@ -20,6 +20,10 @@ import (
 // meant for a "|" or ">" written at column 1 -- and so refused "keep: |+" over a blank line over "x: 1". The strip
 // and clip forms of the same document read.
 //
+// The break that ends the header line belongs to the header and not to the content, so a keep header with nothing
+// under it is the empty value: "keep: |+" over "x: 1" read as "\n". A line of blanks the end of the stream cuts
+// short is an empty line all the same, which is yaml-test-suite's trailing-whitespace-in-streams/02.
+//
 // yaml/yaml-reference-parser reads every case here, and agrees on every value but the folded one, which it reads as
 // "\n\n". go.yaml.in/yaml/v3 reads "\n", as this library already did for the same scalar at the end of a document,
 // and the case keeps that reading: the fix lets the entry follow, and changes no value.
@@ -37,6 +41,11 @@ func TestAKeepScalarOfEmptyLinesEndsAtTheNextEntry(t *testing.T) {
 		{"sequence-entry", "- |+\n\n- x\n", []any{"\n", "x"}},
 		{"the-same-with-clip", "keep: |\n\nx: 1\n", map[string]any{"keep": "", "x": uint64(1)}},
 		{"the-same-with-strip", "keep: |-\n\nx: 1\n", map[string]any{"keep": "", "x": uint64(1)}},
+		{"header-alone-then-an-entry", "keep: |+\nx: 1\n", map[string]any{"keep": "", "x": uint64(1)}},
+		{"header-alone-at-the-end", "keep: |+\n", map[string]any{"keep": ""}},
+		{"header-alone-with-a-comment", "keep: |+ # c\n", map[string]any{"keep": ""}},
+		{"header-alone-in-a-sequence", "- |+\n- x\n", []any{"", "x"}},
+		{"blank-line-cut-by-the-end-of-the-stream", "- |+\n   ", []any{"\n"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()

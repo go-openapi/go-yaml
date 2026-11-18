@@ -105,6 +105,10 @@ func (s *Scanner) closeMultiLineAtEOS(ctx *Context, state *MultiLineState, c run
 	spaceOnlyLine := s.isFirstCharAtLine && c == ' '
 
 	if spaceOnlyLine {
+		// The source ends a line of blanks, which is an empty line as one closed by a break is: under "+" it keeps
+		// its line feed, so "- |+" over "   " at the end of the stream reads as "\n" (yaml-test-suite's
+		// trailing-whitespace-in-streams/02).
+		state.sawLineBreak = true
 		if state.addIndent(ctx, s.column) {
 			state.beganSpace(s.pos())
 		}
@@ -334,9 +338,11 @@ func (s *Scanner) scanMultiLineHeaderOption(ctx *Context) error {
 		ctx.setFolded(s.lastDelimColumn, opt)
 	}
 
-	// The break that ended the header line is content of the scalar, and the only one there is when nothing follows the
-	// header.
-	ctx.getMultiLineState().sawLineBreak = endOfLine
+	// The break that ends the header line belongs to the header, c-b-block-header ending on s-b-comment, and not to
+	// the content: "k: |+" over "x: 1" holds no line at all and reads as "", as yaml/yaml-reference-parser,
+	// go.yaml.in/yaml/v3 and PyYAML read it. Counted as content, it gave the keep scalar a "\n" it does not hold.
+	// A break of the content's own, an empty line under the header, sets the flag where scanMultiLine reads it.
+	ctx.getMultiLineState().sawLineBreak = false
 	if commentValueIndex > 0 && commentIndex > 0 {
 		comment := value[commentValueIndex+1:]
 		// The comment stands after the header, on the same line.
