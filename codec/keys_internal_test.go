@@ -6,10 +6,9 @@ package codec
 import (
 	"testing"
 
+	"github.com/go-openapi/go-yaml/parser"
 	"github.com/go-openapi/testify/v2/assert"
 	"github.com/go-openapi/testify/v2/require"
-
-	"github.com/go-openapi/go-yaml/parser"
 )
 
 // TestAnAllowedRepeatKeepsOneEntryOnEveryPath covers a mapping read under the

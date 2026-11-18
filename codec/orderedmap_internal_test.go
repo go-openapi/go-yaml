@@ -6,11 +6,10 @@ package codec
 import (
 	"testing"
 
-	"github.com/go-openapi/testify/v2/assert"
-	"github.com/go-openapi/testify/v2/require"
-
 	yamlerrors "github.com/go-openapi/go-yaml/errors"
 	"github.com/go-openapi/go-yaml/parser"
+	"github.com/go-openapi/testify/v2/assert"
+	"github.com/go-openapi/testify/v2/require"
 )
 
 // TestAnAllowedOrderedMapRepeatKeepsOneEntryOnEveryPath covers an "!!omap" read

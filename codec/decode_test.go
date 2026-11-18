@@ -6,12 +6,14 @@ package codec_test
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"iter"
 	"log"
 	"math"
+	"math/big"
 	"net"
 	"reflect"
 	"slices"
@@ -20,10 +22,12 @@ import (
 	"testing"
 	"time"
 
+	yaml "github.com/go-openapi/go-yaml"
 	"github.com/go-openapi/go-yaml/ast"
 	"github.com/go-openapi/go-yaml/codec"
 	yamlerrors "github.com/go-openapi/go-yaml/errors"
 	"github.com/go-openapi/go-yaml/parser"
+	"github.com/go-openapi/testify/v2/assert"
 	"github.com/go-openapi/testify/v2/require"
 )
 
@@ -4617,4 +4621,2391 @@ func TestBytesUnmarshalerReceivesAValueThatReadsBack(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestAliasInsideItsOwnAnchor holds the rule that a decode refuses a cycle.
+//
+// The parser resolves the alias and the tree holds the cycle, but a Go value has nowhere to put one.
+//
+// The alias used to decode to nil, which reported a mapping with a null in it
+// and no error at all. libfyaml and go.yaml.in/yaml/v3 both refuse the
+// document; PyYAML accepts it and builds the cycle. Nothing returns nil.
+func TestAliasInsideItsOwnAnchor(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name string
+		src  string
+		want string
+	}{
+		{name: "directly", src: "a: &x\n  b: *x\n", want: `alias "x" stands inside its own anchor`},
+		{name: "through another anchor", src: "a: &p\n  q: &r\n    s: *p\n", want: `alias "p" stands inside its own anchor`},
+		{name: "in a sequence", src: "a: &x\n  - *x\n", want: `alias "x" stands inside its own anchor`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			var v map[string]any
+			err := codec.Unmarshal([]byte(tc.src), &v)
+			require.Error(t, err, "decoded to %v", v)
+			assert.Contains(t, err.Error(), tc.want)
+		})
+	}
+
+	t.Run("an anchor named after it is resolved is fine", func(t *testing.T) {
+		t.Parallel()
+
+		var v map[string]any
+		require.NoError(t, codec.Unmarshal([]byte("a: &x\n  b: 1\nc: *x\n"), &v))
+		assert.Equal(t, map[string]any{
+			"a": map[string]any{"b": uint64(1)},
+			"c": map[string]any{"b": uint64(1)},
+		}, v)
+	})
+}
+
+// TestAnchorScopeIsOneDocument holds the rule that an anchor belongs to the
+// document it was written in.
+//
+// A stream is a run of documents, each independent of the rest, so the books
+// close at every boundary. libfyaml keeps a stream-scoped table and resolves
+// across boundaries; go.yaml.in/yaml/v3 does the same by an accident it is
+// removing (yaml/go-yaml#328). We refuse, because an alias may name any earlier
+// anchor of its name, so carrying the table on would pin every anchored subtree
+// of the stream until the stream ends.
+func TestAnchorScopeIsOneDocument(t *testing.T) {
+	t.Parallel()
+
+	t.Run("an alias cannot name an anchor from an earlier document", func(t *testing.T) {
+		t.Parallel()
+
+		_, err := decodeStreamAll(t, "---\na: &x 1\n---\nb: *x\n")
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), `could not find alias "x"`)
+	})
+
+	t.Run("nor from two documents earlier", func(t *testing.T) {
+		t.Parallel()
+
+		_, err := decodeStreamAll(t, "---\na: &x 1\n---\nb: 2\n---\nc: *x\n")
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), `could not find alias "x"`)
+	})
+
+	t.Run("the same name may be anchored in each document", func(t *testing.T) {
+		t.Parallel()
+
+		docs, err := decodeStreamAll(t, "---\na: &x 1\nb: *x\n---\nc: &x 2\nd: *x\n")
+		require.NoError(t, err)
+		assert.Equal(t, []any{
+			map[string]any{"a": uint64(1), "b": uint64(1)},
+			map[string]any{"c": uint64(2), "d": uint64(2)},
+		}, docs)
+	})
+
+	t.Run("a document may anchor and alias on its own", func(t *testing.T) {
+		t.Parallel()
+
+		docs, err := decodeStreamAll(t, "---\na: 1\n---\nb: &x 2\nc: *x\n")
+		require.NoError(t, err)
+		assert.Equal(t, []any{
+			map[string]any{"a": uint64(1)},
+			map[string]any{"b": uint64(2), "c": uint64(2)},
+		}, docs)
+	})
+
+	t.Run("a name anchored twice takes the most recent", func(t *testing.T) {
+		t.Parallel()
+
+		// The specification allows the reuse: "an alias event refers to the most
+		// recent event in the serialization having the specified anchor.
+		// Therefore, anchors need not be unique within a serialization."
+		var v map[string]any
+		require.NoError(t, codec.Unmarshal([]byte("a: &x 1\nb: *x\nc: &x 2\nd: *x\n"), &v))
+		assert.Equal(t, map[string]any{
+			"a": uint64(1), "b": uint64(1), "c": uint64(2), "d": uint64(2),
+		}, v)
+	})
+}
+
+// decodeStreamAll reads every document of src, stopping at the first refusal.
+func decodeStreamAll(t *testing.T, src string) ([]any, error) {
+	t.Helper()
+
+	dec := codec.NewDecoder(strings.NewReader(src))
+
+	var docs []any
+	for {
+		var v any
+		err := dec.Decode(&v)
+		if errors.Is(err, io.EOF) {
+			return docs, nil
+		}
+		if err != nil {
+			return docs, err
+		}
+		docs = append(docs, v)
+	}
+}
+
+// The walking reader lost an anchor declared on a flow entry written as a key
+// alone, when the entry's tag stands before its anchor.
+//
+// Decoding into an any walks the source, so "{!!null &a1 null, k: *a1}" came
+// back as `could not find alias "a1"`, and ToJSON, which walks too, refused it
+// the same way. The tree holds the anchor: it reads {"null": null, "k": null}.
+//
+// The parse hands a flow key written alone over as its outermost property and
+// nothing under it, so the anchor inside the tag never opened. The walk and
+// ToJSON now record that anchor as the tag closes, with the tagged value.
+//
+// Three things had to be true at once, and changing any one of them made the
+// walk agree with the tree: the entry is in a flow *mapping*, it is written as
+// a key with no value, and its tag comes before its anchor. So
+// "{&a1 !!null null, k: *a1}", "{!!str &a1 x: 1, k: *a1}" and
+// "[!!null &a1 null, *a1]" kept the anchor on both paths.
+//
+// The reference parser reports the anchor -- "=VAL &a1 <tag:yaml.org,2002:null>
+// :null" -- and libfyaml 1.0.0b1 and go.yaml.in/yaml/v3 both read the document.
+// Found on 2026-09-11 by the generator, once the flow axes were weighted to
+// reach a key written alone more than once in 350 documents.
+
+// treeRead decodes src by building a tree. UseOrderedMap is what pushes the
+// decode off the walking path; the ordering it also asks for is incidental.
+func treeRead(t *testing.T, src string) any {
+	t.Helper()
+
+	var v any
+	require.NoErrorf(t, codec.UnmarshalWithOptions([]byte(src), &v, codec.UseOrderedMap()), "%q", src)
+
+	return v
+}
+
+// TestFixedTheWalkKeepsAnAnchorOnATaggedFlowKeyAlone holds the walk, ToJSON and
+// the tree to one reading on both sides of that line.
+func TestFixedTheWalkKeepsAnAnchorOnATaggedFlowKeyAlone(t *testing.T) {
+	t.Run("the walk and ToJSON keep the anchor, as the tree does", func(t *testing.T) {
+		for _, tc := range []struct{ src, walked, writes, tree string }{
+			// The "!!null" key is the nil interface and not the text "null":
+			// a MapItem.Key carries what the key resolves to.
+			{
+				src:    "{!!null &a1 null, k: *a1}\n",
+				walked: `map[interface {}]interface {}{interface {}(nil):interface {}(nil), "k":interface {}(nil)}`,
+				writes: `{"null":null,"k":null}`,
+				tree:   `codec.MapSlice{items:[]codec.MapItem{codec.MapItem{Key:interface {}(nil), Value:interface {}(nil)}, codec.MapItem{Key:"k", Value:interface {}(nil)}}}`,
+			},
+			{
+				src:    "{!!str &a1 x, k: *a1}\n",
+				walked: `map[string]interface {}{"k":"x", "x":interface {}(nil)}`,
+				writes: `{"x":null,"k":"x"}`,
+				tree:   `codec.MapSlice{items:[]codec.MapItem{codec.MapItem{Key:"x", Value:interface {}(nil)}, codec.MapItem{Key:"k", Value:"x"}}}`,
+			},
+		} {
+			var got any
+			require.NoErrorf(t, yaml.Unmarshal([]byte(tc.src), &got), "the walk: %q", tc.src)
+			assert.Equalf(t, tc.walked, fmt.Sprintf("%#v", got), "the walk: %q", tc.src)
+
+			out, err := codec.ToJSON([]byte(tc.src))
+			require.NoErrorf(t, err, "ToJSON: %q", tc.src)
+			assert.Equalf(t, tc.writes, string(out), "ToJSON: %q", tc.src)
+
+			assert.Equalf(t, tc.tree, fmt.Sprintf("%#v", treeRead(t, tc.src)), "the tree holds the anchor: %q", tc.src)
+		}
+	})
+
+	t.Run("an alias to a tagged anchor names the tagged value on every path", func(t *testing.T) {
+		// 6.9 gives the node both properties, so a1 names 5 and not "5".
+		const src = "a: !!int &a1 \"5\"\nb: *a1\n"
+
+		var got any
+		require.NoError(t, yaml.Unmarshal([]byte(src), &got))
+		assert.Equal(t, map[string]any{"a": uint64(5), "b": uint64(5)}, got, "the walk")
+
+		out, err := codec.ToJSON([]byte(src))
+		require.NoError(t, err)
+		assert.JSONEq(t, `{"a":5,"b":5}`, string(out), "ToJSON")
+	})
+
+	t.Run("changing any one of the three makes the walk agree", func(t *testing.T) {
+		for _, tc := range []struct{ src, writes string }{
+			// The anchor before the tag.
+			{src: "{&a1 !!null null, k: *a1}\n", writes: `{"null":null,"k":null}`},
+			// The entry carries a value.
+			{src: "{!!str &a1 x: 1, k: *a1}\n", writes: `{"x":1,"k":"x"}`},
+			// A sequence rather than a mapping.
+			{src: "[!!null &a1 null, *a1]\n", writes: `[null,null]`},
+			// A block mapping.
+			{src: "a: !!null &a1 null\nk: *a1\n", writes: `{"a":null,"k":null}`},
+		} {
+			out, err := codec.ToJSON([]byte(tc.src))
+			require.NoErrorf(t, err, "%q", tc.src)
+			assert.Equal(t, tc.writes, string(out), "%q", tc.src)
+
+			var got any
+			require.NoErrorf(t, yaml.Unmarshal([]byte(tc.src), &got), "%q", tc.src)
+			assert.NotNilf(t, got, "%q", tc.src)
+		}
+	})
+}
+
+// A number past big.Float's exponent decoded to zero.
+//
+// The parser reads a number no machine type holds as a big.Int or a big.Float.
+// A big.Float keeps its exponent in an int32, so past 1e2147483647 there was no
+// big.Float to build -- and the decoder fell back to a float64, which cannot
+// hold it either and came back as zero. Nothing was reported.
+//
+// A float whose decimal exponent is past ±1000 now reads as an infinity of its
+// sign, or zero, before any big.Float is built: see token.FloatPastRange.
+//
+// ToJSON writes what the document said, and JSON puts no bound on the
+// magnitude of a number. Found by regenerating the corpus on 2026-09-10,
+// through the seed set fuzzseeds.All() draws from it.
+
+func decoded(t *testing.T, src string) any {
+	t.Helper()
+
+	var v any
+	require.NoError(t, codec.NewDecoder(bytes.NewReader([]byte(src))).Decode(&v), "%q", src)
+
+	return v.(map[string]any)["a"]
+}
+
+// TestFixedANumberPastBigFloatIsAnInfinity: each of these came back as zero.
+func TestFixedANumberPastBigFloatIsAnInfinity(t *testing.T) {
+	for src, want := range map[string]float64{
+		"a: 1e2147483647\n":        math.Inf(1),
+		"a: -3.96068E4059375226\n": math.Inf(-1),
+		"a: -36.74E69647216797\n":  math.Inf(-1),
+	} {
+		assert.Equal(t, want, decoded(t, src), "%q", src)
+	}
+}
+
+// TestAWideNumberBelowThatBoundIsKept holds the numbers inside the ±1000 bound,
+// which keep the width they need.
+func TestAWideNumberBelowThatBoundIsKept(t *testing.T) {
+	for _, tc := range []struct{ src, want string }{
+		{src: "a: 1e308\n", want: "float64"},
+		{src: "a: 1e309\n", want: "*big.Float"},
+		{src: "a: 1E400\n", want: "*big.Float"},
+		{src: "a: 1e-400\n", want: "*big.Float"},
+		{src: "a: 123456789012345678901234567890\n", want: "*big.Int"},
+	} {
+		assert.Equal(t, tc.want, typeName(decoded(t, tc.src)), "%q", tc.src)
+	}
+}
+
+// TestToJSONKeepsTheNumberWhateverItsWidth holds the half that is right, so a
+// fix to the decoder does not take it along.
+func TestToJSONKeepsTheNumberWhateverItsWidth(t *testing.T) {
+	for _, tc := range []struct{ src, want string }{
+		{src: "a: 1e2147483647\n", want: `{"a":1e2147483647}`},
+		{src: "a: -3.96068E4059375226\n", want: `{"a":-3.96068E4059375226}`},
+		{src: "a: 1E400\n", want: `{"a":1E400}`},
+	} {
+		out, err := codec.ToJSON([]byte(tc.src))
+		require.NoError(t, err, "%q", tc.src)
+		assert.Equal(t, tc.want, string(out),
+			"ToJSON writes what the document said; JSON bounds no number's magnitude")
+	}
+}
+
+func typeName(v any) string {
+	switch v.(type) {
+	case float64:
+		return "float64"
+	case *big.Float:
+		return "*big.Float"
+	case *big.Int:
+		return "*big.Int"
+	default:
+		return "other"
+	}
+}
+
+// TestFixedAnIntTagOnAWideIntegerKeepsItsDigits: `!!int` on an integer past a
+// machine word converts to the number, as the same integer untagged always did.
+//
+// taggedInteger read the text with strconv.ParseInt and the converter wrote the
+// int64 it got back, so every wide integer came out as math.MinInt64 whatever
+// its value and whatever its sign. It reads token.ParseBigInteger now, which is
+// what ast.IntegerNode.GetValue reads for the untagged spelling.
+func TestFixedAnIntTagOnAWideIntegerKeepsItsDigits(t *testing.T) {
+	for _, tc := range []struct{ src, want string }{
+		{src: "!!int 123456789012345678901\n", want: "123456789012345678901"},
+		{src: "!!int -123456789012345678901\n", want: "-123456789012345678901"},
+		{src: "!!int 18446744073709551616\n", want: "18446744073709551616"},
+		{src: "123456789012345678901\n", want: "123456789012345678901"},
+		{src: "-123456789012345678901\n", want: "-123456789012345678901"},
+		{src: "!!int -5\n", want: "-5"},
+		{src: "!!int 0x1f\n", want: "31"},
+	} {
+		out, err := codec.ToJSON([]byte(tc.src))
+		require.NoErrorf(t, err, "%q", tc.src)
+		assert.Equal(t, tc.want, string(out), "%q", tc.src)
+	}
+
+	t.Run("the decoder reads it as a big.Int either way", func(t *testing.T) {
+		for _, src := range []string{"!!int 123456789012345678901\n", "123456789012345678901\n"} {
+			var v any
+			require.NoError(t, codec.NewDecoder(bytes.NewReader([]byte(src))).Decode(&v))
+			assert.IsType(t, new(big.Int), v, "%q", src)
+		}
+	})
+}
+
+// TestBigNumberReachesTheDecoder holds what a document's number does when no
+// native type has room for it.
+//
+// YAML 1.2 puts no bound on an integer -- "arbitrary sized finite mathematical
+// integers" -- and none on a float beyond the implementation's. So a number is
+// read exactly and handed to the decoder, which decides what to do with it,
+// rather than truncated on the way. "!!int 18446744073709551616" used to
+// decode as math.MaxInt64, silently.
+//
+// The plain, untagged forms still resolve to a string until the scanner types
+// scalars by their grammar; the tag is how one reaches the integer node today.
+func TestBigNumberReachesTheDecoder(t *testing.T) {
+	const (
+		pastUint64 = "18446744073709551616" // 2^64
+		pastInt64  = "-9223372036854775809" // one below the smallest int64
+	)
+
+	t.Run("into any, the number arrives whole", func(t *testing.T) {
+		var m map[string]any
+		require.NoError(t, codec.Unmarshal([]byte("v: !!int "+pastUint64+"\n"), &m))
+
+		n, ok := m["v"].(*big.Int)
+		require.Truef(t, ok, "decoded as %T, want *big.Int", m["v"])
+		assert.Equal(t, pastUint64, n.String())
+	})
+
+	t.Run("into a native integer, it overflows and says so", func(t *testing.T) {
+		var m map[string]int64
+		err := codec.Unmarshal([]byte("v: !!int "+pastUint64+"\n"), &m)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "overflow")
+		assert.Contains(t, err.Error(), pastUint64)
+	})
+
+	t.Run("below the smallest int64", func(t *testing.T) {
+		var m map[string]any
+		require.NoError(t, codec.Unmarshal([]byte("v: !!int "+pastInt64+"\n"), &m))
+
+		n, ok := m["v"].(*big.Int)
+		require.Truef(t, ok, "decoded as %T, want *big.Int", m["v"])
+		assert.Equal(t, pastInt64, n.String())
+	})
+
+	t.Run("into a float, it takes the nearest one", func(t *testing.T) {
+		var m map[string]float64
+		require.NoError(t, codec.Unmarshal([]byte("v: !!int "+pastUint64+"\n"), &m))
+		assert.Equal(t, math.Pow(2, 64), m["v"])
+	})
+
+	t.Run("into a string, it keeps its digits", func(t *testing.T) {
+		var m map[string]string
+		require.NoError(t, codec.Unmarshal([]byte("v: !!int "+pastUint64+"\n"), &m))
+		assert.Equal(t, pastUint64, m["v"])
+	})
+}
+
+// TestAWideNumberIsRefusedAndAnInfinityIsNot holds the line between the two.
+//
+// ±Inf is a float64 like any other, and a document naming one gets it: ".inf"
+// resolves to an ast.InfinityNode, which holds a float64 already. A number
+// whose digits are finite and too wide resolves to a *big.Float, and a float64
+// of ±Inf from those has lost the number rather than named it -- that one is
+// refused, where before it was answered with +Inf and nothing said.
+//
+// The two are told apart by where they arrive from and not by the value, which
+// is why this is worth a test: the routing is what makes it work.
+func TestAWideNumberIsRefusedAndAnInfinityIsNot(t *testing.T) {
+	t.Run("an infinity the document named", func(t *testing.T) {
+		for _, src := range []string{"a: .inf\n", "a: .Inf\n", "a: -.inf\n", "a: !!float .inf\n"} {
+			var into struct{ A float64 }
+			require.NoErrorf(t, codec.Unmarshal([]byte(src), &into), "%q", src)
+			assert.Truef(t, math.IsInf(into.A, 0), "%q read as %v", src, into.A)
+		}
+	})
+
+	t.Run("a number no float64 holds", func(t *testing.T) {
+		for _, src := range []string{"a: 1e400\n", "a: -1e400\n", "a: 1e-400\n"} {
+			var f64 struct{ A float64 }
+			assert.Errorf(t, codec.Unmarshal([]byte(src), &f64), "%q read as %v", src, f64.A)
+
+			var f32 struct{ A float32 }
+			assert.Errorf(t, codec.Unmarshal([]byte(src), &f32), "%q read as %v", src, f32.A)
+
+			// Whole, where the caller asks for it whole.
+			var wide struct{ A *big.Float }
+			require.NoErrorf(t, codec.Unmarshal([]byte(src), &wide), "%q", src)
+			assert.Falsef(t, wide.A.IsInf(), "%q read as %v", src, wide.A)
+		}
+	})
+
+	t.Run("a number a float64 only rounds", func(t *testing.T) {
+		var into struct{ A float64 }
+		require.NoError(t, codec.Unmarshal([]byte("a: 123456789012345678901234567890\n"), &into))
+		assert.InEpsilon(t, 1.2345678901234568e+29, into.A, 1e-15)
+	})
+
+	t.Run("a wide integer whole", func(t *testing.T) {
+		var into struct{ A *big.Int }
+		require.NoError(t, codec.Unmarshal([]byte("a: 123456789012345678901234567890\n"), &into))
+		assert.Equal(t, "123456789012345678901234567890", into.A.String())
+	})
+}
+
+// TestFixedAFloatUnderAnIntegerTagIsRefused holds both readers to the complete
+// representation.
+//
+// tag:yaml.org,2002:int names the whole numbers, so a float under "!!int" is a
+// tag that does not hold. The library used to resolve it and truncate: "1.9"
+// came back 1. That lenience carried the infinities and the NaN in with it,
+// where there is nothing to truncate to -- castToInteger converted them with
+// Go's int(v), and the Go specification leaves the result outside the integer
+// range to the implementation. On amd64 ".inf", "-.inf" and ".nan" all decoded
+// to -9223372036854775808, so a caller could not tell the three apart, and
+// "1e400" decoded to 0.
+func TestFixedAFloatUnderAnIntegerTagIsRefused(t *testing.T) {
+	for _, tc := range []struct{ src, says string }{
+		{src: "k: !!int 1.9\n", says: `cannot read "1.9" as !!int`},
+		{src: "k: !!int -1.9\n", says: `cannot read "-1.9" as !!int`},
+		{src: "k: !!int 1e3\n", says: `cannot read "1e3" as !!int`},
+		{src: "k: !!int 1e400\n", says: `cannot read "1e400" as !!int`},
+		{src: "k: !!int .inf\n", says: `cannot read ".inf" as !!int`},
+		{src: "k: !!int -.inf\n", says: `cannot read "-.inf" as !!int`},
+		{src: "k: !!int .nan\n", says: `cannot read ".nan" as !!int`},
+		{src: "!!int .inf: v\n", says: `cannot read ".inf" as !!int`},
+		{src: "!!int 1.9: v\n", says: `cannot read "1.9" as !!int`},
+	} {
+		var v any
+		err := codec.NewDecoder(strings.NewReader(tc.src)).Decode(&v)
+		require.Errorf(t, err, "%q should be refused", tc.src)
+		assert.Containsf(t, err.Error(), tc.says, "%q", tc.src)
+	}
+
+	t.Run("and a whole number under the tag still reads, in any base", func(t *testing.T) {
+		for _, tc := range []struct {
+			src  string
+			want any
+		}{
+			// The Go type the untagged number decodes to.
+			{src: "k: !!int 16\n", want: uint64(16)},
+			{src: "k: !!int 0x10\n", want: uint64(16)},
+			{src: "k: !!int 0o17\n", want: uint64(15)},
+			{src: "k: !!int -5\n", want: int64(-5)},
+			// A tag standing on nothing keeps taking the tag's own default.
+			{src: "k: !!int\n", want: uint64(0)},
+		} {
+			var v map[string]any
+			require.NoErrorf(t, codec.NewDecoder(strings.NewReader(tc.src)).Decode(&v), "%q", tc.src)
+			assert.Equalf(t, tc.want, v["k"], "%q", tc.src)
+		}
+	})
+
+	t.Run("and a tagged and an untagged integer are one key", func(t *testing.T) {
+		// "!!int 1" decoded to int(1) and "1" to uint64(1): two keys to a Go
+		// map, so an own "!!int 1" did not beat the "1" a "<<" brought in and
+		// the mapping held both entries, whichever side carried the tag.
+		for _, pair := range [][2]string{{"1", "!!int 1"}, {"!!int 1", "1"}, {"-1", "!!int -1"}} {
+			src := "%YAML 1.1\n---\na: &m\n  ? " + pair[0] + "\n  : merged\n" +
+				"b:\n  <<: *m\n  ? " + pair[1] + "\n  : own\n"
+
+			var v map[string]any
+			require.NoErrorf(t, codec.NewDecoder(strings.NewReader(src)).Decode(&v), "%q", src)
+			b, isMap := v["b"].(map[any]any)
+			require.Truef(t, isMap, "%q: b is %T", src, v["b"])
+			assert.Lenf(t, b, 1, "%q", src)
+			for _, value := range b {
+				assert.Equalf(t, "own", value, "%q", src)
+			}
+		}
+	})
+
+	t.Run("and WithLaxTags reads the text instead", func(t *testing.T) {
+		for _, tc := range []struct{ src, want string }{
+			{src: "k: !!int 1.9\n", want: "1.9"},
+			{src: "k: !!int .inf\n", want: ".inf"},
+			{src: "k: !!int .nan\n", want: ".nan"},
+			{src: "k: !!int 1e400\n", want: "1e400"},
+		} {
+			f, err := parser.ParseBytes([]byte(tc.src), parser.WithLaxTags())
+			require.NoErrorf(t, err, "%q", tc.src)
+
+			var v map[string]any
+			require.NoErrorf(t,
+				codec.NewDecoder(bytes.NewReader(nil)).DecodeFromNode(f.Docs[0].Body, &v), "%q", tc.src)
+			assert.Equalf(t, tc.want, v["k"], "%q", tc.src)
+		}
+	})
+
+	// ToJSON reads the same verdict, so it refuses the same documents. The
+	// house rule is strict by default, and parser.WithLaxTags relaxes both.
+	t.Run("and the JSON converter refuses them too", func(t *testing.T) {
+		for _, src := range []string{"k: !!int 1.9\n", "k: !!int 1e3\n", "k: !!int 1e400\n"} {
+			_, err := codec.ToJSON([]byte(src))
+			require.Errorf(t, err, "%q", src)
+			assert.Containsf(t, err.Error(), "as !!int", "%q", src)
+
+			got, laxErr := codec.ToJSON([]byte(src), parser.WithLaxTags())
+			require.NoErrorf(t, laxErr, "%q under WithLaxTags", src)
+			assert.Containsf(t, string(got), `"k":"`, "%q reads the text under WithLaxTags", src)
+		}
+	})
+}
+
+// TestTheTwoReadersAgreeOnATaggedNumber holds ToJSON to the decoder, spelling
+// by spelling and version by version.
+//
+// Both read ast.Resolution, so they refuse the same documents. They disagreed
+// about what the ones they accept mean: codec.taggedInteger and
+// codec.taggedFloat sniffed Resolution.Text again with
+// token.ScalarType(text, token.Schema12), a third copy of the fault ast had, so
+// they never saw the base the document's own schema gave the digits. Under
+// %YAML 1.1 "!!int 0b101" decoded to 5 and ToJSON wrote 0, "!!int 190:20:30"
+// decoded to 685230 and ToJSON wrote 0, and "!!int 017" decoded to 15 and
+// ToJSON wrote 17. They read Resolution.Type now.
+func TestTheTwoReadersAgreeOnATaggedNumber(t *testing.T) {
+	const under11 = "%YAML 1.1\n---\n"
+
+	for _, tc := range []struct {
+		body        string
+		value, json string
+	}{
+		{body: "k: !!int 017", value: "15", json: "15"},
+		{body: "k: !!int 0b101", value: "5", json: "5"},
+		{body: "k: !!int 1_000", value: "1000", json: "1000"},
+		{body: "k: !!int 190:20:30", value: "685230", json: "685230"},
+		{body: "k: !!float 190:20:30.5", value: "685230.5", json: "685230.5"},
+		{body: "k: !!float 1_0.5", value: "10.5", json: "10.5"},
+		{body: "k: !!float 017", value: "15", json: "15.0"},
+	} {
+		src := under11 + tc.body + "\n"
+
+		var v map[string]any
+		require.NoErrorf(t, codec.NewDecoder(strings.NewReader(src)).Decode(&v), "%q", src)
+		assert.Equalf(t, tc.value, fmt.Sprintf("%v", v["k"]), "decoded %q", tc.body)
+
+		got, err := codec.ToJSON([]byte(src))
+		require.NoErrorf(t, err, "%q", src)
+		assert.Equalf(t, `{"k":`+tc.json+"}", strings.TrimSpace(string(got)), "ToJSON %q", tc.body)
+	}
+
+	// A number no float64 holds keeps its magnitude in JSON, which writes the
+	// digits and has no float64 to overflow -- the digits the document wrote,
+	// where reading them into a *big.Float first respelled them as 1e+400.
+	t.Run("and a number past float64 keeps its magnitude", func(t *testing.T) {
+		got, err := codec.ToJSON([]byte("k: !!float 1e400\n"))
+		require.NoError(t, err)
+		assert.Equal(t, `{"k":1e400}`, strings.TrimSpace(string(got)))
+	})
+}
+
+// TestQuotingAScalarDoesNotChangeWhatItsTagMakesOfIt.
+//
+// YAML 1.2.2 §3.3.2 gives a non-specific tag -- "!" to a non-plain scalar, "?"
+// to everything else -- only to a node *lacking* an explicit tag. A node
+// carrying one has no non-specific tag to resolve, so `!!int "017"` and
+// `!!int 017` are one node: the same tag over the same content. Nothing in the
+// spec lets them differ.
+//
+// Three readings told them apart. ast.readsAs keyed the spelling rules on the
+// type the scanner gave the scalar, which types a plain scalar and not a quoted
+// one; Decoder.taggedValue resolved the node rather than the tagged text; and
+// codec.castToInteger read that text under a fixed 1.2 schema. Under
+// %YAML 1.1, `!!int "017"` came back 17 where `!!int 017` was 15 -- both
+// integers, no error, two units gone -- and `!!int "0b101"` was 0 where the
+// plain spelling was 5.
+func TestQuotingAScalarDoesNotChangeWhatItsTagMakesOfIt(t *testing.T) {
+	texts := []string{
+		"0x10", "0o17", "017", "09", "0b101", "1_000", "190:20:30", "0X10", "-0x10",
+		"1", "1.9", "1e3", "1.0e3", "1.0e+3", "1e400", "1_0.5", "0x1p-2", ".inf", ".nan", "-0",
+	}
+
+	for _, prefix := range []string{"", "%YAML 1.1\n---\n"} {
+		for _, tag := range []string{"!!int", "!!float"} {
+			for _, text := range texts {
+				plain := prefix + "k: " + tag + " " + text + "\n"
+				quoted := prefix + "k: " + tag + ` "` + text + "\"\n"
+
+				var got, want any
+				plainErr := codec.NewDecoder(strings.NewReader(plain)).Decode(&want)
+				quotedErr := codec.NewDecoder(strings.NewReader(quoted)).Decode(&got)
+
+				require.Equalf(t, plainErr == nil, quotedErr == nil,
+					"%q and its quoted spelling must both read or both be refused", plain)
+				if plainErr != nil {
+					continue
+				}
+				assert.Equalf(t, fmt.Sprintf("%v", want), fmt.Sprintf("%v", got),
+					"quoting %q under %q changed what the tag made of it", text, tag)
+			}
+		}
+	}
+}
+
+// TestAnInfinityUnderAFloatTagKeepsItsValue guards the branch that reads one.
+//
+// token.ParseFloat goes through shapeOfTypedNumber, which has no case for
+// InfinityType or NanType and reports false for both, so a taggedFloat routing
+// them through it answered 0 -- the incomplete representation ruled out for
+// "!!int" on 2026-09-09, arriving by another door.
+func TestAnInfinityUnderAFloatTagKeepsItsValue(t *testing.T) {
+	for _, tc := range []struct {
+		src  string
+		want func(float64) bool
+	}{
+		{src: "k: !!float .inf\n", want: func(f float64) bool { return math.IsInf(f, 1) }},
+		{src: "k: !!float .Inf\n", want: func(f float64) bool { return math.IsInf(f, 1) }},
+		{src: "k: !!float -.inf\n", want: func(f float64) bool { return math.IsInf(f, -1) }},
+		{src: `k: !!float ".inf"` + "\n", want: func(f float64) bool { return math.IsInf(f, 1) }},
+		{src: "k: !!float .nan\n", want: math.IsNaN},
+		{src: `k: !!float ".nan"` + "\n", want: math.IsNaN},
+	} {
+		var v map[string]any
+		require.NoErrorf(t, codec.NewDecoder(strings.NewReader(tc.src)).Decode(&v), "%q", tc.src)
+
+		f, ok := v["k"].(float64)
+		require.Truef(t, ok, "%q should read as a float64, got %T", tc.src, v["k"])
+		assert.Truef(t, tc.want(f), "%q read as %v", tc.src, f)
+	}
+}
+
+type (
+	ratio   float64
+	ratio32 float32
+)
+
+// TestAStringFillsANamedFloatType covers a string read into a float field
+// through strconv.ParseFloat, which is how a quoted "1e3" fills one.
+//
+// The value used to come back as a plain float64 or float32, and setting it
+// on a field of a named float type panicked with "reflect.Set: value of type
+// float64 is not assignable to type ratio".
+func TestAStringFillsANamedFloatType(t *testing.T) {
+	for _, src := range []string{`v: "1e3"`, `v: !!str 1e3`} {
+		t.Run(src, func(t *testing.T) {
+			var named struct{ V ratio }
+			require.NoError(t, codec.Unmarshal([]byte(src), &named))
+			assert.Equal(t, ratio(1000), named.V)
+
+			var named32 struct{ V ratio32 }
+			require.NoError(t, codec.Unmarshal([]byte(src), &named32))
+			assert.Equal(t, ratio32(1000), named32.V)
+
+			var plain struct{ V float64 }
+			require.NoError(t, codec.Unmarshal([]byte(src), &plain))
+			assert.InDelta(t, 1000.0, plain.V, 0)
+		})
+	}
+
+	// A string ParseFloat does not read is still a type mismatch.
+	var named struct{ V ratio }
+	require.Error(t, codec.Unmarshal([]byte(`v: "abc"`), &named))
+}
+
+// TestASignedInfinityResolves covers the "+" spellings of an infinity, which
+// the 1.2 core schema admits and this library read as text.
+//
+// The float production is `[-+]? ( \.inf | \.Inf | \.INF )`, so "+.inf" names
+// the same value ".inf" does. token.reservedInfKeywords listed the six unsigned
+// and "-" spellings and left the three "+" ones out, so the scalar never
+// resolved and every destination saw a string: an "any" held "+.inf", a
+// float64 field took the zero, and ToJSON wrote {"a":"+.inf"} where the same
+// value spelled ".inf" is refused outright.
+//
+// go.yaml.in/yaml/v3 v3.0.5 and libfyaml 1.0.0b1 both read +.inf and +.INF as
+// infinity. A NaN is the control: 1.2 spells it `\.nan | \.NaN | \.NAN` with no
+// sign, so "+.nan" is a string in all three.
+func TestASignedInfinityResolves(t *testing.T) {
+	t.Run("into an any", func(t *testing.T) {
+		for _, tc := range []struct {
+			src  string
+			want any
+		}{
+			{"a: +.inf\n", math.Inf(1)},
+			{"a: +.Inf\n", math.Inf(1)},
+			{"a: +.INF\n", math.Inf(1)},
+			{"a: .inf\n", math.Inf(1)},
+			{"a: -.inf\n", math.Inf(-1)},
+
+			// The control: a NaN admits no sign, so this one stays text.
+			{"a: +.nan\n", "+.nan"},
+			{"a: -.nan\n", "-.nan"},
+
+			// And a quoted infinity is text whatever it spells.
+			{"a: \"+.inf\"\n", "+.inf"},
+		} {
+			var got map[string]any
+			require.NoErrorf(t, codec.Unmarshal([]byte(tc.src), &got), "%q", tc.src)
+			assert.Equalf(t, tc.want, got["a"], "%q", tc.src)
+		}
+	})
+
+	t.Run("into a float64", func(t *testing.T) {
+		var into struct {
+			A float64 `yaml:"a"`
+		}
+		require.NoError(t, codec.Unmarshal([]byte("a: +.inf\n"), &into))
+		assert.Equal(t, math.Inf(1), into.A)
+	})
+
+	t.Run("ToJSON refuses it, as it refuses the unsigned spelling", func(t *testing.T) {
+		for _, src := range []string{"a: +.inf\n", "a: .inf\n", "a: +.INF\n"} {
+			_, err := codec.ToJSON([]byte(src))
+			require.Errorf(t, err, "%q", src)
+			assert.ErrorIsf(t, err, yamlerrors.ErrNotJSON, "%q", src)
+		}
+	})
+
+	t.Run("and it is the same key as the unsigned spelling", func(t *testing.T) {
+		// 3.2.1.1 keys on the resolved node, and both spell +Inf.
+		var got any
+		err := codec.Unmarshal([]byte("+.inf: a\n.inf: b\n"), &got)
+		require.Error(t, err)
+		assert.ErrorIs(t, err, yamlerrors.ErrDuplicateKey)
+	})
+}
+
+// Data is a named []byte, to hold the conversion rather than only the plain
+// type.
+type Data []byte
+
+// TestBinaryTagReadsIntoAByteSlice: "!!binary" reads into the one Go type it
+// names.
+//
+// The tag names a sequence of bytes and the decoder builds a []byte for an
+// `any`, but decodeSlice read the node as a YAML sequence and reported `string
+// was used where sequence is expected` -- while the same document into a
+// *string* field gave "hello", the decoded bytes. So the conversion was there
+// and the destination the tag is for was the one it could not reach.
+func TestBinaryTagReadsIntoAByteSlice(t *testing.T) {
+	type box struct {
+		B []byte `yaml:"b"`
+		D Data   `yaml:"d"`
+		S string `yaml:"s"`
+		A any    `yaml:"a"`
+	}
+
+	t.Run("into a field, a named type, a slice and a map", func(t *testing.T) {
+		var got box
+		require.NoError(t, yaml.Unmarshal([]byte("b: !!binary aGVsbG8=\nd: !!binary d29ybGQ=\n"), &got))
+		assert.Equal(t, box{B: []byte("hello"), D: Data("world")}, got)
+
+		var raw []byte
+		require.NoError(t, yaml.Unmarshal([]byte("!!binary aGVsbG8=\n"), &raw))
+		assert.Equal(t, []byte("hello"), raw)
+
+		var byName map[string][]byte
+		require.NoError(t, yaml.Unmarshal([]byte("b: !!binary aGVsbG8=\n"), &byName))
+		assert.Equal(t, map[string][]byte{"b": []byte("hello")}, byName)
+
+		var items [][]byte
+		require.NoError(t, yaml.Unmarshal([]byte("- !!binary aGVsbG8=\n"), &items))
+		assert.Equal(t, [][]byte{[]byte("hello")}, items)
+	})
+
+	t.Run("through an anchor and through an alias", func(t *testing.T) {
+		var got box
+		require.NoError(t, yaml.Unmarshal([]byte("a: &x !!binary aGVsbG8=\nb: *x\n"), &got))
+		assert.Equal(t, []byte("hello"), got.B)
+	})
+
+	t.Run("the tag's own default is an empty slice", func(t *testing.T) {
+		var got box
+		require.NoError(t, yaml.Unmarshal([]byte("b: !!binary\n"), &got))
+		assert.Equal(t, []byte{}, got.B)
+	})
+
+	t.Run("a string field and an any hold the encoded text", func(t *testing.T) {
+		// An any holds a codec.Base64, the base64 the document wrote: it is
+		// comparable, so a "!!binary" can key a mapping, and it tells the
+		// encoder the value is binary so a round trip keeps the tag. Bytes
+		// gives the payload. A string field takes the text for the same reason
+		// -- the caller asked for text, and the text is base64.
+		var got box
+		require.NoError(t, yaml.Unmarshal([]byte("s: !!binary aGVsbG8=\na: !!binary aGVsbG8=\n"), &got))
+		assert.Equal(t, "aGVsbG8=", got.S)
+		assert.Equal(t, codec.Base64("aGVsbG8="), got.A)
+
+		raw, err := got.A.(codec.Base64).Bytes()
+		require.NoError(t, err)
+		assert.Equal(t, []byte("hello"), raw)
+	})
+
+	t.Run("and a sequence of numbers still reads into a byte slice", func(t *testing.T) {
+		var got box
+		require.NoError(t, yaml.Unmarshal([]byte("b: [104, 101]\n"), &got))
+		assert.Equal(t, []byte{104, 101}, got.B)
+	})
+
+	t.Run("a text that is not base64 is still refused", func(t *testing.T) {
+		var got box
+		err := yaml.Unmarshal([]byte("b: !!binary not base64!\n"), &got)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "!!binary")
+	})
+
+	t.Run("the walking reader and the tree agree", func(t *testing.T) {
+		const src = "b: !!binary aGVsbG8=\nd: !!binary d29ybGQ=\n"
+
+		var walked, treed box
+		require.NoError(t, yaml.Unmarshal([]byte(src), &walked))
+		require.NoError(t, codec.UnmarshalWithOptions([]byte(src), &treed, codec.UseOrderedMap()))
+		assert.Equal(t, treed, walked)
+	})
+}
+
+// TestABinaryTagReadsAsTheTextItCarries: "!!binary" decodes to [codec.Base64],
+// the base64 the document wrote, with the bytes a method call away.
+//
+// It resolved to []byte before. A []byte cannot key a mapping -- Go hashes no
+// slice -- so "? !!binary" was refused; it carries no sign of being binary, so
+// an encode wrote a plain sequence of numbers and the tag was gone; and ToJSON
+// wrote the bytes as a JSON array, which the decoder then disagreed with. A
+// string fixes the first, and only a named type fixes the other two.
+func TestABinaryTagReadsAsTheTextItCarries(t *testing.T) {
+	const src = "a: !!binary aGVsbG8=\n"
+
+	t.Run("an any holds the text, and Bytes gives the payload", func(t *testing.T) {
+		var got any
+		require.NoError(t, codec.Unmarshal([]byte(src), &got))
+		assert.Equal(t, map[string]any{"a": codec.Base64("aGVsbG8=")}, got)
+
+		raw, err := got.(map[string]any)["a"].(codec.Base64).Bytes()
+		require.NoError(t, err)
+		assert.Equal(t, []byte("hello"), raw)
+	})
+
+	t.Run("it keys a mapping, where a []byte could not", func(t *testing.T) {
+		var byKey map[any]any
+		require.NoError(t, codec.Unmarshal([]byte("? !!binary aGVsbG8=\n: x\n"), &byKey))
+		assert.Equal(t, map[any]any{codec.Base64("aGVsbG8="): "x"}, byKey)
+	})
+
+	t.Run("a round trip keeps the tag", func(t *testing.T) {
+		var got any
+		require.NoError(t, codec.Unmarshal([]byte(src), &got))
+
+		out, err := codec.Marshal(got)
+		require.NoError(t, err)
+		assert.Equal(t, src, string(out))
+	})
+
+	t.Run("JSON gets the base64 string, whichever path wrote it", func(t *testing.T) {
+		folded, err := codec.ToJSON([]byte(src))
+		require.NoError(t, err)
+		assert.Equal(t, `{"a":"aGVsbG8="}`, string(folded))
+
+		var got any
+		require.NoError(t, codec.Unmarshal([]byte(src), &got))
+		through, err := codec.MarshalWithOptions(got, codec.JSON())
+		require.NoError(t, err)
+		assert.JSONEq(t, string(folded), string(through))
+
+		// And the same thing encoding/json writes for a []byte, which is what
+		// a JSON reader means by binary.
+		std, err := json.Marshal(map[string][]byte{"a": []byte("hello")})
+		require.NoError(t, err)
+		assert.JSONEq(t, string(std), string(folded))
+	})
+
+	t.Run("a []byte destination still gets the payload", func(t *testing.T) {
+		var into struct {
+			A []byte `yaml:"a"`
+		}
+		require.NoError(t, codec.Unmarshal([]byte(src), &into))
+		assert.Equal(t, []byte("hello"), into.A)
+	})
+
+	t.Run("the line breaks RFC 2045 allows are kept, and Canonical takes them out", func(t *testing.T) {
+		var got any
+		require.NoError(t, codec.Unmarshal([]byte("a: !!binary |\n  aGVs\n  bG8=\n"), &got))
+
+		b, ok := got.(map[string]any)["a"].(codec.Base64)
+		require.True(t, ok)
+		assert.Equal(t, codec.Base64("aGVs\nbG8=\n"), b, "the document's own spelling")
+		assert.Equal(t, "aGVsbG8=", b.Canonical())
+
+		raw, err := b.Bytes()
+		require.NoError(t, err)
+		assert.Equal(t, []byte("hello"), raw)
+
+		// JSON and a re-encode both write the canonical form.
+		folded, err := codec.ToJSON([]byte("a: !!binary |\n  aGVs\n  bG8=\n"))
+		require.NoError(t, err)
+		assert.Equal(t, `{"a":"aGVsbG8="}`, string(folded))
+
+		out, err := codec.Marshal(got)
+		require.NoError(t, err)
+		assert.Equal(t, "a: !!binary aGVsbG8=\n", string(out))
+	})
+
+	t.Run("String is the text and not the payload", func(t *testing.T) {
+		// A Stringer is what fmt reaches for, and printing the payload would
+		// write whatever bytes it happens to hold.
+		assert.Equal(t, "aGVsbG8=", codec.Base64("aGVsbG8=").String())
+	})
+
+	t.Run("Bytes reports a text that is not base64", func(t *testing.T) {
+		_, err := codec.Base64("not base64!").Bytes()
+		assert.Error(t, err)
+	})
+}
+
+// TestTimestampFormats records which of the shapes yaml.org/type/timestamp.html
+// allows decode into a time.Time, and that the rest are refused.
+//
+// Refused is the point. A text no layout read came back as the zero time with
+// no error, so "2001-12-14 21:59:43.10 -5" -- which that expression allows --
+// decoded to 0001-01-01 and nothing said so.
+//
+// Nothing here is reached by resolution: YAML 1.2's core schema resolves null,
+// bool, int, float and str and no timestamp, so a document gets a time.Time by
+// being decoded into one.
+func TestTimestampFormats(t *testing.T) {
+	for _, tc := range []struct {
+		text string
+		want string
+	}{
+		{"2001-12-14t21:59:43.10-05:00", "2001-12-14T21:59:43.1-05:00"},
+		{"2001-12-14T21:59:43.10-05:00", "2001-12-14T21:59:43.1-05:00"},
+		{"2001-12-14 21:59:43.10-05:00", "2001-12-14T21:59:43.1-05:00"},
+		{"2001-12-14 21:59:43.10 -05:00", "2001-12-14T21:59:43.1-05:00"},
+		{"2001-12-15T02:59:43.1Z", "2001-12-15T02:59:43.1Z"},
+		{"2001-12-14 21:59:43.10", "2001-12-14T21:59:43.1Z"},
+		{"2002-12-14", "2002-12-14T00:00:00Z"},
+
+		// ⚠️ Allowed by the expression and refused here: it writes the zone as
+		// "[-+][0-9][0-9]?(:[0-9][0-9])?", and Go's reference layouts spell
+		// neither "-5" nor "-05". Refused rather than read as something else.
+		{"2001-12-14 21:59:43.10 -5", ""},
+		{"2001-12-14 21:59:43.10 -05", ""},
+
+		{"not a date", ""},
+		{"", "0001-01-01T00:00:00Z"},
+	} {
+		t.Run(tc.text, func(t *testing.T) {
+			var into struct {
+				A time.Time `yaml:"a"`
+			}
+			err := codec.Unmarshal([]byte("a: "+tc.text+"\n"), &into)
+
+			if tc.want == "" {
+				assert.Errorf(t, err, "read as %v", into.A)
+
+				return
+			}
+			require.NoError(t, err)
+			assert.Equal(t, tc.want, into.A.Format(time.RFC3339Nano))
+		})
+	}
+}
+
+// TestATimestampResolvesUnderTheVersionTheDocumentDeclares records which
+// version reads a plain timestamp as one.
+//
+// tag:yaml.org,2002:timestamp is a YAML 1.1 type. 1.2's core schema resolves
+// null, bool, int, float and str and no timestamp, so under 1.2 a plain
+// "2002-12-14" is the string it looks like and only a Go field of type
+// time.Time asks for the conversion. Under a "%YAML 1.1" directive, or
+// parser.WithYAMLVersion at 1.1, it resolves -- the same rule the merge key
+// follows, and Fred's ruling of 2026-09-07: resolution follows the version the
+// document declares.
+//
+// The parse marks the tag implicit, so the document renders back as it was
+// written and every consumer of types reads one answer: an `any` holds a
+// time.Time and ToJSON writes the instant, exactly as they do for a written
+// "!!timestamp".
+func TestATimestampResolvesUnderTheVersionTheDocumentDeclares(t *testing.T) {
+	t.Run("1.2 leaves it a string", func(t *testing.T) {
+		const src = "a: 2002-12-14\n"
+
+		var v any
+		require.NoError(t, codec.Unmarshal([]byte(src), &v))
+		assert.IsType(t, "", v.(map[string]any)["a"])
+
+		got, err := codec.ToJSON([]byte(src))
+		require.NoError(t, err)
+		assert.Equal(t, `{"a":"2002-12-14"}`, string(got))
+	})
+
+	t.Run("1.1 resolves it", func(t *testing.T) {
+		const src = "%YAML 1.1\n---\na: 2002-12-14\n"
+
+		var v any
+		require.NoError(t, codec.Unmarshal([]byte(src), &v))
+		assert.IsType(t, time.Time{}, v.(map[string]any)["a"])
+
+		got, err := codec.ToJSON([]byte(src))
+		require.NoError(t, err)
+		assert.Equal(t, `{"a":"2002-12-14T00:00:00Z"}`, string(got))
+	})
+
+	t.Run("and the document renders back as it was written", func(t *testing.T) {
+		const src = "%YAML 1.1\n---\na: 2002-12-14\n"
+
+		f, err := parser.ParseBytes([]byte(src))
+		require.NoError(t, err)
+		assert.Equal(t, src, f.String(), "the implicit tag is not a tag the document holds")
+	})
+
+	// A block scalar is tag:yaml.org,2002:str whatever it spells (10.2.1.2),
+	// and the scanner cuts its content as a plain String token like any other,
+	// so this is the shape that has to be told apart from a plain scalar. The
+	// generated suite found it: parsing refused the document outright, since
+	// parseLiteral requires a StringNode for its content.
+	t.Run("a block scalar stays a string", func(t *testing.T) {
+		const src = "%YAML 1.1\n---\na: >-\n  2002-12-14\n"
+
+		var v any
+		require.NoError(t, codec.Unmarshal([]byte(src), &v))
+		assert.IsType(t, "", v.(map[string]any)["a"])
+	})
+
+	t.Run("a quoted scalar stays a string", func(t *testing.T) {
+		const src = "%YAML 1.1\n---\na: \"2002-12-14\"\n"
+
+		var v any
+		require.NoError(t, codec.Unmarshal([]byte(src), &v))
+		assert.IsType(t, "", v.(map[string]any)["a"])
+	})
+}
+
+// TestAWrittenTagKeepsATimestampAString holds that a tag written on a plain scalar stops it resolving as a timestamp.
+//
+// Resolution types an untagged scalar. A written tag types the scalar itself,
+// and a tag that resolves to nothing, the local "!a" or the non-specific "!", leaves it the text it was written with.
+// So under %YAML 1.1 "!a 2001-12-14" is the string "2001-12-14", as libfyaml and go.yaml.in/yaml/v3 read it,
+// and an anchor on either side of the tag changes nothing.
+//
+// A tag on a collection types the collection and not its members, so a plain timestamp inside one still resolves.
+func TestAWrittenTagKeepsATimestampAString(t *testing.T) {
+	const stamp = "2001-12-14"
+	instant := time.Date(2001, time.December, 14, 0, 0, 0, 0, time.UTC)
+
+	for _, tc := range []struct {
+		src  string
+		want any
+	}{
+		{"!a 2001-12-14\n", stamp},
+		{"! 2001-12-14\n", stamp},
+		{"!a\n2001-12-14\n", stamp},
+		{"!a &x 2001-12-14\n", stamp},
+		{"&x !a 2001-12-14\n", stamp},
+		{"!!str &x 2001-12-14\n", stamp},
+		{"k: !a 2001-12-14\n", map[string]any{"k": stamp}},
+		{"k: !a &x 2001-12-14\nj: *x\n", map[string]any{"k": stamp, "j": stamp}},
+		{"{k: !a 2001-12-14}\n", map[string]any{"k": stamp}},
+		{"!a 2001-12-14: v\n", map[string]any{stamp: "v"}},
+		{"? !a 2001-12-14\n: v\n", map[string]any{stamp: "v"}},
+		{"{!a 2001-12-14: v}\n", map[string]any{stamp: "v"}},
+
+		// The untagged entry beside it resolves.
+		{"- !a 2001-12-14\n- 2001-12-14\n", []any{stamp, instant}},
+		{"[!a 2001-12-14, 2001-12-14]\n", []any{stamp, instant}},
+
+		// A tag on the collection leaves its members to resolution.
+		{"!a\n2001-12-14: v\n", map[any]any{instant: "v"}},
+		{"!!seq\n- 2001-12-14\n", []any{instant}},
+
+		// A written "!!timestamp" is a timestamp.
+		{"&x !!timestamp 2001-12-14\n", instant},
+	} {
+		t.Run(tc.src, func(t *testing.T) {
+			src := "%YAML 1.1\n---\n" + tc.src
+
+			var v any
+			require.NoError(t, codec.Unmarshal([]byte(src), &v))
+			assert.Equal(t, tc.want, v)
+		})
+	}
+
+	t.Run("and ToJSON writes the text", func(t *testing.T) {
+		got, err := codec.ToJSON([]byte("%YAML 1.1\n---\nk: !a 2001-12-14\n"))
+		require.NoError(t, err)
+		assert.Equal(t, `{"k":"2001-12-14"}`, string(got))
+	})
+
+	t.Run("and the document renders as it was written", func(t *testing.T) {
+		const src = "%YAML 1.1\n---\n!a &x 2001-12-14\n"
+
+		f, err := parser.ParseBytes([]byte(src))
+		require.NoError(t, err)
+		assert.Equal(t, src, f.String())
+	})
+}
+
+// TestTimestampTagDoesNotFollowTheVersion records that an explicit
+// "!!timestamp" resolves under every YAML version.
+//
+// WithYAMLVersion selects the schema an untagged plain scalar resolves by, and
+// the versions disagree about several of those. A tag is not resolution: it
+// names tag:yaml.org,2002:timestamp, which the 2005 type repository defines and
+// which means the same thing whichever version the document declares. See
+// TestATimestampResolvesUnderTheVersionTheDocumentDeclares for the untagged
+// half of the rule.
+func TestTimestampTagDoesNotFollowTheVersion(t *testing.T) {
+	for _, src := range []string{
+		"a: !!timestamp 2002-12-14\n",
+		"%YAML 1.1\n---\na: !!timestamp 2002-12-14\n",
+		"%YAML 1.2\n---\na: !!timestamp 2002-12-14\n",
+		"a: !<tag:yaml.org,2002:timestamp> 2002-12-14\n",
+	} {
+		var v map[string]any
+		require.NoErrorf(t, codec.Unmarshal([]byte(src), &v), "%q", src)
+		assert.IsTypef(t, time.Time{}, v["a"], "%q", src)
+	}
+}
+
+// TestATagThatCannotConvertIsRefused records that a scalar no format reads is
+// an error rather than a zero value.
+//
+// Both conversions used to discard it -- "!!timestamp not-a-date" came back as
+// 0001-01-01 and "!!binary" on a text base64 cannot read came back as an empty
+// []byte, each with a nil error. go.yaml.in/yaml/v3 and gopkg.in/yaml.v2 both
+// refuse them.
+//
+// The complaint now names the tag rather than the type it stands for, because
+// ast.TagNode.Resolve makes it for every tag alike and codec.ToJSON reports the
+// same one: the converter used to write "not-a-date" through as a string while
+// the decoder refused it.
+func TestATagThatCannotConvertIsRefused(t *testing.T) {
+	for src, want := range map[string]string{
+		"a: !!timestamp not-a-date\n":   `cannot read "not-a-date" as !!timestamp`,
+		"a: !!binary \"not base64!\"\n": `cannot read "not base64!" as !!binary`,
+	} {
+		var v any
+		err := codec.Unmarshal([]byte(src), &v)
+		require.Errorf(t, err, "%q", src)
+		assert.Containsf(t, err.Error(), want, "%q", src)
+	}
+
+	t.Run("and the tag on nothing takes its own default", func(t *testing.T) {
+		for _, src := range []string{"a: !!timestamp\nb: 1\n", "a: !!timestamp null\n"} {
+			var v map[string]any
+			require.NoErrorf(t, codec.Unmarshal([]byte(src), &v), "%q", src)
+			assert.Equalf(t, time.Time{}, v["a"], "%q", src)
+		}
+	})
+}
+
+// A directive whose name begins with "&" or "*" was read as a node property.
+//
+// 6.8 makes a directive a "%", a name of ns-chars, and its parameters, and says
+// an unknown one is ignored with a warning. "&" and "*" are ns-chars, so
+// "%&AML 1.2" is a well-formed directive named "&AML".
+//
+// stageProperties runs before stageDirectives, so it had already folded the
+// "&AML" and the "1.2" into an anchor group by the time the directive was
+// recognized. parseDirectiveName then built an anchor from that group and
+// handed it to the walk, at depth 0 and before the directive itself, so the
+// walk took it for the document's root: "%&AML 1.2" over "---" over "k: v"
+// walked to 1.2 with the mapping gone, and ToJSON wrote 1.2. The tree read the
+// mapping, which is what made it the walk's defect and not the scanner's.
+//
+// A directive's name and parameters are not nodes of the document, so nothing
+// built for them goes over to a walk now. Nor is anything built: the scanner
+// reads a '&' or a '*' in a directive line as a character of it, so "*AML"
+// after "%&AML 1.2" still resolves to nothing.
+//
+// libfyaml 1.0.0b1 reads the document in every case and the reference parser
+// passes them; go.yaml.in/yaml/v3 refuses the directive line outright, which is
+// the other defensible answer. Found on 2026-09-07 by a mutation of the "%YAML"
+// line Style.Version writes -- a "Y" turned into a "&".
+
+// TestFixedADirectiveNamedLikeAnAnchorIsStillADirective holds the three readers
+// to the document the directive stands in front of.
+func TestFixedADirectiveNamedLikeAnAnchorIsStillADirective(t *testing.T) {
+	for _, tc := range []struct{ src, reads, writes string }{
+		{src: "%&AML 1.2\n---\n-8.5\n", reads: "-8.5", writes: "-8.5"},
+		{src: "%&AML 1.2\n---\nk: v\n", reads: `map[string]interface {}{"k":"v"}`, writes: `{"k":"v"}`},
+		{src: "%&x y\n---\n-8.5\n", reads: "-8.5", writes: "-8.5"},
+		// No parameter, so the anchor named the empty node.
+		{src: "%&AML\n---\n-8.5\n", reads: "-8.5", writes: "-8.5"},
+		// Two of them, and one standing after a "%TAG".
+		{src: "%&AML 1.2\n%&BML 2.0\n---\n-8.5\n", reads: "-8.5", writes: "-8.5"},
+		{src: "%TAG !e! tag:yaml.org,2002:\n%&AML 1.2\n---\n-8.5\n", reads: "-8.5", writes: "-8.5"},
+		// The parameter is a collection, which the walk used to hand over whole.
+		{src: "%&AML [1, 2]\n---\n-8.5\n", reads: "-8.5", writes: "-8.5"},
+	} {
+		var walked any
+		require.NoErrorf(t, codec.Unmarshal([]byte(tc.src), &walked), "%q", tc.src)
+		assert.Equalf(t, tc.reads, fmt.Sprintf("%#v", walked), "the walk reads past the directive: %q", tc.src)
+
+		out, err := codec.ToJSON([]byte(tc.src))
+		require.NoErrorf(t, err, "%q", tc.src)
+		assert.Equalf(t, tc.writes, string(out), "%q", tc.src)
+	}
+
+	t.Run("and the name registers no anchor", func(t *testing.T) {
+		var v any
+		err := codec.Unmarshal([]byte("%&AML 1.2\n---\nk: *AML\n"), &v)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), `could not find alias "AML"`)
+	})
+
+	t.Run("any other name is a directive and is ignored", func(t *testing.T) {
+		for _, src := range []string{
+			"%FOO 1.2\n---\n-8.5\n",
+			"%!x y\n---\n-8.5\n",
+			// The indicator has to lead: "A&ML" is an ordinary name.
+			"%A&ML 1.2\n---\n-8.5\n",
+		} {
+			out, err := codec.ToJSON([]byte(src))
+			require.NoErrorf(t, err, "%q", src)
+			assert.Equal(t, "-8.5", string(out), "%q", src)
+
+			assert.Equalf(t, "-8.5", fmt.Sprintf("%#v", treeRead(t, src)), "%q", src)
+		}
+	})
+}
+
+// TestFixedADirectiveNamedLikeAnAliasIsIgnored: "%*x y" is a well-formed
+// directive named "*x", and 6.8 makes an unknown directive one to ignore.
+//
+// All three readers refused it with `could not find alias "x"` -- a message
+// about a node, for a line that holds none -- because the scanner read the '*'
+// as an alias. libfyaml 1.0.0b1 reads the document and the reference parser
+// passes it; go.yaml.in/yaml/v3 refuses the directive line. Fred ruled on
+// 2026-09-11 to ignore it, as every other reserved directive is ignored here.
+func TestFixedADirectiveNamedLikeAnAliasIsIgnored(t *testing.T) {
+	for _, src := range []string{"%*x y\n---\n-8.5\n", "%*x\n---\n-8.5\n", "%FOO *x\n---\n-8.5\n"} {
+		var got any
+		require.NoErrorf(t, codec.Unmarshal([]byte(src), &got), "the walk: %q", src)
+		assert.InDeltaf(t, -8.5, got, 0, "the walk: %q", src)
+
+		require.NoErrorf(t, codec.UnmarshalWithOptions([]byte(src), &got, codec.UseOrderedMap()), "the tree: %q", src)
+		assert.InDeltaf(t, -8.5, got, 0, "the tree: %q", src)
+
+		out, err := codec.ToJSON([]byte(src))
+		require.NoErrorf(t, err, "ToJSON: %q", src)
+		assert.Equalf(t, "-8.5", string(out), "ToJSON: %q", src)
+	}
+}
+
+// decodeStream reads every document of src.
+func decodeStream(t *testing.T, src string) []any {
+	t.Helper()
+
+	dec := codec.NewDecoder(bytes.NewBufferString(src))
+
+	var out []any
+	for range 32 {
+		var v any
+		err := dec.Decode(&v)
+		if errors.Is(err, io.EOF) {
+			return out
+		}
+		require.NoError(t, err)
+		out = append(out, v)
+	}
+
+	t.Fatalf("%q: the decoder never reached the end of the stream", src)
+
+	return nil
+}
+
+// TestDecodeEmptyDocumentsKeepTheirPlace checks that a document holding nothing
+// decodes to null and does not shift the documents after it.
+//
+// "---" opens a document and "..." closes one, so a document written with
+// either marker holds the empty node whatever stands between them. One written
+// "---\n...\n" was dropped from the stream: every document after it moved down
+// one, and the last was lost.
+//
+// A run of comments carries no marker and is no document at all --
+// l-yaml-stream puts those in a document prefix -- so a stream of them decodes
+// to nothing.
+func TestDecodeEmptyDocumentsKeepTheirPlace(t *testing.T) {
+	tests := []struct {
+		name string
+		src  string
+		want []any
+	}{
+		{
+			// The spec's own stream example, spec-example-9-6-stream.
+			name: "an empty document between two others",
+			src:  "Document\n---\n# Empty\n...\n%YAML 1.2\n---\nmatches %: 20\n",
+			want: []any{"Document", nil, map[string]any{"matches %": uint64(20)}},
+		},
+		{name: "two markers with nothing between", src: "a: 1\n---\n---\nb: 2\n", want: []any{map[string]any{"a": uint64(1)}, nil, map[string]any{"b": uint64(2)}}},
+		{name: "a header on its own", src: "---\n", want: []any{nil}},
+		{name: "a header and a suffix", src: "---\n...\n", want: []any{nil}},
+		{name: "an empty document last", src: "a: 1\n---\n...\n", want: []any{map[string]any{"a": uint64(1)}, nil}},
+		{name: "a directive over an empty document", src: "%YAML 1.2\n---\n", want: []any{nil}},
+
+		// No marker, so no document.
+		{name: "comments alone", src: "# just a comment\n", want: nil},
+		{name: "nothing at all", src: "", want: nil},
+		// l-yaml-stream admits a run of suffixes; only the first closes
+		// anything.
+		{name: "two suffixes in a row", src: "a\n...\n...\n", want: []any{"a"}},
+		{name: "a suffix opening the stream", src: "...\na: 1\n", want: []any{map[string]any{"a": uint64(1)}}},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			assert.Equal(t, test.want, decodeStream(t, test.src))
+		})
+	}
+}
+
+// The explicit-key documents that are YAML 1.2, pinned so that closing the ones
+// that are not cannot take these with it.
+//
+// yamlgen.Lax held four documents where a "?" entry's ":" stands in a column
+// 8.2.2 does not put it in and the library read them anyway. Three parser paths
+// were involved, so it took three fixes, and the tempting shortcut for all of
+// them was a column test: refuse the ":" unless it is at the mapping's own
+// indent.
+//
+// That shortcut is wrong, and these are why. A ":" indented past the "?" is
+// legal where the key's first line opened a mapping for it to continue: in
+// "? a: b" the key is a mapping at column 3 and "  : d" is its second entry, so
+// the ":" belongs to the key rather than to the entry. What made the invalid
+// four invalid is that their key is a *scalar*, after which nothing may follow
+// but the entry's own ":" at the mapping's indent.
+//
+// All four closed on 2026-09-09 and Lax is empty. These stay: they are what a
+// fourth attempt at a column test would break.
+//
+// Each of these was checked against grammar.NewRecognizer and read back through
+// the reference parser before being written down.
+func TestAnExplicitKeyReadsWhereTheGrammarAllowsIt(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		src  string
+		want any
+		// parseOnly says the document parses and does not decode, which is
+		// every shape keying on a collection.
+		parseOnly bool
+	}{
+		{
+			name: "the ':' at the mapping's own indent",
+			src:  "? l\n: v\n",
+			want: map[string]any{"l": "v"},
+		},
+		{
+			// The key is the integer 1, so the mapping is keyed by any: only a
+			// mapping whose keys are all strings stays a map[string]any.
+			name: "an empty key, and the next line is a fresh entry",
+			src:  "?\n 1\n",
+			want: map[any]any{uint64(1): nil},
+		},
+		{
+			name: "the whole entry indented, key and ':' alike",
+			src:  " ? a\n : b\n",
+			want: map[string]any{"a": "b"},
+		},
+		{
+			name: "extra separation after both indicators",
+			src:  "?  a\n:  b\n",
+			want: map[string]any{"a": "b"},
+		},
+		{
+			name: "a key with no value at all",
+			src:  "? l\n",
+			want: map[string]any{"l": nil},
+		},
+		{
+			name: "the entry's value is empty",
+			src:  "? a\n:\n",
+			want: map[string]any{"a": nil},
+		},
+		{
+			// The two that a column test would refuse. The ':' is deeper than
+			// the '?' in both, and legal in both, because the key's first line
+			// is a mapping and the ':' continues it.
+			//
+			// These four key on a collection, which parses and does not decode:
+			// a collection has no text to name an entry by. The shape is what
+			// this test is about, so the parse is what it asserts.
+			name:      "a mapping key opened on the '?' line, continued below",
+			src:       "? a: b\n  : d\n: v\n",
+			parseOnly: true,
+		},
+		{
+			name:      "a mapping key opened on the line under the '?'",
+			src:       "?\n  : b\n",
+			parseOnly: true,
+		},
+		{
+			name:      "a mapping key written under the '?'",
+			src:       "?\n a: b\n: v",
+			parseOnly: true,
+		},
+		{
+			name:      "a sequence key written under the '?'",
+			src:       "? - a\n  - b\n: v\n",
+			parseOnly: true,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if tc.parseOnly {
+				_, err := parser.ParseBytes([]byte(tc.src))
+				require.NoErrorf(t, err, "%q parses", tc.src)
+
+				var got any
+				assert.Errorf(t, codec.Unmarshal([]byte(tc.src), &got),
+					"%q keys on a collection and does not decode", tc.src)
+
+				return
+			}
+
+			var got any
+			require.NoErrorf(t, codec.Unmarshal([]byte(tc.src), &got), "%q", tc.src)
+			assert.Equalf(t, tc.want, got, "%q", tc.src)
+		})
+	}
+}
+
+// fragment keeps the bytes a bytes unmarshaler is handed, and what a fresh
+// Unmarshal reads them as.
+type fragment struct {
+	text  string
+	value any
+}
+
+func (f *fragment) UnmarshalYAML(b []byte) error {
+	f.text = string(b)
+
+	return codec.Unmarshal(b, &f.value)
+}
+
+// TestABytesUnmarshalerReadsItsFragmentUnderTheDocumentsVersion covers the
+// fragment handed to an UnmarshalYAML([]byte).
+//
+// The fragment is the node rendered again, and a nested Unmarshal parses it on
+// its own, so the version the document was read under did not travel with it:
+// under "%YAML 1.1", "<<" merges and "yes" is true, and the fragment read both
+// as 1.2 does. It now opens with "%YAML 1.1" wherever the document was read
+// under 1.1, by its own directive or by parser.WithYAMLVersion.
+func TestABytesUnmarshalerReadsItsFragmentUnderTheDocumentsVersion(t *testing.T) {
+	const body = "b: &b {x: 1}\nf:\n  <<: *b\n  on: yes\n"
+	// 1.1 reads "on" and "yes" as true, so the key is a boolean.
+	merged := map[any]any{"x": uint64(1), true: true}
+
+	t.Run("under the document's own directive", func(t *testing.T) {
+		var v struct {
+			F fragment `yaml:"f"`
+		}
+		require.NoError(t, codec.Unmarshal([]byte("%YAML 1.1\n---\n"+body), &v))
+		assert.Contains(t, v.F.text, "%YAML 1.1\n---\n")
+		assert.Equal(t, merged, v.F.value)
+	})
+
+	t.Run("under parser.WithYAMLVersion", func(t *testing.T) {
+		var v struct {
+			F fragment `yaml:"f"`
+		}
+		require.NoError(t, codec.UnmarshalWithOptions([]byte(body), &v,
+			codec.WithParserOptions(parser.WithYAMLVersion(parser.YAML11))))
+		assert.Contains(t, v.F.text, "%YAML 1.1\n---\n")
+		assert.Equal(t, merged, v.F.value)
+	})
+
+	t.Run("and not under 1.2, where nothing merges", func(t *testing.T) {
+		var v struct {
+			F fragment `yaml:"f"`
+		}
+		require.NoError(t, codec.Unmarshal([]byte(body), &v))
+		assert.NotContains(t, v.F.text, "%YAML")
+		assert.Equal(t, map[string]any{"<<": map[string]any{"x": uint64(1)}, "on": "yes"}, v.F.value)
+	})
+
+	t.Run("the directive scopes one document of a stream", func(t *testing.T) {
+		dec := codec.NewDecoder(strings.NewReader("%YAML 1.1\n---\nf: {on: yes}\n---\nf: {on: yes}\n"))
+
+		var first, second struct {
+			F fragment `yaml:"f"`
+		}
+		require.NoError(t, dec.Decode(&first))
+		require.NoError(t, dec.Decode(&second))
+		assert.Equal(t, map[any]any{true: true}, first.F.value, "the first document is 1.1")
+		assert.Equal(t, map[string]any{"on": "yes"}, second.F.value, "the second is back to 1.2")
+	})
+}
+
+// laxDecode reads src with parser.WithLaxTags and decodes the node, which is
+// the route a caller takes to hand the policy to the decoder.
+func laxDecode(t *testing.T, src string) (any, error) {
+	t.Helper()
+
+	f, err := parser.ParseBytes([]byte(src), parser.WithLaxTags())
+	require.NoError(t, err)
+
+	var v any
+	err = codec.NewDecoder(bytes.NewReader(nil)).DecodeFromNode(f.Docs[0].Body, &v)
+
+	return v, err
+}
+
+// TestLaxTagsReadsTheTextTheScalarWasWrittenWith covers the fallback the option
+// turns on.
+//
+// A tag is an assertion about the node under it, and by default one that does
+// not hold is reported. Under the option the characters stand in for the value
+// the tag could not make of them, which is what the library used to do for
+// "!!int" and "!!float" -- except that it answered 0, a value a caller can tell
+// neither from a written zero nor from the text that produced it.
+func TestLaxTagsReadsTheTextTheScalarWasWrittenWith(t *testing.T) {
+	for src, want := range map[string]any{
+		"k: !!int abc\n":              "abc",
+		"k: !!float xyz\n":            "xyz",
+		"k: !!bool 7\n":               "7",
+		"k: !!null 5\n":               "5",
+		"k: !!binary not base64!\n":   "not base64!",
+		"k: !!timestamp not-a-date\n": "not-a-date",
+	} {
+		t.Run(src, func(t *testing.T) {
+			got, err := laxDecode(t, src)
+			require.NoError(t, err)
+			assert.Equal(t, map[string]any{"k": want}, got)
+
+			// And the same document is refused without the option.
+			var strict any
+			assert.Error(t, codec.Unmarshal([]byte(src), &strict), "strict reads it")
+		})
+	}
+}
+
+// TestLaxTagsLeavesEveryOtherAnswerAlone is what says the option relaxes one
+// thing and not the reading of tags in general.
+func TestLaxTagsLeavesEveryOtherAnswerAlone(t *testing.T) {
+	for src, want := range map[string]any{
+		// A tag naming what the scalar is.
+		"k: !!int 5\n":     uint64(5),
+		"k: !!bool true\n": true,
+		"k: !!str 0x10\n":  "0x10",
+		// A tag this library has no rule for is read by its kind, option or no.
+		"k: !fred x\n": "x",
+		"k: !Ref x\n":  "x",
+		// A tag standing on no value takes the tag's own default.
+		"k: !!bool\n": false,
+	} {
+		t.Run(src, func(t *testing.T) {
+			got, err := laxDecode(t, src)
+			require.NoError(t, err)
+			assert.Equal(t, map[string]any{"k": want}, got)
+		})
+	}
+}
+
+// TestLaxTagsKeepsTheTagOnTheNode covers the round trip.
+//
+// The fallback replaces the value the tag could not make, not the tag: a
+// document read laxly renders as it was written, so nothing about reading it
+// this way is lost on the way out again.
+func TestLaxTagsKeepsTheTagOnTheNode(t *testing.T) {
+	for _, src := range []string{
+		"k: !!int abc\n",
+		"k: !!timestamp not-a-date\n",
+		"k: !!bool 7\n",
+	} {
+		t.Run(src, func(t *testing.T) {
+			f, err := parser.ParseBytes([]byte(src), parser.WithLaxTags())
+			require.NoError(t, err)
+			assert.Equal(t, src, f.String())
+		})
+	}
+}
+
+// TestLaxTagsReachesTheJSONConverterToo is the point of hanging the policy on
+// the node: two consumers of one document give one answer.
+func TestLaxTagsReachesTheJSONConverterToo(t *testing.T) {
+	const src = "k: !!int abc\n"
+
+	_, err := codec.ToJSON([]byte(src))
+	require.Error(t, err, "strict converts it")
+
+	got, err := codec.ToJSON([]byte(src), parser.WithLaxTags())
+	require.NoError(t, err)
+	assert.Equal(t, `{"k":"abc"}`, string(got))
+
+	// The decoder reading the same document laxly agrees.
+	decoded, err := laxDecode(t, src)
+	require.NoError(t, err)
+	assert.Equal(t, map[string]any{"k": "abc"}, decoded)
+}
+
+// TestLaxTagsDoesNotExcuseAKindMismatch holds the one refusal the option leaves
+// standing.
+//
+// A tag naming a kind its node is not is a claim about shape, and no text
+// stands in for a sequence. Built by hand because the parser still refuses
+// "k: !!seq 5" before a loader sees it.
+func TestLaxTagsDoesNotExcuseAKindMismatch(t *testing.T) {
+	f, err := parser.ParseBytes([]byte("k: [1, 2]\n"), parser.WithLaxTags())
+	require.NoError(t, err)
+
+	entry := f.Docs[0].Body.(*ast.MappingNode).Values[0]
+	tag := &ast.TagNode{URI: "tag:yaml.org,2002:str", Value: entry.Value, LaxTags: true}
+
+	res := tag.Resolve()
+	require.Equal(t, ast.TagKindMismatch, res.Verdict)
+	assert.True(t, res.Lax, "the node carries the policy")
+
+	entry.Value = tag
+	var v any
+	err = codec.NewDecoder(bytes.NewReader(nil)).DecodeFromNode(f.Docs[0].Body, &v)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "does not support this kind of node")
+}
+
+// TestStrTagKeepsTheText records that "!!str" hands over the text the scalar
+// was written with, through both readers.
+//
+// The scanner types a scalar by the core schema before any tag is seen, so
+// "!!str 0x10" arrives as an ast.IntegerNode holding 16 and "!!str False" as
+// an ast.BoolNode holding false. Reading the value off those nodes wrote "16"
+// and "false"; the tag says the scalar is a string, so its own text is the
+// value.
+func TestStrTagKeepsTheText(t *testing.T) {
+	for _, tc := range []struct{ name, src, want string }{
+		{"hexadecimal", "!!str 0x10", "0x10"},
+		{"trailing zero", "!!str 1.50", "1.50"},
+		{"capitalized bool", "!!str False", "False"},
+		{"null spelled out", "!!str null", "null"},
+		{"under an anchor", "!!str &x False", "False"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var decoded string
+			require.NoError(t, codec.Unmarshal([]byte(tc.src), &decoded))
+			assert.Equal(t, tc.want, decoded)
+
+			converted, err := codec.ToJSON([]byte(tc.src))
+			require.NoError(t, err)
+			assert.JSONEq(t, `"`+tc.want+`"`, string(converted))
+		})
+	}
+}
+
+// TestStrTagOnNothingIsEmpty records that a "!!str" with no scalar after it
+// tags the empty string.
+//
+// The parser puts an implicit null token there, and that token reads "null" --
+// which is what the node resolves to, not what the document wrote. Only the
+// spelled-out "null" of TestStrTagKeepsTheText is the word.
+func TestStrTagOnNothingIsEmpty(t *testing.T) {
+	var decoded map[string]any
+	require.NoError(t, codec.Unmarshal([]byte("a: !!str\nb: 1\n"), &decoded))
+	assert.Equal(t, "", decoded["a"])
+
+	converted, err := codec.ToJSON([]byte("a: !!str\nb: 1\n"))
+	require.NoError(t, err)
+	assert.JSONEq(t, `{"a":"","b":1}`, string(converted))
+}
+
+// TestStrTagAliasesTheString records that an alias naming an anchor under a
+// "!!str" gets the string, not what the scalar resolved to on its own.
+func TestStrTagAliasesTheString(t *testing.T) {
+	var decoded []string
+	require.NoError(t, codec.Unmarshal([]byte("- !!str &x 1.50\n- *x\n"), &decoded))
+	assert.Equal(t, []string{"1.50", "1.50"}, decoded)
+}
+
+// TestTagResolvesToItsURI records that a tag is read by the URI it names and
+// not by the shorthand it was written with.
+//
+// "!!int" is the secondary handle plus the suffix "int", and the secondary
+// handle stands for tag:yaml.org,2002: unless a "%TAG" line says otherwise
+// (§6.8.2.2). So "!!int", "!<tag:yaml.org,2002:int>" and "!e!int" under
+// "%TAG !e! tag:yaml.org,2002:" are three spellings of one tag.
+func TestTagResolvesToItsURI(t *testing.T) {
+	for _, tc := range []struct{ name, src, want string }{
+		{"shorthand", `a: !!int "12"` + "\n", `{"a":12}`},
+		{"verbatim", "a: !<tag:yaml.org,2002:int> \"12\"\n", `{"a":12}`},
+		{"named handle", "%TAG !e! tag:yaml.org,2002:\n---\na: !e!int \"12\"\n", `{"a":12}`},
+		{"primary handle repointed", "%TAG ! tag:yaml.org,2002:\n---\na: !int \"12\"\n", `{"a":12}`},
+		{"secondary handle restated", "%TAG !! tag:yaml.org,2002:\n---\na: !!int \"12\"\n", `{"a":12}`},
+
+		// ⚠️ And the other way: a "%TAG !!" line takes the secondary handle out
+		// of YAML's namespace, so "!!int" names the document's own tag. Nothing
+		// resolves it, and the scalar keeps the text it was written with.
+		{"secondary handle repointed", "%TAG !! tag:example.com,2020:\n---\na: !!int 12\n", `{"a":"12"}`},
+		{"repointed on a collection", "%TAG !! tag:example.com,2020:\n---\na: !!seq [1,2]\n", `{"a":[1,2]}`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := codec.ToJSON([]byte(tc.src))
+			require.NoError(t, err)
+			assert.Equal(t, tc.want, string(got))
+
+			var decoded any
+			require.NoError(t, codec.Unmarshal([]byte(tc.src), &decoded))
+			asJSON, err := json.Marshal(decoded)
+			require.NoError(t, err)
+			assert.JSONEq(t, tc.want, string(asJSON), "the decoder reads the same tag")
+		})
+	}
+}
+
+// TestTagNodeCarriesTheURI records that the expansion is on the node, so a
+// reader asks what a tag means rather than what it says.
+func TestTagNodeCarriesTheURI(t *testing.T) {
+	for _, tc := range []struct{ name, src, want string }{
+		{"shorthand", "a: !!int 12\n", "tag:yaml.org,2002:int"},
+		{"verbatim", "a: !<tag:yaml.org,2002:int> 12\n", "tag:yaml.org,2002:int"},
+		{"local", "a: !thing 12\n", "!thing"},
+		{"named handle", "%TAG !e! tag:example.com,2020:\n---\na: !e!thing 12\n", "tag:example.com,2020:thing"},
+		{"secondary repointed", "%TAG !! tag:example.com,2020:\n---\na: !!int 12\n", "tag:example.com,2020:int"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			file, err := parser.ParseBytes([]byte(tc.src))
+			require.NoError(t, err)
+
+			var found []string
+			for _, doc := range file.Docs {
+				collectTagURIs(doc, &found)
+			}
+			assert.Equal(t, []string{tc.want}, found)
+		})
+	}
+}
+
+// TestUndeclaredTagHandleIsRefused records that "!name!" needs a "%TAG" line.
+// The primary and secondary handles never do.
+func TestUndeclaredTagHandleIsRefused(t *testing.T) {
+	_, err := parser.ParseBytes([]byte("a: !x!thing 12\n"))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "tag handle !x! is not defined by a TAG directive")
+}
+
+// collectTagURIs appends the URI of every ast.TagNode under n, in the order
+// they are reached.
+func collectTagURIs(n ast.Node, out *[]string) {
+	ast.Walk(uriCollector{out: out}, n)
+}
+
+type uriCollector struct{ out *[]string }
+
+func (c uriCollector) Visit(n ast.Node) ast.Visitor {
+	if tag, ok := n.(*ast.TagNode); ok {
+		*c.out = append(*c.out, tag.URI)
+	}
+
+	return c
+}
+
+// TestACollectionKeyIsRefusedNotPanicked records that a sequence or a mapping
+// used as a mapping key is an error.
+//
+// It used to panic. A map[any]any takes any key the compiler can see, so
+// nothing stopped a []interface{} reaching SetMapIndex, which paniced with
+// "hash of unhashable type []interface {}" -- on a well-formed YAML document,
+// so a fuzzer reached it.
+func TestACollectionKeyIsRefusedNotPanicked(t *testing.T) {
+	for _, src := range []string{"? [a]\n: 1\n", "? {a: 1}\n: 2\n", "? &x [a]\n: 1\n"} {
+		t.Run(src, func(t *testing.T) {
+			var into map[any]any
+			err := codec.Unmarshal([]byte(src), &into)
+			require.Error(t, err)
+			assert.ErrorIs(t, err, yamlerrors.ErrUnhashableKey)
+			assert.Contains(t, err.Error(), "as a map key: it is not comparable")
+
+			// UseStringKeys does not make one usable either -- it reads keys as
+			// text, and a collection has no text.
+			into = nil
+			err = codec.UnmarshalWithOptions([]byte(src), &into, codec.UseStringKeys())
+			assert.Error(t, err)
+		})
+	}
+}
+
+// TestUseStringKeysReadsEveryKeyAsText records what the option changes and what
+// it leaves alone.
+func TestUseStringKeysReadsEveryKeyAsText(t *testing.T) {
+	const src = "1.5: a\ntrue: b\n"
+
+	t.Run("a map[any]any keeps the resolved type by default", func(t *testing.T) {
+		var into map[any]any
+		require.NoError(t, codec.Unmarshal([]byte(src), &into))
+		assert.Equal(t, map[any]any{1.5: "a", true: "b"}, into)
+	})
+
+	t.Run("and takes strings with the option", func(t *testing.T) {
+		var into map[any]any
+		require.NoError(t, codec.UnmarshalWithOptions([]byte(src), &into, codec.UseStringKeys()))
+		assert.Equal(t, map[any]any{"1.5": "a", "true": "b"}, into)
+	})
+
+	t.Run("and an any takes a map of strings with the option", func(t *testing.T) {
+		// A decode into an any goes down the walk, which keys a mapping by what
+		// each key resolves to. It ignored the option until the option sent the
+		// decode to the tree.
+		var into any
+		require.NoError(t, codec.UnmarshalWithOptions([]byte(src), &into, codec.UseStringKeys()))
+		assert.Equal(t, map[string]any{"1.5": "a", "true": "b"}, into)
+	})
+
+	t.Run("which is the spelling a map[string]any already gets", func(t *testing.T) {
+		var into map[string]any
+		require.NoError(t, codec.Unmarshal([]byte(src), &into))
+		assert.Equal(t, map[string]any{"1.5": "a", "true": "b"}, into)
+	})
+
+	t.Run("a named key type is untouched, with or without it", func(t *testing.T) {
+		for _, opts := range [][]codec.DecodeOption{nil, {codec.UseStringKeys()}} {
+			var into map[float64]any
+			require.NoError(t, codec.UnmarshalWithOptions([]byte("1.5: a\n"), &into, opts...))
+			assert.Equal(t, map[float64]any{1.5: "a"}, into)
+		}
+	})
+
+	t.Run("and a key the named type cannot take is still an error", func(t *testing.T) {
+		var into map[float64]any
+		err := codec.UnmarshalWithOptions([]byte("true: b\n"), &into, codec.UseStringKeys())
+		require.Error(t, err)
+		assert.True(t, errors.Is(err, yamlerrors.ErrSyntax) || errors.Is(err, yamlerrors.ErrTypeMismatch),
+			"unexpected kind: %v", err)
+	})
+}
+
+// TestTwoKeysOnOneGoKeyAreRefusedWhateverTheKeyType covers two YAML keys that
+// land on one key of the destination. The parse sees two keys, so the decoder is
+// the one to refuse them, and it compared only string keys: "1: a" and "1.0: b"
+// into a map[float64]string read {1: "b"}, "a" dropped with nothing reported.
+func TestTwoKeysOnOneGoKeyAreRefusedWhateverTheKeyType(t *testing.T) {
+	const src = "1: a\n1.0: b\n"
+
+	t.Run("a float-keyed destination refuses them", func(t *testing.T) {
+		var into map[float64]string
+		err := codec.Unmarshal([]byte(src), &into)
+		require.Error(t, err)
+		assert.True(t, errors.Is(err, yamlerrors.ErrDuplicateKey), "unexpected kind: %v", err)
+		assert.Contains(t, err.Error(), `duplicate key "1"`)
+	})
+
+	t.Run("as a string-keyed one refuses two keys under one name", func(t *testing.T) {
+		var into map[string]string
+		err := codec.Unmarshal([]byte("1: a\n\"1\": b\n"), &into)
+		require.Error(t, err)
+		assert.True(t, errors.Is(err, yamlerrors.ErrDuplicateKey), "unexpected kind: %v", err)
+	})
+
+	t.Run("and AllowDuplicateMapKey keeps the last", func(t *testing.T) {
+		var into map[float64]string
+		require.NoError(t, codec.UnmarshalWithOptions([]byte(src), &into, codec.AllowDuplicateMapKey()))
+		assert.Equal(t, map[float64]string{1: "b"}, into)
+	})
+
+	t.Run("a destination with room for both reads both", func(t *testing.T) {
+		var named map[string]string
+		require.NoError(t, codec.Unmarshal([]byte(src), &named))
+		assert.Equal(t, map[string]string{"1": "a", "1.0": "b"}, named)
+
+		var anyKeyed map[any]string
+		require.NoError(t, codec.Unmarshal([]byte(src), &anyKeyed))
+		assert.Equal(t, map[any]string{uint64(1): "a", float64(1): "b"}, anyKeyed)
+	})
+}
+
+// TestANullKeyIsTheWordNull records that every path addresses a null key by
+// "null", not by the empty string.
+//
+// decodeMap read it through the general value decoder, which gives a string
+// its Go zero, so a null key and a genuinely empty key both came back as "" --
+// two entries of the document read as one, and the document then refused as
+// holding a duplicate key. nodeToValue and ToJSON already said "null".
+//
+// The tagged spelling is "!!null null" and not "!!null x": a tag naming a type
+// its scalar is not is refused rather than answered with the type's zero, so
+// "!!null x" is an error and no longer a way to write a null key.
+func TestANullKeyIsTheWordNull(t *testing.T) {
+	for _, src := range []string{"null: a\n", ": a\n", "~: a\n", "NULL: a\n", "!!null null: a\n"} {
+		t.Run(src, func(t *testing.T) {
+			var into map[string]any
+			require.NoError(t, codec.Unmarshal([]byte(src), &into))
+			assert.Equal(t, map[string]any{"null": "a"}, into)
+
+			// An `any` keeps what the key resolves to, and a null resolves to
+			// nothing rather than to the four characters that spell it, so the
+			// mapping widens. The word is the name a string-keyed destination
+			// gives it, above, and the member name JSON writes, below.
+			var asAny any
+			require.NoError(t, codec.Unmarshal([]byte(src), &asAny))
+			assert.Equal(t, map[any]any{nil: "a"}, asAny)
+
+			converted, err := codec.ToJSON([]byte(src))
+			require.NoError(t, err)
+			assert.JSONEq(t, `{"null":"a"}`, string(converted))
+		})
+	}
+
+	t.Run("so it stays apart from the empty key", func(t *testing.T) {
+		const src = "null: a\n\"\": b\n"
+
+		var into map[string]any
+		require.NoError(t, codec.Unmarshal([]byte(src), &into))
+		assert.Equal(t, map[string]any{"null": "a", "": "b"}, into)
+
+		// Two entries either way: named, they are "null" and ""; resolved, they
+		// are nil and the empty string.
+		var asAny any
+		require.NoError(t, codec.Unmarshal([]byte(src), &asAny))
+		assert.Equal(t, map[any]any{nil: "a", "": "b"}, asAny)
+	})
+
+	t.Run("and two null keys are the duplicate they are", func(t *testing.T) {
+		var into map[string]any
+		err := codec.Unmarshal([]byte("null: a\n~: b\n"), &into)
+		require.Error(t, err)
+		assert.ErrorIs(t, err, yamlerrors.ErrDuplicateKey)
+	})
+}
+
+// A merge key whose value is written where it stands makes ToJSON write JSON
+// that will not parse.
+//
+// The 1.1 merge type says "<<" takes a mapping or a sequence of mappings and
+// says nothing about how the value got there, so "<<: {a: 1}" asks for the same
+// merge that "<<: *b" does. The decoder performs both correctly. ToJSON
+// performs the merge and then writes the "<<" entry's own slot as well, so the
+// output carries a member with no key, or a whole mapping where a key belongs.
+//
+// Found on 2026-09-11: every shape in yamlcorpus.MergeShapes wrote its merge as
+// an alias, and adding the two that do not exposed it.
+
+// TestMergeWrittenInPlaceConvertsToJSON: a "<<" whose value is written out
+// rather than aliased converts like every other merge.
+//
+// "<<: {a: 1}" wrote {:"a":1}, and the shapes around it were worse. A "<<"
+// names no key of its own, so nothing goes over as it is entered -- not even
+// the comma an entry would take -- and the mapping it brings in is written
+// where it stands and cut back out at its close, to go in with the rest at the
+// end. collectMerge separated it from a key that was never written, so the ":"
+// stood before the mark the text is cut from and stayed behind. Where the
+// mapping already held an entry it was worse than invalid: separate reads a
+// second value for one key and truncates, so "z: 9" over "<<: {a: 1}" came out
+// as {"z":,"a":1} -- a value short as well.
+//
+// A sequence of them lost the flag on its first element, so every element after
+// the first was written where it stood.
+// Every document here is read under YAML 1.1, where "<<" is the merge key.
+// TestABareMergeKeyIsAnOrdinaryKeyUnderTheCoreSchema asserts the other half:
+// what the same documents mean as written.
+func TestMergeWrittenInPlaceConvertsToJSON(t *testing.T) {
+	t.Run("the shapes that were broken", func(t *testing.T) {
+		for _, tc := range []struct{ src, writes string }{
+			{src: "<<: {a: 1}\n", writes: `{"a":1}`},
+			{src: "z: 9\n<<: {a: 1}\n", writes: `{"z":9,"a":1}`},
+			{src: "<<: [{a: 1}, {b: 2}]\n", writes: `{"a":1,"b":2}`},
+			{src: "z: 9\n<<: [{a: 1}, {b: 2}]\n", writes: `{"z":9,"a":1,"b":2}`},
+			{src: "b: &b {q: 1}\n<<: [*b, {a: 1}]\n", writes: `{"b":{"q":1},"q":1,"a":1}`},
+		} {
+			out, err := codec.ToJSON([]byte(underEleven(tc.src)))
+			require.NoError(t, err, "%q", tc.src)
+			assert.Equal(t, tc.writes, string(out), "%q", tc.src)
+			assert.True(t, json.Valid(out), "%q", tc.src)
+		}
+	})
+
+	t.Run("the neighbors that were always right", func(t *testing.T) {
+		for _, tc := range []struct{ src, writes string }{
+			{src: "b: &b {q: 1}\n<<: *b\n", writes: `{"b":{"q":1},"q":1}`},
+			{src: "b: &b {q: 1}\nc: &c {r: 1}\n<<: [*b, *c]\n", writes: `{"b":{"q":1},"c":{"r":1},"q":1,"r":1}`},
+			{src: "z: 9\n<<: [{a: 1}]\n", writes: `{"z":9,"a":1}`},
+		} {
+			out, err := codec.ToJSON([]byte(underEleven(tc.src)))
+			require.NoError(t, err, "%q", tc.src)
+			assert.Equal(t, tc.writes, string(out), "%q", tc.src)
+		}
+	})
+
+	t.Run("and the mapping's own key still wins", func(t *testing.T) {
+		// 1.1's merge rule: what the mapping writes itself beats what a "<<"
+		// brings, and an earlier "<<" beats a later one.
+		for _, tc := range []struct{ src, writes string }{
+			{src: "a: 1\n<<: {a: 9, b: 2}\n", writes: `{"a":1,"b":2}`},
+			{src: "<<: [{a: 1}, {a: 9, b: 2}]\n", writes: `{"a":1,"b":2}`},
+		} {
+			out, err := codec.ToJSON([]byte(underEleven(tc.src)))
+			require.NoError(t, err, "%q", tc.src)
+			assert.Equal(t, tc.writes, string(out), "%q", tc.src)
+		}
+	})
+
+	t.Run("and the decoder agrees with every one", func(t *testing.T) {
+		for _, src := range []string{
+			"<<: {a: 1}\n", "z: 9\n<<: {a: 1}\n", "<<: [{a: 1}, {b: 2}]\n",
+			"z: 9\n<<: [{a: 1}, {b: 2}]\n", "b: &b {q: 1}\n<<: [*b, {a: 1}]\n",
+			"a: 1\n<<: {a: 9, b: 2}\n", "<<: [{a: 1}, {a: 9, b: 2}]\n",
+		} {
+			out, err := codec.ToJSON([]byte(underEleven(src)))
+			require.NoErrorf(t, err, "%q", src)
+
+			var fromJSON map[string]any
+			require.NoErrorf(t, json.Unmarshal(out, &fromJSON), "%q: %s", src, out)
+
+			// Against the `any` read, which is the yardstick everywhere else
+			// here. A map[string]any destination is a third answer and a
+			// defect of its own -- see TestDefectATypedMapMergesTheWrongWay.
+			var decoded any
+			require.NoErrorf(t, yaml.Unmarshal([]byte(underEleven(src)), &decoded), "%q", src)
+
+			entries, ok := decoded.(map[string]any)
+			require.Truef(t, ok, "%q: %#v", src, decoded)
+			assert.Len(t, fromJSON, len(entries), "%q: %s against %v", src, out, entries)
+			for k, v := range entries {
+				assert.EqualValuesf(t, fmt.Sprint(v), fmt.Sprint(fromJSON[k]), "%q key %q", src, k)
+			}
+		}
+	})
+}
+
+// TestFixedATypedMapMergesLikeEveryOtherDestination: a "<<" read into a
+// map[string]any was wrong two ways, where the same document into an `any` and
+// into a struct was right both times.
+//
+// Decoder.decodeMap is the reflection path and was a **fourth** place a merge
+// is resolved, beside decode.go's nodeToValue setters, walkstruct.go and
+// tojson.go. 825fb62 fixed the two setters, so the precedence rule held for an
+// `any` and a MapSlice and not for a map[string]any -- and only at the root,
+// since a nested mapping reaches the setters instead. Both faults lived here:
+//
+//   - it walked the entries in document order and let a merged key overwrite
+//     one the mapping wrote itself, so "a: 1" over "<<: {a: 9, b: 2}" came back
+//     with a=9 against the merge type's "unless the key already exists in it";
+//   - it asked validateDuplicateKey for every merged key, so a merge sequence
+//     whose mappings share a key -- which is what a merge sequence is for --
+//     was refused with `duplicate key "a"`.
+//
+// mapEntriesOwnFirst orders the entries own-before-merged and the merge branch
+// writes only where nothing stands, so both rules fall out of the order. A
+// mapping read under a merge is getMapNode's fold of the sequence, so a repeat
+// inside it is the earlier mapping winning and is skipped rather than refused.
+//
+// A repeated key that is not a merge is still refused, at the root, nested, and
+// inside a single merged mapping: "<<: {a: 1, a: 2}" is one mapping with one
+// key written twice and has nothing to do with the sequence rule.
+//
+// Found on 2026-09-12 while closing the ToJSON half, by comparing the
+// converter against a decode and picking the wrong destination to compare it
+// with.
+func TestFixedATypedMapMergesLikeEveryOtherDestination(t *testing.T) {
+	t.Run("a merge sequence sharing a key reads, and the earlier mapping wins", func(t *testing.T) {
+		for _, tc := range []struct {
+			src  string
+			want map[string]any
+		}{
+			{"<<: [{a: 1}, {a: 9}]\n", map[string]any{"a": uint64(1)}},
+			{"<<: [{a: 1}, {a: 9, b: 2}]\n", map[string]any{"a": uint64(1), "b": uint64(2)}},
+			{"a: 5\n<<: [{a: 1}, {a: 9}]\n", map[string]any{"a": uint64(5)}},
+		} {
+			var typed map[string]any
+			require.NoErrorf(t, yaml.Unmarshal([]byte(underEleven(tc.src)), &typed), "%q", tc.src)
+			assert.Equalf(t, tc.want, typed, "%q", tc.src)
+		}
+
+		var nested map[string]any
+		require.NoError(t, yaml.Unmarshal(
+			[]byte(underEleven("p: &p {a: 1}\nq: &q {a: 9}\nr:\n  <<: [*p, *q]\n")), &nested))
+		assert.Equal(t, map[string]any{"a": uint64(1)}, nested["r"])
+	})
+
+	t.Run("and the mapping's own key wins over the merge, wherever it is written", func(t *testing.T) {
+		for _, src := range []string{
+			"a: 1\n<<: {a: 9, b: 2}\n",
+			"<<: {a: 9, b: 2}\na: 1\n",
+		} {
+			var typed map[string]any
+			require.NoErrorf(t, yaml.Unmarshal([]byte(underEleven(src)), &typed), "%q", src)
+			assert.Equalf(t, map[string]any{"a": uint64(1), "b": uint64(2)}, typed, "%q", src)
+		}
+
+		var nested map[string]any
+		require.NoError(t, yaml.Unmarshal([]byte(underEleven("m:\n  a: 1\n  <<: {a: 9, b: 2}\n")), &nested))
+		assert.Equal(t, map[string]any{"a": uint64(1), "b": uint64(2)}, nested["m"])
+	})
+
+	t.Run("a repeated key that is not a merge is still refused", func(t *testing.T) {
+		for _, src := range []string{
+			"a: 1\na: 2\n",
+			"m:\n  a: 1\n  a: 2\n",
+			"<<: {a: 1, a: 2}\n",
+		} {
+			var typed map[string]any
+			err := yaml.Unmarshal([]byte(underEleven(src)), &typed)
+			require.Errorf(t, err, "%q", src)
+			assert.Containsf(t, err.Error(), `"a" already defined`, "%q", src)
+		}
+	})
+
+	t.Run("an `any`, a struct and ToJSON read them the same way", func(t *testing.T) {
+		type box struct {
+			A int `yaml:"a"`
+			B int `yaml:"b"`
+		}
+
+		for src, want := range map[string]box{
+			"<<: [{a: 1}, {a: 9}]\n":       {A: 1},
+			"<<: [{a: 1}, {a: 9, b: 2}]\n": {A: 1, B: 2},
+			"a: 1\n<<: {a: 9, b: 2}\n":     {A: 1, B: 2},
+		} {
+			var loose any
+			require.NoErrorf(t, yaml.Unmarshal([]byte(underEleven(src)), &loose), "%q", src)
+			entries, ok := loose.(map[string]any)
+			require.Truef(t, ok, "%q", src)
+			assert.EqualValuesf(t, want.A, entries["a"], "%q into an any", src)
+
+			var got box
+			require.NoErrorf(t, yaml.Unmarshal([]byte(underEleven(src)), &got), "%q", src)
+			assert.Equal(t, want, got, "%q into a struct", src)
+
+			out, err := codec.ToJSON([]byte(underEleven(src)))
+			require.NoErrorf(t, err, "%q", src)
+
+			var fromJSON box
+			require.NoErrorf(t, json.Unmarshal(out, &fromJSON), "%q: %s", src, out) //nolint:musttag // this tests the behavior when no json tag is defined
+			assert.Equal(t, want, fromJSON, "%q through ToJSON", src)
+		}
+	})
+}
+
+// underEleven is src read under YAML 1.1, where "<<" is the merge key.
+//
+// The merge key is tag:yaml.org,2002:merge, a 1.1 type, so the version decides
+// whether a bare "<<" merges at all. Every test of what a merge means asks both
+// versions: the bare document is the library's default answer and this is the
+// other one.
+func underEleven(src string) string { return "%YAML 1.1\n---\n" + src }
+
+// TestAMergeResolvesTheSameWayOnEveryPath holds the four readers of a document
+// to one answer about "<<".
+//
+// The merge type says a mapping's own keys win over the ones it merges in, and
+// that an earlier mapping of a "<<" sequence wins over a later one. The walking
+// path and ToJSON applied both; the map and ordered-map paths wrote entries in
+// document order and let the last writer win, so:
+//
+//   - "x: 9" over "<<: *a" read the merged x, losing the key the mapping wrote
+//     itself -- the "<<" came second and overwrote it;
+//   - "<<: [*a, *b]" read b's x where the spec gives it to a;
+//   - UseOrderedMap appended every merged entry, so the MapSlice held x twice
+//     and json.Marshal wrote a repeated member name.
+//
+// go.yaml.in/yaml/v3 v3.0.5 agrees with the answers below on all four. libfyaml
+// 1.0.0b1 is no oracle here: it does not resolve a merge at all and writes the
+// "<<" out as a member name of its own.
+func TestAMergeResolvesTheSameWayOnEveryPath(t *testing.T) {
+	for _, tc := range []struct {
+		name, src string
+		want      map[string]any
+		order     []string
+	}{
+		{
+			name:  "the mapping's own key wins over a later <<",
+			src:   "m:\n  x: 9\n  <<: &a {x: 1}\n",
+			want:  map[string]any{"x": uint64(9)},
+			order: []string{"x"},
+		},
+		{
+			name:  "and over an earlier one",
+			src:   "m:\n  <<: &a {x: 1}\n  x: 9\n",
+			want:  map[string]any{"x": uint64(9)},
+			order: []string{"x"},
+		},
+		{
+			name:  "the earlier mapping of a sequence wins",
+			src:   "a: &a {x: 1}\nb: &b {x: 2}\nm:\n  <<: [*a, *b]\n",
+			want:  map[string]any{"x": uint64(1)},
+			order: []string{"x"},
+		},
+		{
+			name:  "and the mapping's own key wins over both",
+			src:   "a: &a {x: 1}\nb: &b {x: 2}\nm:\n  x: 9\n  <<: [*a, *b]\n",
+			want:  map[string]any{"x": uint64(9)},
+			order: []string{"x"},
+		},
+		{
+			name:  "a sequence of disjoint mappings brings all of them",
+			src:   "a: &a {x: 1}\nb: &b {w: 2}\nm:\n  <<: [*a, *b]\n",
+			want:  map[string]any{"x": uint64(1), "w": uint64(2)},
+			order: []string{"x", "w"},
+		},
+		{
+			name: "a merge of a mapping that merges",
+			// The key is "w" and not "y" on purpose: 1.1 resolves "y" to the
+			// boolean true, so a test that reads under 1.1 to reach the merge
+			// has to keep clear of 1.1's other spellings.
+			src:   "a: &a {x: 1}\nb: &b\n  <<: *a\n  w: 2\nm:\n  <<: *b\n",
+			want:  map[string]any{"x": uint64(1), "w": uint64(2)},
+			order: []string{"w", "x"},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			src := underEleven(tc.src)
+
+			var walked any
+			require.NoErrorf(t, codec.Unmarshal([]byte(src), &walked), "%q", src)
+			assert.Equal(t, tc.want, walked.(map[string]any)["m"], "into an any")
+
+			var typed map[string]any
+			require.NoErrorf(t, codec.Unmarshal([]byte(src), &typed), "%q", src)
+			assert.Equal(t, tc.want, typed["m"], "into a map[string]any")
+
+			var ordered any
+			require.NoErrorf(t,
+				codec.UnmarshalWithOptions([]byte(src), &ordered, codec.UseOrderedMap()), "%q", src)
+			assert.Equal(t, tc.order, orderedKeysOf(t, ordered, "m"),
+				"UseOrderedMap: the mapping's own keys in document order, then the merged ones")
+
+			t.Run("and under 1.2 the same document merges nothing", func(t *testing.T) {
+				// Every one of these mappings holds a "<<" of its own, so under
+				// the core schema every one keeps it as an ordinary key.
+				var core any
+				require.NoErrorf(t, codec.Unmarshal([]byte(tc.src), &core), "%q", tc.src)
+				entries, ok := core.(map[string]any)["m"].(map[string]any)
+				require.Truef(t, ok, "%q read %#v", tc.src, core)
+				assert.Containsf(t, entries, "<<", "%q kept no key named << : %v", tc.src, entries)
+			})
+		})
+	}
+}
+
+// TestAMergedKeyIsWrittenOnceIntoAMapSlice is the half a map cannot show.
+//
+// A MapSlice keeps what the document wrote in order, and nothing deduplicated
+// it: every merged entry was appended, so a mapping that overrode a merged key
+// came back holding that key twice. A caller ranging over it saw both, and
+// json.Marshal wrote a JSON object with the member name repeated.
+func TestAMergedKeyIsWrittenOnceIntoAMapSlice(t *testing.T) {
+	for _, plain := range []string{
+		"m:\n  <<: &a {x: 1}\n  x: 9\n",
+		"m:\n  x: 9\n  <<: &a {x: 1}\n",
+		"a: &a {x: 1}\nb: &b {x: 2}\nm:\n  x: 9\n  <<: [*a, *b]\n",
+	} {
+		src := underEleven(plain)
+
+		var got any
+		require.NoErrorf(t, codec.UnmarshalWithOptions([]byte(src), &got, codec.UseOrderedMap()), "%q", src)
+
+		m := mapSliceAt(t, got, "m")
+		require.Equalf(t, 1, m.Len(), "%q: the MapSlice holds %v", src, m)
+		assert.Equal(t, "x", m.At(0).Key, "%q", src)
+		assert.Equal(t, uint64(9), m.At(0).Value, "%q: the mapping's own value", src)
+	}
+}
+
+// mapSliceAt is the MapSlice standing at key of the document's root mapping.
+func mapSliceAt(t *testing.T, doc any, key string) codec.MapSlice {
+	t.Helper()
+
+	root, ok := doc.(codec.MapSlice)
+	require.Truef(t, ok, "the document read as %T and not a MapSlice", doc)
+
+	for k, v := range root.All() {
+		if k != key {
+			continue
+		}
+		m, ok := v.(codec.MapSlice)
+		require.Truef(t, ok, "%q holds %T and not a MapSlice", key, v)
+
+		return m
+	}
+	require.Failf(t, "no entry", "the document holds no %q", key)
+
+	return codec.MapSlice{}
+}
+
+// orderedKeysOf is the keys of the MapSlice at key, in the order it holds them.
+func orderedKeysOf(t *testing.T, doc any, key string) []string {
+	t.Helper()
+
+	var keys []string
+	for item := range mapSliceAt(t, doc, key).Keys() {
+		k, ok := item.(string)
+		require.Truef(t, ok, "a key read as %T", item)
+		keys = append(keys, k)
+	}
+
+	return keys
+}
+
+// TestFixedATypedMapSliceMergesLikeTheOrderedAny holds the fifth place a merge
+// is resolved to the answer the other four give.
+//
+// decodeMapSlice walked the entries in document order, appended each one, and
+// asked validateDuplicateKey whether the key had been seen -- which is true of
+// every key a "<<" overrides. So a mapping writing x under a "<<" that also
+// writes x was refused as *duplicate key "x"* into a codec.MapSlice field and
+// read as 9 into an any under UseOrderedMap, and a merge sequence whose
+// mappings share a key was refused on the name of the anchored mapping, two
+// lines away from the merge. It reads through setToOrderedMapValue now, so both
+// destinations answer from one implementation.
+func TestFixedATypedMapSliceMergesLikeTheOrderedAny(t *testing.T) {
+	for _, tc := range []struct {
+		src  string
+		want any
+	}{
+		{"m:\n  x: 9\n  <<: &a {x: 1}\n", uint64(9)},
+		{"m:\n  <<: &a {x: 1}\n  x: 9\n", uint64(9)},
+		{"a: &a {x: 1}\nb: &b {x: 2}\nm:\n  <<: [*a, *b]\n", uint64(1)},
+	} {
+		src := underEleven(tc.src)
+
+		var typed struct {
+			M codec.MapSlice `yaml:"m"`
+		}
+		require.NoErrorf(t, codec.Unmarshal([]byte(src), &typed), "%q", src)
+		require.Equalf(t, 1, typed.M.Len(), "%q holds %v", src, typed.M)
+		assert.Equalf(t, tc.want, typed.M.At(0).Value, "%q", src)
+
+		var walked any
+		require.NoErrorf(t, codec.UnmarshalWithOptions([]byte(src), &walked, codec.UseOrderedMap()), "%q", src)
+		assert.Equalf(t, typed.M, mapSliceAt(t, walked, "m"), "%q: the two destinations disagree", src)
+	}
+}
+
+// unmarshalsItself reads the whole mapping it is given rather than letting the
+// decoder fill its fields.
+type unmarshalsItself struct {
+	Name string `yaml:"name"`
+	Seen bool   `yaml:"-"`
+}
+
+func (u *unmarshalsItself) UnmarshalYAML(b []byte) error {
+	type plain unmarshalsItself
+
+	var p plain
+	if err := codec.Unmarshal(b, &p); err != nil {
+		return err
+	}
+	*u = unmarshalsItself(p)
+	u.Seen = true
+
+	return nil
+}
+
+// inlinesAnUnmarshaler names the field, so the method does not promote to the
+// outer type and only the decoder's own rule can call it.
+type inlinesAnUnmarshaler struct {
+	Leaf unmarshalsItself `yaml:",inline"`
+	Tail string           `yaml:"tail"`
+}
+
+// TestAnInlineFieldThatUnmarshalsItselfIsRendered covers a `,inline` field whose
+// type reads its own YAML.
+//
+// The decoder hands such a field the mapping it stands in, rendered back to
+// text, and the mapping it builds for that is synthetic: its values are the
+// document's nodes, its keys are new. Those keys carried no token, and
+// ast.Renderer reads a scalar's token to decide whether to write it as a block,
+// so rendering the mapping dereferenced nil and the decode panicked.
+//
+// go.yaml.in/yaml/v3 reads this shape the same way, calling the field's
+// unmarshaler with the whole mapping and filling the rest of the struct
+// besides.
+func TestAnInlineFieldThatUnmarshalsItselfIsRendered(t *testing.T) {
+	var v inlinesAnUnmarshaler
+	require.NotPanics(t, func() {
+		require.NoError(t, codec.Unmarshal([]byte("name: N\ntail: T\n"), &v))
+	})
+
+	assert.Equal(t, "N", v.Leaf.Name)
+	assert.True(t, v.Leaf.Seen, "the field read the mapping itself")
+	assert.Equal(t, "T", v.Tail, "and the rest of the struct is filled too")
 }

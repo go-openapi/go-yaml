@@ -6,6 +6,7 @@ package codec_test
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"iter"
@@ -21,7 +22,10 @@ import (
 
 	"github.com/go-openapi/go-yaml/ast"
 	"github.com/go-openapi/go-yaml/codec"
+	yamlerrors "github.com/go-openapi/go-yaml/errors"
 	"github.com/go-openapi/go-yaml/parser"
+	"github.com/go-openapi/testify/v2/assert"
+	"github.com/go-openapi/testify/v2/require"
 )
 
 var (
@@ -2427,5 +2431,645 @@ a: &anc !mytag
 				t.Fatalf("input is not equal to output.\n\nexpected:\n%v\n actual:\n%v", expected, output)
 			}
 		})
+	}
+}
+
+// TestTheEncoderRefusesTwoKeysThatAreOneYAMLKey covers a Go map whose keys are
+// two Go values and one YAML key.
+//
+// Go's == tells int(1) from uint64(1), one NaN from another and one instant in
+// two zones from itself; YAML does not. Written as they stand, such a map
+// gave a document with a key twice, which the decoder then refused. The
+// encoder refuses it first, as the decoder does, unless SkipDuplicateMapKey
+// asks it to write the first and drop the rest.
+func TestTheEncoderRefusesTwoKeysThatAreOneYAMLKey(t *testing.T) {
+	t.Parallel()
+
+	instant := time.Date(2001, time.December, 15, 2, 59, 43, 0, time.UTC)
+
+	t.Run("one YAML key twice is refused", func(t *testing.T) {
+		t.Parallel()
+
+		for name, v := range map[string]any{
+			"int and uint64":            map[any]any{1: "a", uint64(1): "b"},
+			"int64 and int":             map[any]any{int64(-1): "a", -1: "b"},
+			"float32 and float64":       map[any]any{float32(0.5): "a", 0.5: "b"},
+			"two NaN":                   map[float64]string{math.NaN(): "a", math.NaN(): "b"},
+			"one instant in two zones":  map[time.Time]string{instant: "a", instant.In(time.FixedZone("", -5*3600)): "b"},
+			"a Base64 written two ways": map[any]any{codec.Base64("AA=="): "a", codec.Base64("AA\n=="): "b"},
+		} {
+			_, err := codec.Marshal(v)
+			require.ErrorIsf(t, err, yamlerrors.ErrDuplicateKey, "%s", name)
+		}
+
+		_, err := codec.MarshalWithOptions(map[any]any{1: "a", uint64(1): "b"}, codec.JSON())
+		require.ErrorIs(t, err, yamlerrors.ErrDuplicateKey)
+	})
+
+	t.Run("two YAML keys of one spelling are written", func(t *testing.T) {
+		t.Parallel()
+
+		// An integer and a float are two keys, and so are binary data and the
+		// string its base64 spells.
+		for _, v := range []map[any]any{
+			{1: "a", 1.0: "b"},
+			{codec.Base64("AA=="): "a", "AA==": "b"},
+		} {
+			out, err := codec.Marshal(v)
+			require.NoError(t, err)
+
+			var back map[any]any
+			require.NoErrorf(t, codec.Unmarshal(out, &back), "%q", out)
+			assert.Lenf(t, back, 2, "%q", out)
+		}
+	})
+
+	t.Run("SkipDuplicateMapKey writes the first", func(t *testing.T) {
+		t.Parallel()
+
+		// The keys are ordered by their text and then by their Go type, so
+		// int comes before uint64 whatever order the map iterates in.
+		for range 20 {
+			out, err := codec.MarshalWithOptions(map[any]any{1: "a", uint64(1): "b"}, codec.SkipDuplicateMapKey())
+			require.NoError(t, err)
+			assert.Equal(t, "1: a\n", string(out))
+		}
+	})
+}
+
+type (
+	// specShaped is the shape go-openapi/spec has: json tags throughout, and an
+	// anonymous embedded struct no tag names.
+	specProps struct {
+		Swagger string `json:"swagger"`
+		Host    string `json:"host"`
+	}
+	specShaped struct {
+		specProps
+
+		Extra string `json:"extra"`
+	}
+
+	// mixedTags carries both tags on one field and neither on another.
+	mixedTags struct {
+		Both    string `json:"jsonName" yaml:"yamlName"`
+		Neither string
+	}
+)
+
+// TestWriteJSONTagsWritesTheNamesUseJSONTagsReads covers the encoder mirror of
+// the two decode options.
+//
+// The encoder read the `yaml` tag alone whatever the decoder had been told, so
+// a value read under UseJSONTags came back out under names no document had
+// written: `json:"swagger"` was written "specprops" and the embedded struct
+// went under a key of its own.
+func TestWriteJSONTagsWritesTheNamesUseJSONTagsReads(t *testing.T) {
+	t.Run("the json tag names the field", func(t *testing.T) {
+		out, err := codec.MarshalWithOptions(
+			specProps{Swagger: "2.0", Host: "example.com"}, codec.WriteJSONTags(true))
+		require.NoError(t, err)
+		assert.Equal(t, "swagger: \"2.0\"\nhost: example.com\n", string(out))
+	})
+
+	t.Run("and without the option the Go name does", func(t *testing.T) {
+		out, err := codec.Marshal(specProps{Swagger: "2.0", Host: "example.com"})
+		require.NoError(t, err)
+		assert.Equal(t, "swagger: \"2.0\"\nhost: example.com\n", string(out),
+			"these two names happen to agree")
+	})
+
+	t.Run("an anonymous struct is written into the mapping around it", func(t *testing.T) {
+		out, err := codec.MarshalWithOptions(
+			specShaped{specProps{Swagger: "2.0", Host: "h"}, "e"}, codec.WriteJSONTags(true))
+		require.NoError(t, err)
+		assert.Equal(t, "swagger: \"2.0\"\nhost: h\nextra: e\n", string(out))
+	})
+
+	t.Run("and without the option it goes under a key of its own", func(t *testing.T) {
+		out, err := codec.Marshal(specShaped{specProps{Swagger: "2.0", Host: "h"}, "e"})
+		require.NoError(t, err)
+		assert.Equal(t, "specprops:\n  swagger: \"2.0\"\n  host: h\nextra: e\n", string(out))
+	})
+
+	t.Run("the yaml tag still wins", func(t *testing.T) {
+		out, err := codec.MarshalWithOptions(
+			mixedTags{Both: "bb", Neither: "nn"}, codec.WriteJSONTags(true))
+		require.NoError(t, err)
+		assert.Equal(t, "yamlName: bb\nneither: nn\n", string(out))
+	})
+}
+
+// TestWriteInferredNamesWritesTheGoNameVerbatim covers the second option, which
+// is the only place it still shows: on a decode, case-insensitive matching
+// reaches a field under either spelling, so which one is exact only matters
+// where a name is written.
+func TestWriteInferredNamesWritesTheGoNameVerbatim(t *testing.T) {
+	t.Run("the verbatim Go name", func(t *testing.T) {
+		out, err := codec.MarshalWithOptions(
+			mixedTags{Both: "bb", Neither: "nn"},
+			codec.WriteJSONTags(true), codec.WriteInferredNames(true))
+		require.NoError(t, err)
+		assert.Equal(t, "yamlName: bb\nNeither: nn\n", string(out))
+	})
+
+	t.Run("and the lowercased one without it", func(t *testing.T) {
+		out, err := codec.MarshalWithOptions(
+			mixedTags{Both: "bb", Neither: "nn"}, codec.WriteJSONTags(true))
+		require.NoError(t, err)
+		assert.Equal(t, "yamlName: bb\nneither: nn\n", string(out))
+	})
+}
+
+// TestAValueReadUnderTheOptionsRoundTrips is what the pair is for.
+func TestAValueReadUnderTheOptionsRoundTrips(t *testing.T) {
+	for _, c := range []struct {
+		name string
+		src  string
+		mk   func() any
+	}{
+		{"json tags", "swagger: \"2.0\"\nhost: example.com\n", func() any { return &specProps{} }},
+		{"a promoted struct", "swagger: \"2.0\"\nhost: h\nextra: e\n", func() any { return &specShaped{} }},
+		{"a yaml tag beside an untagged field", "yamlName: bb\nNeither: nn\n", func() any { return &mixedTags{} }},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			v := c.mk()
+			require.NoError(t, codec.UnmarshalWithOptions([]byte(c.src), v,
+				codec.UseJSONTags(true), codec.UseInferredNames(true)))
+
+			out, err := codec.MarshalWithOptions(v,
+				codec.WriteJSONTags(true), codec.WriteInferredNames(true))
+			require.NoError(t, err)
+			assert.Equal(t, c.src, string(out))
+		})
+	}
+}
+
+// TestMarshalWritesANodeWhereItStands checks what Marshal does with a parsed or built node.
+//
+// A node used to go out through its MarshalYAML method, which rendered it to text that the encoder parsed
+// again. The round trip read the text without the document it came from: a node under a "%TAG" handle was
+// refused, and comments were dropped, since the second parse was not told to keep them.
+func TestMarshalWritesANodeWhereItStands(t *testing.T) {
+	t.Parallel()
+
+	t.Run("a built node", func(t *testing.T) {
+		t.Parallel()
+
+		node := ast.Map(ast.Entry("a", ast.Text("1")), ast.Entry("b", ast.Seq(ast.Text("x"))))
+
+		out, err := codec.Marshal(node)
+		require.NoError(t, err)
+		assert.Equal(t, "a: \"1\"\nb:\n- x\n", string(out))
+
+		out, err = codec.Marshal(map[string]any{"k": node})
+		require.NoError(t, err)
+		assert.Equal(t, "k:\n  a: \"1\"\n  b:\n  - x\n", string(out))
+	})
+
+	t.Run("a node under a tag handle the document declared", func(t *testing.T) {
+		t.Parallel()
+
+		file, err := parser.ParseBytes([]byte("%TAG !x! tag:yaml.org,2002:\n---\n!x!float 11.5\n"))
+		require.NoError(t, err)
+
+		// The directive is a document of its own, and the tagged node opens the next.
+		out, err := codec.Marshal(file.Docs[len(file.Docs)-1].Body)
+		require.NoError(t, err, "the handle is declared where the node was read, not where it is written")
+		assert.Equal(t, "!x!float 11.5\n", string(out))
+	})
+
+	t.Run("a node keeps its comments", func(t *testing.T) {
+		t.Parallel()
+
+		file, err := parser.ParseBytes([]byte("# above\na: 1 # beside\n"), parser.WithComments())
+		require.NoError(t, err)
+
+		out, err := codec.Marshal(file.Docs[0].Body)
+		require.NoError(t, err)
+		assert.Equal(t, "# above\na: 1 # beside\n", string(out))
+	})
+
+	t.Run("a node keeps its anchors and aliases", func(t *testing.T) {
+		t.Parallel()
+
+		file, err := parser.ParseBytes([]byte("a: &x 1\nb: *x\n"))
+		require.NoError(t, err)
+
+		out, err := codec.Marshal(file.Docs[0].Body)
+		require.NoError(t, err)
+		assert.Equal(t, "a: &x 1\nb: *x\n", string(out))
+	})
+}
+
+// TestATimeTimeInAnInterfaceSlotIsWrittenTagged covers the encoder's spelling of
+// a time.Time.
+//
+// The core schema resolves no timestamp, so a plain "2001-12-14T00:00:00Z"
+// reads back as a string wherever the destination does not say time.Time. The
+// encoder writes "!!timestamp" where the time.Time stands in an interface slot,
+// and leaves a slot typed time.Time plain.
+func TestATimeTimeInAnInterfaceSlotIsWrittenTagged(t *testing.T) {
+	t.Parallel()
+
+	utc := time.Date(2001, time.December, 14, 0, 0, 0, 0, time.UTC)
+	zoned := time.Date(2001, time.December, 14, 21, 59, 43, 100000000, time.FixedZone("", -5*3600))
+
+	t.Run("an interface slot reads back as the time.Time", func(t *testing.T) {
+		t.Parallel()
+
+		ordered, err := codec.NewMapSlice(codec.MapItem{Key: zoned, Value: utc})
+		require.NoError(t, err)
+
+		for name, tc := range map[string]struct {
+			in   any
+			tags int
+		}{
+			"a map[any]any key and value": {map[any]any{utc: zoned}, 2},
+			"a value in a map[string]any": {map[string]any{"k": zoned}, 1},
+			"an element of a []any":       {[]any{utc}, 1},
+			"a MapSlice entry":            {ordered, 2},
+		} {
+			out, err := codec.Marshal(tc.in)
+			require.NoErrorf(t, err, "%s", name)
+			assert.Equalf(t, tc.tags, strings.Count(string(out), "!!timestamp"), "%s: %q", name, out)
+
+			var back any
+			require.NoErrorf(t, codec.Unmarshal(out, &back), "%s: %q", name, out)
+			want := tc.in
+			if name == "a MapSlice entry" {
+				want = map[any]any{zoned: utc}
+			}
+			assert.Equalf(t, want, back, "%s: %q", name, out)
+		}
+	})
+
+	t.Run("a slot typed time.Time stays plain", func(t *testing.T) {
+		t.Parallel()
+
+		type holder struct {
+			Typed time.Time `yaml:"typed"`
+			Held  any       `yaml:"held"`
+		}
+		in := holder{Typed: zoned, Held: zoned}
+
+		out, err := codec.Marshal(in)
+		require.NoError(t, err)
+		assert.Equal(t, "typed: 2001-12-14T21:59:43.1-05:00\nheld: !!timestamp 2001-12-14T21:59:43.1-05:00\n", string(out))
+
+		var back holder
+		require.NoError(t, codec.Unmarshal(out, &back))
+		assert.Equal(t, in, back)
+
+		keyed, err := codec.Marshal(map[time.Time]string{utc: "v"})
+		require.NoError(t, err)
+		assert.Equal(t, "2001-12-14T00:00:00Z: v\n", string(keyed))
+	})
+
+	t.Run("JSON has no tag to write", func(t *testing.T) {
+		t.Parallel()
+
+		out, err := codec.MarshalWithOptions(map[string]any{"k": utc}, codec.JSON())
+		require.NoError(t, err)
+		assert.NotContains(t, string(out), "!!timestamp")
+		assert.Contains(t, string(out), `"2001-12-14T00:00:00Z"`)
+	})
+}
+
+// TestMarshalStringHoldingCarriageReturn checks that a string holding a
+// carriage return survives Marshal and Unmarshal.
+//
+// YAML normalizes a stream's line breaks on read: "\r\n" and a lone "\r" both
+// become "\n". So a carriage return has no plain, single-quoted or block
+// spelling -- only a double-quoted scalar, where "\r" is an escape, carries
+// one. Marshal wrote a literal block for these and dropped every CR.
+func TestMarshalStringHoldingCarriageReturn(t *testing.T) {
+	tests := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{name: "CRLF throughout", in: "a\r\nb\r\n", want: "\"a\\r\\nb\\r\\n\"\n"},
+		{name: "a lone CR", in: "a\rb", want: "\"a\\rb\"\n"},
+		{name: "one CRLF at the end", in: "x\r\n", want: "\"x\\r\\n\"\n"},
+		{name: "a CR and nothing else", in: "\r", want: "\"\\r\"\n"},
+		{name: "CR and LF mixed", in: "a\r\nb\nc", want: "\"a\\r\\nb\\nc\"\n"},
+
+		// A value holding only line feeds keeps the block scalar it always had.
+		{name: "LF throughout", in: "a\nb\n", want: "|\n  a\n  b\n"},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			out, err := codec.Marshal(test.in)
+			require.NoError(t, err)
+			require.Equal(t, test.want, string(out))
+
+			var back string
+			require.NoError(t, codec.Unmarshal(out, &back))
+			require.Equal(t, test.in, back)
+		})
+	}
+}
+
+// TestMarshalCarriageReturnUnderLiteralStyle checks the same for the option
+// that asks for a block scalar by name. A value holding a carriage return has
+// no block spelling, so the option cannot be given it.
+func TestMarshalCarriageReturnUnderLiteralStyle(t *testing.T) {
+	const in = "a\r\nb\r\n"
+
+	var out []byte
+	out, err := codec.MarshalWithOptions(in, codec.UseLiteralStyleIfMultiline(true))
+	require.NoError(t, err)
+
+	var back string
+	require.NoError(t, codec.Unmarshal(out, &back))
+	require.Equal(t, in, back)
+}
+
+// TestMarshalCarriageReturnInAMapping checks that the value of a mapping entry
+// is quoted the same way, since the entry renders through the block path.
+func TestMarshalCarriageReturnInAMapping(t *testing.T) {
+	in := map[string]string{"a": "p\r\nq\r\n"}
+
+	out, err := codec.Marshal(in)
+	require.NoError(t, err)
+	require.Equal(t, "a: \"p\\r\\nq\\r\\n\"\n", string(out))
+
+	back := map[string]string{}
+	require.NoError(t, codec.Unmarshal(out, &back))
+	require.Equal(t, in, back)
+}
+
+// TestMarshalQuotesLeadingZeroDecimals checks that a string of decimal digits
+// written with a leading zero comes out quoted.
+//
+// This library resolves integers as YAML 1.1 does, where "0" followed by digits
+// is octal and "088253" is not octal at all, so it reads a string. A reader
+// following YAML 1.2's core schema resolves [-+]?[0-9]+ and reads the integer
+// 88253 from the same unquoted text. Quoting settles it for both.
+func TestMarshalQuotesLeadingZeroDecimals(t *testing.T) {
+	quoted := []string{"088253", "09", "0777", "00", "010", "-088", "+09"}
+	for _, in := range quoted {
+		t.Run(in, func(t *testing.T) {
+			out, err := codec.Marshal(in)
+			require.NoError(t, err)
+			require.Equal(t, "\""+in+"\"\n", string(out))
+
+			var back string
+			require.NoError(t, codec.Unmarshal(out, &back))
+			require.Equal(t, in, back)
+		})
+	}
+
+	// A leading zero followed by anything but digits resolves to a string
+	// under every schema, so it stays plain.
+	plain := []string{"08a", "0-8", "0 9"}
+	for _, in := range plain {
+		t.Run(in, func(t *testing.T) {
+			out, err := codec.Marshal(in)
+			require.NoError(t, err)
+			require.Equal(t, in+"\n", string(out))
+		})
+	}
+}
+
+// TestMarshalStringHoldingAByteOrderMark checks that a string holding U+FEFF
+// survives Marshal and Unmarshal.
+//
+// nb-char excludes the mark, so no plain or block scalar may hold one. A quoted
+// scalar may -- nb-double-char and nb-single-char are built from nb-json
+// instead -- so the value has to come out quoted, where "\ufeff" is an escape.
+func TestMarshalStringHoldingAByteOrderMark(t *testing.T) {
+	const mark = "\ufeff"
+
+	tests := map[string]string{
+		"in the middle":     "x" + mark + "y",
+		"the whole value":   mark,
+		"opening the value": mark + "x",
+		"with a line feed":  "x\n" + mark + "y\n",
+	}
+
+	for name, in := range tests {
+		t.Run(name, func(t *testing.T) {
+			out, err := codec.Marshal(in)
+			require.NoError(t, err)
+			require.NotContains(t, string(out[:len(out)-1]), mark, "the mark is written as an escape, not as itself")
+
+			var back string
+			require.NoError(t, codec.Unmarshal(out, &back))
+			require.Equal(t, in, back)
+		})
+	}
+}
+
+// TestAStringSpellingAnInfinityIsQuoted holds a Go string that spells an
+// infinity or a NaN to coming back as the same string.
+//
+// token.reservedEncKeywordTypes decides what the encoder quotes, and its own
+// doc comment calls it a superset of reservedKeywordTypes -- the keywords the
+// scanner resolves. It was not one: init filled it with the nulls and the
+// booleans and left the infinities and the NaNs out, so the string ".inf" was
+// written as "a: .inf" and read back as the float +Inf. A string turned into a
+// number by being written down and read again.
+//
+// The float path is unaffected: IsNeedQuoted is asked about strings, so +Inf
+// still encodes as ".inf" with no quotes and still reads back as +Inf.
+func TestAStringSpellingAnInfinityIsQuoted(t *testing.T) {
+	t.Run("a string survives the round trip", func(t *testing.T) {
+		for _, spelling := range []string{
+			".inf", ".Inf", ".INF",
+			"-.inf", "-.Inf", "-.INF",
+			".nan", ".NaN", ".NAN",
+		} {
+			out, err := codec.Marshal(map[string]string{"a": spelling})
+			require.NoErrorf(t, err, "%q", spelling)
+
+			var back map[string]any
+			require.NoErrorf(t, codec.Unmarshal(out, &back), "%q wrote %q", spelling, out)
+			assert.Equalf(t, spelling, back["a"], "%q wrote %q", spelling, out)
+		}
+	})
+
+	t.Run("the float still writes the bare spelling", func(t *testing.T) {
+		for _, tc := range []struct {
+			value float64
+			wants string
+		}{
+			{math.Inf(1), "a: .inf\n"},
+			{math.Inf(-1), "a: -.inf\n"},
+		} {
+			out, err := codec.Marshal(map[string]float64{"a": tc.value})
+			require.NoError(t, err)
+			assert.Equal(t, tc.wants, string(out))
+
+			var back map[string]any
+			require.NoError(t, codec.Unmarshal(out, &back))
+			assert.Equal(t, tc.value, back["a"], "%q", out)
+		}
+
+		out, err := codec.Marshal(map[string]float64{"a": math.NaN()})
+		require.NoError(t, err)
+		assert.Equal(t, "a: .nan\n", string(out))
+	})
+}
+
+// TestAStringReadingAsADocumentMarkerRoundTrips checks that Marshal quotes a
+// string opening with "---" or "..." followed by a blank or by nothing.
+//
+// A document's own scalar and a key of its top mapping start their line, where
+// the same text written plain is a marker: "---" read back as null, "..." as an
+// empty stream, "---\tx" as "x", and "... x" did not parse. Each is written
+// alone, as a key and as a sequence entry, and read back as the value it was.
+func TestAStringReadingAsADocumentMarkerRoundTrips(t *testing.T) {
+	for _, s := range []string{
+		"---", "...", "--- x", "... x", "---\tx", "...\tx",
+		// Shapes outside the fault: a fourth character that is no blank.
+		"----", "....", "...x", "---x",
+	} {
+		for name, v := range map[string]any{
+			"alone":         s,
+			"as a key":      map[string]int{s: 1},
+			"in a sequence": []string{s},
+		} {
+			t.Run(s+" "+name, func(t *testing.T) {
+				out, err := codec.Marshal(v)
+				require.NoError(t, err)
+
+				switch want := v.(type) {
+				case string:
+					var got string
+					require.NoErrorf(t, codec.Unmarshal(out, &got), "%q wrote %q", s, out)
+					assert.Equalf(t, want, got, "%q wrote %q", s, out)
+				case map[string]int:
+					var got map[string]int
+					require.NoErrorf(t, codec.Unmarshal(out, &got), "%q wrote %q", s, out)
+					assert.Equalf(t, want, got, "%q wrote %q", s, out)
+				case []string:
+					var got []string
+					require.NoErrorf(t, codec.Unmarshal(out, &got), "%q wrote %q", s, out)
+					assert.Equalf(t, want, got, "%q wrote %q", s, out)
+				}
+			})
+		}
+	}
+}
+
+// TestFixedJSONStyleQuotesEveryMemberName: [codec.JSON] wrote a key that is not
+// a string as YAML spells it, so "1: a" came out {1: "a"} -- not JSON, and
+// json.Valid says so. ToJSON wrote {"1":"a"} for the same document all along.
+func TestFixedJSONStyleQuotesEveryMemberName(t *testing.T) {
+	for _, tc := range []struct{ src, want string }{
+		{"1: a\n\"x\": b\n", `{"1":"a","x":"b"}`},
+		{"1.5: a\n", `{"1.5":"a"}`},
+		{"null: a\n", `{"null":"a"}`},
+		{"true: a\n", `{"true":"a"}`},
+		{"k: !!binary aGVsbG8=\n", `{"k":"aGVsbG8="}`},
+	} {
+		var v any
+		require.NoErrorf(t, codec.UnmarshalWithOptions([]byte(tc.src), &v, codec.UseOrderedMap()), "%q", tc.src)
+
+		out, err := codec.MarshalWithOptions(v, codec.JSON())
+		require.NoErrorf(t, err, "%q", tc.src)
+		assert.Truef(t, json.Valid(out), "%q wrote %s", tc.src, out)
+		assert.JSONEqf(t, tc.want, string(out), "%q", tc.src)
+
+		// The name is [ast.KeyName]'s, which is the reading ToJSON takes, so
+		// the two write one member name and not two.
+		folded, err := codec.ToJSON([]byte(tc.src))
+		require.NoErrorf(t, err, "%q", tc.src)
+		assert.JSONEqf(t, string(folded), string(out), "%q", tc.src)
+	}
+}
+
+// TestJSONStyleLeavesTheYAMLSpellingAlone: the quoting is JSON's, so a YAML
+// encode still writes an integer key plain.
+func TestJSONStyleLeavesTheYAMLSpellingAlone(t *testing.T) {
+	var v any
+	require.NoError(t, codec.UnmarshalWithOptions([]byte("1: a\n1.5: b\nnull: c\n"), &v, codec.UseOrderedMap()))
+
+	out, err := codec.Marshal(v)
+	require.NoError(t, err)
+	assert.Equal(t, "1: a\n1.5: b\nnull: c\n", string(out))
+}
+
+// TestABuiltNodeClaimsNoSource checks that a tree the encoder builds carries no
+// token claiming to have been read from a document.
+//
+// It cannot be told any other way. Every node ValueToNode builds reports line 1,
+// column 1 and offset 0, which is exactly what a real token at the start of a
+// document reports, so a reader that writes a document back as it was written
+// would place a whole built tree on top of itself.
+func TestABuiltNodeClaimsNoSource(t *testing.T) {
+	t.Parallel()
+
+	for name, value := range map[string]any{
+		"a scalar":            42,
+		"a string":            "text",
+		"a mapping":           map[string]any{"x": 0, "y": "two"},
+		"a sequence":          []any{1, "two", nil, true},
+		"a nested structure":  map[string]any{"a": []any{map[string]any{"b": 1.5}}},
+		"a struct":            struct{ Name string }{Name: "n"},
+		"a mapping of slices": map[string][]int{"n": {1, 2, 3}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			node, err := codec.ValueToNode(value)
+			require.NoError(t, err)
+
+			var tokens, claimed int
+			walkBuilt(node, func(n ast.Node) {
+				tk := n.GetToken()
+				if tk == nil {
+					return
+				}
+				tokens++
+				if tk.FromSource() {
+					claimed++
+					t.Errorf("a %s built from %T claims to come from a document, at %v",
+						n.Type(), value, tk.Position)
+				}
+			})
+
+			require.Positive(t, tokens)
+			require.Zero(t, claimed)
+		})
+	}
+}
+
+// walkBuilt calls fn for every node of a tree, including the ones ast.Walk does
+// not reach on their own.
+func walkBuilt(n ast.Node, fn func(ast.Node)) {
+	if n == nil {
+		return
+	}
+	fn(n)
+
+	switch v := n.(type) {
+	case *ast.DocumentNode:
+		walkBuilt(v.Body, fn)
+	case *ast.MappingNode:
+		for _, e := range v.Values {
+			walkBuilt(e, fn)
+		}
+	case *ast.MappingValueNode:
+		walkBuilt(v.Key, fn)
+		walkBuilt(v.Value, fn)
+	case *ast.MappingKeyNode:
+		walkBuilt(v.Value, fn)
+	case *ast.SequenceNode:
+		for _, e := range v.Values {
+			walkBuilt(e, fn)
+		}
+	case *ast.AnchorNode:
+		walkBuilt(v.Name, fn)
+		walkBuilt(v.Value, fn)
+	case *ast.AliasNode:
+		walkBuilt(v.Value, fn)
+	case *ast.TagNode:
+		walkBuilt(v.Value, fn)
+	case *ast.LiteralNode:
+		walkBuilt(v.Value, fn)
 	}
 }
