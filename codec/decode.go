@@ -1505,25 +1505,7 @@ func (d *Decoder) convertValue(v reflect.Value, typ reflect.Type, src ast.Node) 
 		return reflect.Value{}, yamlerrors.NewOverflow(typ, fmt.Sprint(v.Interface()), src.GetToken())
 	}
 	if typ.Kind() != reflect.String {
-		if !v.Type().ConvertibleTo(typ) {
-
-			// Special case for "strings -> floats" aka scientific notation
-			// If the destination type is a float and the source type is a string, check if we can
-			// use strconv.ParseFloat to convert the string to a float.
-			if (typ.Kind() == reflect.Float32 || typ.Kind() == reflect.Float64) &&
-				v.Type().Kind() == reflect.String {
-				if f, err := strconv.ParseFloat(v.String(), 64); err == nil {
-					if typ.Kind() == reflect.Float32 {
-						return reflect.ValueOf(float32(f)), nil
-					} else if typ.Kind() == reflect.Float64 {
-						return reflect.ValueOf(f), nil
-					}
-					// else, fall through to the error below
-				}
-			}
-			return reflect.Zero(typ), yamlerrors.NewTypeMismatch(typ, v.Type(), src.GetToken())
-		}
-		return v.Convert(typ), nil
+		return convertToKind(v, typ, src)
 	}
 	// cast value to string
 	var strVal string
@@ -1549,6 +1531,24 @@ func (d *Decoder) convertValue(v reflect.Value, typ reflect.Type, src ast.Node) 
 		val = val.Convert(typ)
 	}
 	return val, nil
+}
+
+// convertToKind converts v to typ, a type that is not a string kind.
+//
+// A string converts to a float kind when strconv.ParseFloat reads it, which
+// is how a quoted "1e3" fills a float field. The result has typ itself, so a
+// named float type such as `type Ratio float64` is filled as well.
+func convertToKind(v reflect.Value, typ reflect.Type, src ast.Node) (reflect.Value, error) {
+	if v.Type().ConvertibleTo(typ) {
+		return v.Convert(typ), nil
+	}
+	if isFloatKind(typ.Kind()) && v.Kind() == reflect.String {
+		if f, err := strconv.ParseFloat(v.String(), 64); err == nil {
+			return reflect.ValueOf(f).Convert(typ), nil
+		}
+	}
+
+	return reflect.Zero(typ), yamlerrors.NewTypeMismatch(typ, v.Type(), src.GetToken())
 }
 
 type jsonUnmarshaler interface {
