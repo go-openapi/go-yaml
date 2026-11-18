@@ -59,8 +59,15 @@ func TestInvariantEveryPresentationReadsAsTheValue(t *testing.T) {
 		value := yamlgen.Values().Draw(rt, "value")
 		style := yamlgen.Styles().Draw(rt, "style")
 
-		src := yamlgen.Emit(value, style)
-		expected := value.Decoded()
+		// Write rather than Emit, as TestPresentationInvariance does: a style declaring "%YAML 1.1" writes the
+		// spellings 1.1 reads differently plain on purpose, and the document then means what 1.1 makes of them.
+		// Written.Means is that answer. Held to Value.Decoded(), "+0b11" read as the 3 it is under 1.1 and was
+		// reported as the parser misreading a string.
+		w := yamlgen.Write(value, style)
+		if w.MeansUnclear {
+			return
+		}
+		src, expected := w.Text, w.Means
 
 		var got any
 		if err := yaml.Unmarshal([]byte(src), &got); err != nil {
