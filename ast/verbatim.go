@@ -1162,8 +1162,17 @@ func (r *Renderer) write(vw *verbatimWriter, n Node) {
 		}
 		r.write(vw, v.Value)
 	case *AliasNode:
+		if v.Value != nil {
+			r.writeComments(vw, v.Value, sourceExtent(v.Value), true)
+		}
 		r.writeTokenOf(vw, v.Start, v)
 		r.writeNameOf(vw, v.Value, v)
+		if v.Value != nil {
+			// As for an anchor: the comment written beside an alias is on its
+			// name, which writeNameOf writes as a token, so it is handed over
+			// here or not at all.
+			r.writeComments(vw, v.Value, sourceExtent(v.Value), false)
+		}
 	case *TagNode:
 		r.writeTokenOf(vw, v.Start, v)
 		r.write(vw, v.Value)

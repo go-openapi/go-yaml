@@ -135,3 +135,39 @@ func tokensTheTreeHolds(file *ast.File) int {
 
 	return held
 }
+
+// TestATransformIsHandedTheCommentBesideAnAlias covers a comment written after an alias.
+//
+// The parser hangs it on the alias's name, and the renderer writes that name as a token, so the comment was never
+// handed over: it reached the hook inside the text after the name, with no node, and a colorizer left it uncolored.
+// The anchor's name had the same arrangement and was already handled; the alias now is too.
+func TestATransformIsHandedTheCommentBesideAnAlias(t *testing.T) {
+	t.Parallel()
+
+	for _, src := range []string{
+		"x: &b 1\na: *b  # c\n",
+		"x: &b 1\ny:\n- *b  # c\n- *b\n",
+		"x: &b 1\ny: [*b, *b]  # c\n",
+		"x: &b 1\n? *b  # c\n: 2\n",
+		"a: &b 1  # c\n",
+	} {
+		file, err := parser.ParseBytes([]byte(src), parser.WithComments())
+		require.NoError(t, err)
+
+		var comments []string
+		collect := func(w io.Writer, s ast.Written) error {
+			if _, ok := s.Node.(*ast.CommentNode); ok {
+				comments = append(comments, string(s.Trimmed()))
+			}
+			_, err := w.Write(s.Text)
+
+			return err
+		}
+
+		var out bytes.Buffer
+		require.NoError(t, ast.NewRenderer(ast.WithSource([]byte(src)), ast.WithTransform(collect)).
+			VerbatimFile(&out, file))
+		require.Equalf(t, src, out.String(), "%q", src)
+		require.Equalf(t, []string{"# c"}, comments, "%q", src)
+	}
+}

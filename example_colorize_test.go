@@ -47,7 +47,7 @@ func stretches(w io.Writer, s ast.Written) error {
 //
 // Replace markup with colorize.Default() and the output with os.Stdout to print the document in color to a terminal.
 func Example_colorize() {
-	src := []byte("# defaults\nbase: &b {port: 8080}\nprod: *b\ndebug: true\n")
+	src := []byte("# defaults\nbase: &b {port: 8080}\nprod: *b  # same\ndebug: true\n")
 
 	file, err := parser.ParseBytes(src, parser.WithComments())
 	if err != nil {
@@ -68,7 +68,7 @@ func Example_colorize() {
 	// Output:
 	// <comment># defaults</comment>
 	// <key>base</key><ind>:</ind> <anchor>&</anchor><anchor>b</anchor> <ind>{</ind><key>port</key><ind>:</ind> <int>8080</int><ind>}</ind>
-	// <key>prod</key><ind>:</ind> <alias>*</alias><alias>b</alias>
+	// <key>prod</key><ind>:</ind> <alias>*</alias><alias>b</alias>  <comment># same</comment>
 	// <key>debug</key><ind>:</ind> <bool>true</bool>
 	// Comment      Comment      key=false "# defaults"
 	// -            -            key=true  "\n"
@@ -90,6 +90,8 @@ func Example_colorize() {
 	// -            -            key=false " "
 	// Alias        Alias        key=false "*"
 	// Alias        String       key=false "b"
+	// -            -            key=false "  "
+	// Comment      Comment      key=false "# same"
 	// -            -            key=true  "\n"
 	// String       String       key=true  "debug"
 	// MappingValue MappingValue key=false ":"
