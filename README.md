@@ -1,15 +1,15 @@
 # go-yaml
 
-<!-- Badges: status -->
-[![Tests](https://github.com/go-openapi/go-yaml/actions/workflows/go-test.yml/badge.svg)](https://github.com/go-openapi/go-yaml/actions/workflows/go-test.yml)
-[![CI vulnerability scan](https://github.com/go-openapi/go-yaml/actions/workflows/scanner.yml/badge.svg)](https://github.com/go-openapi/go-yaml/actions/workflows/scanner.yml)
-[![CodeQL](https://github.com/go-openapi/go-yaml/actions/workflows/codeql.yml/badge.svg)](https://github.com/go-openapi/go-yaml/actions/workflows/codeql.yml)
-<!-- Badges: code quality -->
-[![Go Report Card](https://goreportcard.com/badge/github.com/go-openapi/go-yaml)](https://goreportcard.com/report/github.com/go-openapi/go-yaml)
-<!-- Badges: documentation & license -->
-[![GoDoc](https://pkg.go.dev/badge/github.com/go-openapi/go-yaml)](https://pkg.go.dev/github.com/go-openapi/go-yaml)
-[![License](http://img.shields.io/badge/license-Apache--2.0-blue.svg)](./LICENSE)
-[![go version](https://img.shields.io/github/go-mod/go-version/go-openapi/go-yaml)](https://github.com/go-openapi/go-yaml)
+<!-- Badges: status  -->
+[![Tests][test-badge]][test-url] [![Coverage][cov-badge]][cov-url] [![CI vuln scan][vuln-scan-badge]][vuln-scan-url] [![CodeQL][codeql-badge]][codeql-url]
+<!-- Badges: release & docker images  -->
+<!-- Badges: code quality  -->
+<!-- Badges: license & compliance -->
+[![Release][release-badge]][release-url] [![CodeFactor Grade][codefactor-badge]][codefactor-url] [![License][license-badge]][license-url]
+<!-- Badges: documentation & support -->
+<!-- Badges: others & stats -->
+[![GoDoc][godoc-badge]][godoc-url] [![Discord Channel][discord-badge]][discord-url] [![go version][goversion-badge]][goversion-url] ![Top language][top-badge] ![Commits since latest release][commits-badge]
+
 **A Go library to work with YAML documents.**
 
 A hard fork of [`goccy/go-yaml`](https://github.com/goccy/go-yaml).
@@ -493,3 +493,37 @@ Apache-2.0 — see [LICENSE](./LICENSE).
 
 This is a hard fork of `goccy/go-yaml`, whose MIT licence permits it. That licence, and the terms of
 every other component this library is built on, are recorded in [NOTICE](./NOTICE).
+
+<!-- Badges: status  -->
+[test-badge]: https://github.com/go-openapi/go-yaml/actions/workflows/go-test.yml/badge.svg
+[test-url]: https://github.com/go-openapi/go-yaml/actions/workflows/go-test.yml
+[cov-badge]: https://codecov.io/gh/go-openapi/go-yaml/branch/master/graph/badge.svg
+[cov-url]: https://codecov.io/gh/go-openapi/go-yaml
+[vuln-scan-badge]: https://github.com/go-openapi/go-yaml/actions/workflows/scanner.yml/badge.svg
+[vuln-scan-url]: https://github.com/go-openapi/go-yaml/actions/workflows/scanner.yml
+[codeql-badge]: https://github.com/go-openapi/go-yaml/actions/workflows/codeql.yml/badge.svg
+[codeql-url]: https://github.com/go-openapi/go-yaml/actions/workflows/codeql.yml
+<!-- Badges: release & docker images  -->
+[release-badge]: https://badge.fury.io/gh/go-openapi%2Fgo-yaml.svg
+[release-url]: https://badge.fury.io/gh/go-openapi%2Fgo-yaml
+<!-- Badges: code quality  -->
+[codefactor-badge]: https://img.shields.io/codefactor/grade/github/go-openapi/go-yaml
+[codefactor-url]: https://www.codefactor.io/repository/github/go-openapi/go-yaml
+<!-- Badges: documentation & support -->
+[godoc-badge]: https://pkg.go.dev/badge/github.com/go-openapi/go-yaml
+[godoc-url]: http://pkg.go.dev/github.com/go-openapi/go-yaml
+[discord-badge]: https://img.shields.io/discord/1446918742398341256?logo=discord&label=discord&color=blue
+[discord-url]: https://discord.gg/FfnFYaC3k5
+
+<!-- Badges: license & compliance -->
+[license-badge]: http://img.shields.io/badge/license-Apache%20v2-orange.svg
+[license-url]: https://github.com/go-openapi/go-yaml/?tab=Apache-2.0-1-ov-file#readme
+<!-- Badges: others & stats -->
+[goversion-badge]: https://img.shields.io/github/go-mod/go-version/go-openapi/go-yaml
+[goversion-url]: https://github.com/go-openapi/go-yaml/blob/master/go.mod
+[top-badge]: https://img.shields.io/github/languages/top/go-openapi/go-yaml
+[commits-badge]: https://img.shields.io/github/commits-since/go-openapi/go-yaml/latest
+<!-- Organization docs -->
+[contributing-doc-site]: https://go-openapi.github.io/doc-site/contributing/contributing/index.html
+[maintainers-doc-site]: https://go-openapi.github.io/doc-site/maintainers/index.html
+[style-doc-site]: https://go-openapi.github.io/doc-site/contributing/style/index.html
