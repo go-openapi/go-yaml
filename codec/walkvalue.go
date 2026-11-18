@@ -411,60 +411,63 @@ func (b *valueBuilder) copyValue(v any, at ast.Node) any {
 
 // deliver puts a value where the node that built it belongs.
 func (b *valueBuilder) deliver(v any, node ast.Node, key bool) {
-	if n := len(b.stack); n > 0 {
-		top := &b.stack[n-1]
-		switch top.kind {
-		case frameProperty:
-			top.received, top.got = v, true
+	n := len(b.stack)
+	if n == 0 {
+		b.docs = append(b.docs, v)
+
+		return
+	}
+
+	top := &b.stack[n-1]
+	switch top.kind {
+	case frameProperty:
+		top.received, top.got = v, true
+	case frameMapping:
+		b.deliverToMapping(top, v, node, key)
+	case frameSequence:
+		if top.mergeSource && !isMapValue(v) {
+			// "<<" takes a mapping or a sequence of them, and nothing else:
+			// not a null, and not a sequence inside the sequence. mergingValue
+			// set the flag only on a sequence the merging mapping holds, so
+			// that mapping stands just below it.
+			b.stack[n-2].refuseMerge(yamlerrors.NewUnexpectedNodeType(node.Type(), ast.MappingType, node.GetToken()))
 
 			return
-		case frameMapping:
-			if key {
-				// Named from the node and not from the value, so that the type
-				// spells it: mapKeyString writes an integer in decimal and a
-				// float with the point that tells it from one.
-				name, err := mapKeyString(node, v)
-				if err != nil {
-					if top.keyErr == nil {
-						top.keyErr = err
-					}
-					top.key, top.hasKey = "", false
+		}
+		top.seq = append(top.seq, v)
+	default:
+		panic(fmt.Sprintf("codec: unknown frame kind %d", top.kind))
+	}
+}
 
-					return
-				}
-				top.keyed(b.strs.clone(name), v)
-
-				return
+// deliverToMapping puts v in the mapping top builds, as the key of the next
+// entry when key is set and as the value of the current one otherwise.
+func (b *valueBuilder) deliverToMapping(top *buildFrame, v any, node ast.Node, key bool) {
+	if key {
+		// Named from the node and not from the value, so that the type spells
+		// it: mapKeyString writes an integer in decimal and a float with the
+		// point that tells it from one.
+		name, err := mapKeyString(node, v)
+		if err != nil {
+			if top.keyErr == nil {
+				top.keyErr = err
 			}
-			if top.merging {
-				b.merge(top, v, node)
-				top.merging = false
-
-				return
-			}
-			top.put(v)
 			top.key, top.hasKey = "", false
 
 			return
-		case frameSequence:
-			if top.mergeSource && !isMapValue(v) {
-				// "<<" takes a mapping or a sequence of them, and nothing else:
-				// not a null, and not a sequence inside the sequence. mergingValue
-				// set the flag only on a sequence the merging mapping holds, so
-				// that mapping stands just below it.
-				b.stack[n-2].refuseMerge(yamlerrors.NewUnexpectedNodeType(node.Type(), ast.MappingType, node.GetToken()))
-
-				return
-			}
-			top.seq = append(top.seq, v)
-
-			return
-		default:
-			panic(fmt.Sprintf("codec: unknown frame kind %d", top.kind))
 		}
-	}
+		top.keyed(b.strs.clone(name), v)
 
-	b.docs = append(b.docs, v)
+		return
+	}
+	if top.merging {
+		b.merge(top, v, node)
+		top.merging = false
+
+		return
+	}
+	top.put(v)
+	top.key, top.hasKey = "", false
 }
 
 // keyed records the key an entry is being written under, and whether it is a

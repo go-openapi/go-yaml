@@ -393,6 +393,39 @@ func numberBeyondBigFloat(want, got any) (string, bool) {
 	return "the decoder reads a number past big.Float's exponent as zero, where ToJSON writes the text", true
 }
 
+// jsonCounterpart returns the value got holds for want's key k: under k
+// itself, or under a name one of the two converters gives the key differently,
+// which is a recorded defect rather than a disagreement about the document.
+func jsonCounterpart(got map[string]any, k string, excused *[]string) (any, bool) {
+	if other, found := got[k]; found {
+		return other, true
+	}
+
+	// An explicit "!!float" on a key loses its float-ness through the decoder,
+	// so the value converter writes "226" where ToJSON writes "226.0".
+	// Untagged, both write "226.0".
+	if float, renamed := got[k+".0"]; renamed {
+		*excused = append(*excused,
+			"an explicit !!float on a key is named as an integer through the decoder")
+
+		return float, true
+	}
+
+	// The other way a key is named twice: a float key written the long way
+	// keeps its source text through ToJSON. "? 1e3" over ": x" converts to
+	// {"1e3":"x"} where "1e3: x" converts to {"1000.0":"x"}, and the decoder
+	// names both "1000.0". Pinned in
+	// TestDefectToJSONNamesALongFormFloatKeyByItsText.
+	if number, renamed := keyNamingTheSameNumber(got, k); renamed {
+		*excused = append(*excused,
+			"a float key written the long way keeps its source text through ToJSON")
+
+		return number, true
+	}
+
+	return nil, false
+}
+
 // sameJSON compares two decoded documents, with numbers compared by value.
 //
 // UseNumber keeps a number as the text it was written with, and the two
@@ -429,45 +462,8 @@ func sameJSON(want, got any, excused *[]string) bool {
 		}
 
 		for k, v := range w {
-			other, found := g[k]
-			if !found {
-				// A key the two converters name differently is a recorded
-				// defect rather than a disagreement about the document: an
-				// explicit "!!float" on a key loses its float-ness through the
-				// decoder, so the value converter writes "226" where ToJSON
-				// writes "226.0". Untagged, both write "226.0".
-				if float, renamed := g[k+".0"]; renamed {
-					*excused = append(*excused,
-						"an explicit !!float on a key is named as an integer through the decoder")
-
-					if !sameJSON(v, float, excused) {
-						return false
-					}
-
-					continue
-				}
-
-				// The other way a key is named twice: a float key written the
-				// long way keeps its source text through ToJSON. "? 1e3" over
-				// ": x" converts to {"1e3":"x"} where "1e3: x" converts to
-				// {"1000.0":"x"}, and the decoder names both "1000.0".
-				// Pinned in
-				// TestDefectToJSONNamesALongFormFloatKeyByItsText.
-				if number, renamed := keyNamingTheSameNumber(g, k); renamed {
-					*excused = append(*excused,
-						"a float key written the long way keeps its source text through ToJSON")
-
-					if !sameJSON(v, number, excused) {
-						return false
-					}
-
-					continue
-				}
-
-				return false
-			}
-
-			if !sameJSON(v, other, excused) {
+			other, found := jsonCounterpart(g, k, excused)
+			if !found || !sameJSON(v, other, excused) {
 				return false
 			}
 		}

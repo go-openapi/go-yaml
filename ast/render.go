@@ -813,23 +813,7 @@ func (r *Renderer) sequence(n *SequenceNode) rendered {
 			lines = append(lines, join(sepNone, leaf(blank), r.render(head)))
 			blank = ""
 		} else if blank == "" {
-			// A head comment the caller removed still says where the author
-			// left a gap, and it is the only thing that does: the entry's own
-			// token stands under the comment, not under the blank line.
-			if r.comments && head != nil {
-				blank = blankAboveComment(head)
-			}
-			// Only a block collection reports a gap of its own. For anything
-			// else the sequence reads it off the entry's first token, falling
-			// back to the '-'. An empty entry has no token of its own to read:
-			// ": &1" over a blank over "-" over "? \"\"" wrote the '-' with
-			// nothing above it and lost the author's blank line.
-			if blank == "" {
-				blank = blankLineBefore(value)
-			}
-			if blank == "" {
-				blank = entryBlankLine(n, i)
-			}
+			blank = r.entryGap(n, i, value, head)
 		}
 		comment := r.entryLineComment(n, i)
 		if comment != "" && (carriesOwnIndent(value) ||
@@ -871,6 +855,29 @@ func (r *Renderer) sequence(n *SequenceNode) rendered {
 	}
 
 	return join(sepBreak, lines...)
+}
+
+// entryGap returns the blank line the author left above entry i of n, value,
+// where no head comment is rendered to carry it.
+func (r *Renderer) entryGap(n *SequenceNode, i int, value Node, head *CommentGroupNode) string {
+	// A head comment the caller removed still says where the author left a
+	// gap, and it is the only thing that does: the entry's own token stands
+	// under the comment, not under the blank line.
+	if r.comments && head != nil {
+		if blank := blankAboveComment(head); blank != "" {
+			return blank
+		}
+	}
+	// Only a block collection reports a gap of its own. For anything else the
+	// sequence reads it off the entry's first token, falling back to the '-'.
+	// An empty entry has no token of its own to read: ": &1" over a blank over
+	// "-" over "? \"\"" wrote the '-' with nothing above it and lost the
+	// author's blank line.
+	if blank := blankLineBefore(value); blank != "" {
+		return blank
+	}
+
+	return entryBlankLine(n, i)
 }
 
 // headOf returns the comment written above the entry at index i, or nil.

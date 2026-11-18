@@ -188,6 +188,25 @@ func (s *Scanner) refuseMultiLine(ctx *Context, msg string) error {
 	return ErrInvalidToken(msg, tk)
 }
 
+// endMultiLine closes the literal or folded scalar being read, where the
+// indentation drops below its content.
+//
+// Empty literal/folded content adds no string token, so an empty one is
+// added; but a literal/folded indicator at column 1 is invalid at the drop.
+func (s *Scanner) endMultiLine(ctx *Context) error {
+	if tk := ctx.lastToken(); tk != nil {
+		if tk.Position.Column == 1 {
+			return ErrInvalidToken("could not find multi-line content", token.Invalid(ctx.origin(), s.pos()))
+		}
+		if tk.Type != token.StringType {
+			ctx.addTokenValue(token.MakeString("", "", s.pos()))
+		}
+	}
+	ctx.breakMultiLine()
+
+	return nil
+}
+
 func (s *Scanner) scanMultiLineHeader(ctx *Context) (bool, error) {
 	if ctx.existsBuffer() || s.inAnchorName(ctx.currentChar()) {
 		return false, nil

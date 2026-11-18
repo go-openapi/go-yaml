@@ -3027,13 +3027,14 @@ map:
 				if !strings.Contains(err.Error(), test.err) {
 					t.Fatalf("expected error message: %s to contain: %s", err.Error(), test.err)
 				}
-			} else {
-				if err != nil {
-					t.Fatalf("%+v", err)
-				}
-				if !reflect.DeepEqual(test.expectedValue, v) {
-					t.Fatalf("non matching values:\nexpected[%s]\ngot     [%s]", test.expectedValue, v)
-				}
+
+				return
+			}
+			if err != nil {
+				t.Fatalf("%+v", err)
+			}
+			if !reflect.DeepEqual(test.expectedValue, v) {
+				t.Fatalf("non matching values:\nexpected[%s]\ngot     [%s]", test.expectedValue, v)
 			}
 		})
 	}

@@ -398,78 +398,7 @@ func (p *Parser) parseMapKey(ctx context, g *group.TokenGroup) (ast.MapKeyNode, 
 		return nil, yamlerrors.NewSyntax("unexpected map key", g.RawToken())
 	}
 	if g.First().Type() == token.MappingKeyType {
-		mapKeyTk := g.First()
-		if mapKeyTk.Group != nil {
-			ctx = ctx.withGroup(p, mapKeyTk.Group)
-		}
-		key, err := newMappingKeyNode(ctx, mapKeyTk)
-		if err != nil {
-			return nil, err
-		}
-		if cm := takeIndicatorComment(ctx, mapKeyTk); cm != nil {
-			group := ast.CommentGroup([]*token.Token{cm})
-			group.SetPathNode(ctx.path)
-			if err := key.SetComment(group); err != nil {
-				return nil, err
-			}
-		}
-		if p.explicitMergeKey(ctx) != nil {
-			return p.parseExplicitMergeKey(ctx, g, key)
-		}
-
-		// A "?" encloses the key node, so it goes to the walk before that node and is left after it,
-		// as an anchor and a tag are. Handed over afterwards, as parseMapEntry hands a plain key,
-		// it would follow its own content, and "? a\n: b" would read as the three values a, ? and b.
-		p.enterKey(ctx, key, KindKey)
-		defer p.leave(ctx, key)
-
-		ctx.goNext() // Skip the '?'.
-		if ctx.isTokenNotFound() {
-			return nil, yamlerrors.NewSyntax("could not find value for mapping key", mapKeyTk.RawToken())
-		}
-
-		doneKey := p.descent.enterKey()
-		value, err := p.parseToken(ctx, ctx.currentToken())
-		doneKey()
-		if err != nil {
-			return nil, err
-		}
-		// Section 8.2.2 gives the key one node (s-l+block-indented(n, block-out)),
-		// and everything indented past the '?' belongs to it.
-		// A token left over is a second node the key cannot hold, and "? a" over " : b" would otherwise lose the b.
-		if left := unreadInGroup(ctx); left != nil {
-			return nil, yamlerrors.NewSyntax("an explicit key names one node, and this stands past it", left.RawToken())
-		}
-		scalar, ok := value.(ast.MapKeyNode)
-		if !ok {
-			return nil, yamlerrors.NewSyntax("cannot use this node as a map key", value.GetToken())
-		}
-		// A comment closing the line of the '?' belongs to the key, and the renderer writes it on the key's node,
-		// as it does for "? a # note". Left on the MappingKeyNode, no renderer writes it,
-		// and "? # c" over "  k" over ": v" would render as "? k" over ": v".
-		// The comment moves to the key's own line: "? # c" over "  k" comes back as "? k # c".
-		if cm := key.GetComment(); cm != nil && value.GetComment() == nil {
-			// ast.TakeComment and not SetComment(nil):
-			// the tree is being built, and the document's text is not changing.
-			// SetComment rejects dropping a comment the document wrote,
-			// because the renderer would then have nothing to remove the old text by.
-			ast.TakeComment(key)
-			if err := value.SetComment(cm); err != nil {
-				return nil, err
-			}
-		}
-		key.Value = scalar
-		if _, isScalar := value.(ast.ScalarNode); isScalar {
-			keyText := p.mapKeyText(scalar)
-			key.SetPathNode(ctx.withChild(p, keyText).path)
-		}
-		// A collection used as a key gets no path: neither YAMLPath nor JSON Pointer has syntax that reaches one.
-		// It is still a key, so validateMapKey still checks it for a repeat.
-		if err := p.validateMapKey(ctx, key, g.Last()); err != nil {
-			return nil, err
-		}
-
-		return key, nil
+		return p.parseExplicitMapKey(ctx, g)
 	}
 	if g.Last().Type() != token.MappingValueType {
 		return nil, yamlerrors.NewSyntax("expected map key-value delimiter ':'", g.Last().RawToken())
@@ -487,6 +416,82 @@ func (p *Parser) parseMapKey(ctx context, g *group.TokenGroup) (ast.MapKeyNode, 
 	}
 	keyText := p.mapKeyText(key)
 	key.SetPathNode(ctx.withChild(p, keyText).path)
+	if err := p.validateMapKey(ctx, key, g.Last()); err != nil {
+		return nil, err
+	}
+
+	return key, nil
+}
+
+// parseExplicitMapKey reads the key of group g, which opens on a "?".
+func (p *Parser) parseExplicitMapKey(ctx context, g *group.TokenGroup) (ast.MapKeyNode, error) {
+	mapKeyTk := g.First()
+	if mapKeyTk.Group != nil {
+		ctx = ctx.withGroup(p, mapKeyTk.Group)
+	}
+	key, err := newMappingKeyNode(ctx, mapKeyTk)
+	if err != nil {
+		return nil, err
+	}
+	if cm := takeIndicatorComment(ctx, mapKeyTk); cm != nil {
+		group := ast.CommentGroup([]*token.Token{cm})
+		group.SetPathNode(ctx.path)
+		if err := key.SetComment(group); err != nil {
+			return nil, err
+		}
+	}
+	if p.explicitMergeKey(ctx) != nil {
+		return p.parseExplicitMergeKey(ctx, g, key)
+	}
+
+	// A "?" encloses the key node, so it goes to the walk before that node and is left after it,
+	// as an anchor and a tag are. Handed over afterwards, as parseMapEntry hands a plain key,
+	// it would follow its own content, and "? a\n: b" would read as the three values a, ? and b.
+	p.enterKey(ctx, key, KindKey)
+	defer p.leave(ctx, key)
+
+	ctx.goNext() // Skip the '?'.
+	if ctx.isTokenNotFound() {
+		return nil, yamlerrors.NewSyntax("could not find value for mapping key", mapKeyTk.RawToken())
+	}
+
+	doneKey := p.descent.enterKey()
+	value, err := p.parseToken(ctx, ctx.currentToken())
+	doneKey()
+	if err != nil {
+		return nil, err
+	}
+	// Section 8.2.2 gives the key one node (s-l+block-indented(n, block-out)),
+	// and everything indented past the '?' belongs to it.
+	// A token left over is a second node the key cannot hold, and "? a" over " : b" would otherwise lose the b.
+	if left := unreadInGroup(ctx); left != nil {
+		return nil, yamlerrors.NewSyntax("an explicit key names one node, and this stands past it", left.RawToken())
+	}
+	scalar, ok := value.(ast.MapKeyNode)
+	if !ok {
+		return nil, yamlerrors.NewSyntax("cannot use this node as a map key", value.GetToken())
+	}
+	// A comment closing the line of the '?' belongs to the key, and the renderer writes it on the key's node,
+	// as it does for "? a # note". Left on the MappingKeyNode, no renderer writes it,
+	// and "? # c" over "  k" over ": v" would render as "? k" over ": v".
+	// The comment moves to the key's own line: "? # c" over "  k" comes back as "? k # c".
+	if cm := key.GetComment(); cm != nil && value.GetComment() == nil {
+		// ast.TakeComment and not SetComment(nil):
+		// the tree is being built, and the document's text is not changing.
+		// SetComment rejects dropping a comment the document wrote,
+		// because the renderer would then have nothing to remove the old text by.
+		ast.TakeComment(key)
+		if err := value.SetComment(cm); err != nil {
+			return nil, err
+		}
+	}
+	key.Value = scalar
+	if _, isScalar := value.(ast.ScalarNode); isScalar {
+		keyText := p.mapKeyText(scalar)
+		key.SetPathNode(ctx.withChild(p, keyText).path)
+	}
+	// A collection used as a key gets no path: neither YAMLPath nor JSON Pointer has syntax that reaches one.
+	// It is still a key, so validateMapKey still checks it for a repeat.
 	if err := p.validateMapKey(ctx, key, g.Last()); err != nil {
 		return nil, err
 	}

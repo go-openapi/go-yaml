@@ -294,24 +294,14 @@ func (s *Scanner) scan(ctx *Context) error {
 		}
 
 		if ctx.isMultiLine() {
-			if s.isChangedToIndentStateDown() {
-				if tk := ctx.lastToken(); tk != nil {
-					// If literal/folded content is empty, no string token is added.
-					// Therefore, add an empty string token.
-					// But if literal/folded token column is 1, it is invalid at down state.
-					if tk.Position.Column == 1 {
-						return ErrInvalidToken("could not find multi-line content", token.Invalid(ctx.origin(), s.pos()))
-					}
-					if tk.Type != token.StringType {
-						ctx.addTokenValue(token.MakeString("", "", s.pos()))
-					}
-				}
-				ctx.breakMultiLine()
-			} else {
+			if !s.isChangedToIndentStateDown() {
 				if err := s.scanMultiLine(ctx, c); err != nil {
 					return err
 				}
 				continue
+			}
+			if err := s.endMultiLine(ctx); err != nil {
+				return err
 			}
 		}
 

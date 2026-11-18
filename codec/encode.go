@@ -489,23 +489,25 @@ func (e *Encoder) encodeByMarshaler(ctx context.Context, v reflect.Value, column
 
 	if e.useJSONMarshaler {
 		if marshaler, ok := iface.(jsonMarshaler); ok {
-			jsonBytes, err := marshaler.MarshalJSON()
-			if err != nil {
-				return nil, err
-			}
-			doc, err := FromJSON(jsonBytes) //nolint:contextcheck // decodes JSON into any: no user unmarshaler can receive the context
-			if err != nil {
-				return nil, err
-			}
-			node, err := e.encodeDocument(doc)
-			if err != nil {
-				return nil, err
-			}
-			return node, nil
+			return e.encodeJSON(marshaler) //nolint:contextcheck // FromJSON decodes into any: no user unmarshaler can receive the context
 		}
 	}
 
 	return nil, errors.New("does not implemented GoYAMLMarshaler")
+}
+
+// encodeJSON encodes the YAML document the JSON marshaler writes converts to.
+func (e *Encoder) encodeJSON(marshaler jsonMarshaler) (ast.Node, error) {
+	jsonBytes, err := marshaler.MarshalJSON()
+	if err != nil {
+		return nil, err
+	}
+	doc, err := FromJSON(jsonBytes)
+	if err != nil {
+		return nil, err
+	}
+
+	return e.encodeDocument(doc)
 }
 
 func (e *Encoder) encodeValue(ctx context.Context, v reflect.Value, column int) (ast.Node, error) {
@@ -1257,25 +1259,26 @@ func (e *Encoder) encodeStruct(ctx context.Context, value reflect.Value, column 
 		}
 		node.Values = append(node.Values, ast.MappingValue(nil, key, encoded))
 	}
-	if hasInlineAnchorField {
-		anchorName := "anchor"
-		anchorNode := ast.Anchor(token.New("&", "&", e.pos(column)))
-		anchorNode.Name = ast.String(token.New(anchorName, anchorName, e.pos(column)))
-		anchorNode.Value = node
-		if e.anchorCallback != nil {
-			if err := e.anchorCallback(anchorNode, value.Addr().Interface()); err != nil {
-				return nil, err
-			}
-			if snode, ok := anchorNode.Name.(*ast.StringNode); ok {
-				anchorName = snode.Value
-			}
-		}
-		if inlineAnchorValue.Kind() == reflect.Pointer {
-			e.setAnchor(inlineAnchorValue.Pointer(), anchorName)
-		}
-		return anchorNode, nil
+	if !hasInlineAnchorField {
+		return node, nil
 	}
-	return node, nil
+	anchorName := "anchor"
+	anchorNode := ast.Anchor(token.New("&", "&", e.pos(column)))
+	anchorNode.Name = ast.String(token.New(anchorName, anchorName, e.pos(column)))
+	anchorNode.Value = node
+	if e.anchorCallback != nil {
+		if err := e.anchorCallback(anchorNode, value.Addr().Interface()); err != nil {
+			return nil, err
+		}
+		if snode, ok := anchorNode.Name.(*ast.StringNode); ok {
+			anchorName = snode.Value
+		}
+	}
+	if inlineAnchorValue.Kind() == reflect.Pointer {
+		e.setAnchor(inlineAnchorValue.Pointer(), anchorName)
+	}
+
+	return anchorNode, nil
 }
 
 func (e *Encoder) toPointer(v reflect.Value) uintptr {

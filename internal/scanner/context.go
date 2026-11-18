@@ -6,7 +6,6 @@ package scanner
 import (
 	"bytes"
 	"fmt"
-	"slices"
 	"strconv"
 	"unsafe"
 
@@ -417,39 +416,37 @@ func (c *Context) bufferedSrc() []byte {
 
 	src := c.buf[:c.notSpaceCharPos]
 	if c.isMultiLine() {
-		mstate := c.getMultiLineState()
-		// remove end '\n' character and trailing empty lines. https://yaml.org/spec/1.2.2/#8112-block-chomping-indicator.
-		if mstate.hasTrimAllEndNewlineOpt() {
-			// If the '-' flag is specified, all trailing newline characters will be removed.
-			src = bytes.TrimRight(src, "\n")
-		} else if !mstate.hasKeepAllEndNewlineOpt() {
-			// Normally, all but one of the trailing newline characters are removed.
-			var newLineCharCount int
-			for _, s := range slices.Backward(src) {
-				if s == '\n' {
-					newLineCharCount++
-					continue
-				}
-				break
-			}
-			removedNewLineCharCount := newLineCharCount - 1
-			for removedNewLineCharCount > 0 {
-				src = bytes.TrimSuffix(src, []byte("\n"))
-				removedNewLineCharCount--
-			}
-		}
+		return chomp(src, c.getMultiLineState())
+	}
 
-		if string(src) == "\n" {
-			// If the content consists only of a newline, it can be considered as the document ending without any specified
-			// value, so it is treated as an empty string.
-			src = nil
-		}
-		if mstate.hasKeepAllEndNewlineOpt() && len(src) == 0 && mstate.sawLineBreak {
-			// '+' keeps every trailing break, including the one the rule above just dropped.
-			// Only where the content had a break to begin with: "--- |1+" ends the source at the header and reads as "".
-			src = []byte{'\n'}
+	return src
+}
+
+// chomp applies the block chomping indicator of mstate to src, the content of
+// a literal or folded scalar: it removes the end '\n' character and trailing
+// empty lines. https://yaml.org/spec/1.2.2/#8112-block-chomping-indicator.
+func chomp(src []byte, mstate *MultiLineState) []byte {
+	if mstate.hasTrimAllEndNewlineOpt() {
+		// If the '-' flag is specified, all trailing newline characters will be removed.
+		src = bytes.TrimRight(src, "\n")
+	} else if !mstate.hasKeepAllEndNewlineOpt() {
+		// Normally, all but one of the trailing newline characters are removed.
+		if trimmed := bytes.TrimRight(src, "\n"); len(src)-len(trimmed) > 1 {
+			src = src[:len(trimmed)+1]
 		}
 	}
+
+	if string(src) == "\n" {
+		// If the content consists only of a newline, it can be considered as the document ending without any specified
+		// value, so it is treated as an empty string.
+		src = nil
+	}
+	if mstate.hasKeepAllEndNewlineOpt() && len(src) == 0 && mstate.sawLineBreak {
+		// '+' keeps every trailing break, including the one the rule above just dropped.
+		// Only where the content had a break to begin with: "--- |1+" ends the source at the header and reads as "".
+		src = []byte{'\n'}
+	}
+
 	return src
 }
 

@@ -92,32 +92,20 @@ func (p *Parser) parseFlowMap(ctx context) (*ast.MappingNode, error) {
 			p.handKey(ctx, key)
 			ctx := p.valueContext(ctx, key)
 			colonTk := mapKeyTk.Group.Last()
-			if p.isFlowMapDelim(ctx.nextToken()) {
-				// The null stands for the value "{p: , q: 2}" leaves out, and the walk hands it over like any other value.
-				value, err := p.handNull(ctx, ctx.insertNullToken(colonTk))
-				if err != nil {
-					return nil, err
-				}
-				mapValue, err := p.mappingValue(ctx, colonTk, entryTk, key, value)
-				if err != nil {
-					return nil, err
-				}
-				p.holdFlowEntry(node, mapValue)
+			// A ',' or '}' right after the ':' leaves the value out, and the cursor moves past the ':' only once
+			// the entry is held; otherwise it moves onto the value before reading it.
+			omitted := p.isFlowMapDelim(ctx.nextToken())
+			value, err := p.flowMapValue(ctx, colonTk, omitted)
+			if err != nil {
+				return nil, err
+			}
+			mapValue, err := p.mappingValue(ctx, colonTk, entryTk, key, value)
+			if err != nil {
+				return nil, err
+			}
+			p.holdFlowEntry(node, mapValue)
+			if omitted {
 				ctx.goNext()
-			} else {
-				ctx.goNext()
-				if ctx.isTokenNotFound() {
-					return nil, yamlerrors.NewSyntax("could not find map value", colonTk.RawToken())
-				}
-				value, err := p.parseToken(ctx, ctx.currentToken())
-				if err != nil {
-					return nil, err
-				}
-				mapValue, err := p.mappingValue(ctx, colonTk, entryTk, key, value)
-				if err != nil {
-					return nil, err
-				}
-				p.holdFlowEntry(node, mapValue)
 			}
 		default:
 			if opensAFlowCollection(mapKeyTk) {
@@ -210,6 +198,22 @@ func (p *Parser) parseFlowMap(ctx context) (*ast.MappingNode, error) {
 	}
 	ctx.goNext() // Skip the '}'.
 	return node, nil
+}
+
+// flowMapValue reads the value of a flow mapping entry whose ':' is colonTk.
+//
+// Where omitted, a null stands for the value "{p: , q: 2}" leaves out, and the walk hands it over like any other
+// value. Otherwise the cursor moves onto the value and reads it.
+func (p *Parser) flowMapValue(ctx context, colonTk *group.TapeToken, omitted bool) (ast.Node, error) {
+	if omitted {
+		return p.handNull(ctx, ctx.insertNullToken(colonTk))
+	}
+	ctx.goNext()
+	if ctx.isTokenNotFound() {
+		return nil, yamlerrors.NewSyntax("could not find map value", colonTk.RawToken())
+	}
+
+	return p.parseToken(ctx, ctx.currentToken())
 }
 
 // unclosed names why a flow collection ran out of tokens before its closer.
