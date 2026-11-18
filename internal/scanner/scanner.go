@@ -396,7 +396,11 @@ func (s *Scanner) scan(ctx *Context) error {
 				return err
 			}
 		case '?':
-			if s.scanMapKey(ctx) {
+			scanned, err := s.scanMapKey(ctx)
+			if err != nil {
+				return err
+			}
+			if scanned {
 				continue
 			}
 		case '&':

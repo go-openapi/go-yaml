@@ -81,9 +81,9 @@ func (s *Scanner) scanMapDelim(ctx *Context) (bool, error) {
 	return true, nil
 }
 
-func (s *Scanner) scanMapKey(ctx *Context) bool {
+func (s *Scanner) scanMapKey(ctx *Context) (bool, error) {
 	if ctx.existsBuffer() {
-		return false
+		return false, nil
 	}
 
 	// c-l-block-map-explicit-key is "?" followed by s-l+block-indented, and a line break may separate the two just as
@@ -93,7 +93,16 @@ func (s *Scanner) scanMapKey(ctx *Context) bool {
 	switch nc := ctx.nextChar(); nc {
 	case ' ', '\t', '\n', '\r', rune(0):
 	default:
-		return false
+		return false, nil
+	}
+
+	if s.tabStandsWhereAnEntryNeedsIndent(ctx) && !s.isFlowMode() {
+		// As for an implicit key's ':' in scanMapDelim: the "?" opens a block mapping entry, which s-indent(n) introduces,
+		// and s-indent(n) is spaces. "\t?" and " \t? a" were read as entries; "[\t? a]" is a flow pair and reads.
+		invalidTk := token.Invalid(ctx.origin(), s.pos())
+		s.progressColumn(ctx, 1)
+
+		return false, ErrInvalidToken("tab character cannot stand for the indentation a mapping entry needs", invalidTk)
 	}
 
 	tk := token.MakeMappingKey(s.pos())
@@ -102,7 +111,7 @@ func (s *Scanner) scanMapKey(ctx *Context) bool {
 	s.progressColumn(ctx, 1)
 	ctx.clear()
 
-	return true
+	return true, nil
 }
 
 // isFlowIndicator reports whether c is one of the characters that end an entry of a flow collection.
