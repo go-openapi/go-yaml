@@ -1619,7 +1619,7 @@ func (d *Decoder) deleteStructKeys(structType reflect.Type, unknownFields map[st
 // and "yes" is true. Without the line the fragment parsed as 1.2, and a merge
 // inside it came back as an ordinary key named "<<".
 func (d *Decoder) unmarshalableDocument(node ast.Node) ([]byte, error) { //nolint:unparam // signature kept stable: callers already handle the error
-	doc := format.FormatNodeWithResolvedAlias(node, d.anchorNodeMap)
+	doc := format.NodeWithResolvedAlias(node, d.anchorNodeMap)
 	if d.docSchema == token.Schema11 {
 		return []byte("%YAML 1.1\n---\n" + doc), nil
 	}
@@ -1627,7 +1627,7 @@ func (d *Decoder) unmarshalableDocument(node ast.Node) ([]byte, error) { //nolin
 }
 
 func (d *Decoder) unmarshalableText(node ast.Node) ([]byte, bool) {
-	doc := format.FormatNodeWithResolvedAlias(node, d.anchorNodeMap)
+	doc := format.NodeWithResolvedAlias(node, d.anchorNodeMap)
 	var v string
 	if err := Unmarshal([]byte(doc), &v); err != nil {
 		return nil, false
@@ -3596,7 +3596,7 @@ func holdsAValue(doc *ast.DocumentNode) bool {
 
 func (d *Decoder) readersUnderDirRecursive(dir string) ([]io.Reader, error) {
 	readers := []io.Reader{}
-	if err := filepath.Walk(dir, func(path string, info os.FileInfo, _ error) error {
+	if err := filepath.Walk(dir, func(path string, _ os.FileInfo, _ error) error {
 		if !d.isYAMLFile(path) {
 			return nil
 		}

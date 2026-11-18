@@ -267,7 +267,7 @@ func UseJSONUnmarshaler() DecodeOption {
 func CustomUnmarshaler[T any](unmarshaler func(*T, []byte) error) DecodeOption {
 	return func(d *Decoder) error {
 		var typ *T
-		d.customUnmarshalerMap[reflect.TypeOf(typ)] = func(ctx context.Context, v any, b []byte) error {
+		d.customUnmarshalerMap[reflect.TypeOf(typ)] = func(_ context.Context, v any, b []byte) error {
 			return unmarshaler(customArg[*T](v), b)
 		}
 		return nil
@@ -421,7 +421,7 @@ func WriteInferredNames(write bool) EncodeOption {
 func CustomMarshaler[T any](marshaler func(T) ([]byte, error)) EncodeOption {
 	return func(e *Encoder) error {
 		var typ T
-		e.customMarshalerMap[reflect.TypeOf(typ)] = func(ctx context.Context, v any) ([]byte, error) {
+		e.customMarshalerMap[reflect.TypeOf(typ)] = func(_ context.Context, v any) ([]byte, error) {
 			return marshaler(customArg[T](v))
 		}
 		return nil

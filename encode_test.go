@@ -1511,7 +1511,7 @@ func TestEncoder_CustomMarshaler(t *testing.T) {
 		type T struct {
 			Foo string `yaml:"foo"`
 		}
-		b, err := codec.MarshalWithOptions(&T{Foo: "bar"}, codec.CustomMarshaler[T](func(v T) ([]byte, error) {
+		b, err := codec.MarshalWithOptions(&T{Foo: "bar"}, codec.CustomMarshaler[T](func(_ T) ([]byte, error) {
 			return []byte(`"override"`), nil
 		}))
 		if err != nil {
@@ -1542,12 +1542,12 @@ func TestEncoder_CustomMarshaler(t *testing.T) {
 		type T struct {
 			Foo []byte `yaml:"foo"`
 		}
-		ctx := context.WithValue(context.Background(), "plop", uint(42))
+		ctx := context.WithValue(context.Background(), contextKey("plop"), uint(42))
 		b, err := codec.MarshalContext(ctx, &T{Foo: []byte("bar")}, codec.CustomMarshalerContext[[]byte](func(ctx context.Context, v []byte) ([]byte, error) {
 			if !bytes.Equal(v, []byte("bar")) {
 				t.Fatalf("failed to get src buffer: %q", v)
 			}
-			if ctx.Value("plop") != uint(42) {
+			if ctx.Value(contextKey("plop")) != uint(42) {
 				t.Fatalf("context value is not correct")
 			}
 			return []byte(`override`), nil
@@ -1809,7 +1809,7 @@ func Test_Marshaler(t *testing.T) {
 type marshalContext struct{}
 
 func (c *marshalContext) MarshalYAML(ctx context.Context) ([]byte, error) {
-	v, ok := ctx.Value("k").(int)
+	v, ok := ctx.Value(contextKey("k")).(int)
 	if !ok {
 		return nil, errors.New("cannot get valid context")
 	}
@@ -1820,7 +1820,7 @@ func (c *marshalContext) MarshalYAML(ctx context.Context) ([]byte, error) {
 }
 
 func Test_MarshalerContext(t *testing.T) {
-	ctx := context.WithValue(context.Background(), "k", 1)
+	ctx := context.WithValue(context.Background(), contextKey("k"), 1)
 	bytes, err := codec.MarshalContext(ctx, &marshalContext{})
 	if err != nil {
 		t.Fatalf("%+v", err)

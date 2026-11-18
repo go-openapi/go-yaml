@@ -2375,12 +2375,12 @@ func TestDecoder_CustomUnmarshaler(t *testing.T) {
 		}
 		src := []byte(`foo: "bar"`)
 		var v T
-		ctx := context.WithValue(context.Background(), "plop", uint(42))
+		ctx := context.WithValue(context.Background(), contextKey("plop"), uint(42))
 		err := codec.UnmarshalContext(ctx, src, &v, codec.CustomUnmarshalerContext[[]byte](func(ctx context.Context, dst *[]byte, b []byte) error {
 			if !bytes.Equal(b, []byte(`"bar"`)) {
 				t.Fatalf("failed to get target buffer: %q", b)
 			}
-			require.Equalf(t, uint(42), ctx.Value("plop"), "context value is not correct")
+			require.Equalf(t, uint(42), ctx.Value(contextKey("plop")), "context value is not correct")
 			*dst = []byte("bazbaz")
 			return nil
 		}))
@@ -2392,12 +2392,15 @@ func TestDecoder_CustomUnmarshaler(t *testing.T) {
 	})
 }
 
+// contextKey keys the values these tests put in a context.Context.
+type contextKey string
+
 type unmarshalContext struct {
 	v int
 }
 
 func (c *unmarshalContext) UnmarshalYAML(ctx context.Context, b []byte) error {
-	v, ok := ctx.Value("k").(int)
+	v, ok := ctx.Value(contextKey("k")).(int)
 	if !ok {
 		return errors.New("cannot get valid context")
 	}
@@ -2412,7 +2415,7 @@ func (c *unmarshalContext) UnmarshalYAML(ctx context.Context, b []byte) error {
 }
 
 func Test_UnmarshalerContext(t *testing.T) {
-	ctx := context.WithValue(context.Background(), "k", 1)
+	ctx := context.WithValue(context.Background(), contextKey("k"), 1)
 	var v unmarshalContext
 	if err := codec.UnmarshalContext(ctx, []byte(`1`), &v); err != nil {
 		t.Fatalf("%+v", err)
@@ -2520,7 +2523,7 @@ foo: # comment
 				[]byte(test),
 				&v,
 				codec.CommentToMap(m),
-				codec.CustomUnmarshaler[T](func(dst *T, b []byte) error {
+				codec.CustomUnmarshaler[T](func(_ *T, b []byte) error {
 					if string(b) != want[idx] {
 						return fmt.Errorf("got %q, want %q", string(b), want[idx])
 					}
@@ -3674,7 +3677,7 @@ aaaaa:
         foo
           bar`, "\n")
 	if string(b) != expected {
-		return fmt.Errorf("failed to decode: expected:\n[%s]\nbut got:\n[%s]\n", expected, string(b))
+		return fmt.Errorf("failed to decode: expected:\n[%s]\nbut got:\n[%s]", expected, string(b))
 	}
 	return nil
 }
@@ -3706,7 +3709,7 @@ foo:
 func TestBytesUnmarshalerWithEmptyValue(t *testing.T) {
 	type T struct{}
 
-	unmarshaler := func(dst *T, b []byte) error {
+	unmarshaler := func(_ *T, b []byte) error {
 		var v any
 		return yaml.Unmarshal(b, &v)
 	}
@@ -3905,7 +3908,7 @@ func (i *issue337Template) UnmarshalYAML(b []byte) error {
     foo: FOO
 `, "\n")
 	if !bytes.Equal(b, []byte(expected)) {
-		return fmt.Errorf("expected:\n%s\nbut got:\n%s\n", expected, string(b))
+		return fmt.Errorf("expected:\n%s\nbut got:\n%s", expected, string(b))
 	}
 	return nil
 }

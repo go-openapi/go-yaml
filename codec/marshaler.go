@@ -187,7 +187,7 @@ func RegisterCustomMarshaler[T any](marshaler func(T) ([]byte, error)) {
 	defer globalCustomMarshalerMu.Unlock()
 
 	var typ T
-	globalCustomMarshalerMap[reflect.TypeOf(typ)] = func(ctx context.Context, v any) ([]byte, error) {
+	globalCustomMarshalerMap[reflect.TypeOf(typ)] = func(_ context.Context, v any) ([]byte, error) {
 		return marshaler(customArg[T](v))
 	}
 }
@@ -214,7 +214,7 @@ func RegisterCustomUnmarshaler[T any](unmarshaler func(*T, []byte) error) {
 	defer globalCustomUnmarshalerMu.Unlock()
 
 	var typ *T
-	globalCustomUnmarshalerMap[reflect.TypeOf(typ)] = func(ctx context.Context, v any, b []byte) error {
+	globalCustomUnmarshalerMap[reflect.TypeOf(typ)] = func(_ context.Context, v any, b []byte) error {
 		return unmarshaler(customArg[*T](v), b)
 	}
 }

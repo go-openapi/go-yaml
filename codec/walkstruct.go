@@ -86,7 +86,7 @@ func (b *typedBuilder) Enter(node ast.Node, at parser.Cursor) error {
 		// document's, so both go to the tree together.
 		return b.fail(errNeedsTheTree)
 	case *ast.CommentGroupNode:
-		return parser.SkipNode
+		return parser.ErrSkipNode
 	}
 
 	if b.values != nil {
@@ -335,7 +335,7 @@ func (b *typedBuilder) scalar(node ast.Node, dst reflect.Value, wanted bool) err
 	if !wanted {
 		b.settle(reflect.Value{})
 
-		return parser.SkipNode
+		return parser.ErrSkipNode
 	}
 	if err := b.setScalar(dst, node); err != nil {
 		return b.fail(err)
@@ -343,7 +343,7 @@ func (b *typedBuilder) scalar(node ast.Node, dst reflect.Value, wanted bool) err
 	b.settle(dst)
 
 	// A leaf holds nothing to descend into, and Leave has nothing to close.
-	return parser.SkipNode
+	return parser.ErrSkipNode
 }
 
 // fieldAt walks the index path an embedded field stands at, making the pointers
@@ -386,7 +386,7 @@ func entryText(n ast.Node) (string, bool) {
 // openEntry names the entry a key opens, and says where its value goes.
 func (b *typedBuilder) openEntry(top *typedFrame, keyNode ast.Node) error {
 	if top.dropped {
-		return parser.SkipNode
+		return parser.ErrSkipNode
 	}
 
 	if key, isKey := keyNode.(ast.MapKeyNode); isKey && key.IsMergeKey() {
@@ -405,7 +405,7 @@ func (b *typedBuilder) openEntry(top *typedFrame, keyNode ast.Node) error {
 		// No field can be named after it.
 		top.skip = true
 
-		return parser.SkipNode
+		return parser.ErrSkipNode
 	}
 
 	switch top.kind {
@@ -418,7 +418,7 @@ func (b *typedBuilder) openEntry(top *typedFrame, keyNode ast.Node) error {
 		if !known {
 			top.skip, top.target = true, reflect.Value{}
 
-			return parser.SkipNode
+			return parser.ErrSkipNode
 		}
 		if ff.at != nil {
 			// The type embeds another, and the name reaches a field of it.
@@ -428,7 +428,7 @@ func (b *typedBuilder) openEntry(top *typedFrame, keyNode ast.Node) error {
 			}
 			top.skip, top.target = false, field
 
-			return parser.SkipNode
+			return parser.ErrSkipNode
 		}
 		top.skip = false
 		top.target = top.dst.Field(ff.sf.Index)
@@ -443,7 +443,7 @@ func (b *typedBuilder) openEntry(top *typedFrame, keyNode ast.Node) error {
 	}
 
 	// A key names the entry and holds nothing the walk descends into.
-	return parser.SkipNode
+	return parser.ErrSkipNode
 }
 
 func scalarNumber(node ast.Node) any {

@@ -862,11 +862,11 @@ func shapeOfNumber(value string, schema Schema) (numberShape, bool) {
 		if i < len(body) && (body[i] == '+' || body[i] == '-') {
 			i++
 		}
-		if exponent := countDigits(body, i) - i; exponent == 0 {
+		exponent := countDigits(body, i) - i
+		if exponent == 0 {
 			return numberShape{}, false
-		} else {
-			i += exponent
 		}
+		i += exponent
 	}
 
 	// Anything left over is not part of a number: "1.5.5", "-0.5h", a

@@ -14,7 +14,7 @@ import (
 // readByWalking reads the first node of src that p addresses, without building the document's tree.
 //
 // It answers as FilterFile does on the parsed file, refusals included, and holds only the nodes it returns:
-// every branch off the path is skipped, and a match is kept whole with [parser.KeepNode] and cloned.
+// every branch off the path is skipped, and a match is kept whole with [parser.ErrKeepNode] and cloned.
 func (p *Path) readByWalking(src []byte) (ast.Node, error) {
 	w := &pathWalker{steps: p.steps()}
 	if _, err := parser.New().Walk(src, w); err != nil {
@@ -126,7 +126,7 @@ func (w *pathWalker) Enter(node ast.Node, at parser.Cursor) error {
 		// A document starts, and the last one answered nil: the walk stops at the first answer.
 		w.frames = w.frames[:0]
 		if _, isDirective := node.(*ast.DirectiveNode); isDirective {
-			return parser.SkipNode
+			return parser.ErrSkipNode
 		}
 
 		return w.read(node, 0)
@@ -140,7 +140,7 @@ func (w *pathWalker) Enter(node ast.Node, at parser.Cursor) error {
 		entry := top.count
 		top.count++
 		if uint(entry) != top.index {
-			return parser.SkipNode
+			return parser.ErrSkipNode
 		}
 		top.found = true
 
@@ -206,7 +206,7 @@ func (w *pathWalker) Leave(node ast.Node, _ parser.Closing) error {
 // enterSelected reads an entry of a mapping a ".name" step stands on.
 func (w *pathWalker) enterSelected(top *walkFrame, node ast.Node, at parser.Cursor) error {
 	if top.done {
-		return parser.SkipNode
+		return parser.ErrSkipNode
 	}
 	if at.IsKey() {
 		key, err := selectorKey(node.GetToken().Value)
@@ -215,10 +215,10 @@ func (w *pathWalker) enterSelected(top *walkFrame, node ast.Node, at parser.Curs
 		}
 		top.pending = key == top.name
 
-		return parser.SkipNode
+		return parser.ErrSkipNode
 	}
 	if !top.pending {
-		return parser.SkipNode
+		return parser.ErrSkipNode
 	}
 	top.pending, top.done = false, true
 
@@ -234,13 +234,13 @@ func (w *pathWalker) enterRecursive(top *walkFrame, node ast.Node, at parser.Cur
 		// recursiveNode compares the key's token as it is, quotes and all.
 		top.pending = node.GetToken().Value == top.rec.step.selector
 
-		return parser.SkipNode
+		return parser.ErrSkipNode
 	}
 	if top.pending {
 		top.pending = false
 		w.frames = append(w.frames, walkFrame{kind: frameKeep, rec: top.rec})
 
-		return parser.KeepNode
+		return parser.ErrKeepNode
 	}
 
 	return w.descend(node, top.rec, false)
@@ -261,7 +261,7 @@ func (w *pathWalker) descend(node ast.Node, rec *recursiveMatch, root bool) erro
 			}
 		}
 
-		return parser.SkipNode
+		return parser.ErrSkipNode
 	}
 
 	return nil
@@ -272,7 +272,7 @@ func (w *pathWalker) read(node ast.Node, step int) error {
 	if step == len(w.steps) {
 		w.frames = append(w.frames, walkFrame{kind: frameKeep})
 
-		return parser.KeepNode
+		return parser.ErrKeepNode
 	}
 
 	switch s := w.steps[step].(type) {
@@ -294,7 +294,7 @@ func (w *pathWalker) read(node ast.Node, step int) error {
 			// "[*]" last answers the sequence itself.
 			w.frames = append(w.frames, walkFrame{kind: frameKeep})
 
-			return parser.KeepNode
+			return parser.ErrKeepNode
 		}
 		w.frames = append(w.frames, walkFrame{kind: frameAll, step: step, results: []ast.Node{}})
 	case *recursiveNode:
@@ -320,7 +320,7 @@ func (w *pathWalker) deliverTo(at int, answer ast.Node) error {
 		}
 		w.found = answer
 
-		return parser.StopWalk
+		return parser.ErrStopWalk
 	}
 
 	parent := &w.frames[at]

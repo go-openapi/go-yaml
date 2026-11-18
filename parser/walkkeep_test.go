@@ -25,7 +25,7 @@ import (
 // keepSpy keeps every node at one depth, logs every handover, and clones what it keeps.
 type keepSpy struct {
 	depth int
-	// atLeave sends KeepNode from Leave instead of Enter.
+	// atLeave sends ErrKeepNode from Leave instead of Enter.
 	atLeave bool
 
 	log  []string
@@ -47,7 +47,7 @@ func (s *keepSpy) Enter(node ast.Node, at parser.Cursor) error {
 	}
 	s.cursors = append(s.cursors, [2]string{cursorOf(at)})
 
-	return parser.KeepNode
+	return parser.ErrKeepNode
 }
 
 func (s *keepSpy) Leave(node ast.Node, at parser.Closing) error {
@@ -56,7 +56,7 @@ func (s *keepSpy) Leave(node ast.Node, at parser.Closing) error {
 		return nil
 	}
 	if s.atLeave {
-		return parser.KeepNode
+		return parser.ErrKeepNode
 	}
 	s.cursors[len(s.cursors)-1][1] = cursorOf(at)
 
@@ -73,7 +73,7 @@ func cursorOf(at parser.Cursor) string {
 	return fmt.Sprintf("depth=%d in=%v key=%v root=%v doc=%d", at.Depth(), at.In(), at.IsKey(), at.IsRoot(), at.Document())
 }
 
-// TestKeepNodeHandsTheNodeOverWhole checks what a visitor answering KeepNode receives.
+// TestKeepNodeHandsTheNodeOverWhole checks what a visitor answering ErrKeepNode receives.
 //
 // A walk keeps none of a collection's entries, so a mapping reached Leave empty and a visitor had no way to
 // hold a matched subtree as an AST.
@@ -100,7 +100,7 @@ func TestKeepNodeHandsTheNodeOverWhole(t *testing.T) {
 
 		require.Len(t, s.kept, 4)
 		assert.Equal(t, "k0: {x: 0, y: [a, b]}\nk1:\n- p\n- q: r", s.kept[1].text)
-		assert.Equal(t, "1", s.kept[3].text, "a scalar reads KeepNode as nil and still gets its Leave")
+		assert.Equal(t, "1", s.kept[3].text, "a scalar reads ErrKeepNode as nil and still gets its Leave")
 	})
 
 	t.Run("the cursor answers at Leave as it did at Enter", func(t *testing.T) {
@@ -143,12 +143,12 @@ func TestKeepNodeHandsTheNodeOverWhole(t *testing.T) {
 		assert.Equal(t, "a: [1, 2]\nb: {c: d}", clone.String())
 	})
 
-	t.Run("KeepNode from Leave stops the walk", func(t *testing.T) {
+	t.Run("ErrKeepNode from Leave stops the walk", func(t *testing.T) {
 		t.Parallel()
 
 		s := &keepSpy{depth: 1, atLeave: true}
 		_, err := parser.New().Walk([]byte(src), s)
-		require.ErrorIs(t, err, parser.KeepNode)
+		require.ErrorIs(t, err, parser.ErrKeepNode)
 	})
 }
 
@@ -166,10 +166,10 @@ func (v *keepFirst) Enter(_ ast.Node, at parser.Cursor) error {
 	}
 	v.seen++
 	if v.seen == 2 && !v.skipOnly {
-		return parser.KeepNode
+		return parser.ErrKeepNode
 	}
 
-	return parser.SkipNode
+	return parser.ErrSkipNode
 }
 
 func (v *keepFirst) Leave(node ast.Node, at parser.Closing) error {

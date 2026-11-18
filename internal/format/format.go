@@ -7,7 +7,7 @@ import (
 	"github.com/go-openapi/go-yaml/ast"
 )
 
-// FormatNodeWithResolvedAlias writes n as YAML, with every alias replaced by
+// NodeWithResolvedAlias writes n as YAML, with every alias replaced by
 // the node its anchor names. Pass the anchors collected so far as anchorNodeMap.
 //
 // The decoder calls it to build the bytes a custom UnmarshalYAML or
@@ -22,7 +22,7 @@ import (
 // the text is indented from the node rather than from wherever the node stood.
 // Reproducing the source byte for byte is a separate feature and would need the
 // source kept alongside the tree.
-func FormatNodeWithResolvedAlias(n ast.Node, anchorNodeMap map[string]ast.Node) string {
+func NodeWithResolvedAlias(n ast.Node, anchorNodeMap map[string]ast.Node) string {
 	text := ast.NewRenderer(ast.WithAliasTargets(anchorNodeMap)).String(n)
 
 	// The renderer leaves the break that ends a node to whatever follows it,

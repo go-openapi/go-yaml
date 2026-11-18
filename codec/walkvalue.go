@@ -120,7 +120,7 @@ func (b *valueBuilder) Enter(node ast.Node, at parser.Cursor) error {
 	if at.IsRoot() {
 		if _, isDirective := node.(*ast.DirectiveNode); isDirective {
 			// A directive opens a document of its own and holds no value.
-			return parser.SkipNode
+			return parser.ErrSkipNode
 		}
 		b.named = nil
 	}
@@ -132,7 +132,7 @@ func (b *valueBuilder) Enter(node ast.Node, at parser.Cursor) error {
 			b.stack[n-1].merging = true
 		}
 
-		return parser.SkipNode
+		return parser.ErrSkipNode
 	}
 
 	switch n := node.(type) {
@@ -152,7 +152,7 @@ func (b *valueBuilder) Enter(node ast.Node, at parser.Cursor) error {
 	case *ast.AliasNode:
 		b.deliver(b.aliasValue(n), node, at.IsKey())
 	case *ast.CommentGroupNode:
-		return parser.SkipNode
+		return parser.ErrSkipNode
 	default:
 		v, err := b.scalarValue(node)
 		if err != nil {
@@ -166,7 +166,7 @@ func (b *valueBuilder) Enter(node ast.Node, at parser.Cursor) error {
 }
 
 // Leave is called once everything a node holds has been.
-func (b *valueBuilder) Leave(node ast.Node, at parser.Closing) error {
+func (b *valueBuilder) Leave(node ast.Node, _ parser.Closing) error {
 	if b.err != nil {
 		// The walk hands nothing more over once a visitor has failed, and still leaves the nodes it had open.
 		// The frames below stay as they were, since nothing reads them again.

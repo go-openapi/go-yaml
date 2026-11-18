@@ -85,7 +85,7 @@ func TestATransformNamesWhatItIsWriting(t *testing.T) {
 	require.NoError(t, err)
 
 	mark := func(w io.Writer, s ast.Written) error {
-		open, close := "", ""
+		opening, closing := "", ""
 		if len(s.Trimmed()) == 0 {
 			_, err := w.Write(s.Text)
 
@@ -93,15 +93,15 @@ func TestATransformNamesWhatItIsWriting(t *testing.T) {
 		}
 		switch s.Node.(type) {
 		case *ast.CommentNode:
-			open, close = "<c>", "</c>"
+			opening, closing = "<c>", "</c>"
 		case *ast.IntegerNode:
-			open, close = "<n>", "</n>"
+			opening, closing = "<n>", "</n>"
 		case *ast.StringNode:
-			open, close = "<s>", "</s>"
+			opening, closing = "<s>", "</s>"
 		}
 		// The text runs to where the next token starts, so the mark goes round
 		// what the document wrote and the space after it is written through.
-		_, err := io.WriteString(w, open+string(s.Trimmed())+close+string(s.Filler()))
+		_, err := io.WriteString(w, opening+string(s.Trimmed())+closing+string(s.Filler()))
 
 		return err
 	}

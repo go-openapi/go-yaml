@@ -103,10 +103,10 @@ func TestAVisitorStopsTheWalk(t *testing.T) {
 		assert.Empty(t, s.after(), "nothing is handed over once Leave has failed")
 	})
 
-	t.Run("StopWalk stops the walk with no error", func(t *testing.T) {
+	t.Run("ErrStopWalk stops the walk with no error", func(t *testing.T) {
 		t.Parallel()
 
-		s := &stopSpy{on: ast.IntegerType, answer: parser.StopWalk}
+		s := &stopSpy{on: ast.IntegerType, answer: parser.ErrStopWalk}
 		file, err := parser.New().Walk([]byte(src), s)
 
 		require.NoError(t, err)
@@ -114,13 +114,13 @@ func TestAVisitorStopsTheWalk(t *testing.T) {
 		assert.Empty(t, s.after(), "not even the Leave of a node the walk had open")
 	})
 
-	t.Run("StopWalk stops the parse", func(t *testing.T) {
+	t.Run("ErrStopWalk stops the parse", func(t *testing.T) {
 		t.Parallel()
 
 		// The walk stops at the first integer, and the stream goes on to an invalid document.
 		// The parse reads no further, so nothing refuses it.
 		var tokens int
-		s := &stopSpy{on: ast.IntegerType, answer: parser.StopWalk}
+		s := &stopSpy{on: ast.IntegerType, answer: parser.ErrStopWalk}
 		file, err := parser.New(parser.WithTokens(func(token.Token) { tokens++ })).
 			Walk([]byte("a: 1\nb: 2\n---\nc: 3\n---\n- d\ne: 4\n"), s)
 
@@ -133,18 +133,18 @@ func TestAVisitorStopsTheWalk(t *testing.T) {
 	t.Run("a visitor that skips to the end reads the whole stream", func(t *testing.T) {
 		t.Parallel()
 
-		// The control for the case above: the same stop made by answering SkipNode to everything.
-		s := &stopSpy{on: ast.MappingType, answer: parser.SkipNode}
+		// The control for the case above: the same stop made by answering ErrSkipNode to everything.
+		s := &stopSpy{on: ast.MappingType, answer: parser.ErrSkipNode}
 		_, err := parser.New().Walk([]byte("a: 1\nb: 2\n---\nc: 3\n---\n- d\ne: 4\n"), s)
 
 		require.Error(t, err, "the third document is refused")
 	})
 
-	t.Run("SkipNode drops the content and the node's own Leave", func(t *testing.T) {
+	t.Run("ErrSkipNode drops the content and the node's own Leave", func(t *testing.T) {
 		t.Parallel()
 
-		// The sequence is skipped and the entry after it still arrives, which tells SkipNode from a stop.
-		s := &stopSpy{on: ast.SequenceType, answer: parser.SkipNode}
+		// The sequence is skipped and the entry after it still arrives, which tells ErrSkipNode from a stop.
+		s := &stopSpy{on: ast.SequenceType, answer: parser.ErrSkipNode}
 		_, err := parser.New().Walk([]byte("a: [1, 2]\nb: 3\n"), s)
 
 		require.NoError(t, err)
@@ -209,6 +209,6 @@ func TestAWalkReceivingNothingStillReleasesTheTape(t *testing.T) {
 	}
 
 	full := allocs(nil)
-	assert.LessOrEqual(t, allocs(parser.SkipNode), full, "skipping the root")
-	assert.LessOrEqual(t, allocs(parser.StopWalk), full, "stopping at the root")
+	assert.LessOrEqual(t, allocs(parser.ErrSkipNode), full, "skipping the root")
+	assert.LessOrEqual(t, allocs(parser.ErrStopWalk), full, "stopping at the root")
 }

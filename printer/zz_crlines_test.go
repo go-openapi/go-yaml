@@ -49,7 +49,7 @@ func TestSplitLinesCutsWhereTheScannerDoes(t *testing.T) {
 //
 // It is the shape FuzzUnmarshalToMap found: the seed is kept at
 // testdata/fuzz/FuzzUnmarshalToMap/d0a27960c094cb4d.
-func TestPrintErrorSourceSurvivesACarriageReturnDocument(t *testing.T) {
+func TestPrintErrorSourceSurvivesACarriageReturnDocument(_ *testing.T) {
 	for _, src := range []string{
 		"\r\r\r\r0\n ", "\r\r\ra: [\n", "\r\n\r\n\ta: 1\n", "\r0\r\r\r\r\r\r{",
 		strings.Repeat("\r", 40) + "0\n",

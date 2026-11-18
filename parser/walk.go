@@ -111,17 +111,17 @@ type Closing interface {
 	HoldsKey(name string) bool
 }
 
-// SkipNode tells [Parser.Walk] not to hand the node's content over. Return it from [Visitor.Enter].
+// ErrSkipNode tells [Parser.Walk] not to hand the node's content over. Return it from [Visitor.Enter].
 //
 // Leave is not called for a node whose Enter skipped it, and the parse reads the content all the same:
-// the descent builds the whole document whatever a visitor asks for, and SkipNode stops the handovers below.
+// the descent builds the whole document whatever a visitor asks for, and ErrSkipNode stops the handovers below.
 //
 // Returned from [Visitor.Leave] it has no meaning and stops the walk, as any other error does.
-var SkipNode = errors.New("skip this node's content") //nolint:staticcheck,errname // a control signal, named as io/fs names SkipDir and SkipAll
+var ErrSkipNode = errors.New("skip this node's content")
 
-// KeepNode tells [Parser.Walk] to hand the node over whole at its Leave. Return it from [Visitor.Enter].
+// ErrKeepNode tells [Parser.Walk] to hand the node over whole at its Leave. Return it from [Visitor.Enter].
 //
-// Nothing inside the node is handed over, as for [SkipNode], but Leave is called, and the node then holds
+// Nothing inside the node is handed over, as for [ErrSkipNode], but Leave is called, and the node then holds
 // all its content: a mapping its entries, a sequence its values. Use [ast.Clone] in Leave to keep it,
 // since the parse reuses its cells and tokens once Leave returns.
 //
@@ -129,11 +129,11 @@ var SkipNode = errors.New("skip this node's content") //nolint:staticcheck,errna
 // own size and no more. Keep the nodes you want and skip the rest to read a large document with the memory
 // of its matches.
 //
-// A scalar and a node with no content are whole already, so KeepNode reads as nil for them.
+// A scalar and a node with no content are whole already, so ErrKeepNode reads as nil for them.
 // Returned from [Visitor.Leave] it has no meaning and stops the walk, as any other error does.
-var KeepNode = errors.New("keep this node whole") //nolint:staticcheck,errname // a control signal, named as SkipNode is
+var ErrKeepNode = errors.New("keep this node whole")
 
-// StopWalk stops the walk with no error. Return it from [Visitor.Enter] or [Visitor.Leave].
+// ErrStopWalk stops the walk with no error. Return it from [Visitor.Enter] or [Visitor.Leave].
 //
 // Nothing more is handed over, not even the Leave of a node already open, and the parse reads no further.
 // [Parser.Walk] returns a nil error and a file holding the documents read before the one the walk stopped in.
@@ -141,9 +141,9 @@ var KeepNode = errors.New("keep this node whole") //nolint:staticcheck,errname /
 // read, and so not refused. [github.com/go-openapi/go-yaml/codec.JSONTokens.Tokens] returns it when the range
 // body breaks.
 //
-// A visitor that stops by answering [SkipNode] to everything reads the whole stream, and still receives the
+// A visitor that stops by answering [ErrSkipNode] to everything reads the whole stream, and still receives the
 // Leave of every node it had open.
-var StopWalk = errors.New("stop the walk") //nolint:staticcheck,errname // a control signal, named as io/fs names SkipDir and SkipAll
+var ErrStopWalk = errors.New("stop the walk")
 
 // Visitor receives each node of a document as [Parser.Walk] reaches it.
 //
@@ -157,7 +157,7 @@ var StopWalk = errors.New("stop the walk") //nolint:staticcheck,errname // a con
 //
 // A mapping or a sequence reaches Leave without its entries: they were handed over one by one and not kept,
 // so its Values are empty and it renders as "{}" or "[]". Build what you need from the entries as they arrive,
-// or return [KeepNode] from Enter to receive the collection whole instead of its entries.
+// or return [ErrKeepNode] from Enter to receive the collection whole instead of its entries.
 // A collection standing as a mapping key or under an anchor also arrives whole: the parse keeps it
 // to name the key or to answer an alias.
 //
@@ -172,7 +172,7 @@ var StopWalk = errors.New("stop the walk") //nolint:staticcheck,errname // a con
 type Visitor interface {
 	// Enter is called before the node's content.
 	//
-	// Return nil to receive the content, [SkipNode] to skip it, [KeepNode] to receive the node whole at Leave
+	// Return nil to receive the content, [ErrSkipNode] to skip it, [ErrKeepNode] to receive the node whole at Leave
 	// instead, and any other error to stop the walk.
 	// Leave is not called for a node Enter skipped or failed on.
 	Enter(node ast.Node, at Cursor) error
@@ -197,7 +197,7 @@ type walkState struct {
 	keyNext bool
 	// skip counts the depths below a node that Enter declined, which are walked without being handed over.
 	skip int
-	// keeping records a node Enter answered with [KeepNode], whose content the parse keeps until its Leave.
+	// keeping records a node Enter answered with [ErrKeepNode], whose content the parse keeps until its Leave.
 	// Nothing inside it is handed over, so at most one is open at a time.
 	keeping bool
 	// quiet counts the parses running inside a node already handed over.
@@ -208,7 +208,7 @@ type walkState struct {
 	// err holds the first error a visitor returned. Once it is set nothing more is handed over,
 	// and [Parser.Walk] returns it.
 	err error
-	// stopped records a visitor returning [StopWalk]. Nothing more is handed over and Walk returns no error.
+	// stopped records a visitor returning [ErrStopWalk]. Nothing more is handed over and Walk returns no error.
 	stopped bool
 	// file is the file the parse is filling, which Walk returns when a visitor stops it.
 	file *ast.File
@@ -247,14 +247,14 @@ func (w *walkState) HoldsKey(name string) bool {
 	return w.keys.Holds(w.keyBase, name)
 }
 
-// fail records the first error a visitor returned, and reads [StopWalk] as a stop with no error.
+// fail records the first error a visitor returned, and reads [ErrStopWalk] as a stop with no error.
 //
 // A stop unwinds the descent at once with a walkStopped panic, which Walk recovers. The alternative, an error
 // value, would have to pass every error path of the descent unchanged to tell a stop from a refusal.
 // Deferred cleanup still runs on the way out, and leave hands nothing more over once stopped is set,
 // so nothing panics twice.
 func (w *walkState) fail(err error) {
-	if errors.Is(err, StopWalk) {
+	if errors.Is(err, ErrStopWalk) {
 		w.stopped = true
 		panic(walkStopped{})
 	}
@@ -263,7 +263,7 @@ func (w *walkState) fail(err error) {
 	}
 }
 
-// walkStopped is the panic that unwinds the descent once a visitor has answered [StopWalk].
+// walkStopped is the panic that unwinds the descent once a visitor has answered [ErrStopWalk].
 type walkStopped struct{}
 
 // done reports whether the walk has stopped handing nodes over.
@@ -285,7 +285,7 @@ func (w *walkState) done() bool { return w.err != nil || w.stopped }
 // An anchor is handed over before the node it names and left after it, and [Cursor.In] answers [KindAnchor]
 // for that node, so a writer has the anchor open while it writes the node.
 //
-// A visitor that returns [StopWalk] stops the walk and the parse, and Walk returns no error.
+// A visitor that returns [ErrStopWalk] stops the walk and the parse, and Walk returns no error.
 //
 // A visitor that returns an error stops the walk: nothing more is handed over and Walk returns that error.
 // The parse still reads the rest of the stream, so a document it refuses after the visitor gave up is
@@ -319,7 +319,7 @@ func (p *Parser) Walk(src []byte, v Visitor) (*ast.File, error) {
 	return file, nil
 }
 
-// parseUntilStopped runs the parse, and ends it where a visitor answered [StopWalk].
+// parseUntilStopped runs the parse, and ends it where a visitor answered [ErrStopWalk].
 func (p *Parser) parseUntilStopped(ctx context) (file *ast.File, err error) {
 	defer func() {
 		r := recover()
@@ -432,10 +432,10 @@ func (p *Parser) enterAs(ctx context, node ast.Node, in Kind, key bool) bool {
 
 	p.walk.curKey = key
 	err := p.walk.visitor.Enter(node, p.walk)
-	if errors.Is(err, KeepNode) {
+	if errors.Is(err, ErrKeepNode) {
 		p.keep()
 	} else if err != nil {
-		if !errors.Is(err, SkipNode) {
+		if !errors.Is(err, ErrSkipNode) {
 			p.walk.fail(err)
 		}
 		// The node's own leave unwinds this, so the next node the descent reaches starts level.
@@ -451,7 +451,7 @@ func (p *Parser) enterAs(ctx context, node ast.Node, in Kind, key bool) bool {
 	return true
 }
 
-// keep starts reading a node whole for a visitor that answered [KeepNode].
+// keep starts reading a node whole for a visitor that answered [ErrKeepNode].
 //
 // keepsNothing reads keeping, so every retention gate of the descent keeps the node's content, and each
 // mark and rewind of the node arena inside the node sees the same answer. The gates around the node read it
@@ -562,14 +562,14 @@ func (p *Parser) handAs(ctx context, node ast.Node, key bool) {
 
 	p.walk.curKey = key
 	p.walk.keyBase = -1
-	// A node with no content: SkipNode has nothing to skip, and only drops the Leave.
-	// KeepNode has nothing to keep, and reads as nil.
+	// A node with no content: ErrSkipNode has nothing to skip, and only drops the Leave.
+	// ErrKeepNode has nothing to keep, and reads as nil.
 	switch err := p.walk.visitor.Enter(node, p.walk); {
-	case err == nil, errors.Is(err, KeepNode):
+	case err == nil, errors.Is(err, ErrKeepNode):
 		if err := p.walk.visitor.Leave(node, p.walk); err != nil {
 			p.walk.fail(err)
 		}
-	case !errors.Is(err, SkipNode):
+	case !errors.Is(err, ErrSkipNode):
 		p.walk.fail(err)
 	}
 	p.count()

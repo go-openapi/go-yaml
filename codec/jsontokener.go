@@ -92,7 +92,7 @@ func (t *jsonTokener) Enter(node ast.Node, at parser.Cursor) error {
 			t.firstDoc = doc + 1
 		}
 
-		return parser.SkipNode
+		return parser.ErrSkipNode
 	}
 
 	if at.IsRoot() && at.Document() == t.firstDoc {
@@ -143,7 +143,7 @@ func (t *jsonTokener) Enter(node ast.Node, at parser.Cursor) error {
 			}
 		}
 
-		return parser.SkipNode
+		return parser.ErrSkipNode
 	}
 
 	if at.In() == parser.KindMapping && !at.IsKey() {
@@ -597,13 +597,13 @@ func (t *jsonTokener) fail(err error) {
 }
 
 // halted is what the walk is told once this converter has stopped: the conversion's error where it
-// failed, and parser.StopWalk where the range body broke out of the loop, which is no error at all.
+// failed, and parser.ErrStopWalk where the range body broke out of the loop, which is no error at all.
 func (t *jsonTokener) halted() error {
 	if t.state.err != nil {
 		return t.state.err
 	}
 	if t.stopped {
-		return parser.StopWalk
+		return parser.ErrStopWalk
 	}
 
 	return nil
@@ -615,5 +615,5 @@ func (t *jsonTokener) skipped() error {
 		return err
 	}
 
-	return parser.SkipNode
+	return parser.ErrSkipNode
 }
