@@ -412,14 +412,15 @@ func (s *Scanner) scanDoubleQuote(ctx *Context) (token.Token, error) {
 					break
 				}
 				foundNotSpaceChar = true
+
+				break
 			}
 			if foundNotSpaceChar {
 				// The tab stands in the text, so it is the source's own byte and the window still holds.
+				// The loop has moved the column over it already; a second step put the cursor a byte ahead of idx, and
+				// the scan after the closing quote then stepped over the line break without counting the line.
 				if copied {
 					value = utf8.AppendRune(value, c)
-				}
-				if src[idx+1] != '"' {
-					s.progressColumn(ctx, 1)
 				}
 			} else {
 				// Dropped, with the whitespace after it, so the value parts company with the source here.
