@@ -5,8 +5,8 @@
 # run each one came from.
 #
 # Verified 2026-09-08 against master:
-#   decoder_*  go test ./conformance/ -run TestYAMLTestSuite
-#   tojson_*   go test ./conformance/ -run TestSuiteToJSON
+#   decoder_*  go test ./internal/conformance/ -run TestYAMLTestSuite
+#   tojson_*   go test ./internal/conformance/ -run TestSuiteToJSON
 #
 # Not re-verified in that run (they need libfyaml and the reference parser):
 #   buckets, buckets_matched, cases, oracle_* — last recorded 2026-09-08.

@@ -20,7 +20,7 @@ import (
 // # Why the destination is an axis
 //
 // Every property in this package decodes into an `any`, and so does every
-// corpus-driven decode in yamlcorpus and in conformance/. Reading into an `any`
+// corpus-driven decode in yamlcorpus and in internal/conformance/. Reading into an `any`
 // and reading into a Go type are two paths through codec: one walks the token
 // stream, the other gathers a tree and fills fields by reflection. They can
 // disagree silently, and three defects were found living on the second one in a

@@ -150,7 +150,7 @@ var decodeLedger = map[string]string{
 	// wrote and writes it back with the line breaks taken out. in.json keeps
 	// them, so the two texts differ by four newlines and stand for the same
 	// bytes. ToJSON has written the canonical form all along --
-	// conformance/json_test.go records the same departure -- and this reads it
+	// json_test.go records the same departure -- and this reads it
 	// through Base64.MarshalJSON, so the two agree with each other now.
 	"construct-binary": reasonBinaryCanonical,
 }

@@ -20,7 +20,7 @@ import (
 // stream; reading into a Go type gathers a tree and fills fields by reflection,
 // and since the two stopped sharing code they can disagree with nothing to say
 // so. Every other property here decodes into an `any`, and so does every
-// corpus-driven decode in yamlcorpus and in conformance/ -- three defects were
+// corpus-driven decode in yamlcorpus and in internal/conformance/ -- three defects were
 // found living on the reflection path in one afternoon of reading it, none of
 // them by any harness.
 //
