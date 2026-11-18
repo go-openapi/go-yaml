@@ -9,10 +9,10 @@ import (
 
 	"github.com/go-openapi/testify/v2/require"
 
-	"github.com/go-openapi/go-yaml"
 	"github.com/go-openapi/go-yaml/internal/testintegration/grammar"
 	"github.com/go-openapi/go-yaml/internal/testintegration/perlref"
 	"github.com/go-openapi/go-yaml/internal/testintegration/yamlgen"
+	"github.com/go-openapi/go-yaml/parser"
 )
 
 // TestValidDocumentsTheLibraryRefusesAreStillRefused pins what is known, the
@@ -49,11 +49,12 @@ func TestValidDocumentsTheLibraryRefusesAreStillRefused(t *testing.T) {
 
 			requireTheReferenceParserAgrees(t, s.Src, true, s.Rule)
 
-			var got any
-
-			err := yaml.Unmarshal([]byte(s.Src), &got)
+			// The parser and not the decoder: an entry is a claim about syntax, and the decoder refuses what a Go
+			// value cannot hold. A collection key decodes into no Go map, so judged by Unmarshal into an any the
+			// two entries of 2026-09 stayed "refused" long after the parser read them.
+			file, err := parser.ParseBytes([]byte(s.Src))
 			if err == nil {
-				t.Logf("NOW READ -- %q as %#v -- drop it from Strict", s.Src, got)
+				t.Logf("NOW READ -- %q as %q -- drop it from Strict", s.Src, strings.TrimSpace(file.String()))
 
 				return
 			}
