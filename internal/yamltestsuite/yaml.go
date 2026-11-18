@@ -13,7 +13,6 @@ import (
 	"path/filepath"
 	"runtime"
 	"sort"
-	"strings"
 )
 
 type TestSuite struct {
@@ -54,6 +53,20 @@ func TestSuites() ([]*TestSuite, error) {
 	return suitesIn(fixturesDir())
 }
 
+// suiteName names the suite a fixture file belongs to: the directory holding it, relative to dir, with forward
+// slashes on every OS, as in "trailing-whitespace-in-streams/02".
+//
+// The name was cut out of the path with "/", and filepath.Walk hands a Windows path over with "\\", so nothing was
+// cut and every suite there was named after the whole path of its in.yaml.
+func suiteName(dir, path string) string {
+	rel, err := filepath.Rel(dir, filepath.Dir(path))
+	if err != nil {
+		return filepath.ToSlash(path)
+	}
+
+	return filepath.ToSlash(rel)
+}
+
 // suitesIn reads the test suites under dir, one per directory holding an in.yaml.
 func suitesIn(dir string) ([]*TestSuite, error) {
 	testMap := make(map[string]*TestSuite)
@@ -65,8 +78,7 @@ func suitesIn(dir string) ([]*TestSuite, error) {
 		if info.IsDir() {
 			return nil
 		}
-		name := strings.TrimPrefix(path, dir+"/")
-		name = strings.TrimSuffix(name, "/"+filepath.Base(name))
+		name := suiteName(dir, path)
 		if _, exists := testMap[name]; !exists {
 			testMap[name] = &TestSuite{}
 		}

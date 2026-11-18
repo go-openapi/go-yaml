@@ -22,3 +22,19 @@ func TestSuitesInAMissingDirectoryReturnsTheError(t *testing.T) {
 	require.Error(t, err)
 	require.Nil(t, suites)
 }
+
+// TestASuiteIsNamedWithForwardSlashes covers the name a fixture's suite takes, which golden files and digests record.
+//
+// The path is built with filepath.Join, so on Windows it holds "\\" and this is the case that broke there: the
+// suite was named after the fixture's whole path.
+func TestASuiteIsNamedWithForwardSlashes(t *testing.T) {
+	t.Parallel()
+
+	dir := filepath.Join("some", "testdata")
+	for path, want := range map[string]string{
+		filepath.Join(dir, "aliases-in-block-sequence", "in.yaml"):            "aliases-in-block-sequence",
+		filepath.Join(dir, "trailing-whitespace-in-streams", "02", "in.json"): "trailing-whitespace-in-streams/02",
+	} {
+		require.Equal(t, want, suiteName(dir, path), path)
+	}
+}
