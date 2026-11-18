@@ -5,7 +5,6 @@ package codec_test
 
 import (
 	"bytes"
-	"context"
 	"errors"
 	"fmt"
 	"net"
@@ -90,60 +89,6 @@ func TestDecoder_CustomUnmarshaler(t *testing.T) {
 			t.Fatalf("failed to switch to custom unmarshaler. got: %q", v.Foo)
 		}
 	})
-	t.Run("override bytes type with context", func(t *testing.T) {
-		type T struct {
-			Foo []byte `yaml:"foo"`
-		}
-		src := []byte(`foo: "bar"`)
-		var v T
-		ctx := context.WithValue(context.Background(), contextKey("plop"), uint(42))
-		err := codec.UnmarshalContext(ctx, src, &v, codec.CustomUnmarshalerContext[[]byte](func(ctx context.Context, dst *[]byte, b []byte) error {
-			if !bytes.Equal(b, []byte(`"bar"`)) {
-				t.Fatalf("failed to get target buffer: %q", b)
-			}
-			require.Equalf(t, uint(42), ctx.Value(contextKey("plop")), "context value is not correct")
-			*dst = []byte("bazbaz")
-			return nil
-		}))
-		require.NoError(t, err)
-
-		if !bytes.Equal(v.Foo, []byte("bazbaz")) {
-			t.Fatalf("failed to switch to custom unmarshaler. got: %q", v.Foo)
-		}
-	})
-}
-
-// contextKey keys the values these tests put in a context.Context.
-type contextKey string
-
-type unmarshalContext struct {
-	v int
-}
-
-func (c *unmarshalContext) UnmarshalYAML(ctx context.Context, b []byte) error {
-	v, ok := ctx.Value(contextKey("k")).(int)
-	if !ok {
-		return errors.New("cannot get valid context")
-	}
-	if v != 1 {
-		return errors.New("cannot get valid context")
-	}
-	if string(b) != "1" {
-		return errors.New("cannot get valid bytes")
-	}
-	c.v = v
-	return nil
-}
-
-func Test_UnmarshalerContext(t *testing.T) {
-	ctx := context.WithValue(context.Background(), contextKey("k"), 1)
-	var v unmarshalContext
-	if err := codec.UnmarshalContext(ctx, []byte(`1`), &v); err != nil {
-		t.Fatalf("%+v", err)
-	}
-	if v.v != 1 {
-		t.Fatal("cannot call UnmarshalYAML")
-	}
 }
 
 func TestCommentWithCustomUnmarshaler(t *testing.T) {
@@ -675,95 +620,6 @@ type unmarshableMapKey struct {
 func (mk *unmarshableMapKey) UnmarshalYAML(b []byte) error {
 	mk.Key = string(b)
 	return nil
-}
-
-type testNodeUnmarshalerCtx struct {
-	outErr   error
-	received ast.Node
-}
-
-func (u *testNodeUnmarshalerCtx) UnmarshalYAML(ctx context.Context, node ast.Node) error {
-	if u.outErr != nil {
-		return u.outErr
-	}
-
-	if ctx == nil {
-		return errors.New("nil context")
-	}
-
-	u.received = node
-	return nil
-}
-
-func TestNodeUnmarshalerContext(t *testing.T) {
-	type testNodeUnmarshalerBody struct {
-		Root testNodeUnmarshalerCtx `yaml:"root"`
-	}
-
-	cases := []struct {
-		name      string
-		expectErr string
-		src       []string
-		body      testNodeUnmarshalerBody
-	}{
-		{
-			name: "should pass node",
-			src: []string{
-				"root:",
-				"  foo: bar",
-				"  fizz: buzz",
-			},
-		},
-		{
-			name: "should pass returned error",
-			body: testNodeUnmarshalerBody{
-				Root: testNodeUnmarshalerCtx{
-					outErr: errors.New("test error"),
-				},
-			},
-			expectErr: "test error",
-			src: []string{
-				"root:",
-				"  foo: bar",
-				"  fizz: buzz",
-			},
-		},
-	}
-
-	for _, c := range cases {
-		t.Run(c.name, func(t *testing.T) {
-			src := []byte(strings.Join(c.src, "\n"))
-			out := c.body
-			err := codec.Unmarshal(src, &out)
-			if c.expectErr != "" {
-				if err == nil {
-					t.Fatal("expected error but got nil")
-					return
-				}
-
-				if !strings.Contains(err.Error(), c.expectErr) {
-					t.Fatalf("error message %q should contain %q", err.Error(), c.expectErr)
-				}
-				return
-			}
-
-			expect := struct {
-				Root ast.Node `yaml:"root"`
-			}{}
-			if err := codec.UnmarshalContext(context.TODO(), src, &expect); err != nil {
-				t.Fatal("invalid test yaml:", err)
-				return
-			}
-
-			if err != nil {
-				t.Fatalf("unexpected error: %s", err)
-			}
-
-			if !reflect.DeepEqual(out.Root.received, expect.Root) {
-				t.Fatalf("expected:\n%#v\n but got:\n%#v", expect.Root, out.Root.received)
-			}
-		})
-	}
 }
 
 type testNodeUnmarshaler struct {

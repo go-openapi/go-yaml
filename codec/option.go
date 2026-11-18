@@ -4,7 +4,6 @@
 package codec
 
 import (
-	"context"
 	"io"
 	"reflect"
 
@@ -267,20 +266,8 @@ func UseJSONUnmarshaler() DecodeOption {
 func CustomUnmarshaler[T any](unmarshaler func(*T, []byte) error) DecodeOption {
 	return func(d *Decoder) error {
 		var typ *T
-		d.customUnmarshalerMap[reflect.TypeOf(typ)] = func(_ context.Context, v any, b []byte) error {
+		d.customUnmarshalerMap[reflect.TypeOf(typ)] = func(v any, b []byte) error {
 			return unmarshaler(customArg[*T](v), b)
-		}
-		return nil
-	}
-}
-
-// CustomUnmarshalerContext overrides any decoding process for the type specified in generics.
-// Similar to CustomUnmarshaler, but allows passing a context to the unmarshaler function.
-func CustomUnmarshalerContext[T any](unmarshaler func(context.Context, *T, []byte) error) DecodeOption {
-	return func(d *Decoder) error {
-		var typ *T
-		d.customUnmarshalerMap[reflect.TypeOf(typ)] = func(ctx context.Context, v any, b []byte) error {
-			return unmarshaler(ctx, customArg[*T](v), b)
 		}
 		return nil
 	}
@@ -421,20 +408,8 @@ func WriteInferredNames(write bool) EncodeOption {
 func CustomMarshaler[T any](marshaler func(T) ([]byte, error)) EncodeOption {
 	return func(e *Encoder) error {
 		var typ T
-		e.customMarshalerMap[reflect.TypeOf(typ)] = func(_ context.Context, v any) ([]byte, error) {
+		e.customMarshalerMap[reflect.TypeOf(typ)] = func(v any) ([]byte, error) {
 			return marshaler(customArg[T](v))
-		}
-		return nil
-	}
-}
-
-// CustomMarshalerContext overrides any encoding process for the type specified in generics.
-// Similar to CustomMarshaler, but allows passing a context to the marshaler function.
-func CustomMarshalerContext[T any](marshaler func(context.Context, T) ([]byte, error)) EncodeOption {
-	return func(e *Encoder) error {
-		var typ T
-		e.customMarshalerMap[reflect.TypeOf(typ)] = func(ctx context.Context, v any) ([]byte, error) {
-			return marshaler(ctx, customArg[T](v))
 		}
 		return nil
 	}

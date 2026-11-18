@@ -5,7 +5,6 @@ package codec
 
 import (
 	"bytes"
-	"context"
 	"encoding"
 	"encoding/base64"
 	"errors"
@@ -54,25 +53,33 @@ type Decoder struct {
 	// documents of a stream is not.
 	referenceAnchorNodeMap map[string]ast.Node
 	anchorValueMap         map[string]reflect.Value
-	customUnmarshalerMap   map[reflect.Type]func(context.Context, any, []byte) error
-	commentMaps            []CommentMap
-	toCommentMap           CommentMap
-	opts                   []DecodeOption
-	referenceFiles         []string
-	referenceDirs          []string
-	isRecursiveDir         bool
-	isResolvedReference    bool
-	validator              StructValidator
-	disallowUnknownField   bool
-	allowedFieldPrefixes   []string
-	allowDuplicateMapKey   bool
-	extraParserOptions     []parser.Option
-	shareAliases           bool
-	useOrderedMap          bool
-	useStringKeys          bool
-	useJSONUnmarshaler     bool
-	useJSONTags            bool
-	useInferredNames       bool
+	// openAnchors counts, by anchor name, the anchored nodes being decoded right
+	// now. An alias to one of them stands inside its own anchor, which a Go
+	// value has no way to hold. A count rather than a set: a document may
+	// define the same anchor again inside the node it names.
+	openAnchors map[string]int
+	// merging is set while the decoder reads the mapping a "<<" brings in, and
+	// stays set for everything decoded beneath it.
+	merging              bool
+	customUnmarshalerMap map[reflect.Type]func(any, []byte) error
+	commentMaps          []CommentMap
+	toCommentMap         CommentMap
+	opts                 []DecodeOption
+	referenceFiles       []string
+	referenceDirs        []string
+	isRecursiveDir       bool
+	isResolvedReference  bool
+	validator            StructValidator
+	disallowUnknownField bool
+	allowedFieldPrefixes []string
+	allowDuplicateMapKey bool
+	extraParserOptions   []parser.Option
+	shareAliases         bool
+	useOrderedMap        bool
+	useStringKeys        bool
+	useJSONUnmarshaler   bool
+	useJSONTags          bool
+	useInferredNames     bool
 
 	// walked holds the value of each document, read by walking the source
 	// rather than by building a tree and walking that. src is kept beside it so
@@ -107,7 +114,8 @@ func NewDecoder(r io.Reader, opts ...DecodeOption) *Decoder {
 		anchorNodeMap:          map[string]ast.Node{},
 		referenceAnchorNodeMap: map[string]ast.Node{},
 		anchorValueMap:         map[string]reflect.Value{},
-		customUnmarshalerMap:   map[reflect.Type]func(context.Context, any, []byte) error{},
+		openAnchors:            map[string]int{},
+		customUnmarshalerMap:   map[reflect.Type]func(any, []byte) error{},
 		opts:                   opts,
 		referenceReaders:       []io.Reader{},
 		referenceFiles:         []string{},
@@ -155,27 +163,21 @@ func aliasBudget(n int) int {
 // See the documentation for Unmarshal for details about the
 // conversion of YAML into a Go value.
 func (d *Decoder) Decode(v any) error {
-	return d.DecodeContext(context.Background(), v)
-}
-
-// DecodeContext reads the next YAML-encoded value from its input
-// and stores it in the value pointed to by v with context.Context.
-func (d *Decoder) DecodeContext(ctx context.Context, v any) error {
 	rv := reflect.ValueOf(v)
 	if !rv.IsValid() || rv.Type().Kind() != reflect.Pointer {
 		return ErrDecodeRequiredPointerType
 	}
 	if d.isInitialized() {
-		if err := d.decode(ctx, rv); err != nil {
+		if err := d.decode(rv); err != nil {
 			return yamlerrors.WithSource(err, d.source)
 		}
 
 		return nil
 	}
-	if err := d.decodeInit(ctx, rv); err != nil {
+	if err := d.decodeInit(rv); err != nil {
 		return yamlerrors.WithSource(err, d.source)
 	}
-	if err := d.decode(ctx, rv); err != nil {
+	if err := d.decode(rv); err != nil {
 		return yamlerrors.WithSource(err, d.source)
 	}
 	return nil
@@ -183,26 +185,21 @@ func (d *Decoder) DecodeContext(ctx context.Context, v any) error {
 
 // DecodeFromNode decodes node into the value pointed to by v.
 func (d *Decoder) DecodeFromNode(node ast.Node, v any) error {
-	return d.DecodeFromNodeContext(context.Background(), node, v)
-}
-
-// DecodeFromNodeContext decodes node into the value pointed to by v with context.Context.
-func (d *Decoder) DecodeFromNodeContext(ctx context.Context, node ast.Node, v any) error {
 	rv := reflect.ValueOf(v)
 	if rv.Type().Kind() != reflect.Pointer {
 		return ErrDecodeRequiredPointerType
 	}
 	if !d.isInitialized() {
 		// A node in hand is a tree, so this never takes the walking path.
-		if err := d.decodeInit(ctx, reflect.Value{}); err != nil {
+		if err := d.decodeInit(reflect.Value{}); err != nil {
 			return err
 		}
 	}
 	// resolve references to the anchor on the same file
-	if _, err := d.nodeToValue(ctx, node); err != nil {
+	if _, err := d.nodeToValue(node); err != nil {
 		return err
 	}
-	if err := d.decodeValue(ctx, rv.Elem(), node); err != nil {
+	if err := d.decodeValue(rv.Elem(), node); err != nil {
 		return err
 	}
 	return nil
@@ -215,6 +212,27 @@ func (d *Decoder) stepIn() {
 
 func (d *Decoder) stepOut() {
 	d.decodeDepth--
+}
+
+// enterAnchor records that the node anchored as name is being decoded, and
+// returns the call that undoes it.
+func (d *Decoder) enterAnchor(name string) (leave func()) {
+	d.openAnchors[name]++
+
+	return func() {
+		if d.openAnchors[name]--; d.openAnchors[name] == 0 {
+			delete(d.openAnchors, name)
+		}
+	}
+}
+
+// enterMerge sets merging for the mapping a "<<" brings in, and returns the
+// call that puts back what it was.
+func (d *Decoder) enterMerge() (leave func()) {
+	was := d.merging
+	d.merging = true
+
+	return func() { d.merging = was }
 }
 
 // castToFloatValue is castToFloat without a decoder, for the walking builder.
@@ -705,8 +723,8 @@ func sameKeyIn(m map[any]any, key any) (any, bool) {
 	return nil, false
 }
 
-func (d *Decoder) mapKeyNodeToString(ctx context.Context, node ast.MapKeyNode) (string, error) {
-	key, err := d.nodeToValue(ctx, node)
+func (d *Decoder) mapKeyNodeToString(node ast.MapKeyNode) (string, error) {
+	key, err := d.nodeToValue(node)
 	if err != nil {
 		return "", err
 	}
@@ -730,8 +748,8 @@ func (d *Decoder) mapKeyNodeToString(ctx context.Context, node ast.MapKeyNode) (
 // [UseStringKeys] asks for the text instead and gets it for every scalar. A
 // collection reaches mapKeyString either way, which refuses it: a MapSlice key
 // must be comparable, and Go hashes no slice or map.
-func (d *Decoder) mapKeyNodeToValue(ctx context.Context, node ast.MapKeyNode) (any, error) {
-	key, err := d.nodeToValue(ctx, node)
+func (d *Decoder) mapKeyNodeToValue(node ast.MapKeyNode) (any, error) {
+	key, err := d.nodeToValue(node)
 	if err != nil {
 		return nil, err
 	}
@@ -756,7 +774,7 @@ func (d *Decoder) mapKeyNodeToValue(ctx context.Context, node ast.MapKeyNode) (a
 // rule keyToNodeMap applies for a struct, and this path did not: "x: 9" over
 // "<<: *a" took the merged x, and "<<: [*a, *b]" took b's where the merge spec
 // gives it to a.
-func (d *Decoder) setToMapValue(ctx context.Context, node ast.Node, m *keyedMap, merged bool) error {
+func (d *Decoder) setToMapValue(node ast.Node, m *keyedMap, merged bool) error {
 	d.stepIn()
 	defer d.stepOut()
 	if d.isExceededMaxDepth() {
@@ -773,10 +791,10 @@ func (d *Decoder) setToMapValue(ctx context.Context, node ast.Node, m *keyedMap,
 			}
 
 			return eachMergedEntry(value, func(v ast.Node) error {
-				return d.setToMapValue(ctx, v, m, true)
+				return d.setToMapValue(v, m, true)
 			})
 		}
-		key, err := d.mapKeyNodeToValue(ctx, n.Key)
+		key, err := d.mapKeyNodeToValue(n.Key)
 		if err != nil {
 			return err
 		}
@@ -784,14 +802,14 @@ func (d *Decoder) setToMapValue(ctx context.Context, node ast.Node, m *keyedMap,
 			return nil
 		}
 
-		v, err := d.nodeToValue(ctx, n.Value)
+		v, err := d.nodeToValue(n.Value)
 		if err != nil {
 			return err
 		}
 		m.put(key, v)
 	case *ast.MappingNode:
 		return eachEntryOwnFirst(n, func(value ast.Node, isMerge bool) error {
-			return d.setToMapValue(ctx, value, m, merged || isMerge)
+			return d.setToMapValue(value, m, merged || isMerge)
 		})
 	case *ast.AnchorNode:
 		anchorName := n.Name.GetToken().Value
@@ -822,7 +840,7 @@ func headCommentPath(node ast.Node) string {
 // "<<: *a" over "x: 9" is one entry holding 9, at the place the merge brought x
 // in. Appending gave a MapSlice with x twice, which no reader of one expects
 // and which json.Marshal writes as a repeated member.
-func (d *Decoder) setToOrderedMapValue(ctx context.Context, node ast.Node, m *MapSlice, merged bool) error {
+func (d *Decoder) setToOrderedMapValue(node ast.Node, m *MapSlice, merged bool) error {
 	d.stepIn()
 	defer d.stepOut()
 	if d.isExceededMaxDepth() {
@@ -839,17 +857,17 @@ func (d *Decoder) setToOrderedMapValue(ctx context.Context, node ast.Node, m *Ma
 			}
 
 			return eachMergedEntry(value, func(v ast.Node) error {
-				return d.setToOrderedMapValue(ctx, v, m, true)
+				return d.setToOrderedMapValue(v, m, true)
 			})
 		}
-		key, err := d.mapKeyNodeToValue(ctx, n.Key)
+		key, err := d.mapKeyNodeToValue(n.Key)
 		if err != nil {
 			return err
 		}
 		if merged && m.index(key) >= 0 {
 			return nil
 		}
-		value, err := d.nodeToValue(ctx, n.Value)
+		value, err := d.nodeToValue(n.Value)
 		if err != nil {
 			return err
 		}
@@ -857,7 +875,7 @@ func (d *Decoder) setToOrderedMapValue(ctx context.Context, node ast.Node, m *Ma
 		return m.Set(key, value)
 	case *ast.MappingNode:
 		return eachEntryOwnFirst(n, func(value ast.Node, isMerge bool) error {
-			return d.setToOrderedMapValue(ctx, value, m, merged || isMerge)
+			return d.setToOrderedMapValue(value, m, merged || isMerge)
 		})
 	}
 	return nil
@@ -1052,7 +1070,7 @@ func (d *Decoder) addCommentToMap(path string, comment *Comment) {
 }
 
 //nolint:gocyclo,cyclop,maintidx,gocognit // one case per node kind, and the tag case one per ast.TagNode.Resolve verdict
-func (d *Decoder) nodeToValue(ctx context.Context, node ast.Node) (any, error) {
+func (d *Decoder) nodeToValue(node ast.Node) (any, error) {
 	d.stepIn()
 	defer d.stepOut()
 	if d.isExceededMaxDepth() {
@@ -1090,7 +1108,7 @@ func (d *Decoder) nodeToValue(ctx context.Context, node ast.Node) (any, error) {
 			// A local tag such as "!Ref", a foreign one, or a name YAML's type
 			// repository does not define. 6.9.1 hands it to the application, so
 			// the node is read by its kind.
-			return d.nodeToValue(ctx, n.Value)
+			return d.nodeToValue(n.Value)
 		case ast.TagKindMismatch:
 			return nil, yamlerrors.NewSyntax(
 				fmt.Sprintf("%s does not support this kind of node", res.Tag), n.GetToken())
@@ -1107,7 +1125,7 @@ func (d *Decoder) nodeToValue(ctx context.Context, node ast.Node) (any, error) {
 			// nothing to do
 		}
 
-		v, err := d.taggedValue(ctx, n, res)
+		v, err := d.taggedValue(n, res)
 		if err != nil {
 			return nil, err
 		}
@@ -1128,7 +1146,9 @@ func (d *Decoder) nodeToValue(ctx context.Context, node ast.Node) (any, error) {
 
 		// To handle the case where alias is processed recursively, the result of alias can be set to nil in advance.
 		d.anchorNodeMap[anchorName] = nil
-		anchorValue, err := d.nodeToValue(withAnchor(ctx, anchorName), n.Value)
+		leave := d.enterAnchor(anchorName)
+		anchorValue, err := d.nodeToValue(n.Value)
+		leave()
 		if err != nil {
 			delete(d.anchorNodeMap, anchorName)
 			return nil, err
@@ -1138,7 +1158,7 @@ func (d *Decoder) nodeToValue(ctx context.Context, node ast.Node) (any, error) {
 		return anchorValue, nil
 	case *ast.AliasNode:
 		text := n.Value.String()
-		if _, exists := getAnchorMap(ctx)[text]; exists {
+		if d.openAnchors[text] > 0 {
 			// The alias stands inside the node its own anchor names, directly
 			// or through another anchor. The parser reads that document and
 			// the tree it builds holds a cycle -- YAML's representation is a
@@ -1171,7 +1191,7 @@ func (d *Decoder) nodeToValue(ctx context.Context, node ast.Node) (any, error) {
 				defer func() { d.expanding = nil }()
 			}
 
-			return d.nodeToValue(ctx, target)
+			return d.nodeToValue(target)
 		}
 		if v, exists := d.anchorValueMap[text]; exists {
 			// No node to read: an anchor published by ReferenceFiles, which
@@ -1185,17 +1205,17 @@ func (d *Decoder) nodeToValue(ctx context.Context, node ast.Node) (any, error) {
 	case *ast.LiteralNode:
 		return d.strs.value(n.Value.Value), nil
 	case *ast.MappingKeyNode:
-		return d.nodeToValue(ctx, n.Value)
+		return d.nodeToValue(n.Value)
 	case *ast.MappingValueNode:
 		if n.Key.IsMergeKey() {
-			return d.mergeKeyValue(ctx, n.Value)
+			return d.mergeKeyValue(n.Value)
 		}
 		if d.useOrderedMap {
-			key, err := d.mapKeyNodeToValue(ctx, n.Key)
+			key, err := d.mapKeyNodeToValue(n.Key)
 			if err != nil {
 				return nil, err
 			}
-			v, err := d.nodeToValue(ctx, n.Value)
+			v, err := d.nodeToValue(n.Value)
 			if err != nil {
 				return nil, err
 			}
@@ -1206,11 +1226,11 @@ func (d *Decoder) nodeToValue(ctx context.Context, node ast.Node) (any, error) {
 
 			return m, nil
 		}
-		key, err := d.mapKeyNodeToString(ctx, n.Key)
+		key, err := d.mapKeyNodeToString(n.Key)
 		if err != nil {
 			return nil, err
 		}
-		v, err := d.nodeToValue(ctx, n.Value)
+		v, err := d.nodeToValue(n.Value)
 		if err != nil {
 			return nil, err
 		}
@@ -1225,7 +1245,7 @@ func (d *Decoder) nodeToValue(ctx context.Context, node ast.Node) (any, error) {
 				m.items = make([]MapItem, 0, len(n.Values))
 			}
 			if err := eachEntryOwnFirst(n, func(value ast.Node, isMerge bool) error {
-				return d.setToOrderedMapValue(ctx, value, &m, isMerge)
+				return d.setToOrderedMapValue(value, &m, isMerge)
 			}); err != nil {
 				return nil, err
 			}
@@ -1233,7 +1253,7 @@ func (d *Decoder) nodeToValue(ctx context.Context, node ast.Node) (any, error) {
 		}
 		m := newKeyedMap(len(n.Values))
 		if err := eachEntryOwnFirst(n, func(value ast.Node, isMerge bool) error {
-			return d.setToMapValue(ctx, value, m, isMerge)
+			return d.setToMapValue(value, m, isMerge)
 		}); err != nil {
 			return nil, err
 		}
@@ -1241,7 +1261,7 @@ func (d *Decoder) nodeToValue(ctx context.Context, node ast.Node) (any, error) {
 	case *ast.SequenceNode:
 		v := make([]any, 0, len(n.Values))
 		for _, value := range n.Values {
-			vv, err := d.nodeToValue(ctx, value)
+			vv, err := d.nodeToValue(value)
 			if err != nil {
 				return nil, err
 			}
@@ -1481,7 +1501,7 @@ func (d *Decoder) binaryBytes(node ast.Node) ([]byte, bool) {
 
 // mergeKeyValue reads the mapping a "<<" names as a value of its own, an
 // ordered one under UseOrderedMap.
-func (d *Decoder) mergeKeyValue(ctx context.Context, node ast.Node) (any, error) {
+func (d *Decoder) mergeKeyValue(node ast.Node) (any, error) {
 	value, err := d.getMapNode(node, true)
 	if err != nil {
 		return nil, err
@@ -1490,7 +1510,7 @@ func (d *Decoder) mergeKeyValue(ctx context.Context, node ast.Node) (any, error)
 	if d.useOrderedMap {
 		m := MapSlice{}
 		for iter.Next() {
-			if err := d.setToOrderedMapValue(ctx, iter.KeyValue(), &m, true); err != nil {
+			if err := d.setToOrderedMapValue(iter.KeyValue(), &m, true); err != nil {
 				return nil, err
 			}
 		}
@@ -1499,7 +1519,7 @@ func (d *Decoder) mergeKeyValue(ctx context.Context, node ast.Node) (any, error)
 	}
 	m := newKeyedMap(0)
 	for iter.Next() {
-		if err := d.setToMapValue(ctx, iter.KeyValue(), m, true); err != nil {
+		if err := d.setToMapValue(iter.KeyValue(), m, true); err != nil {
 			return nil, err
 		}
 	}
@@ -1656,7 +1676,7 @@ func (d *Decoder) existsTypeInCustomUnmarshalerMap(t reflect.Type) bool {
 	return false
 }
 
-func (d *Decoder) unmarshalerFromCustomUnmarshalerMap(t reflect.Type) (func(context.Context, any, []byte) error, bool) {
+func (d *Decoder) unmarshalerFromCustomUnmarshalerMap(t reflect.Type) (func(any, []byte) error, bool) {
 	if unmarshaler, exists := d.customUnmarshalerMap[t]; exists {
 		return unmarshaler, exists
 	}
@@ -1683,12 +1703,9 @@ func (d *Decoder) canDecodeByUnmarshaler(dst reflect.Value) bool {
 		// ToJSON would arrive with JSON's keys, which are strings, and lose
 		// every key this type exists to keep apart.
 		return false
-	case ContextUnmarshaler,
-		Unmarshaler,
-		ContextGoYAMLUnmarshaler,
+	case Unmarshaler,
 		GoYAMLUnmarshaler,
 		NodeUnmarshaler,
-		ContextNodeUnmarshaler,
 		*time.Time,
 		*time.Duration,
 		encoding.TextUnmarshaler:
@@ -1699,31 +1716,19 @@ func (d *Decoder) canDecodeByUnmarshaler(dst reflect.Value) bool {
 	return false
 }
 
-//nolint:gocognit // one type assertion per unmarshaler interface, tried in order of precedence
-func (d *Decoder) decodeByUnmarshaler(ctx context.Context, dst reflect.Value, src ast.Node) error {
+func (d *Decoder) decodeByUnmarshaler(dst reflect.Value, src ast.Node) error {
 	ptrValue := dst.Addr()
 	if unmarshaler, exists := d.unmarshalerFromCustomUnmarshalerMap(ptrValue.Type()); exists {
 		b, err := d.unmarshalableDocument(src)
 		if err != nil {
 			return err
 		}
-		if err := unmarshaler(ctx, ptrValue.Interface(), b); err != nil {
+		if err := unmarshaler(ptrValue.Interface(), b); err != nil {
 			return err
 		}
 		return nil
 	}
 	iface := ptrValue.Interface()
-
-	if unmarshaler, ok := iface.(ContextUnmarshaler); ok {
-		b, err := d.unmarshalableDocument(src)
-		if err != nil {
-			return err
-		}
-		if err := unmarshaler.UnmarshalYAML(ctx, b); err != nil {
-			return err
-		}
-		return nil
-	}
 
 	if unmarshaler, ok := iface.(Unmarshaler); ok {
 		b, err := d.unmarshalableDocument(src)
@@ -1736,29 +1741,13 @@ func (d *Decoder) decodeByUnmarshaler(ctx context.Context, dst reflect.Value, sr
 		return nil
 	}
 
-	if unmarshaler, ok := iface.(ContextGoYAMLUnmarshaler); ok {
-		if err := unmarshaler.UnmarshalYAML(ctx, func(v any) error {
-			rv := reflect.ValueOf(v)
-			if rv.Type().Kind() != reflect.Pointer {
-				return ErrDecodeRequiredPointerType
-			}
-			if err := d.decodeValue(ctx, rv.Elem(), src); err != nil {
-				return err
-			}
-			return nil
-		}); err != nil {
-			return err
-		}
-		return nil
-	}
-
 	if unmarshaler, ok := iface.(GoYAMLUnmarshaler); ok {
 		if err := unmarshaler.UnmarshalYAML(func(v any) error {
 			rv := reflect.ValueOf(v)
 			if rv.Type().Kind() != reflect.Pointer {
 				return ErrDecodeRequiredPointerType
 			}
-			if err := d.decodeValue(ctx, rv.Elem(), src); err != nil {
+			if err := d.decodeValue(rv.Elem(), src); err != nil {
 				return err
 			}
 			return nil
@@ -1776,24 +1765,16 @@ func (d *Decoder) decodeByUnmarshaler(ctx context.Context, dst reflect.Value, sr
 		return nil
 	}
 
-	if unmarshaler, ok := iface.(ContextNodeUnmarshaler); ok {
-		if err := unmarshaler.UnmarshalYAML(ctx, src); err != nil {
-			return err
-		}
-
-		return nil
-	}
-
 	if _, ok := iface.(*time.Time); ok {
-		return d.decodeTime(ctx, dst, src)
+		return d.decodeTime(dst, src)
 	}
 
 	if _, ok := iface.(*time.Duration); ok {
-		return d.decodeDuration(ctx, dst, src)
+		return d.decodeDuration(dst, src)
 	}
 
 	if unmarshaler, isText := iface.(encoding.TextUnmarshaler); isText {
-		b, ok := d.unmarshalableText(src) //nolint:contextcheck // decodes into a plain string: no user unmarshaler can receive the context
+		b, ok := d.unmarshalableText(src)
 		if ok {
 			if err := unmarshaler.UnmarshalText(b); err != nil {
 				return err
@@ -1826,7 +1807,7 @@ func (d *Decoder) unmarshalJSON(unmarshaler jsonUnmarshaler, src ast.Node) error
 }
 
 //nolint:gocyclo,cyclop,maintidx,gocognit // one case per reflect.Kind of the destination
-func (d *Decoder) decodeValue(ctx context.Context, dst reflect.Value, src ast.Node) error {
+func (d *Decoder) decodeValue(dst reflect.Value, src ast.Node) error {
 	d.stepIn()
 	defer d.stepOut()
 	if d.isExceededMaxDepth() {
@@ -1842,14 +1823,17 @@ func (d *Decoder) decodeValue(ctx context.Context, dst reflect.Value, src ast.No
 	if src.Type() == ast.AnchorType {
 		anchor, _ := src.(*ast.AnchorNode)
 		anchorName := anchor.Name.GetToken().Value
-		if err := d.decodeValue(withAnchor(ctx, anchorName), dst, anchor.Value); err != nil {
+		leave := d.enterAnchor(anchorName)
+		err := d.decodeValue(dst, anchor.Value)
+		leave()
+		if err != nil {
 			return err
 		}
 		d.anchorValueMap[anchorName] = dst
 		return nil
 	}
 	if d.canDecodeByUnmarshaler(dst) {
-		if err := d.decodeByUnmarshaler(ctx, dst, src); err != nil {
+		if err := d.decodeByUnmarshaler(dst, src); err != nil {
 			return err
 		}
 		return nil
@@ -1866,7 +1850,7 @@ func (d *Decoder) decodeValue(ctx context.Context, dst reflect.Value, src ast.No
 			return nil
 		}
 		v := d.createDecodableValue(dst.Type())
-		if err := d.decodeValue(ctx, v, src); err != nil {
+		if err := d.decodeValue(v, src); err != nil {
 			return err
 		}
 		castedValue, err := d.castToAssignableValue(v, dst.Type(), src)
@@ -1879,7 +1863,7 @@ func (d *Decoder) decodeValue(ctx context.Context, dst reflect.Value, src ast.No
 			dst.Set(reflect.ValueOf(src))
 			return nil
 		}
-		srcVal, err := d.nodeToValue(ctx, src)
+		srcVal, err := d.nodeToValue(src)
 		if err != nil {
 			return err
 		}
@@ -1890,24 +1874,24 @@ func (d *Decoder) decodeValue(ctx context.Context, dst reflect.Value, src ast.No
 			dst.Set(reflect.Zero(valueType))
 		}
 	case reflect.Map:
-		return d.decodeMap(ctx, dst, src)
+		return d.decodeMap(dst, src)
 	case reflect.Array:
-		return d.decodeArray(ctx, dst, src)
+		return d.decodeArray(dst, src)
 	case reflect.Slice:
-		return d.decodeSlice(ctx, dst, src)
+		return d.decodeSlice(dst, src)
 	case reflect.Struct:
 		if mapSlice, ok := reflect.TypeAssert[*MapSlice](dst.Addr()); ok {
-			return d.decodeMapSlice(ctx, mapSlice, src)
+			return d.decodeMapSlice(mapSlice, src)
 		}
 		if seq, ok := reflect.TypeAssert[*MapSliceSeq](dst.Addr()); ok {
-			return d.decodeOrderedMapSeq(ctx, seq, src)
+			return d.decodeOrderedMapSeq(seq, src)
 		}
 		if mapItem, ok := reflect.TypeAssert[*MapItem](dst.Addr()); ok {
-			return d.decodeMapItem(ctx, mapItem, src)
+			return d.decodeMapItem(mapItem, src)
 		}
-		return d.decodeStruct(ctx, dst, src)
+		return d.decodeStruct(dst, src)
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
-		v, err := d.nodeToValue(ctx, src)
+		v, err := d.nodeToValue(src)
 		if err != nil {
 			return err
 		}
@@ -1954,7 +1938,7 @@ func (d *Decoder) decodeValue(ctx context.Context, dst reflect.Value, src ast.No
 		}
 		return yamlerrors.NewOverflow(valueType, fmt.Sprint(v), src.GetToken())
 	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
-		v, err := d.nodeToValue(ctx, src)
+		v, err := d.nodeToValue(src)
 		if err != nil {
 			return err
 		}
@@ -2000,7 +1984,7 @@ func (d *Decoder) decodeValue(ctx context.Context, dst reflect.Value, src ast.No
 	default:
 		// nothing to do
 	}
-	srcVal, err := d.nodeToValue(ctx, src)
+	srcVal, err := d.nodeToValue(src)
 	if err != nil {
 		return err
 	}
@@ -2027,8 +2011,8 @@ func (d *Decoder) createDecodableValue(typ reflect.Type) reflect.Value {
 }
 
 /*
-func (d *Decoder) keyToKeyNodeMap(ctx context.Context, node ast.Node, ignoreMergeKey bool) (map[string]ast.Node, error) {
-	m, err := d.keyToNodeMap(ctx, node, ignoreMergeKey, func(nodeMap *ast.MapNodeIter) ast.Node { return nodeMap.Key() })
+func (d *Decoder) keyToKeyNodeMap(node ast.Node, ignoreMergeKey bool) (map[string]ast.Node, error) {
+	m, err := d.keyToNodeMap(node, ignoreMergeKey, func(nodeMap *ast.MapNodeIter) ast.Node { return nodeMap.Key() })
 	if err != nil {
 		return nil, err
 	}
@@ -2079,7 +2063,7 @@ func (d *Decoder) aliasedValue(alias *ast.AliasNode, typ reflect.Type) (reflect.
 }
 
 func (d *Decoder) createDecodedNewValue(
-	ctx context.Context, typ reflect.Type, defaultVal reflect.Value, node ast.Node,
+	typ reflect.Type, defaultVal reflect.Value, node ast.Node,
 ) (reflect.Value, error) {
 	if alias, aliased := node.(*ast.AliasNode); aliased {
 		if d.expanding == nil {
@@ -2109,14 +2093,14 @@ func (d *Decoder) createDecodedNewValue(
 		newValue.Set(defaultVal)
 	}
 	if node.Type() != ast.NullType {
-		if err := d.decodeValue(ctx, newValue, node); err != nil {
+		if err := d.decodeValue(newValue, node); err != nil {
 			return reflect.Value{}, err
 		}
 	}
 	return d.castToAssignableValue(newValue, typ, node)
 }
 
-func (d *Decoder) keyToNodeMap(ctx context.Context, node ast.Node, ignoreMergeKey bool, getKeyOrValueNode func(*ast.MapNodeIter) ast.Node) (map[string]ast.Node, error) {
+func (d *Decoder) keyToNodeMap(node ast.Node, ignoreMergeKey bool, getKeyOrValueNode func(*ast.MapNodeIter) ast.Node) (map[string]ast.Node, error) {
 	d.stepIn()
 	defer d.stepOut()
 	if d.isExceededMaxDepth() {
@@ -2137,7 +2121,7 @@ func (d *Decoder) keyToNodeMap(ctx context.Context, node ast.Node, ignoreMergeKe
 			if ignoreMergeKey {
 				continue
 			}
-			mergeMap, err := d.mergedKeyToNodeMap(ctx, mapIter.Value(), ignoreMergeKey, getKeyOrValueNode)
+			mergeMap, err := d.mergedKeyToNodeMap(mapIter.Value(), ignoreMergeKey, getKeyOrValueNode)
 			if err != nil {
 				return nil, err
 			}
@@ -2146,7 +2130,7 @@ func (d *Decoder) keyToNodeMap(ctx context.Context, node ast.Node, ignoreMergeKe
 			continue
 		}
 
-		keyVal, err := d.nodeToValue(ctx, keyNode)
+		keyVal, err := d.nodeToValue(keyNode)
 		if err != nil {
 			return nil, err
 		}
@@ -2282,7 +2266,7 @@ func tagZero(tag token.ReservedTagKeyword) (any, error) {
 // both write "b" -- and YAML 1.1's merge says the mapping named first wins
 // rather than that the document is wrong.
 func (d *Decoder) mergedKeyToNodeMap(
-	ctx context.Context, node ast.Node, ignoreMergeKey bool, getKeyOrValueNode func(*ast.MapNodeIter) ast.Node,
+	node ast.Node, ignoreMergeKey bool, getKeyOrValueNode func(*ast.MapNodeIter) ast.Node,
 ) (map[string]ast.Node, error) {
 	d.stepIn()
 	defer d.stepOut()
@@ -2303,7 +2287,7 @@ func (d *Decoder) mergedKeyToNodeMap(
 			if ignoreMergeKey {
 				continue
 			}
-			nested, err := d.mergedKeyToNodeMap(ctx, mapIter.Value(), ignoreMergeKey, getKeyOrValueNode)
+			nested, err := d.mergedKeyToNodeMap(mapIter.Value(), ignoreMergeKey, getKeyOrValueNode)
 			if err != nil {
 				return nil, err
 			}
@@ -2316,7 +2300,7 @@ func (d *Decoder) mergedKeyToNodeMap(
 			continue
 		}
 
-		keyVal, err := d.nodeToValue(ctx, keyNode)
+		keyVal, err := d.nodeToValue(keyNode)
 		if err != nil {
 			return nil, err
 		}
@@ -2332,8 +2316,8 @@ func (d *Decoder) mergedKeyToNodeMap(
 	return keyToNodeMap, nil
 }
 
-func (d *Decoder) keyToValueNodeMap(ctx context.Context, node ast.Node, ignoreMergeKey bool) (map[string]ast.Node, error) {
-	m, err := d.keyToNodeMap(ctx, node, ignoreMergeKey, func(nodeMap *ast.MapNodeIter) ast.Node { return nodeMap.Value() })
+func (d *Decoder) keyToValueNodeMap(node ast.Node, ignoreMergeKey bool) (map[string]ast.Node, error) {
+	m, err := d.keyToNodeMap(node, ignoreMergeKey, func(nodeMap *ast.MapNodeIter) ast.Node { return nodeMap.Value() })
 	if err != nil {
 		return nil, err
 	}
@@ -2342,7 +2326,7 @@ func (d *Decoder) keyToValueNodeMap(ctx context.Context, node ast.Node, ignoreMe
 
 // taggedValue is what a tagged node denotes, once ast.TagNode.Resolve has said
 // the tag applies.
-func (d *Decoder) taggedValue(ctx context.Context, n *ast.TagNode, res ast.Resolution) (any, error) {
+func (d *Decoder) taggedValue(n *ast.TagNode, res ast.Resolution) (any, error) {
 	if res.Empty {
 		// A tag with nothing after it takes the tag's own default, which
 		// parser's newTagDefaultScalarValueNode builds and nothing read:
@@ -2352,7 +2336,7 @@ func (d *Decoder) taggedValue(ctx context.Context, n *ast.TagNode, res ast.Resol
 
 	switch res.Tag {
 	case token.TimestampTag:
-		return d.castToTime(ctx, n.Value)
+		return d.castToTime(n.Value)
 	case token.IntegerTag:
 		// Read from the text the tag stands over, in the base the document's
 		// own schema gives those digits. Resolving the node instead took a
@@ -2404,11 +2388,11 @@ func (d *Decoder) taggedValue(ctx context.Context, n *ast.TagNode, res ast.Resol
 			return nil, notAnOrderedMap(n.Value)
 		}
 
-		return d.orderedMapOf(ctx, seq)
+		return d.orderedMapOf(seq)
 	default:
 		// A tag naming a kind -- !!seq, !!map, !!set, !!merge. The node is read
 		// as it stands.
-		return d.nodeToValue(ctx, n.Value)
+		return d.nodeToValue(n.Value)
 	}
 }
 
@@ -2419,7 +2403,7 @@ func (d *Decoder) taggedValue(ctx context.Context, n *ast.TagNode, res ast.Resol
 // entries on the sequence, and refuseOrderedMapDuplicates reads that record as
 // every other load does. Where the parse allowed the repeat, the later entry's
 // value replaces the earlier one's, as it does in a mapping.
-func (d *Decoder) orderedMapOf(ctx context.Context, seq *ast.SequenceNode) (MapSliceSeq, error) {
+func (d *Decoder) orderedMapOf(seq *ast.SequenceNode) (MapSliceSeq, error) {
 	// An entry's own repeat first, then a repeat across entries: the walk and
 	// the converters meet the first as the entry's mapping closes, and the
 	// second only as the "!!omap" closes.
@@ -2435,7 +2419,7 @@ func (d *Decoder) orderedMapOf(ctx context.Context, seq *ast.SequenceNode) (MapS
 	var m MapSlice
 	for _, entry := range seq.Values {
 		var one MapSlice
-		if err := d.setToOrderedMapValue(ctx, entryMapping(entry), &one, false); err != nil {
+		if err := d.setToOrderedMapValue(entryMapping(entry), &one, false); err != nil {
 			return MapSliceSeq{}, err
 		}
 		for _, item := range one.items {
@@ -2453,11 +2437,11 @@ func (d *Decoder) orderedMapOf(ctx context.Context, seq *ast.SequenceNode) (MapS
 // from a "<<" rather than from the mapping itself.
 type mapEntryFunc func(name string, keyNode, valueNode, entryNode ast.Node, merged bool) error
 
-func (d *Decoder) castToTime(ctx context.Context, src ast.Node) (time.Time, error) {
+func (d *Decoder) castToTime(src ast.Node) (time.Time, error) {
 	if src == nil {
 		return time.Time{}, nil
 	}
-	v, err := d.nodeToValue(ctx, src)
+	v, err := d.nodeToValue(src)
 	if err != nil {
 		return time.Time{}, err
 	}
@@ -2487,8 +2471,8 @@ func (d *Decoder) castToTime(ctx context.Context, src ast.Node) (time.Time, erro
 		fmt.Sprintf("cannot read %q as a timestamp", s), src.GetToken())
 }
 
-func (d *Decoder) decodeTime(ctx context.Context, dst reflect.Value, src ast.Node) error {
-	t, err := d.castToTime(ctx, src)
+func (d *Decoder) decodeTime(dst reflect.Value, src ast.Node) error {
+	t, err := d.castToTime(src)
 	if err != nil {
 		return err
 	}
@@ -2496,11 +2480,11 @@ func (d *Decoder) decodeTime(ctx context.Context, dst reflect.Value, src ast.Nod
 	return nil
 }
 
-func (d *Decoder) castToDuration(ctx context.Context, src ast.Node) (time.Duration, error) {
+func (d *Decoder) castToDuration(src ast.Node) (time.Duration, error) {
 	if src == nil {
 		return 0, nil
 	}
-	v, err := d.nodeToValue(ctx, src)
+	v, err := d.nodeToValue(src)
 	if err != nil {
 		return 0, err
 	}
@@ -2548,8 +2532,8 @@ func (w *writtenFields) has(i int) bool {
 	return word < len(w.rest) && w.rest[word]&(1<<uint(i%64)) != 0
 }
 
-func (d *Decoder) decodeDuration(ctx context.Context, dst reflect.Value, src ast.Node) error {
-	t, err := d.castToDuration(ctx, src)
+func (d *Decoder) decodeDuration(dst reflect.Value, src ast.Node) error {
+	t, err := d.castToDuration(src)
 	if err != nil {
 		return err
 	}
@@ -2629,7 +2613,7 @@ func fieldFor(dst reflect.Value, fields *readFields, name string) (located, erro
 // A field the mapping writes itself is set before any merged entry reaches it,
 // and an earlier "<<" is read before a later one, which is what YAML 1.1's
 // merge asks for. The caller skips a merged entry whose field is already set.
-func (d *Decoder) rangeMapEntries(ctx context.Context, src ast.Node, ignoreMergeKey bool, visit mapEntryFunc) error {
+func (d *Decoder) rangeMapEntries(src ast.Node, ignoreMergeKey bool, visit mapEntryFunc) error {
 	d.stepIn()
 	defer d.stepOut()
 	if d.isExceededMaxDepth() {
@@ -2654,7 +2638,7 @@ func (d *Decoder) rangeMapEntries(ctx context.Context, src ast.Node, ignoreMerge
 			continue
 		}
 
-		name, named, err := d.entryName(ctx, keyNode)
+		name, named, err := d.entryName(keyNode)
 		if err != nil {
 			return err
 		}
@@ -2667,7 +2651,7 @@ func (d *Decoder) rangeMapEntries(ctx context.Context, src ast.Node, ignoreMerge
 	}
 
 	for _, from := range merges {
-		if err := d.rangeMergedEntries(ctx, from, ignoreMergeKey, visit); err != nil {
+		if err := d.rangeMergedEntries(from, ignoreMergeKey, visit); err != nil {
 			return err
 		}
 	}
@@ -2678,7 +2662,7 @@ func (d *Decoder) rangeMapEntries(ctx context.Context, src ast.Node, ignoreMerge
 // rangeMergedEntries hands over the entries of what a "<<" names, which is a
 // mapping or a sequence of them: getMapNode folds a sequence into one MapNode,
 // in the order it was written.
-func (d *Decoder) rangeMergedEntries(ctx context.Context, src ast.Node, ignoreMergeKey bool, visit mapEntryFunc) error {
+func (d *Decoder) rangeMergedEntries(src ast.Node, ignoreMergeKey bool, visit mapEntryFunc) error {
 	d.stepIn()
 	defer d.stepOut()
 	if d.isExceededMaxDepth() {
@@ -2703,7 +2687,7 @@ func (d *Decoder) rangeMergedEntries(ctx context.Context, src ast.Node, ignoreMe
 			continue
 		}
 
-		name, named, err := d.entryName(ctx, keyNode)
+		name, named, err := d.entryName(keyNode)
 		if err != nil {
 			return err
 		}
@@ -2716,7 +2700,7 @@ func (d *Decoder) rangeMergedEntries(ctx context.Context, src ast.Node, ignoreMe
 	}
 
 	for _, from := range merges {
-		if err := d.rangeMergedEntries(ctx, from, ignoreMergeKey, visit); err != nil {
+		if err := d.rangeMergedEntries(from, ignoreMergeKey, visit); err != nil {
 			return err
 		}
 	}
@@ -2731,7 +2715,7 @@ func (d *Decoder) rangeMergedEntries(ctx context.Context, src ast.Node, ignoreMe
 // field tagged "true" and "1.0: x" one tagged "1.0", which is how the same
 // document reads into a map[string]any. Requiring the key to be an ast string
 // dropped every one of those instead.
-func (d *Decoder) entryName(_ context.Context, keyNode ast.Node) (string, bool, error) { //nolint:unparam // signature kept stable: callers already handle the error
+func (d *Decoder) entryName(keyNode ast.Node) (string, bool, error) { //nolint:unparam // signature kept stable: callers already handle the error
 	name, kind := ast.KeyName(keyNode)
 
 	return name, kind != token.KeyOther, nil
@@ -2771,7 +2755,7 @@ func validationErrorToken(value, entry ast.Node) *token.Token {
 // struct's own fields and everything its embedded structs promote. With nothing
 // left over the map stays nil, as v3 leaves it.
 func (d *Decoder) decodeInlineFields(
-	ctx context.Context, dst reflect.Value, src ast.Node, fields *readFields,
+	dst reflect.Value, src ast.Node, fields *readFields,
 	ignoreMergeKey bool, unknownFields map[string]ast.Node, foundErr *error,
 ) error {
 	structType := dst.Type()
@@ -2809,7 +2793,7 @@ func (d *Decoder) decodeInlineFields(
 
 		if entries == nil {
 			var err error
-			if entries, err = d.keyToValueNodeMap(ctx, src, ignoreMergeKey); err != nil {
+			if entries, err = d.keyToValueNodeMap(src, ignoreMergeKey); err != nil {
 				return err
 			}
 		}
@@ -2821,7 +2805,7 @@ func (d *Decoder) decodeInlineFields(
 			continue
 		}
 
-		newFieldValue, err := d.createDecodedNewValue(ctx, fieldValue.Type(), fieldValue, mapNode)
+		newFieldValue, err := d.createDecodedNewValue(fieldValue.Type(), fieldValue, mapNode)
 		if unknownFields != nil {
 			if err := d.deleteStructKeys(fieldValue.Type(), unknownFields); err != nil {
 				return err
@@ -2911,8 +2895,8 @@ func sequenceEntryNode(node ast.ArrayNode, idx int) ast.Node {
 //
 // This walks the mapping rather than reading a map built up front: only a
 // document that fails validation asks, and only for the field that failed.
-func (d *Decoder) findEntry(ctx context.Context, src ast.Node, ignoreMergeKey bool, name string) (value, entry ast.Node) {
-	_ = d.rangeMapEntries(ctx, src, ignoreMergeKey,
+func (d *Decoder) findEntry(src ast.Node, ignoreMergeKey bool, name string) (value, entry ast.Node) {
+	_ = d.rangeMapEntries(src, ignoreMergeKey,
 		func(entryName string, _, valueNode, entryNode ast.Node, _ bool) error {
 			if value == nil && entryName == name {
 				value, entry = valueNode, entryNode
@@ -2940,7 +2924,7 @@ func (d *Decoder) getMergeAliasName(src ast.Node) string {
 	return ""
 }
 
-func (d *Decoder) decodeStruct(ctx context.Context, dst reflect.Value, src ast.Node) error {
+func (d *Decoder) decodeStruct(dst reflect.Value, src ast.Node) error {
 	if src == nil {
 		return nil
 	}
@@ -3011,7 +2995,7 @@ func (d *Decoder) decodeStruct(ctx context.Context, dst reflect.Value, src ast.N
 		}
 
 		prevEntry := d.enterEntry(entryNode)
-		newFieldValue, err := d.createDecodedNewValue(ctx, fieldValue.Type(), fieldValue, valueNode)
+		newFieldValue, err := d.createDecodedNewValue(fieldValue.Type(), fieldValue, valueNode)
 		d.entry = prevEntry
 		if err != nil {
 			// Only the first field error is kept, and decoding goes on, as encoding/json does.
@@ -3024,12 +3008,12 @@ func (d *Decoder) decodeStruct(ctx context.Context, dst reflect.Value, src ast.N
 		return nil
 	}
 
-	if err := d.rangeMapEntries(ctx, src, ignoreMergeKey, setField); err != nil {
+	if err := d.rangeMapEntries(src, ignoreMergeKey, setField); err != nil {
 		return err
 	}
 
 	if len(fields.inline) > 0 {
-		if err := d.decodeInlineFields(ctx, dst, src, fields, ignoreMergeKey, unknownFields, &foundErr); err != nil {
+		if err := d.decodeInlineFields(dst, src, fields, ignoreMergeKey, unknownFields, &foundErr); err != nil {
 			return err
 		}
 	}
@@ -3046,7 +3030,7 @@ func (d *Decoder) decodeStruct(ctx context.Context, dst reflect.Value, src ast.N
 		}
 	}
 
-	return d.validateStruct(ctx, dst, src, fields, ignoreMergeKey)
+	return d.validateStruct(dst, src, fields, ignoreMergeKey)
 }
 
 // refuseUnknownFields returns an error for the first of unknownFields whose
@@ -3069,7 +3053,7 @@ func (d *Decoder) refuseUnknownFields(unknownFields map[string]ast.Node) error {
 // A validation error is reported at the entry that writes the field, which is
 // the ":" rather than anything inside the value. The entries are read here
 // rather than during the decode: a document that validates never needs them.
-func (d *Decoder) validateStruct(ctx context.Context, dst reflect.Value, src ast.Node, fields *readFields, ignoreMergeKey bool) error {
+func (d *Decoder) validateStruct(dst reflect.Value, src ast.Node, fields *readFields, ignoreMergeKey bool) error {
 	if d.validator == nil {
 		return nil
 	}
@@ -3090,7 +3074,7 @@ func (d *Decoder) validateStruct(ctx context.Context, dst reflect.Value, src ast
 		if !exists {
 			continue
 		}
-		value, entry := d.findEntry(ctx, src, ignoreMergeKey, renderName)
+		value, entry := d.findEntry(src, ignoreMergeKey, renderName)
 		if value != nil {
 			// TODO: to make FieldError message cutomizable
 			return yamlerrors.NewSyntax(err.Error(), validationErrorToken(value, entry))
@@ -3129,7 +3113,7 @@ func (d *Decoder) enterEntry(entry ast.Node) ast.Node {
 	return prev
 }
 
-func (d *Decoder) decodeArray(ctx context.Context, dst reflect.Value, src ast.Node) error {
+func (d *Decoder) decodeArray(dst reflect.Value, src ast.Node) error {
 	d.stepIn()
 	defer d.stepOut()
 	if d.isExceededMaxDepth() {
@@ -3163,7 +3147,7 @@ func (d *Decoder) decodeArray(ctx context.Context, dst reflect.Value, src ast.No
 			// set nil value to pointer
 			arrayValue.Index(idx).Set(reflect.Zero(elemType))
 		} else {
-			dstValue, err := d.createDecodedNewValue(ctx, elemType, reflect.Value{}, v)
+			dstValue, err := d.createDecodedNewValue(elemType, reflect.Value{}, v)
 			if err != nil {
 				if foundErr == nil {
 					foundErr = err
@@ -3181,7 +3165,7 @@ func (d *Decoder) decodeArray(ctx context.Context, dst reflect.Value, src ast.No
 	return nil
 }
 
-func (d *Decoder) decodeSlice(ctx context.Context, dst reflect.Value, src ast.Node) error {
+func (d *Decoder) decodeSlice(dst reflect.Value, src ast.Node) error {
 	d.stepIn()
 	defer d.stepOut()
 	if d.isExceededMaxDepth() {
@@ -3220,7 +3204,7 @@ func (d *Decoder) decodeSlice(ctx context.Context, dst reflect.Value, src ast.No
 			continue
 		}
 		prevEntry := d.enterEntry(sequenceEntryNode(arrayNode, entryIdx))
-		dstValue, err := d.createDecodedNewValue(ctx, elemType, reflect.Value{}, v)
+		dstValue, err := d.createDecodedNewValue(elemType, reflect.Value{}, v)
 		d.entry = prevEntry
 		if err != nil {
 			if foundErr == nil {
@@ -3237,14 +3221,14 @@ func (d *Decoder) decodeSlice(ctx context.Context, dst reflect.Value, src ast.No
 	return nil
 }
 
-func (d *Decoder) decodeMapItem(ctx context.Context, dst *MapItem, src ast.Node) error {
+func (d *Decoder) decodeMapItem(dst *MapItem, src ast.Node) error {
 	d.stepIn()
 	defer d.stepOut()
 	if d.isExceededMaxDepth() {
 		return ErrExceededMaxDepth
 	}
 
-	mapNode, err := d.getMapNode(src, isMerge(ctx))
+	mapNode, err := d.getMapNode(src, d.merging)
 	if err != nil {
 		return err
 	}
@@ -3255,16 +3239,19 @@ func (d *Decoder) decodeMapItem(ctx context.Context, dst *MapItem, src ast.Node)
 	key := mapIter.Key()
 	value := mapIter.Value()
 	if key.IsMergeKey() {
-		if err := d.decodeMapItem(withMerge(ctx), dst, value); err != nil {
+		leave := d.enterMerge()
+		err := d.decodeMapItem(dst, value)
+		leave()
+		if err != nil {
 			return err
 		}
 		return nil
 	}
-	k, err := d.nodeToValue(ctx, key)
+	k, err := d.nodeToValue(key)
 	if err != nil {
 		return err
 	}
-	v, err := d.nodeToValue(ctx, value)
+	v, err := d.nodeToValue(value)
 	if err != nil {
 		return err
 	}
@@ -3342,7 +3329,7 @@ func (d *Decoder) validateDuplicateKey(keyMap map[any]struct{}, key any, keyNode
 // sequence whose mappings share a key was refused on the name of the anchored
 // mapping. That is the fault defect 40 fixed for a Go map, on the fifth place a
 // merge is resolved.
-func (d *Decoder) decodeMapSlice(ctx context.Context, dst *MapSlice, src ast.Node) error {
+func (d *Decoder) decodeMapSlice(dst *MapSlice, src ast.Node) error {
 	d.stepIn()
 	defer d.stepOut()
 	if d.isExceededMaxDepth() {
@@ -3350,7 +3337,7 @@ func (d *Decoder) decodeMapSlice(ctx context.Context, dst *MapSlice, src ast.Nod
 	}
 
 	if seq, ordered := taggedOrderedMap(src); ordered {
-		one, err := d.orderedMapOf(ctx, seq)
+		one, err := d.orderedMapOf(seq)
 		if err != nil {
 			return err
 		}
@@ -3359,7 +3346,7 @@ func (d *Decoder) decodeMapSlice(ctx context.Context, dst *MapSlice, src ast.Nod
 		return nil
 	}
 
-	mapNode, err := d.getMapNode(src, isMerge(ctx))
+	mapNode, err := d.getMapNode(src, d.merging)
 	if err != nil {
 		return err
 	}
@@ -3370,11 +3357,11 @@ func (d *Decoder) decodeMapSlice(ctx context.Context, dst *MapSlice, src ast.Nod
 		if len(n.Values) > 0 {
 			m.items = make([]MapItem, 0, len(n.Values))
 		}
-		if err := d.setToOrderedMapValue(ctx, n, &m, isMerge(ctx)); err != nil {
+		if err := d.setToOrderedMapValue(n, &m, d.merging); err != nil {
 			return err
 		}
 	case *ast.MappingValueNode:
-		if err := d.setToOrderedMapValue(ctx, n, &m, isMerge(ctx)); err != nil {
+		if err := d.setToOrderedMapValue(n, &m, d.merging); err != nil {
 			return err
 		}
 	}
@@ -3388,8 +3375,8 @@ func (d *Decoder) decodeMapSlice(ctx context.Context, dst *MapSlice, src ast.Nod
 // The destination names the spelling, so a plain mapping read into a
 // MapSliceSeq writes back as an "!!omap" and an "!!omap" read into a MapSlice
 // writes back as a plain mapping.
-func (d *Decoder) decodeOrderedMapSeq(ctx context.Context, dst *MapSliceSeq, src ast.Node) error {
-	m, err := d.orderedEntriesOf(ctx, src)
+func (d *Decoder) decodeOrderedMapSeq(dst *MapSliceSeq, src ast.Node) error {
+	m, err := d.orderedEntriesOf(src)
 	if err != nil {
 		return err
 	}
@@ -3399,27 +3386,27 @@ func (d *Decoder) decodeOrderedMapSeq(ctx context.Context, dst *MapSliceSeq, src
 }
 
 // orderedEntriesOf reads the entries of a mapping or of an "!!omap".
-func (d *Decoder) orderedEntriesOf(ctx context.Context, src ast.Node) (MapSlice, error) {
+func (d *Decoder) orderedEntriesOf(src ast.Node) (MapSlice, error) {
 	if seq, ordered := taggedOrderedMap(src); ordered {
-		one, err := d.orderedMapOf(ctx, seq)
+		one, err := d.orderedMapOf(seq)
 
 		return MapSlice(one), err
 	}
 
 	var m MapSlice
-	err := d.decodeMapSlice(ctx, &m, src)
+	err := d.decodeMapSlice(&m, src)
 
 	return m, err
 }
 
-func (d *Decoder) decodeMap(ctx context.Context, dst reflect.Value, src ast.Node) error {
+func (d *Decoder) decodeMap(dst reflect.Value, src ast.Node) error {
 	d.stepIn()
 	defer d.stepOut()
 	if d.isExceededMaxDepth() {
 		return ErrExceededMaxDepth
 	}
 
-	mapNode, err := d.getMapNode(src, isMerge(ctx))
+	mapNode, err := d.getMapNode(src, d.merging)
 	if err != nil {
 		return err
 	}
@@ -3431,7 +3418,7 @@ func (d *Decoder) decodeMap(ctx context.Context, dst reflect.Value, src ast.Node
 	// A mapping read under a merge is the fold getMapNode makes of "<<: [a, b]",
 	// so two entries alike in it are the sequence doing its job -- the earlier
 	// mapping wins -- and not the repeated key 3.2.1.1 refuses.
-	folded := isMerge(ctx)
+	folded := d.merging
 	var foundErr error
 	for _, entry := range mapEntriesOwnFirst(mapNode) {
 		key := entry.key
@@ -3447,14 +3434,14 @@ func (d *Decoder) decodeMap(ctx context.Context, dst reflect.Value, src ast.Node
 			// sequence that define one key is what the sequence is for, and a
 			// merged key equal to an own key is the override the type
 			// describes -- neither is the repeated key 3.2.1.1 refuses.
-			if err := d.mergeIntoMap(ctx, dst, mapValue, value); err != nil {
+			if err := d.mergeIntoMap(dst, mapValue, value); err != nil {
 				return err
 			}
 
 			continue
 		}
 
-		k, decodeKeyAs, err := d.decodeMapKey(ctx, keyType, key)
+		k, decodeKeyAs, err := d.decodeMapKey(keyType, key)
 		if err != nil {
 			return err
 		}
@@ -3470,7 +3457,7 @@ func (d *Decoder) decodeMap(ctx context.Context, dst reflect.Value, src ast.Node
 			continue
 		}
 		prevEntry := d.enterEntry(entry.keyValue)
-		dstValue, err := d.createDecodedNewValue(ctx, valueType, reflect.Value{}, value)
+		dstValue, err := d.createDecodedNewValue(valueType, reflect.Value{}, value)
 		d.entry = prevEntry
 		if err != nil {
 			if foundErr == nil {
@@ -3497,8 +3484,11 @@ func (d *Decoder) decodeMap(ctx context.Context, dst reflect.Value, src ast.Node
 
 // mergeIntoMap decodes the mapping a "<<" brings in, value, and copies into mapValue each of its entries whose key
 // mapValue does not hold yet.
-func (d *Decoder) mergeIntoMap(ctx context.Context, dst, mapValue reflect.Value, value ast.Node) error {
-	if err := d.decodeMap(withMerge(ctx), dst, value); err != nil {
+func (d *Decoder) mergeIntoMap(dst, mapValue reflect.Value, value ast.Node) error {
+	leave := d.enterMerge()
+	err := d.decodeMap(dst, value)
+	leave()
+	if err != nil {
 		return err
 	}
 	iter := dst.MapRange()
@@ -3514,7 +3504,7 @@ func (d *Decoder) mergeIntoMap(ctx context.Context, dst, mapValue reflect.Value,
 
 // decodeMapKey decodes key into a map whose keys are of keyType, and returns the key with the type it was decoded as.
 // Under UseStringKeys a map that takes any key reads its keys as strings.
-func (d *Decoder) decodeMapKey(ctx context.Context, keyType reflect.Type, key ast.Node) (reflect.Value, reflect.Type, error) {
+func (d *Decoder) decodeMapKey(keyType reflect.Type, key ast.Node) (reflect.Value, reflect.Type, error) {
 	decodeKeyAs := keyType
 	if d.useStringKeys && keyType.Kind() == reflect.Interface {
 		// The map takes any key, so a scalar would otherwise arrive with
@@ -3526,17 +3516,17 @@ func (d *Decoder) decodeMapKey(ctx context.Context, keyType reflect.Type, key as
 	k := d.createDecodableValue(decodeKeyAs)
 	switch {
 	case d.canDecodeByUnmarshaler(k):
-		if err := d.decodeByUnmarshaler(ctx, k, key); err != nil {
+		if err := d.decodeByUnmarshaler(k, key); err != nil {
 			return reflect.Value{}, nil, err
 		}
 	case decodeKeyAs.Kind() == reflect.String:
-		name, err := d.stringMapKey(ctx, key)
+		name, err := d.stringMapKey(key)
 		if err != nil {
 			return reflect.Value{}, nil, err
 		}
 		k = reflect.ValueOf(name).Convert(decodeKeyAs)
 	default:
-		keyVal, err := d.createDecodedNewValue(ctx, decodeKeyAs, reflect.Value{}, key)
+		keyVal, err := d.createDecodedNewValue(decodeKeyAs, reflect.Value{}, key)
 		if err != nil {
 			return reflect.Value{}, nil, err
 		}
@@ -3554,8 +3544,8 @@ func (d *Decoder) decodeMapKey(ctx context.Context, keyType reflect.Type, key as
 // zero, which collides with the empty key: "null: a" and "\"\": b"
 // are two entries and were read as one, so the document was refused
 // as holding a duplicate key.
-func (d *Decoder) stringMapKey(ctx context.Context, key ast.Node) (string, error) {
-	keyValue, err := d.nodeToValue(ctx, key)
+func (d *Decoder) stringMapKey(key ast.Node) (string, error) {
+	keyValue, err := d.nodeToValue(key)
 	if err != nil {
 		return "", err
 	}
@@ -3702,7 +3692,7 @@ func readAll(r io.Reader) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-func (d *Decoder) resolveReference(ctx context.Context) error {
+func (d *Decoder) resolveReference() error {
 	for _, opt := range d.opts {
 		if err := opt(d); err != nil {
 			return err
@@ -3737,7 +3727,7 @@ func (d *Decoder) resolveReference(ctx context.Context) error {
 		}
 
 		// assign new anchor definition to anchorMap
-		if _, err := d.parse(ctx, bytes); err != nil {
+		if _, err := d.parse(bytes); err != nil {
 			return err
 		}
 
@@ -3779,7 +3769,7 @@ func (d *Decoder) parserOptions() []parser.Option {
 	return opts
 }
 
-func (d *Decoder) parse(ctx context.Context, bytes []byte) (*ast.File, error) {
+func (d *Decoder) parse(bytes []byte) (*ast.File, error) {
 	f, err := parser.ParseBytes(bytes, d.parserOptions()...)
 	if err != nil {
 		return nil, err
@@ -3812,7 +3802,7 @@ func (d *Decoder) parse(ctx context.Context, bytes []byte) (*ast.File, error) {
 		// Only a caller that asked for the comments pays for reading them.
 		d.anchorNodeMap = anchors
 		d.anchorValueMap = make(map[string]reflect.Value)
-		if err := d.collectComments(ctx, doc.Body); err != nil {
+		if err := d.collectComments(doc.Body); err != nil {
 			return nil, err
 		}
 
@@ -3832,8 +3822,8 @@ func (d *Decoder) parse(ctx context.Context, bytes []byte) (*ast.File, error) {
 // It reads the document the way the decode does, since a comment is recorded
 // against the path of the node carrying it and the paths are what the map is
 // keyed by.
-func (d *Decoder) collectComments(ctx context.Context, body ast.Node) error {
-	_, err := d.nodeToValue(ctx, body)
+func (d *Decoder) collectComments(body ast.Node) error {
+	_, err := d.nodeToValue(body)
 
 	return err
 }
@@ -3894,9 +3884,9 @@ func isEmptyDocument(doc *ast.DocumentNode) bool {
 	return comments
 }
 
-func (d *Decoder) decodeInit(ctx context.Context, v reflect.Value) error {
+func (d *Decoder) decodeInit(v reflect.Value) error {
 	if !d.isResolvedReference {
-		if err := d.resolveReference(ctx); err != nil {
+		if err := d.resolveReference(); err != nil {
 			return err
 		}
 	}
@@ -3937,7 +3927,7 @@ func (d *Decoder) decodeInit(ctx context.Context, v reflect.Value) error {
 		// Fall through and read it again into a tree.
 	}
 
-	file, err := d.parse(ctx, src)
+	file, err := d.parse(src)
 	if err != nil {
 		return err
 	}
@@ -3975,8 +3965,8 @@ func (d *Decoder) canWalkTyped(v reflect.Value) bool {
 //
 // One Decoder may be handed different destinations for the documents of one
 // stream, and only the first of them decided how the source was read.
-func (d *Decoder) buildTree(ctx context.Context) error {
-	file, err := d.parse(ctx, d.src)
+func (d *Decoder) buildTree() error {
+	file, err := d.parse(d.src)
 	if err != nil {
 		return err
 	}
@@ -4016,7 +4006,7 @@ func (d *Decoder) handWalked(v reflect.Value) error {
 	return nil
 }
 
-func (d *Decoder) decode(ctx context.Context, v reflect.Value) error {
+func (d *Decoder) decode(v reflect.Value) error {
 	if d.typedWalk {
 		// The destination was filled as the parse read the source.
 		d.typedWalk, d.walkedOK = false, false
@@ -4031,7 +4021,7 @@ func (d *Decoder) decode(ctx context.Context, v reflect.Value) error {
 		// This Decoder read the source by walking it for an earlier document,
 		// and now holds a destination the walk cannot serve. Read it again into
 		// a tree, which is what the rest of this reads.
-		if err := d.buildTree(ctx); err != nil {
+		if err := d.buildTree(); err != nil {
 			return err
 		}
 	}
@@ -4070,7 +4060,7 @@ func (d *Decoder) decode(ctx context.Context, v reflect.Value) error {
 		maps.Copy(d.toCommentMap, d.commentMaps[d.streamIndex])
 	}
 	d.anchorNodeMap = d.anchorNodeMaps[d.streamIndex]
-	if err := d.decodeValue(ctx, v.Elem(), body); err != nil {
+	if err := d.decodeValue(v.Elem(), body); err != nil {
 		return err
 	}
 	d.streamIndex++

@@ -592,12 +592,9 @@ func walkableType(t reflect.Type, mode tagMode) bool {
 
 var (
 	unmarshalerTypes = []reflect.Type{
-		reflect.TypeFor[ContextUnmarshaler](),
 		reflect.TypeFor[Unmarshaler](),
-		reflect.TypeFor[ContextGoYAMLUnmarshaler](),
 		reflect.TypeFor[GoYAMLUnmarshaler](),
 		reflect.TypeFor[NodeUnmarshaler](),
-		reflect.TypeFor[ContextNodeUnmarshaler](),
 		reflect.TypeFor[encoding.TextUnmarshaler](),
 		reflect.TypeFor[ast.Node](),
 	}

@@ -5,9 +5,7 @@ package codec_test
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"iter"
 	"math"
@@ -1756,27 +1754,6 @@ func TestEncoder_CustomMarshaler(t *testing.T) {
 			t.Fatalf("failed to switch to custom marshaler. got: %q", b)
 		}
 	})
-	t.Run("override bytes type with context", func(t *testing.T) {
-		type T struct {
-			Foo []byte `yaml:"foo"`
-		}
-		ctx := context.WithValue(context.Background(), contextKey("plop"), uint(42))
-		b, err := codec.MarshalContext(ctx, &T{Foo: []byte("bar")}, codec.CustomMarshalerContext[[]byte](func(ctx context.Context, v []byte) ([]byte, error) {
-			if !bytes.Equal(v, []byte("bar")) {
-				t.Fatalf("failed to get src buffer: %q", v)
-			}
-			if ctx.Value(contextKey("plop")) != uint(42) {
-				t.Fatalf("context value is not correct")
-			}
-			return []byte(`override`), nil
-		}))
-		if err != nil {
-			t.Fatal(err)
-		}
-		if !bytes.Equal(b, []byte("foo: override\n")) {
-			t.Fatalf("failed to switch to custom marshaler. got: %q", b)
-		}
-	})
 }
 
 func TestEncoder_AutoInt(t *testing.T) {
@@ -2022,30 +1999,6 @@ func Test_Marshaler(t *testing.T) {
 	}
 
 	t.Logf("%s", buf)
-}
-
-type marshalContext struct{}
-
-func (c *marshalContext) MarshalYAML(ctx context.Context) ([]byte, error) {
-	v, ok := ctx.Value(contextKey("k")).(int)
-	if !ok {
-		return nil, errors.New("cannot get valid context")
-	}
-	if v != 1 {
-		return nil, errors.New("cannot get valid context")
-	}
-	return []byte("1"), nil
-}
-
-func Test_MarshalerContext(t *testing.T) {
-	ctx := context.WithValue(context.Background(), contextKey("k"), 1)
-	bytes, err := codec.MarshalContext(ctx, &marshalContext{})
-	if err != nil {
-		t.Fatalf("%+v", err)
-	}
-	if string(bytes) != "1\n" {
-		t.Fatalf("failed marshal: %q", string(bytes))
-	}
 }
 
 type SlowMarshaler struct {

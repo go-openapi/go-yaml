@@ -4,7 +4,6 @@
 package codec
 
 import (
-	"context"
 	"encoding"
 	"errors"
 	"fmt"
@@ -40,7 +39,7 @@ type Encoder struct {
 	anchorRefToName            map[uintptr]string
 	anchorNameMap              map[string]struct{}
 	anchorCallback             func(*ast.AnchorNode, any) error
-	customMarshalerMap         map[reflect.Type]func(context.Context, any) ([]byte, error)
+	customMarshalerMap         map[reflect.Type]func(any) ([]byte, error)
 	omitZero                   bool
 	omitEmpty                  bool
 	writeJSONTags              bool
@@ -64,7 +63,7 @@ func NewEncoder(w io.Writer, opts ...EncodeOption) *Encoder {
 	return &Encoder{
 		writer:             w,
 		opts:               opts,
-		customMarshalerMap: map[reflect.Type]func(context.Context, any) ([]byte, error){},
+		customMarshalerMap: map[reflect.Type]func(any) ([]byte, error){},
 		line:               1,
 		column:             1,
 		offset:             0,
@@ -88,12 +87,7 @@ func (e *Encoder) Close() error {
 //
 // See the documentation for Marshal for details about the conversion of Go values to YAML.
 func (e *Encoder) Encode(v any) error {
-	return e.EncodeContext(context.Background(), v)
-}
-
-// EncodeContext writes the YAML encoding of v to the stream with context.Context.
-func (e *Encoder) EncodeContext(ctx context.Context, v any) error {
-	node, err := e.EncodeToNodeContext(ctx, v)
+	node, err := e.EncodeToNode(v)
 	if err != nil {
 		return err
 	}
@@ -122,11 +116,6 @@ func (e *Encoder) EncodeContext(ctx context.Context, v any) error {
 
 // EncodeToNode convert v to ast.Node.
 func (e *Encoder) EncodeToNode(v any) (ast.Node, error) {
-	return e.EncodeToNodeContext(context.Background(), v)
-}
-
-// EncodeToNodeContext convert v to ast.Node with context.Context.
-func (e *Encoder) EncodeToNodeContext(ctx context.Context, v any) (ast.Node, error) {
 	for _, opt := range e.opts {
 		if err := opt(e); err != nil {
 			return nil, err
@@ -134,12 +123,12 @@ func (e *Encoder) EncodeToNodeContext(ctx context.Context, v any) (ast.Node, err
 	}
 	if e.enableSmartAnchor {
 		// during the first encoding, store all mappings between alias addresses and their names.
-		if _, err := e.encodeValue(ctx, reflect.ValueOf(v), 1); err != nil {
+		if _, err := e.encodeValue(reflect.ValueOf(v), 1); err != nil {
 			return nil, err
 		}
 		e.clearSmartAnchorRef()
 	}
-	node, err := e.encodeValue(ctx, reflect.ValueOf(v), 1)
+	node, err := e.encodeValue(reflect.ValueOf(v), 1)
 	if err != nil {
 		return nil, err
 	}
@@ -327,7 +316,7 @@ func (e *Encoder) existsTypeInCustomMarshalerMap(t reflect.Type) bool {
 	return false
 }
 
-func (e *Encoder) marshalerFromCustomMarshalerMap(t reflect.Type) (func(context.Context, any) ([]byte, error), bool) {
+func (e *Encoder) marshalerFromCustomMarshalerMap(t reflect.Type) (func(any) ([]byte, error), bool) {
 	if marshaler, exists := e.customMarshalerMap[t]; exists {
 		return marshaler, exists
 	}
@@ -373,11 +362,7 @@ func (e *Encoder) canEncodeByMarshaler(v reflect.Value) bool {
 		// interface first sent a Base64 out through FromJSON as a plain string
 		// with the tag gone, for anyone who set the option.
 		return false
-	case ContextMarshaler:
-		return true
 	case Marshaler:
-		return true
-	case ContextGoYAMLMarshaler:
 		return true
 	case GoYAMLMarshaler:
 		return true
@@ -411,23 +396,11 @@ func (e *Encoder) encodeBinary(b Base64, column int) ast.Node {
 	return node
 }
 
-func (e *Encoder) encodeByMarshaler(ctx context.Context, v reflect.Value, column int) (ast.Node, error) {
+func (e *Encoder) encodeByMarshaler(v reflect.Value, column int) (ast.Node, error) {
 	iface := v.Interface()
 
 	if marshaler, exists := e.marshalerFromCustomMarshalerMap(v.Type()); exists {
-		doc, err := marshaler(ctx, iface)
-		if err != nil {
-			return nil, err
-		}
-		node, err := e.encodeDocument(doc)
-		if err != nil {
-			return nil, err
-		}
-		return node, nil
-	}
-
-	if marshaler, ok := iface.(ContextMarshaler); ok {
-		doc, err := marshaler.MarshalYAML(ctx)
+		doc, err := marshaler(iface)
 		if err != nil {
 			return nil, err
 		}
@@ -450,20 +423,12 @@ func (e *Encoder) encodeByMarshaler(ctx context.Context, v reflect.Value, column
 		return node, nil
 	}
 
-	if marshaler, ok := iface.(ContextGoYAMLMarshaler); ok {
-		marshalV, err := marshaler.MarshalYAML(ctx)
-		if err != nil {
-			return nil, err
-		}
-		return e.encodeValue(ctx, reflect.ValueOf(marshalV), column)
-	}
-
 	if marshaler, ok := iface.(GoYAMLMarshaler); ok {
 		marshalV, err := marshaler.MarshalYAML()
 		if err != nil {
 			return nil, err
 		}
-		return e.encodeValue(ctx, reflect.ValueOf(marshalV), column)
+		return e.encodeValue(reflect.ValueOf(marshalV), column)
 	}
 
 	if t, ok := iface.(time.Time); ok {
@@ -489,7 +454,7 @@ func (e *Encoder) encodeByMarshaler(ctx context.Context, v reflect.Value, column
 
 	if e.useJSONMarshaler {
 		if marshaler, ok := iface.(jsonMarshaler); ok {
-			return e.encodeJSON(marshaler) //nolint:contextcheck // FromJSON decodes into any: no user unmarshaler can receive the context
+			return e.encodeJSON(marshaler)
 		}
 	}
 
@@ -510,7 +475,7 @@ func (e *Encoder) encodeJSON(marshaler jsonMarshaler) (ast.Node, error) {
 	return e.encodeDocument(doc)
 }
 
-func (e *Encoder) encodeValue(ctx context.Context, v reflect.Value, column int) (ast.Node, error) {
+func (e *Encoder) encodeValue(v reflect.Value, column int) (ast.Node, error) {
 	if e.isInvalidValue(v) {
 		return e.encodeNil(), nil
 	}
@@ -524,7 +489,7 @@ func (e *Encoder) encodeValue(ctx context.Context, v reflect.Value, column int) 
 		return node, nil
 	}
 	if e.canEncodeByMarshaler(v) {
-		node, err := e.encodeByMarshaler(ctx, v, column)
+		node, err := e.encodeByMarshaler(v, column)
 		if err != nil {
 			return nil, err
 		}
@@ -556,9 +521,9 @@ func (e *Encoder) encodeValue(ctx context.Context, v reflect.Value, column int) 
 		if value := e.encodePtrAnchor(v, column); value != nil {
 			return value, nil
 		}
-		return e.encodeValue(ctx, v.Elem(), column)
+		return e.encodeValue(v.Elem(), column)
 	case reflect.Interface:
-		return e.encodeValue(ctx, v.Elem(), column)
+		return e.encodeValue(v.Elem(), column)
 	case reflect.String:
 		return e.encodeString(v.String(), column), nil
 	case reflect.Bool:
@@ -567,30 +532,30 @@ func (e *Encoder) encodeValue(ctx context.Context, v reflect.Value, column int) 
 		if value := e.encodePtrAnchor(v, column); value != nil {
 			return value, nil
 		}
-		return e.encodeSlice(ctx, v)
+		return e.encodeSlice(v)
 	case reflect.Array:
-		return e.encodeArray(ctx, v)
+		return e.encodeArray(v)
 	case reflect.Struct:
 		if v.CanInterface() {
 			if mapSlice, ok := reflect.TypeAssert[MapSlice](v); ok {
-				return e.encodeMapSlice(ctx, mapSlice, column)
+				return e.encodeMapSlice(mapSlice, column)
 			}
 			if seq, ok := reflect.TypeAssert[MapSliceSeq](v); ok {
-				return e.encodeOrderedMapSeq(ctx, seq, column)
+				return e.encodeOrderedMapSeq(seq, column)
 			}
 			if mapItem, ok := reflect.TypeAssert[MapItem](v); ok {
-				return e.encodeMapItem(ctx, mapItem, column)
+				return e.encodeMapItem(mapItem, column)
 			}
 			if t, ok := reflect.TypeAssert[time.Time](v); ok {
 				return e.encodeTime(t, column), nil
 			}
 		}
-		return e.encodeStruct(ctx, v, column)
+		return e.encodeStruct(v, column)
 	case reflect.Map:
 		if value := e.encodePtrAnchor(v, column); value != nil {
 			return value, nil
 		}
-		return e.encodeMap(ctx, v, column)
+		return e.encodeMap(v, column)
 	default:
 		return nil, fmt.Errorf("unknown value type %s", v.Type().String())
 	}
@@ -703,7 +668,7 @@ func (e *Encoder) encodeBool(v bool) *ast.BoolNode {
 	return ast.Bool(token.New(value, value, e.pos(e.column)))
 }
 
-func (e *Encoder) encodeSlice(ctx context.Context, value reflect.Value) (*ast.SequenceNode, error) {
+func (e *Encoder) encodeSlice(value reflect.Value) (*ast.SequenceNode, error) {
 	if e.indentSequence {
 		e.column += e.indentNum
 		defer func() { e.column -= e.indentNum }()
@@ -711,7 +676,7 @@ func (e *Encoder) encodeSlice(ctx context.Context, value reflect.Value) (*ast.Se
 	column := e.column
 	sequence := ast.Sequence(token.New("-", "-", e.pos(column)), e.isFlowStyle)
 	for i := range value.Len() {
-		node, err := e.encodeValue(ctx, value.Index(i), column)
+		node, err := e.encodeValue(value.Index(i), column)
 		if err != nil {
 			return nil, err
 		}
@@ -720,7 +685,7 @@ func (e *Encoder) encodeSlice(ctx context.Context, value reflect.Value) (*ast.Se
 	return sequence, nil
 }
 
-func (e *Encoder) encodeArray(ctx context.Context, value reflect.Value) (*ast.SequenceNode, error) {
+func (e *Encoder) encodeArray(value reflect.Value) (*ast.SequenceNode, error) {
 	if e.indentSequence {
 		e.column += e.indentNum
 		defer func() { e.column -= e.indentNum }()
@@ -728,7 +693,7 @@ func (e *Encoder) encodeArray(ctx context.Context, value reflect.Value) (*ast.Se
 	column := e.column
 	sequence := ast.Sequence(token.New("-", "-", e.pos(column)), e.isFlowStyle)
 	for i := range value.Len() {
-		node, err := e.encodeValue(ctx, value.Index(i), column)
+		node, err := e.encodeValue(value.Index(i), column)
 		if err != nil {
 			return nil, err
 		}
@@ -745,15 +710,15 @@ func (e *Encoder) encodeArray(ctx context.Context, value reflect.Value) (*ast.Se
 // resolves to, so it holds an int for "1:", a float for "1.0:" and nil for
 // "null:". Asserting a string here panicked on every one of those, and on a
 // MapSlice a caller built by hand with any key but a string.
-func (e *Encoder) encodeMapItem(ctx context.Context, item MapItem, column int) (*ast.MappingValueNode, error) {
+func (e *Encoder) encodeMapItem(item MapItem, column int) (*ast.MappingValueNode, error) {
 	// Both fields are interface slots, and reach encodeValue as ones, so a
 	// time.Time in either takes its tag.
-	value, err := e.encodeValue(ctx, reflect.ValueOf(&item.Value).Elem(), column)
+	value, err := e.encodeValue(reflect.ValueOf(&item.Value).Elem(), column)
 	if err != nil {
 		return nil, err
 	}
 
-	encoded, err := e.encodeValue(ctx, reflect.ValueOf(&item.Key).Elem(), column)
+	encoded, err := e.encodeValue(reflect.ValueOf(&item.Key).Elem(), column)
 	key, isKey := encoded.(ast.MapKeyNode)
 	if !isKey || err != nil {
 		key = e.encodeString(fmt.Sprint(item.Key), column)
@@ -773,17 +738,17 @@ func (e *Encoder) encodeMapItem(ctx context.Context, item MapItem, column int) (
 // The tag goes back on, so a document read and written again keeps it. A
 // MapSlice writes a plain mapping instead, which is why the two are separate
 // types: the destination a caller declares decides the spelling.
-func (e *Encoder) encodeOrderedMapSeq(ctx context.Context, value MapSliceSeq, column int) (ast.Node, error) {
+func (e *Encoder) encodeOrderedMapSeq(value MapSliceSeq, column int) (ast.Node, error) {
 	if e.isJSONStyle {
 		// JSON has no ordered map and no tags. The entries are written as an
 		// object in the order the sequence held them, which is what ToJSON
 		// writes for the same document.
-		return e.encodeMapSlice(ctx, MapSlice(value), column)
+		return e.encodeMapSlice(MapSlice(value), column)
 	}
 
 	seq := ast.Sequence(token.New("", "", e.pos(column)), true)
 	for _, item := range MapSlice(value).items {
-		entry, err := e.encodeMapItem(ctx, item, column)
+		entry, err := e.encodeMapItem(item, column)
 		if err != nil {
 			return nil, err
 		}
@@ -798,10 +763,10 @@ func (e *Encoder) encodeOrderedMapSeq(ctx context.Context, value MapSliceSeq, co
 	return node, nil
 }
 
-func (e *Encoder) encodeMapSlice(ctx context.Context, value MapSlice, column int) (*ast.MappingNode, error) {
+func (e *Encoder) encodeMapSlice(value MapSlice, column int) (*ast.MappingNode, error) {
 	node := ast.Mapping(token.New("", "", e.pos(column)), e.isFlowStyle)
 	for _, item := range value.items {
-		encoded, err := e.encodeMapItem(ctx, item, column)
+		encoded, err := e.encodeMapItem(item, column)
 		if err != nil {
 			return nil, err
 		}
@@ -836,7 +801,7 @@ func (e *Encoder) jsonKeyNode(key ast.MapKeyNode, column int) ast.MapKeyNode {
 	return e.encodeString(name, column)
 }
 
-func (e *Encoder) encodeMap(ctx context.Context, value reflect.Value, column int) (ast.Node, error) {
+func (e *Encoder) encodeMap(value reflect.Value, column int) (ast.Node, error) {
 	node := ast.Mapping(token.New("", "", e.pos(column)), e.isFlowStyle)
 	keys := make([]any, len(value.MapKeys()))
 	for i, k := range value.MapKeys() {
@@ -866,7 +831,7 @@ func (e *Encoder) encodeMap(ctx context.Context, value reflect.Value, column int
 
 		k := reflect.ValueOf(key)
 		v := value.MapIndex(k)
-		encoded, err := e.encodeValue(ctx, v, column)
+		encoded, err := e.encodeValue(v, column)
 		if err != nil {
 			return nil, err
 		}
@@ -888,7 +853,7 @@ func (e *Encoder) encodeMap(ctx context.Context, value reflect.Value, column int
 			// so to encodeValue: a time.Time there takes its tag.
 			keyValue = reflect.ValueOf(&key).Elem()
 		}
-		kn, err := e.encodeValue(ctx, keyValue, column)
+		kn, err := e.encodeValue(keyValue, column)
 		keyNode, ok := kn.(ast.MapKeyNode)
 		if !ok || err != nil {
 			keyNode = e.encodeString(fmt.Sprint(key), column)
@@ -1153,7 +1118,7 @@ func (e *Encoder) tagMode() tagMode {
 }
 
 //nolint:gocyclo,cyclop,gocognit // one branch per tag flag (omitempty, omitzero, flow, anchor, alias, inline)
-func (e *Encoder) encodeStruct(ctx context.Context, value reflect.Value, column int) (ast.Node, error) {
+func (e *Encoder) encodeStruct(value reflect.Value, column int) (ast.Node, error) {
 	node := ast.Mapping(token.New("", "", e.pos(column)), e.isFlowStyle)
 	structType := value.Type()
 	mode := e.tagMode()
@@ -1189,7 +1154,7 @@ func (e *Encoder) encodeStruct(ctx context.Context, value reflect.Value, column 
 			*ve = *e
 			ve.isFlowStyle = true
 		}
-		encoded, err := ve.encodeValue(ctx, fieldValue, column)
+		encoded, err := ve.encodeValue(fieldValue, column)
 		if err != nil {
 			return nil, err
 		}

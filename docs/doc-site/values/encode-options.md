@@ -82,7 +82,7 @@ the shared subtree out twice.
 
 `WriteJSONTags(bool)` and `WriteInferredNames(bool)` mirror the decode pair — see
 [Struct tags](../struct-tags/). `UseJSONMarshaler()` calls a type's
-`MarshalJSON`. `CustomMarshaler[T]` and `CustomMarshalerContext[T]` register a
+`MarshalJSON`. `CustomMarshaler[T]` registers a
 function for one type, for this encode only.
 
 ## Comments

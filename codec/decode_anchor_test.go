@@ -288,8 +288,9 @@ jobs:
 
 func TestDecoder_SiblingAnchorAlias(t *testing.T) {
 	// Test that aliases to sibling anchors within a parent anchor resolve
-	// correctly. Previously, withAnchor() mutated a shared context map,
-	// causing sibling aliases to be falsely detected as self-referential.
+	// correctly. An anchor counts as open only while its own node is decoded:
+	// one left open after its node was done made a sibling alias look like an
+	// alias inside its own anchor.
 	t.Run("simple sibling alias", func(t *testing.T) {
 		yml := `
 a: &a

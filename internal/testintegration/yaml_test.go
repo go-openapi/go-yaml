@@ -5,7 +5,6 @@ package testintegration_test
 
 import (
 	"bytes"
-	"context"
 	"errors"
 	"strings"
 	"testing"
@@ -16,9 +15,6 @@ import (
 	"github.com/go-openapi/go-yaml/ast"
 	"github.com/go-openapi/go-yaml/codec"
 )
-
-// contextKey keys the values these tests put in a context.Context.
-type contextKey string
 
 func TestMarshal(t *testing.T) {
 	var v struct {
@@ -1099,26 +1095,6 @@ func TestRegisterCustomMarshaler(t *testing.T) {
 	}
 }
 
-func TestRegisterCustomMarshalerContext(t *testing.T) {
-	type T struct {
-		Foo []byte `yaml:"foo"`
-	}
-	codec.RegisterCustomMarshalerContext[T](func(ctx context.Context, _ T) ([]byte, error) {
-		if ctx.Value(contextKey("plop")) != uint(42) {
-			t.Fatalf("context value is not correct")
-		}
-		return []byte(`"override"`), nil
-	})
-	ctx := context.WithValue(context.Background(), contextKey("plop"), uint(42))
-	b, err := codec.MarshalContext(ctx, &T{Foo: []byte("bar")})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !bytes.Equal(b, []byte("\"override\"\n")) {
-		t.Fatalf("failed to register custom marshaler. got: %q", b)
-	}
-}
-
 func TestRegisterCustomUnmarshaler(t *testing.T) {
 	type T struct {
 		Foo []byte `yaml:"foo"`
@@ -1129,27 +1105,6 @@ func TestRegisterCustomUnmarshaler(t *testing.T) {
 	})
 	var v T
 	if err := yaml.Unmarshal([]byte(`"foo": "bar"`), &v); err != nil {
-		t.Fatal(err)
-	}
-	if !bytes.Equal(v.Foo, []byte("override")) {
-		t.Fatalf("failed to decode. got %q", v.Foo)
-	}
-}
-
-func TestRegisterCustomUnmarshalerContext(t *testing.T) {
-	type T struct {
-		Foo []byte `yaml:"foo"`
-	}
-	codec.RegisterCustomUnmarshalerContext[T](func(ctx context.Context, v *T, _ []byte) error {
-		if ctx.Value(contextKey("plop")) != uint(42) {
-			t.Fatalf("context value is not correct")
-		}
-		v.Foo = []byte("override")
-		return nil
-	})
-	var v T
-	ctx := context.WithValue(context.Background(), contextKey("plop"), uint(42))
-	if err := codec.UnmarshalContext(ctx, []byte(`"foo": "bar"`), &v); err != nil {
 		t.Fatal(err)
 	}
 	if !bytes.Equal(v.Foo, []byte("override")) {

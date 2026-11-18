@@ -5,7 +5,6 @@ package codec
 
 import (
 	"bytes"
-	"context"
 	"strings"
 	"testing"
 
@@ -68,7 +67,7 @@ func TestAKeyNodeAndItsValueHaveOneIdentity(t *testing.T) {
 				}
 
 				d := NewDecoder(bytes.NewReader(nil))
-				value, err := d.mapKeyNodeToValue(context.Background(), entry.Key)
+				value, err := d.mapKeyNodeToValue(entry.Key)
 				if err != nil || !hashableKey(value) {
 					continue
 				}

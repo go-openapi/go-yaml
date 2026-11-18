@@ -4,7 +4,6 @@
 package codec
 
 import (
-	"context"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -23,8 +22,7 @@ import (
 // type written for that library encodes here unchanged.
 //
 // A type satisfying more than one is written by the first the encoder looks
-// for, so implement the one that says what the type means. The Context forms
-// take a context.Context and are used where the encode was started with one.
+// for, so implement the one that says what the type means.
 //
 // An error returned by MarshalYAML stops the encoding and reaches the caller.
 
@@ -33,22 +31,12 @@ type Marshaler interface {
 	MarshalYAML() ([]byte, error)
 }
 
-// ContextMarshaler is [Marshaler] with a context.
-type ContextMarshaler interface {
-	MarshalYAML(ctx context.Context) ([]byte, error)
-}
-
 // GoYAMLMarshaler returns another Go value to encode in place of this one.
 //
 // This is github.com/go-yaml/yaml's shape. Prefer [Marshaler], which writes the
 // text and needs no second pass over what it returns.
 type GoYAMLMarshaler interface {
 	MarshalYAML() (any, error)
-}
-
-// ContextGoYAMLMarshaler is [GoYAMLMarshaler] with a context.
-type ContextGoYAMLMarshaler interface {
-	MarshalYAML(ctx context.Context) (any, error)
 }
 
 // The interfaces a type implements to decode itself.
@@ -65,11 +53,6 @@ type Unmarshaler interface {
 	UnmarshalYAML(data []byte) error
 }
 
-// ContextUnmarshaler is [Unmarshaler] with a context.
-type ContextUnmarshaler interface {
-	UnmarshalYAML(ctx context.Context, data []byte) error
-}
-
 // GoYAMLUnmarshaler is handed a function that decodes the value into whatever
 // it is given.
 //
@@ -79,19 +62,9 @@ type GoYAMLUnmarshaler interface {
 	UnmarshalYAML(unmarshal func(any) error) error
 }
 
-// ContextGoYAMLUnmarshaler is [GoYAMLUnmarshaler] with a context.
-type ContextGoYAMLUnmarshaler interface {
-	UnmarshalYAML(ctx context.Context, unmarshal func(any) error) error
-}
-
 // NodeUnmarshaler is handed the node the value was read from.
 type NodeUnmarshaler interface {
 	UnmarshalYAML(node ast.Node) error
-}
-
-// ContextNodeUnmarshaler is [NodeUnmarshaler] with a context.
-type ContextNodeUnmarshaler interface {
-	UnmarshalYAML(ctx context.Context, node ast.Node) error
 }
 
 // Base64 is the value a "!!binary" scalar decodes to: the base64 text the
@@ -164,8 +137,8 @@ func (b *Base64) UnmarshalJSON(data []byte) error {
 var (
 	globalCustomMarshalerMu    sync.Mutex
 	globalCustomUnmarshalerMu  sync.Mutex
-	globalCustomMarshalerMap   = map[reflect.Type]func(context.Context, any) ([]byte, error){}
-	globalCustomUnmarshalerMap = map[reflect.Type]func(context.Context, any, []byte) error{}
+	globalCustomMarshalerMap   = map[reflect.Type]func(any) ([]byte, error){}
+	globalCustomUnmarshalerMap = map[reflect.Type]func(any, []byte) error{}
 )
 
 // customArg returns v as the T a custom (un)marshaler was registered for.
@@ -187,20 +160,8 @@ func RegisterCustomMarshaler[T any](marshaler func(T) ([]byte, error)) {
 	defer globalCustomMarshalerMu.Unlock()
 
 	var typ T
-	globalCustomMarshalerMap[reflect.TypeOf(typ)] = func(_ context.Context, v any) ([]byte, error) {
+	globalCustomMarshalerMap[reflect.TypeOf(typ)] = func(v any) ([]byte, error) {
 		return marshaler(customArg[T](v))
-	}
-}
-
-// RegisterCustomMarshalerContext overrides any encoding process for the type specified in generics.
-// Similar to RegisterCustomMarshalerContext, but allows passing a context to the unmarshaler function.
-func RegisterCustomMarshalerContext[T any](marshaler func(context.Context, T) ([]byte, error)) {
-	globalCustomMarshalerMu.Lock()
-	defer globalCustomMarshalerMu.Unlock()
-
-	var typ T
-	globalCustomMarshalerMap[reflect.TypeOf(typ)] = func(ctx context.Context, v any) ([]byte, error) {
-		return marshaler(ctx, customArg[T](v))
 	}
 }
 
@@ -214,19 +175,7 @@ func RegisterCustomUnmarshaler[T any](unmarshaler func(*T, []byte) error) {
 	defer globalCustomUnmarshalerMu.Unlock()
 
 	var typ *T
-	globalCustomUnmarshalerMap[reflect.TypeOf(typ)] = func(_ context.Context, v any, b []byte) error {
+	globalCustomUnmarshalerMap[reflect.TypeOf(typ)] = func(v any, b []byte) error {
 		return unmarshaler(customArg[*T](v), b)
-	}
-}
-
-// RegisterCustomUnmarshalerContext overrides any decoding process for the type specified in generics.
-// Similar to RegisterCustomUnmarshalerContext, but allows passing a context to the unmarshaler function.
-func RegisterCustomUnmarshalerContext[T any](unmarshaler func(context.Context, *T, []byte) error) {
-	globalCustomUnmarshalerMu.Lock()
-	defer globalCustomUnmarshalerMu.Unlock()
-
-	var typ *T
-	globalCustomUnmarshalerMap[reflect.TypeOf(typ)] = func(ctx context.Context, v any, b []byte) error {
-		return unmarshaler(ctx, customArg[*T](v), b)
 	}
 }

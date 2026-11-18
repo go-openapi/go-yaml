@@ -5,7 +5,6 @@ package codec
 
 import (
 	"bytes"
-	"context"
 	"fmt"
 	"math/big"
 	"slices"
@@ -355,7 +354,7 @@ func (b *valueBuilder) declaredValue(name string, node ast.Node, alias *ast.Alia
 
 	dec := NewDecoder(nil)
 	dec.shareAliases = b.share
-	v, err := dec.nodeToValue(context.Background(), node)
+	v, err := dec.nodeToValue(node)
 	if err != nil {
 		return nil, err
 	}

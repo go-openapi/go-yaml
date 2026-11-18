@@ -5,7 +5,6 @@ package codec
 
 import (
 	"bytes"
-	"context"
 	"errors"
 	"io"
 
@@ -74,13 +73,8 @@ func Marshal(v any) ([]byte, error) {
 
 // MarshalWithOptions serializes the value provided into a YAML document with EncodeOptions.
 func MarshalWithOptions(v any, opts ...EncodeOption) ([]byte, error) {
-	return MarshalContext(context.Background(), v, opts...)
-}
-
-// MarshalContext serializes the value provided into a YAML document with context.Context and EncodeOptions.
-func MarshalContext(ctx context.Context, v any, opts ...EncodeOption) ([]byte, error) {
 	var buf bytes.Buffer
-	if err := NewEncoder(&buf, opts...).EncodeContext(ctx, v); err != nil {
+	if err := NewEncoder(&buf, opts...).Encode(v); err != nil {
 		return nil, err
 	}
 	return buf.Bytes(), nil
@@ -125,13 +119,8 @@ func Unmarshal(data []byte, v any) error {
 // UnmarshalWithOptions decodes with DecodeOptions the first document found within the in byte slice
 // and assigns decoded values into the out value.
 func UnmarshalWithOptions(data []byte, v any, opts ...DecodeOption) error {
-	return UnmarshalContext(context.Background(), data, v, opts...)
-}
-
-// UnmarshalContext decodes with context.Context and DecodeOptions.
-func UnmarshalContext(ctx context.Context, data []byte, v any, opts ...DecodeOption) error {
 	dec := NewDecoder(bytes.NewBuffer(data), opts...)
-	if err := dec.DecodeContext(ctx, v); err != nil {
+	if err := dec.Decode(v); err != nil {
 		if errors.Is(err, io.EOF) {
 			return nil
 		}

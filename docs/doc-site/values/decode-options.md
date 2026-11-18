@@ -56,7 +56,7 @@ See [Anchors and aliases](../anchors-and-aliases/).
 
 ## The rest
 
-`CustomUnmarshaler[T]` and `CustomUnmarshalerContext[T]` register a function for
+`CustomUnmarshaler[T]` registers a function for
 one type, for this decode only. `CommentToMap(cm)` fills a
 [`CommentMap`](../comments/). `WithParserOptions(...)` passes
 [parser options](../../documents/parser/) through — which is how you reach

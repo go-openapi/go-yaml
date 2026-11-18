@@ -2,7 +2,7 @@
 title: Marshal and Unmarshal
 weight: 10
 description: |
-  The four entry points, the two constructors, and the interfaces a type can
+  The three entry points, the two constructors, and the interfaces a type can
   implement to control its own encoding.
 ---
 
@@ -45,13 +45,12 @@ if err := yaml.Unmarshal([]byte(yml), &v); err != nil {
 }
 ```
 
-## The four entry points, and when each one
+## The three entry points, and when each one
 
 | call | use it when |
 |---|---|
 | `yaml.Marshal` / `yaml.Unmarshal` | you need no options |
 | `codec.MarshalWithOptions` / `codec.UnmarshalWithOptions` | you need options for one call |
-| `codec.MarshalContext` / `codec.UnmarshalContext` | a custom marshaler on one of your types needs a `context.Context` |
 | `codec.NewEncoder` / `codec.NewDecoder` | you are reading or writing a stream, or reusing the options |
 
 The root package re-exports only `Marshal` and `Unmarshal`. Everything that takes
@@ -83,7 +82,7 @@ from the next. See [Anchors and aliases](../anchors-and-aliases/).
 
 ## Letting a type encode itself
 
-Nine interfaces, in two families. Implement one of the first two on your type and
+Five interfaces: two pairs, and `NodeUnmarshaler`. Implement one of the first two on your type and
 the codec calls it instead of using reflection.
 
 | interface | you return / receive | modelled on |
@@ -91,8 +90,7 @@ the codec calls it instead of using reflection.
 | `codec.Marshaler` / `codec.Unmarshaler` | YAML text, as `[]byte` | `encoding/json` |
 | `codec.GoYAMLMarshaler` / `codec.GoYAMLUnmarshaler` | another Go value | `gopkg.in/yaml.v2` |
 
-Each has a `Context` variant taking a `context.Context`, reached through
-`MarshalContext` and `UnmarshalContext`. `codec.NodeUnmarshaler` receives an
+`codec.NodeUnmarshaler` receives an
 [`ast.Node`](../../documents/ast/) rather than bytes, and a type with an
 `IsZero() bool` method — `codec.IsZeroer`, which `time.Time` satisfies — decides
 what `omitempty` skips.
