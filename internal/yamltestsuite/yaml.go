@@ -49,15 +49,21 @@ func fixturesDir() string {
 	return filepath.Join(filepath.Dir(file), "testdata")
 }
 
+// TestSuites reads the vendored YAML Test Suite.
 func TestSuites() ([]*TestSuite, error) {
-	dir := fixturesDir()
+	return suitesIn(fixturesDir())
+}
+
+// suitesIn reads the test suites under dir, one per directory holding an in.yaml.
+func suitesIn(dir string) ([]*TestSuite, error) {
 	testMap := make(map[string]*TestSuite)
 	if err := filepath.Walk(dir, func(path string, info fs.FileInfo, err error) error {
+		if err != nil {
+			// Walk hands a nil info with the error, so it is checked first.
+			return err
+		}
 		if info.IsDir() {
 			return nil
-		}
-		if err != nil {
-			return err
 		}
 		name := strings.TrimPrefix(path, dir+"/")
 		name = strings.TrimSuffix(name, "/"+filepath.Base(name))
