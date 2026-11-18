@@ -397,10 +397,13 @@ type Collision struct {
 func normalizeMap(v reflect.Value) map[string]any {
 	out := make(map[string]any, v.Len())
 
+	// MapRange and not MapKeys then MapIndex: a NaN key never finds itself, so looking its value up read nil, and a
+	// document keyed on ".nan" compared as having lost the value its key holds.
 	var collided map[string][]any
-	for _, key := range v.MapKeys() {
+	for iter := v.MapRange(); iter.Next(); {
+		key := iter.Key()
 		name := keyString(key)
-		val := Normalize(v.MapIndex(key))
+		val := Normalize(iter.Value())
 
 		if _, taken := out[name]; !taken {
 			out[name] = val
