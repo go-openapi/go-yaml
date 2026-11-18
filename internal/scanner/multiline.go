@@ -104,18 +104,15 @@ func (s *Scanner) closeMultiLineAtEOS(ctx *Context, state *MultiLineState, c run
 	// whole line and not of its first character alone.
 	spaceOnlyLine := s.isFirstCharAtLine && c == ' '
 
-	if spaceOnlyLine {
-		// The source ends a line of blanks, which is an empty line as one closed by a break is: under "+" it keeps
-		// its line feed, so "- |+" over "   " at the end of the stream reads as "\n" (yaml-test-suite's
-		// trailing-whitespace-in-streams/02).
-		state.sawLineBreak = true
+	switch {
+	case spaceOnlyLine:
 		if state.addIndent(ctx, s.column) {
 			state.beganSpace(s.pos())
 		}
-	} else if isNewLineChar(c) {
+	case isNewLineChar(c):
 		state.began(s.pos())
 		ctx.addBuf(c)
-	} else {
+	default:
 		// A line that ends here without content is empty, and an empty line is allowed less indentation than the header
 		// states: l-empty admits s-indent(<n).
 		// Holding it to the stated width refused every document whose block scalar both states its indentation and keeps its
@@ -135,6 +132,21 @@ func (s *Scanner) closeMultiLineAtEOS(ctx *Context, state *MultiLineState, c run
 		state.updateNewLineInFolded(ctx, s.column)
 		state.began(s.pos())
 		ctx.addBuf(c)
+	}
+
+	if !isNewLineChar(c) {
+		// The source ends inside the scalar's last line, and the scalar reads as it would with the final line break
+		// the stream left out: [76] has processors allow that break to be omitted, and the chomping indicator then
+		// rules the end of the value as it does any other, clip keeping one line feed, keep keeping it and strip
+		// dropping it. "foo: |" over "  x" reads as "x\n" with or without a newline after the x, which is what the
+		// YAML Test Suite asserts with each of its no-final-newline variants (trailing-line-of-spaces/01,
+		// trailing-whitespace-in-streams/02).
+		//
+		// Read by [165] alone, b-chomped-last's <end-of-input> alternative gave the value no break to preserve, so a
+		// clipped scalar lost its line feed to how the file happened to end. The break goes into the value only: the
+		// origin is the text the document wrote.
+		ctx.addBuf('\n')
+		state.sawLineBreak = true
 	}
 
 	s.emitMultiLine(ctx, state)

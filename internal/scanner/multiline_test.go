@@ -290,8 +290,10 @@ a: >
 					Origin: " >\n",
 				},
 				{
+					// The stream leaves out the final line break, and clip keeps the one the scalar ends on all the
+					// same: the value is the terminated document's. The origin is the text the document wrote.
 					Type:   token.StringType,
-					Value:  "Text",
+					Value:  "Text\n",
 					Origin: "  Text",
 				},
 			},
