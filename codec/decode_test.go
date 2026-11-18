@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: Copyright 2025 go-swagger maintainers
 // SPDX-License-Identifier: Apache-2.0
 
-package yaml_test
+package codec_test
 
 import (
 	"bytes"
@@ -20,7 +20,6 @@ import (
 	"testing"
 	"time"
 
-	yaml "github.com/go-openapi/go-yaml"
 	"github.com/go-openapi/go-yaml/ast"
 	"github.com/go-openapi/go-yaml/codec"
 	yamlerrors "github.com/go-openapi/go-yaml/errors"
@@ -1670,7 +1669,7 @@ func TestDecoder_Invalid(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.src, func(t *testing.T) {
 			var v any
-			err := yaml.Unmarshal([]byte(test.src), &v)
+			err := codec.Unmarshal([]byte(test.src), &v)
 			require.Errorf(t, err, "cannot catch decode error")
 			actual := "\n" + err.Error()
 			if test.expect != actual {
@@ -1774,7 +1773,7 @@ func TestDecoder_TypeConversionError(t *testing.T) {
 
 func testConversionError(tc conversionErrorCase) func(*testing.T) {
 	return func(t *testing.T) {
-		err := yaml.Unmarshal([]byte(tc.source), tc.target)
+		err := codec.Unmarshal([]byte(tc.source), tc.target)
 		if err == nil {
 			t.Fatal("expected to error")
 		}
@@ -2382,7 +2381,7 @@ command:
 - python`
 
 		var out map[string]any
-		if err := yaml.Unmarshal([]byte(yml), &out); err != nil {
+		if err := codec.Unmarshal([]byte(yml), &out); err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
 
@@ -2404,7 +2403,7 @@ command:
   other: val`
 
 		var out map[string]any
-		if err := yaml.Unmarshal([]byte(yml), &out); err != nil {
+		if err := codec.Unmarshal([]byte(yml), &out); err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
 
@@ -2425,7 +2424,7 @@ command:
 - b`
 
 		var out map[string]any
-		if err := yaml.Unmarshal([]byte(yml), &out); err != nil {
+		if err := codec.Unmarshal([]byte(yml), &out); err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
 
@@ -2602,7 +2601,7 @@ B: d
 		A int    `json:"A" yaml:"foo"`
 		B string `json:"B" yaml:"bar"`
 	}
-	if err := yaml.Unmarshal([]byte(yml), &v); err != nil {
+	if err := codec.Unmarshal([]byte(yml), &v); err != nil {
 		log.Fatal(err)
 	}
 	fmt.Println(v.A)
@@ -2647,7 +2646,7 @@ func TestDecoder_CustomUnmarshaler(t *testing.T) {
 				t.Fatalf("failed to get decode target buffer. expected %q but got %q", src, b)
 			}
 			var v T
-			if err := yaml.Unmarshal(b, &v); err != nil {
+			if err := codec.Unmarshal(b, &v); err != nil {
 				return err
 			}
 			if v.Foo != "bar" {
@@ -2889,7 +2888,7 @@ type unmarshalableYAMLStringValue string
 
 func (v *unmarshalableYAMLStringValue) UnmarshalYAML(b []byte) error {
 	var s string
-	if err := yaml.Unmarshal(b, &s); err != nil {
+	if err := codec.Unmarshal(b, &s); err != nil {
 		return err
 	}
 	*v = unmarshalableYAMLStringValue(s)
@@ -2917,7 +2916,7 @@ a: ""
 b: ""
 `
 		var container unmarshalableStringContainer
-		if err := yaml.Unmarshal([]byte(yml), &container); err != nil {
+		if err := codec.Unmarshal([]byte(yml), &container); err != nil {
 			t.Fatalf("failed to unmarshal %v", err)
 		}
 		if container.A != "" {
@@ -2934,7 +2933,7 @@ a: "aaa"
 b: "bbb"
 `
 		var container unmarshalableStringContainer
-		if err := yaml.Unmarshal([]byte(yml), &container); err != nil {
+		if err := codec.Unmarshal([]byte(yml), &container); err != nil {
 			t.Fatalf("failed to unmarshal %v", err)
 		}
 		if container.A != "aaa" {
@@ -2951,7 +2950,7 @@ a: 'aaa'
 b: 'bbb'
 `
 		var container unmarshalableStringContainer
-		if err := yaml.Unmarshal([]byte(yml), &container); err != nil {
+		if err := codec.Unmarshal([]byte(yml), &container); err != nil {
 			t.Fatalf("failed to unmarshal %v", err)
 		}
 		if container.A != "aaa" {
@@ -2974,7 +2973,7 @@ b: |
  c
 `
 		var container unmarshalableStringContainer
-		if err := yaml.Unmarshal([]byte(yml), &container); err != nil {
+		if err := codec.Unmarshal([]byte(yml), &container); err != nil {
 			t.Fatalf("failed to unmarshal %v", err)
 		}
 		if container.A != "a\nb\nc\n" {
@@ -2994,7 +2993,7 @@ d: *y
 		var v struct {
 			A, B, C, D unmarshalableTextStringValue
 		}
-		if err := yaml.Unmarshal([]byte(yml), &v); err != nil {
+		if err := codec.Unmarshal([]byte(yml), &v); err != nil {
 			t.Fatal(err)
 		}
 		if v.A != "1" {
@@ -3018,7 +3017,7 @@ b: *a
 		var v struct {
 			A, B net.IP
 		}
-		if err := yaml.Unmarshal([]byte(yml), &v); err != nil {
+		if err := codec.Unmarshal([]byte(yml), &v); err != nil {
 			t.Fatal(err)
 		}
 		if v.A.String() != net.IPv4(127, 0, 0, 1).String() {
@@ -3041,7 +3040,7 @@ a:
 				C bool
 			}
 		}
-		if err := yaml.Unmarshal([]byte(yml), &v); err != nil {
+		if err := codec.Unmarshal([]byte(yml), &v); err != nil {
 			t.Fatalf("failed to unmarshal %v", err)
 		}
 		if v.A.B != 2 {
@@ -3061,7 +3060,7 @@ func TestUnmarshalablePtrString(t *testing.T) {
 	t.Run("empty string", func(t *testing.T) {
 		t.Parallel()
 		var container unmarshalablePtrStringContainer
-		if err := yaml.Unmarshal([]byte(`value: ""`), &container); err != nil {
+		if err := codec.Unmarshal([]byte(`value: ""`), &container); err != nil {
 			t.Fatalf("failed to unmarshal %v", err)
 		}
 		if container.V == nil || *container.V != "" {
@@ -3072,7 +3071,7 @@ func TestUnmarshalablePtrString(t *testing.T) {
 	t.Run("null", func(t *testing.T) {
 		t.Parallel()
 		var container unmarshalablePtrStringContainer
-		if err := yaml.Unmarshal([]byte(`value: null`), &container); err != nil {
+		if err := codec.Unmarshal([]byte(`value: null`), &container); err != nil {
 			t.Fatalf("failed to unmarshal %v", err)
 		}
 		if container.V != (*string)(nil) {
@@ -3100,7 +3099,7 @@ func TestUnmarshalableInt(t *testing.T) {
 	t.Run("empty int", func(t *testing.T) {
 		t.Parallel()
 		var container unmarshalableIntContainer
-		if err := yaml.Unmarshal([]byte(``), &container); err != nil {
+		if err := codec.Unmarshal([]byte(``), &container); err != nil {
 			t.Fatalf("failed to unmarshal %v", err)
 		}
 		if container.V != 0 {
@@ -3110,7 +3109,7 @@ func TestUnmarshalableInt(t *testing.T) {
 	t.Run("filled int", func(t *testing.T) {
 		t.Parallel()
 		var container unmarshalableIntContainer
-		if err := yaml.Unmarshal([]byte(`value: 9`), &container); err != nil {
+		if err := codec.Unmarshal([]byte(`value: 9`), &container); err != nil {
 			t.Fatalf("failed to unmarshal %v", err)
 		}
 		if container.V != 9 {
@@ -3120,7 +3119,7 @@ func TestUnmarshalableInt(t *testing.T) {
 	t.Run("filled number", func(t *testing.T) {
 		t.Parallel()
 		var container unmarshalableIntContainer
-		if err := yaml.Unmarshal([]byte(`value: 9`), &container); err != nil {
+		if err := codec.Unmarshal([]byte(`value: 9`), &container); err != nil {
 			t.Fatalf("failed to unmarshal %v", err)
 		}
 		if container.V != 9 {
@@ -3138,7 +3137,7 @@ func TestUnmarshalablePtrInt(t *testing.T) {
 		t.Parallel()
 
 		var container unmarshalablePtrIntContainer
-		require.NoErrorf(t, yaml.Unmarshal([]byte(`value: 0`), &container), "failed to unmarshal")
+		require.NoErrorf(t, codec.Unmarshal([]byte(`value: 0`), &container), "failed to unmarshal")
 		require.NotNil(t, container.V)
 		require.Emptyf(t, *container.V, "expected 0, but %q is set", *container.V)
 	})
@@ -3147,7 +3146,7 @@ func TestUnmarshalablePtrInt(t *testing.T) {
 		t.Parallel()
 
 		var container unmarshalablePtrIntContainer
-		require.NoError(t, yaml.Unmarshal([]byte(`value: null`), &container), "failed to unmarshal")
+		require.NoError(t, codec.Unmarshal([]byte(`value: null`), &container), "failed to unmarshal")
 		require.Nilf(t, container.V, "expected nil, but container.V is set")
 	})
 }
@@ -3158,7 +3157,7 @@ type literalContainer struct {
 
 func (c *literalContainer) UnmarshalYAML(v []byte) error {
 	var lit string
-	if err := yaml.Unmarshal(v, &lit); err != nil {
+	if err := codec.Unmarshal(v, &lit); err != nil {
 		return err
 	}
 	c.v = lit
@@ -3173,7 +3172,7 @@ value: |
   }
 `
 	var v map[string]*literalContainer
-	if err := yaml.Unmarshal([]byte(yml), &v); err != nil {
+	if err := codec.Unmarshal([]byte(yml), &v); err != nil {
 		t.Fatalf("failed to unmarshal %+v", err)
 	}
 	if v["value"] == nil {
@@ -3200,7 +3199,7 @@ j: k
 	if _, ok := v.(codec.MapSlice); !ok {
 		t.Fatalf("failed to convert to ordered map: %T", v)
 	}
-	bytes, err := yaml.Marshal(v)
+	bytes, err := codec.Marshal(v)
 	if err != nil {
 		t.Fatalf("%+v", err)
 	}
@@ -3251,7 +3250,7 @@ type unmarshalYAMLWithAliasString string
 
 func (v *unmarshalYAMLWithAliasString) UnmarshalYAML(b []byte) error {
 	var s string
-	if err := yaml.Unmarshal(b, &s); err != nil {
+	if err := codec.Unmarshal(b, &s); err != nil {
 		return err
 	}
 	*v = unmarshalYAMLWithAliasString(s)
@@ -3262,7 +3261,7 @@ type unmarshalYAMLWithAliasMap map[string]any
 
 func (v *unmarshalYAMLWithAliasMap) UnmarshalYAML(b []byte) error {
 	var m map[string]any
-	if err := yaml.Unmarshal(b, &m); err != nil {
+	if err := codec.Unmarshal(b, &m); err != nil {
 		return err
 	}
 	*v = unmarshalYAMLWithAliasMap(m)
@@ -3297,7 +3296,7 @@ map:
  e: f
 `,
 			// unmarshalYAMLWithAliasMap implements UnmarshalYAML([]byte) and
-			// parses the fragment it is handed with a fresh yaml.Unmarshal.
+			// parses the fragment it is handed with a fresh codec.Unmarshal.
 			// The fragment opens with the document's "%YAML 1.1", so the "<<"
 			// merges there as it does in the document; without the line it
 			// came back as an ordinary key, which was defect 64. The alias
@@ -3334,7 +3333,7 @@ map:
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			var v value
-			err := yaml.Unmarshal([]byte(test.yaml), &v)
+			err := codec.Unmarshal([]byte(test.yaml), &v)
 
 			if test.err != "" {
 				if err == nil {
@@ -3387,7 +3386,7 @@ func (u *unmarshalList) UnmarshalYAML(b []byte) error {
 		return fmt.Errorf("unexpected bytes: expected [%q] but got [%q]", expected, actual)
 	}
 	var v []map[string]unmarshalString
-	if err := yaml.Unmarshal(b, &v); err != nil {
+	if err := codec.Unmarshal(b, &v); err != nil {
 		return err
 	}
 	u.v = v
@@ -3475,9 +3474,9 @@ func TestDecoder_LiteralWithNewLine(t *testing.T) {
 	}
 	// struct(want) -> Marshal -> Unmarchal -> struct(got)
 	for _, want := range tests {
-		bytes, _ := yaml.Marshal(want)
+		bytes, _ := codec.Marshal(want)
 		got := A{}
-		if err := yaml.Unmarshal(bytes, &got); err != nil {
+		if err := codec.Unmarshal(bytes, &got); err != nil {
 			t.Fatal(err)
 		}
 		if want.Node != got.Node {
@@ -3495,7 +3494,7 @@ func TestDecoder_TabCharacterAtRight(t *testing.T) {
   b: [2 , 2] 			
   c: [2 , 2]`
 	var v []map[string][]int
-	if err := yaml.Unmarshal([]byte(yml), &v); err != nil {
+	if err := codec.Unmarshal([]byte(yml), &v); err != nil {
 		t.Fatal(err)
 	}
 	if len(v) != 1 {
@@ -3518,7 +3517,7 @@ func TestDecoder_Canonical(t *testing.T) {
 	// keeps the value it resolves to, and only a mapping whose keys are all
 	// strings comes back as a map[string]any.
 	var v any
-	if err := yaml.Unmarshal([]byte(yml), &v); err != nil {
+	if err := codec.Unmarshal([]byte(yml), &v); err != nil {
 		t.Fatalf("%+v", err)
 	}
 	m, ok := v.(map[any]any)
@@ -3566,7 +3565,7 @@ func TestDecoder_DecodeWithNode(t *testing.T) {
 			Text ast.Node `yaml:"text"`
 		}
 		var v T
-		if err := yaml.Unmarshal([]byte(`text: hello`), &v); err != nil {
+		if err := codec.Unmarshal([]byte(`text: hello`), &v); err != nil {
 			t.Fatalf("%+v", err)
 		}
 		expected := "hello"
@@ -3580,7 +3579,7 @@ func TestDecoder_DecodeWithNode(t *testing.T) {
 			Text *ast.StringNode `yaml:"text"`
 		}
 		var v T
-		if err := yaml.Unmarshal([]byte(`text: hello`), &v); err != nil {
+		if err := codec.Unmarshal([]byte(`text: hello`), &v); err != nil {
 			t.Fatalf("%+v", err)
 		}
 		expected := "hello"
@@ -3619,10 +3618,10 @@ bar:
  k3: "Three"
 `
 		var v doc
-		if err := yaml.Unmarshal([]byte(yml), &v); err != nil {
+		if err := codec.Unmarshal([]byte(yml), &v); err != nil {
 			t.Fatalf("%+v", err)
 		}
-		bytes, err := yaml.Marshal(v)
+		bytes, err := codec.Marshal(v)
 		if err != nil {
 			t.Fatalf("%+v", err)
 		}
@@ -3673,10 +3672,10 @@ bar:
   k3: Three
 `
 		var v doc
-		if err := yaml.Unmarshal([]byte("%YAML 1.1\n---"+body), &v); err != nil {
+		if err := codec.Unmarshal([]byte("%YAML 1.1\n---"+body), &v); err != nil {
 			t.Fatalf("%+v", err)
 		}
-		bytes, err := yaml.Marshal(v)
+		bytes, err := codec.Marshal(v)
 		if err != nil {
 			t.Fatalf("%+v", err)
 		}
@@ -3701,7 +3700,7 @@ d: *a
 		D int
 	}
 	var v T
-	if err := yaml.Unmarshal([]byte(yml), &v); err != nil {
+	if err := codec.Unmarshal([]byte(yml), &v); err != nil {
 		t.Fatal(err)
 	}
 	if !reflect.DeepEqual(v, T{A: 1, B: 2, C: 3, D: 3}) {
@@ -3742,7 +3741,7 @@ steps:
 			t.Parallel()
 			for range 10 {
 				var m mappedSteps
-				if err := yaml.Unmarshal([]byte(content), &m); err != nil {
+				if err := codec.Unmarshal([]byte(content), &m); err != nil {
 					t.Fatal(err)
 				}
 				for v := range m.Steps.Values() {
@@ -3766,7 +3765,7 @@ func TestSameNameInineStruct(t *testing.T) {
 	}
 
 	var v T
-	if err := yaml.Unmarshal([]byte(`x: 0.7`), &v); err != nil {
+	if err := codec.Unmarshal([]byte(`x: 0.7`), &v); err != nil {
 		t.Fatal(err)
 	}
 	if fmt.Sprint(v.X.X) != "0.7" {
@@ -3840,7 +3839,7 @@ func TestNodeUnmarshalerContext(t *testing.T) {
 		t.Run(c.name, func(t *testing.T) {
 			src := []byte(strings.Join(c.src, "\n"))
 			out := c.body
-			err := yaml.Unmarshal(src, &out)
+			err := codec.Unmarshal(src, &out)
 			if c.expectErr != "" {
 				if err == nil {
 					t.Fatal("expected error but got nil")
@@ -3925,7 +3924,7 @@ func TestNodeUnmarshaler(t *testing.T) {
 		t.Run(c.name, func(t *testing.T) {
 			src := []byte(strings.Join(c.src, "\n"))
 			out := c.body
-			err := yaml.Unmarshal(src, &out)
+			err := codec.Unmarshal(src, &out)
 			if c.expectErr != "" {
 				if err == nil {
 					t.Fatal("expected error but got nil")
@@ -3941,7 +3940,7 @@ func TestNodeUnmarshaler(t *testing.T) {
 			expect := struct {
 				Root ast.Node `yaml:"root"`
 			}{}
-			if err := yaml.Unmarshal(src, &expect); err != nil {
+			if err := codec.Unmarshal(src, &expect); err != nil {
 				t.Fatal("invalid test yaml:", err)
 				return
 			}
@@ -3959,7 +3958,7 @@ func TestNodeUnmarshaler(t *testing.T) {
 
 func TestMapKeyCustomUnmarshaler(t *testing.T) {
 	var m map[unmarshableMapKey]string
-	if err := yaml.Unmarshal([]byte(`key: value`), &m); err != nil {
+	if err := codec.Unmarshal([]byte(`key: value`), &m); err != nil {
 		t.Fatalf("failed to unmarshal %v", err)
 	}
 	if len(m) != 1 {
@@ -4014,7 +4013,7 @@ foo:
 		Foo bytesUnmershalerWithMapAlias `yaml:"foo"`
 	}
 	var v T
-	if err := yaml.Unmarshal([]byte(yml), &v); err != nil {
+	if err := codec.Unmarshal([]byte(yml), &v); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -4024,7 +4023,7 @@ func TestBytesUnmarshalerWithEmptyValue(t *testing.T) {
 
 	unmarshaler := func(_ *T, b []byte) error {
 		var v any
-		return yaml.Unmarshal(b, &v)
+		return codec.Unmarshal(b, &v)
 	}
 
 	yml := `
@@ -4065,11 +4064,11 @@ func TestIssue650(t *testing.T) {
 
 	unmarshalDisk := func(dst *Disk, b []byte) error {
 		var s string
-		if err := yaml.Unmarshal(b, &s); err == nil {
+		if err := codec.Unmarshal(b, &s); err == nil {
 			*dst = Disk{Name: s}
 			return nil
 		}
-		return yaml.Unmarshal(b, dst)
+		return codec.Unmarshal(b, dst)
 	}
 
 	data := []byte(`
@@ -4090,7 +4089,7 @@ func TestBytesUnmarshalerWithLiteral(t *testing.T) {
 
 		unmarshalLit := func(dst *Literal, b []byte) error {
 			var s string
-			if err := yaml.Unmarshal(b, &s); err != nil {
+			if err := codec.Unmarshal(b, &s); err != nil {
 				return err
 			}
 			*dst = Literal(s)
@@ -4120,7 +4119,7 @@ func TestBytesUnmarshalerWithLiteral(t *testing.T) {
 
 		unmarshalLit := func(dst *Literal, b []byte) error {
 			var s string
-			if err := yaml.Unmarshal(b, &s); err != nil {
+			if err := codec.Unmarshal(b, &s); err != nil {
 				return err
 			}
 			*dst = Literal(s)
@@ -4164,7 +4163,7 @@ nested:
 #  val: "default"
 `
 	v := test{Default: nested{Val: "default"}}
-	if err := yaml.Unmarshal([]byte(yml), &v); err != nil {
+	if err := codec.Unmarshal([]byte(yml), &v); err != nil {
 		t.Fatal(err)
 	}
 	if v.Default.Val != "default" {
@@ -4185,7 +4184,7 @@ func TestDecodeError(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			var v any
-			if err := yaml.Unmarshal([]byte(test.source), &v); err == nil {
+			if err := codec.Unmarshal([]byte(test.source), &v); err == nil {
 				t.Fatal("cannot catch decode error")
 			}
 		})
@@ -4197,7 +4196,7 @@ func TestIssue617(t *testing.T) {
 a: !Not [!Equals [!Ref foo, 'bar']]
 `
 	var v map[string][]any
-	if err := yaml.Unmarshal([]byte(data), &v); err != nil {
+	if err := codec.Unmarshal([]byte(data), &v); err != nil {
 		t.Fatal(err)
 	}
 	if !reflect.DeepEqual(v, map[string][]any{
@@ -4251,7 +4250,7 @@ releases:
 	var v struct {
 		Releases []*Release `yaml:"releases"`
 	}
-	if err := yaml.Unmarshal([]byte(yml), &v); err != nil {
+	if err := codec.Unmarshal([]byte(yml), &v); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -4274,7 +4273,7 @@ func TestSetNullValue(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			t.Run("set null", func(t *testing.T) {
 				var v any = 0x1
-				if err := yaml.Unmarshal([]byte(test.src), &v); err != nil {
+				if err := codec.Unmarshal([]byte(test.src), &v); err != nil {
 					t.Fatal(err)
 				}
 				if v != nil {
@@ -4283,7 +4282,7 @@ func TestSetNullValue(t *testing.T) {
 			})
 			t.Run("invalid value", func(t *testing.T) {
 				var v *struct{}
-				if err := yaml.Unmarshal([]byte(test.src), v); err != nil {
+				if err := codec.Unmarshal([]byte(test.src), v); err != nil {
 					t.Fatal(err)
 				}
 				if v != nil {
@@ -4318,7 +4317,7 @@ jobs:
 `
 
 	var config Config
-	if err := yaml.Unmarshal([]byte(yml), &config); err != nil {
+	if err := codec.Unmarshal([]byte(yml), &config); err != nil {
 		t.Fatalf("failed to decode: %v", err)
 	}
 
@@ -4365,7 +4364,7 @@ a: &a
   ref: *b
 `
 		var result map[string]any
-		if err := yaml.Unmarshal([]byte(yml), &result); err != nil {
+		if err := codec.Unmarshal([]byte(yml), &result); err != nil {
 			t.Fatalf("failed to decode: %v", err)
 		}
 		a, ok := result["a"].(map[string]any)
@@ -4390,7 +4389,7 @@ config: &config
     cache_url: *cache
 `
 		var result map[string]any
-		if err := yaml.Unmarshal([]byte(yml), &result); err != nil {
+		if err := codec.Unmarshal([]byte(yml), &result); err != nil {
 			t.Fatalf("failed to decode: %v", err)
 		}
 		cfg, _ := result["config"].(map[string]any)
@@ -4413,7 +4412,7 @@ service: &service
     security: *auth
 `
 		var result map[string]any
-		if err := yaml.Unmarshal([]byte(yml), &result); err != nil {
+		if err := codec.Unmarshal([]byte(yml), &result); err != nil {
 			t.Fatalf("failed to decode: %v", err)
 		}
 		svc, _ := result["service"].(map[string]any)
@@ -4440,7 +4439,7 @@ a: &a
   self: *a
 `
 		var result map[string]any
-		err := yaml.Unmarshal([]byte(yml), &result)
+		err := codec.Unmarshal([]byte(yml), &result)
 		if err == nil {
 			t.Fatalf("a self-recursive alias should be refused, decoded to: %v", result)
 		}
@@ -4462,7 +4461,7 @@ func TestIssue735(t *testing.T) {
 		// A YAML tag applied to a non-sequence value on a slice field must
 		// return an error, not panic.
 		var v Slice
-		if err := yaml.Unmarshal([]byte("items:\n  ! scalar"), &v); err == nil {
+		if err := codec.Unmarshal([]byte("items:\n  ! scalar"), &v); err == nil {
 			t.Fatal("expected error, got nil")
 		}
 	})
@@ -4471,14 +4470,14 @@ func TestIssue735(t *testing.T) {
 		// A YAML tag applied to a non-map value on a map field must
 		// return an error, not panic.
 		var v Map
-		if err := yaml.Unmarshal([]byte("items: !!str scalar"), &v); err == nil {
+		if err := codec.Unmarshal([]byte("items: !!str scalar"), &v); err == nil {
 			t.Fatal("expected error, got nil")
 		}
 	})
 
 	t.Run("!!seq tag on sequence decoded as slice succeeds", func(t *testing.T) {
 		var v Slice
-		if err := yaml.Unmarshal([]byte("items: !!seq\n  - a\n  - b"), &v); err != nil {
+		if err := codec.Unmarshal([]byte("items: !!seq\n  - a\n  - b"), &v); err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
 		if len(v.Items) != 2 || v.Items[0] != "a" || v.Items[1] != "b" {
@@ -4488,7 +4487,7 @@ func TestIssue735(t *testing.T) {
 
 	t.Run("!!map tag on mapping decoded as map succeeds", func(t *testing.T) {
 		var v Map
-		if err := yaml.Unmarshal([]byte("items: !!map\n  a: b"), &v); err != nil {
+		if err := codec.Unmarshal([]byte("items: !!map\n  a: b"), &v); err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
 		if v.Items["a"] != "b" {
@@ -4500,7 +4499,7 @@ func TestIssue735(t *testing.T) {
 		// A tagged null value on a slice field should decode to nil, not error.
 		// Exercises the recursive dispatch through TagNode -> NullNode.
 		var v Slice
-		if err := yaml.Unmarshal([]byte("items: !!null null"), &v); err != nil {
+		if err := codec.Unmarshal([]byte("items: !!null null"), &v); err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
 		if v.Items != nil {
@@ -4513,7 +4512,7 @@ func TestIssue735(t *testing.T) {
 		// must return an error rather than panic via the nil ArrayRange iterator.
 		var v Slice
 		src := "anchor: &anchor !!str scalar\nitems: *anchor"
-		if err := yaml.Unmarshal([]byte(src), &v); err == nil {
+		if err := codec.Unmarshal([]byte(src), &v); err == nil {
 			t.Fatal("expected error, got nil")
 		}
 	})
@@ -4521,7 +4520,7 @@ func TestIssue735(t *testing.T) {
 	t.Run("anchored tagged sequence aliased to slice field succeeds", func(t *testing.T) {
 		var v Slice
 		src := "anchor: &anchor !!seq\n  - a\n  - b\nitems: *anchor"
-		if err := yaml.Unmarshal([]byte(src), &v); err != nil {
+		if err := codec.Unmarshal([]byte(src), &v); err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
 		if len(v.Items) != 2 || v.Items[0] != "a" || v.Items[1] != "b" {
@@ -4605,12 +4604,12 @@ func TestBytesUnmarshalerReceivesAValueThatReadsBack(t *testing.T) {
 			var v struct {
 				Foo recordedBytes `yaml:"foo"`
 			}
-			if err := yaml.Unmarshal([]byte(test.yaml), &v); err != nil {
+			if err := codec.Unmarshal([]byte(test.yaml), &v); err != nil {
 				t.Fatal(err)
 			}
 
 			var got any
-			if err := yaml.Unmarshal([]byte(v.Foo.raw), &got); err != nil {
+			if err := codec.Unmarshal([]byte(v.Foo.raw), &got); err != nil {
 				t.Fatalf("the bytes handed over do not parse: %q: %s", v.Foo.raw, err)
 			}
 			if !reflect.DeepEqual(got, test.want) {

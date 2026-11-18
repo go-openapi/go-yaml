@@ -1,19 +1,17 @@
 // SPDX-FileCopyrightText: Copyright 2025 go-swagger maintainers
 // SPDX-License-Identifier: Apache-2.0
 
-package yaml_test
+package expressions_test
 
 import (
 	"bytes"
 	"testing"
 
-	"github.com/go-openapi/testify/v2/require"
-
-	yaml "github.com/go-openapi/go-yaml"
 	"github.com/go-openapi/go-yaml/ast"
 	"github.com/go-openapi/go-yaml/codec"
 	"github.com/go-openapi/go-yaml/expressions"
 	"github.com/go-openapi/go-yaml/parser"
+	"github.com/go-openapi/testify/v2/require"
 )
 
 // TestPathReadAgreesWithUnmarshal checks that reading a value through a path
@@ -52,7 +50,7 @@ func TestPathReadAgreesWithUnmarshal(t *testing.T) {
 			require.NoError(t, p.Read(bytes.NewReader([]byte(test.src)), &got))
 
 			var whole map[string]any
-			require.NoError(t, yaml.Unmarshal([]byte(test.src), &whole))
+			require.NoError(t, codec.Unmarshal([]byte(test.src), &whole))
 
 			require.Equal(t, whole["a"], got)
 		})

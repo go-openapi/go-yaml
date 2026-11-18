@@ -1,21 +1,21 @@
 // SPDX-FileCopyrightText: Copyright 2025 go-swagger maintainers
 // SPDX-License-Identifier: Apache-2.0
 
-// Package conformance measures this parser against the YAML Test Suite.
+// Package conformance measures this library against the YAML Test Suite.
 //
-// It measures the parser and the AST directly. That is deliberately not what
-// the two neighboring harnesses do:
+// Most of its tests measure the parser and the AST directly. Two harnesses
+// measure something else:
 //
-//   - yaml_test_suite_test.go, at the repository root, drives Unmarshal and
-//     compares decoded values against each case's expected JSON. It measures
-//     the decoder, so a parser defect reaches it only if the decoder happens to
-//     expose it.
+//   - decode_test.go drives Unmarshal and compares decoded values against each
+//     case's expected JSON. It measures the decoder, so a parser defect reaches
+//     it only if the decoder happens to expose it.
 //   - go-openapi/core's YAML lexer runs the same suite through its
 //     JSON-projecting token stream. It measures JSON equivalence, through a
 //     consumer whose own design boundaries mix into the result.
 //
-// Neither answers the question this package asks: does the parser accept the
-// documents YAML 1.2 says are valid, and reject the ones it says are not.
+// Neither answers the question the rest of this package asks: does the parser
+// accept the documents YAML 1.2 says are valid, and reject the ones it says
+// are not.
 //
 // # Ledgers
 //

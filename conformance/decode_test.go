@@ -3,7 +3,7 @@
 
 //go:build !windows
 
-package yaml_test
+package conformance_test
 
 import (
 	"bytes"
@@ -15,12 +15,10 @@ import (
 	"sort"
 	"testing"
 
-	"github.com/go-openapi/testify/v2/assert"
-	"github.com/go-openapi/testify/v2/require"
-
-	"github.com/go-openapi/go-yaml"
 	"github.com/go-openapi/go-yaml/codec"
 	yamltestsuite "github.com/go-openapi/go-yaml/internal/yamltestsuite"
+	"github.com/go-openapi/testify/v2/assert"
+	"github.com/go-openapi/testify/v2/require"
 )
 
 // Why a case of the YAML Test Suite does not decode to its expected JSON.
@@ -52,7 +50,7 @@ const (
 	// nine is a document the decoder refuses -- ": a\n: b\n", which holds one
 	// empty key twice -- and dropping them silently would hide that.
 	//
-	// noExpectationPins in zz_noexpectation_test.go states what each of the
+	// noExpectationPins in noexpectation_test.go states what each of the
 	// nine composes to, decoded into codec.MapSlice, and
 	// TestEveryFixtureStatingNoExpectationHasAPin holds the two lists to the
 	// same names.
@@ -129,7 +127,7 @@ var decodeLedger = map[string]string{
 	// decoder stopped folding every document into a value to decide whether it
 	// held one; go.yaml.in/yaml/v3 hands back one document holding nil.
 	//
-	// What each of the nine composes to is pinned in zz_noexpectation_test.go.
+	// What each of the nine composes to is pinned in noexpectation_test.go.
 	"block-mapping-with-missing-keys":                  reasonNoExpectation,
 	"empty-keys-in-block-and-flow-mapping":             reasonNoExpectation,
 	"empty-lines-at-end-of-document":                   reasonNoExpectation,
@@ -201,7 +199,7 @@ func decodeAsExpected(t *testing.T, test *yamltestsuite.TestSuite) (err error) {
 
 	if test.Error {
 		var v any
-		if err := yaml.Unmarshal(test.InYAML, &v); err == nil {
+		if err := codec.Unmarshal(test.InYAML, &v); err == nil {
 			return errors.New("invalid document was accepted")
 		}
 

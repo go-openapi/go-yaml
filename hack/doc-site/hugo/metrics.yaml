@@ -5,7 +5,7 @@
 # run each one came from.
 #
 # Verified 2026-09-08 against master:
-#   decoder_*  go test . -run TestYAMLTestSuite
+#   decoder_*  go test ./conformance/ -run TestYAMLTestSuite
 #   tojson_*   go test ./conformance/ -run TestSuiteToJSON
 #
 # Not re-verified in that run (they need libfyaml and the reference parser):

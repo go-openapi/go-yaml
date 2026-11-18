@@ -1,15 +1,15 @@
 // SPDX-FileCopyrightText: Copyright 2025 go-swagger maintainers
 // SPDX-License-Identifier: Apache-2.0
 
-package yaml_test
+package scanner_test
 
 import (
 	"testing"
 
+	"github.com/go-openapi/go-yaml/codec"
+
 	"github.com/go-openapi/testify/v2/assert"
 	"github.com/go-openapi/testify/v2/require"
-
-	yaml "github.com/go-openapi/go-yaml"
 )
 
 // TestAFlowValueRunsOntoTheNextLine covers a plain scalar inside a flow collection that continues on the lines below.
@@ -54,7 +54,7 @@ func TestAFlowValueRunsOntoTheNextLine(t *testing.T) {
 			t.Parallel()
 
 			var got any
-			require.NoError(t, yaml.Unmarshal([]byte(tc.src), &got))
+			require.NoError(t, codec.Unmarshal([]byte(tc.src), &got))
 			assert.Equal(t, tc.want, got)
 		})
 	}
@@ -94,7 +94,7 @@ func TestAFlowEntryHoldsOnePair(t *testing.T) {
 			t.Parallel()
 
 			var got any
-			require.Error(t, yaml.Unmarshal([]byte(tc.src), &got))
+			require.Error(t, codec.Unmarshal([]byte(tc.src), &got))
 		})
 	}
 }
@@ -120,7 +120,7 @@ func TestAMissingCommaNamesTheColonThatEndsTheEntry(t *testing.T) {
 			t.Parallel()
 
 			var got any
-			err := yaml.Unmarshal([]byte(tc.src), &got)
+			err := codec.Unmarshal([]byte(tc.src), &got)
 			require.Error(t, err)
 			assert.Contains(t, err.Error(), tc.at+" ',' or '}' must be specified")
 		})

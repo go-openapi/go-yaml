@@ -112,3 +112,30 @@ func orderedMapKeys(m codec.MapSlice) []any {
 
 	return keys
 }
+
+// TestAMapSliceRoundTripsThroughTheEncoder: the order a document wrote survives
+// a decode and an encode, and a repeated key never reaches the value.
+func TestAMapSliceRoundTripsThroughTheEncoder(t *testing.T) {
+	const src = "b: 1\na: 2\nc: 3\n"
+
+	var m codec.MapSlice
+	require.NoError(t, codec.Unmarshal([]byte(src), &m))
+	assert.Equal(t, mapSliceOf(item("b", uint64(1)), item("a", uint64(2)), item("c", uint64(3))), m)
+
+	out, err := codec.Marshal(m)
+	require.NoError(t, err)
+	assert.Equal(t, src, string(out))
+}
+
+// TestAMapSliceRefusesAKeyGoCannotHash: a collection standing as a key is
+// refused here as it is for a Go map. A MapSlice held one as long as MapItem.Key
+// took anything, and MapSlice.ToMap then panicked on it.
+func TestAMapSliceRefusesAKeyGoCannotHash(t *testing.T) {
+	for _, src := range []string{"? {k: v}\n: v\n", "? [a, b]\n: v\n"} {
+		var m codec.MapSlice
+		err := codec.Unmarshal([]byte(src), &m)
+
+		require.Errorf(t, err, "%q", src)
+		assert.Containsf(t, err.Error(), "cannot be a key in a Go map", "%q", src)
+	}
+}

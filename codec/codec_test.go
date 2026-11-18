@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: Copyright 2025 go-swagger maintainers
 // SPDX-License-Identifier: Apache-2.0
 
-package yaml_test
+package codec_test
 
 import (
 	"encoding/json"
@@ -12,7 +12,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/go-openapi/go-yaml"
 	"github.com/go-openapi/go-yaml/codec"
 	yamlerrors "github.com/go-openapi/go-yaml/errors"
 )
@@ -257,7 +256,7 @@ foo: 2
 	// the load is what reports one, so the error with a position on it comes
 	// from there.
 	var into any
-	if err := yaml.Unmarshal([]byte(data), &into); err == nil {
+	if err := codec.Unmarshal([]byte(data), &into); err == nil {
 		t.Fatalf("expected error")
 	} else {
 		var yamlErr *yamlerrors.Error
@@ -284,7 +283,7 @@ func checkRawValue[T any](t *testing.T, v codec.RawMessage, expected T) {
 
 	var actual T
 
-	if err := yaml.Unmarshal(v, &actual); err != nil {
+	if err := codec.Unmarshal(v, &actual); err != nil {
 		t.Errorf("failed to unmarshal: %v", err)
 		return
 	}
@@ -320,7 +319,7 @@ c:
 `)
 
 	var m map[string]codec.RawMessage
-	if err := yaml.Unmarshal(data, &m); err != nil {
+	if err := codec.Unmarshal(data, &m); err != nil {
 		t.Fatal(err)
 	}
 
@@ -332,12 +331,12 @@ c:
 	checkRawValue(t, m["b"], "asdf")
 	checkRawValue(t, m["c"], map[string]string{"foo": "bar"})
 
-	dt, err := yaml.Marshal(m)
+	dt, err := codec.Marshal(m)
 	if err != nil {
 		t.Fatal(err)
 	}
 	var m2 map[string]codec.RawMessage
-	if err := yaml.Unmarshal(dt, &m2); err != nil {
+	if err := codec.Unmarshal(dt, &m2); err != nil {
 		t.Fatal(err)
 	}
 
@@ -351,7 +350,7 @@ c:
 	}
 
 	var m3 map[string]codec.RawMessage
-	if err := yaml.Unmarshal(dt, &m3); err != nil {
+	if err := codec.Unmarshal(dt, &m3); err != nil {
 		t.Fatal(err)
 	}
 	checkRawValue(t, m3["a"], 1)
@@ -441,7 +440,7 @@ dynamicField:
 			t.Fatalf("unexpected wrapper static field value: %s", wrapper.StaticField)
 		}
 		var dynamicFieldValue dynamicField
-		if err := yaml.Unmarshal(wrapper.DynamicField, &dynamicFieldValue); err != nil {
+		if err := codec.Unmarshal(wrapper.DynamicField, &dynamicFieldValue); err != nil {
 			t.Fatal(err)
 		}
 		if !dynamicFieldValue.Equals(expectedDynamicFieldValue) {
@@ -458,7 +457,7 @@ dynamicField:
 			t.Fatalf("unexpected wrapper static field value: %s", wrapper.StaticField)
 		}
 		var dynamicFieldValue dynamicField
-		if err := yaml.Unmarshal(wrapper.DynamicField, &dynamicFieldValue); err != nil {
+		if err := codec.Unmarshal(wrapper.DynamicField, &dynamicFieldValue); err != nil {
 			t.Fatal(err)
 		}
 		if !dynamicFieldValue.Equals(expectedDynamicFieldValue) {
@@ -467,7 +466,7 @@ dynamicField:
 	})
 
 	t.Run("UseJSONMarshaler and json.RawMessage", func(t *testing.T) {
-		dynamicFieldBytes, err := yaml.Marshal(expectedDynamicFieldValue)
+		dynamicFieldBytes, err := codec.Marshal(expectedDynamicFieldValue)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -496,7 +495,7 @@ dynamicField:
 	})
 
 	t.Run("UseJSONMarshaler and codec.RawMessage", func(t *testing.T) {
-		dynamicFieldBytes, err := yaml.Marshal(expectedDynamicFieldValue)
+		dynamicFieldBytes, err := codec.Marshal(expectedDynamicFieldValue)
 		if err != nil {
 			t.Fatal(err)
 		}

@@ -1,17 +1,17 @@
 // SPDX-FileCopyrightText: Copyright 2025 go-swagger maintainers
 // SPDX-License-Identifier: Apache-2.0
 
-package yaml_test
+package codec_test
 
 import (
 	"math"
 	"math/big"
 	"testing"
 
+	"github.com/go-openapi/go-yaml/codec"
+
 	"github.com/go-openapi/testify/v2/assert"
 	"github.com/go-openapi/testify/v2/require"
-
-	"github.com/go-openapi/go-yaml"
 )
 
 // TestBigNumberReachesTheDecoder holds what a document's number does when no
@@ -33,7 +33,7 @@ func TestBigNumberReachesTheDecoder(t *testing.T) {
 
 	t.Run("into any, the number arrives whole", func(t *testing.T) {
 		var m map[string]any
-		require.NoError(t, yaml.Unmarshal([]byte("v: !!int "+pastUint64+"\n"), &m))
+		require.NoError(t, codec.Unmarshal([]byte("v: !!int "+pastUint64+"\n"), &m))
 
 		n, ok := m["v"].(*big.Int)
 		require.Truef(t, ok, "decoded as %T, want *big.Int", m["v"])
@@ -42,7 +42,7 @@ func TestBigNumberReachesTheDecoder(t *testing.T) {
 
 	t.Run("into a native integer, it overflows and says so", func(t *testing.T) {
 		var m map[string]int64
-		err := yaml.Unmarshal([]byte("v: !!int "+pastUint64+"\n"), &m)
+		err := codec.Unmarshal([]byte("v: !!int "+pastUint64+"\n"), &m)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "overflow")
 		assert.Contains(t, err.Error(), pastUint64)
@@ -50,7 +50,7 @@ func TestBigNumberReachesTheDecoder(t *testing.T) {
 
 	t.Run("below the smallest int64", func(t *testing.T) {
 		var m map[string]any
-		require.NoError(t, yaml.Unmarshal([]byte("v: !!int "+pastInt64+"\n"), &m))
+		require.NoError(t, codec.Unmarshal([]byte("v: !!int "+pastInt64+"\n"), &m))
 
 		n, ok := m["v"].(*big.Int)
 		require.Truef(t, ok, "decoded as %T, want *big.Int", m["v"])
@@ -59,13 +59,13 @@ func TestBigNumberReachesTheDecoder(t *testing.T) {
 
 	t.Run("into a float, it takes the nearest one", func(t *testing.T) {
 		var m map[string]float64
-		require.NoError(t, yaml.Unmarshal([]byte("v: !!int "+pastUint64+"\n"), &m))
+		require.NoError(t, codec.Unmarshal([]byte("v: !!int "+pastUint64+"\n"), &m))
 		assert.Equal(t, math.Pow(2, 64), m["v"])
 	})
 
 	t.Run("into a string, it keeps its digits", func(t *testing.T) {
 		var m map[string]string
-		require.NoError(t, yaml.Unmarshal([]byte("v: !!int "+pastUint64+"\n"), &m))
+		require.NoError(t, codec.Unmarshal([]byte("v: !!int "+pastUint64+"\n"), &m))
 		assert.Equal(t, pastUint64, m["v"])
 	})
 }

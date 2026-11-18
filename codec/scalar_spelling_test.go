@@ -1,15 +1,13 @@
 // SPDX-FileCopyrightText: Copyright 2025 go-swagger maintainers
 // SPDX-License-Identifier: Apache-2.0
 
-package yaml_test
+package codec_test
 
 import (
 	"testing"
 
-	"github.com/go-openapi/testify/v2/require"
-
-	yaml "github.com/go-openapi/go-yaml"
 	"github.com/go-openapi/go-yaml/codec"
+	"github.com/go-openapi/testify/v2/require"
 )
 
 // TestMarshalStringHoldingCarriageReturn checks that a string holding a
@@ -37,12 +35,12 @@ func TestMarshalStringHoldingCarriageReturn(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			out, err := yaml.Marshal(test.in)
+			out, err := codec.Marshal(test.in)
 			require.NoError(t, err)
 			require.Equal(t, test.want, string(out))
 
 			var back string
-			require.NoError(t, yaml.Unmarshal(out, &back))
+			require.NoError(t, codec.Unmarshal(out, &back))
 			require.Equal(t, test.in, back)
 		})
 	}
@@ -59,7 +57,7 @@ func TestMarshalCarriageReturnUnderLiteralStyle(t *testing.T) {
 	require.NoError(t, err)
 
 	var back string
-	require.NoError(t, yaml.Unmarshal(out, &back))
+	require.NoError(t, codec.Unmarshal(out, &back))
 	require.Equal(t, in, back)
 }
 
@@ -68,12 +66,12 @@ func TestMarshalCarriageReturnUnderLiteralStyle(t *testing.T) {
 func TestMarshalCarriageReturnInAMapping(t *testing.T) {
 	in := map[string]string{"a": "p\r\nq\r\n"}
 
-	out, err := yaml.Marshal(in)
+	out, err := codec.Marshal(in)
 	require.NoError(t, err)
 	require.Equal(t, "a: \"p\\r\\nq\\r\\n\"\n", string(out))
 
 	back := map[string]string{}
-	require.NoError(t, yaml.Unmarshal(out, &back))
+	require.NoError(t, codec.Unmarshal(out, &back))
 	require.Equal(t, in, back)
 }
 
@@ -88,12 +86,12 @@ func TestMarshalQuotesLeadingZeroDecimals(t *testing.T) {
 	quoted := []string{"088253", "09", "0777", "00", "010", "-088", "+09"}
 	for _, in := range quoted {
 		t.Run(in, func(t *testing.T) {
-			out, err := yaml.Marshal(in)
+			out, err := codec.Marshal(in)
 			require.NoError(t, err)
 			require.Equal(t, "\""+in+"\"\n", string(out))
 
 			var back string
-			require.NoError(t, yaml.Unmarshal(out, &back))
+			require.NoError(t, codec.Unmarshal(out, &back))
 			require.Equal(t, in, back)
 		})
 	}
@@ -103,7 +101,7 @@ func TestMarshalQuotesLeadingZeroDecimals(t *testing.T) {
 	plain := []string{"08a", "0-8", "0 9"}
 	for _, in := range plain {
 		t.Run(in, func(t *testing.T) {
-			out, err := yaml.Marshal(in)
+			out, err := codec.Marshal(in)
 			require.NoError(t, err)
 			require.Equal(t, in+"\n", string(out))
 		})
@@ -128,12 +126,12 @@ func TestMarshalStringHoldingAByteOrderMark(t *testing.T) {
 
 	for name, in := range tests {
 		t.Run(name, func(t *testing.T) {
-			out, err := yaml.Marshal(in)
+			out, err := codec.Marshal(in)
 			require.NoError(t, err)
 			require.NotContains(t, string(out[:len(out)-1]), mark, "the mark is written as an escape, not as itself")
 
 			var back string
-			require.NoError(t, yaml.Unmarshal(out, &back))
+			require.NoError(t, codec.Unmarshal(out, &back))
 			require.Equal(t, in, back)
 		})
 	}

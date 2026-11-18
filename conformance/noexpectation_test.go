@@ -3,7 +3,7 @@
 
 //go:build !windows
 
-package yaml_test
+package conformance_test
 
 import (
 	"bytes"
@@ -196,3 +196,16 @@ func fixture(t *testing.T, name string) *yamltestsuite.TestSuite {
 
 	return nil
 }
+
+// mapSliceOf builds a MapSlice from entries a test knows are good, panicking on
+// a key no map may hold so a bad fixture fails where it stands.
+func mapSliceOf(items ...codec.MapItem) codec.MapSlice {
+	m, err := codec.NewMapSlice(items...)
+	if err != nil {
+		panic(err)
+	}
+
+	return m
+}
+
+func item(key, value any) codec.MapItem { return codec.MapItem{Key: key, Value: value} }

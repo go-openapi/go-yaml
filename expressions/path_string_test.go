@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: Copyright 2025 go-swagger maintainers
 // SPDX-License-Identifier: Apache-2.0
 
-package yaml_test
+package expressions_test
 
 import (
 	"strings"

@@ -1,15 +1,15 @@
 // SPDX-FileCopyrightText: Copyright 2025 go-swagger maintainers
 // SPDX-License-Identifier: Apache-2.0
 
-package yaml_test
+package codec_test
 
 import (
 	"testing"
 
+	"github.com/go-openapi/go-yaml/codec"
+
 	"github.com/go-openapi/testify/v2/assert"
 	"github.com/go-openapi/testify/v2/require"
-
-	"github.com/go-openapi/go-yaml"
 )
 
 // TestAliasInsideItsOwnAnchor holds the rule that a decode refuses a cycle.
@@ -35,7 +35,7 @@ func TestAliasInsideItsOwnAnchor(t *testing.T) {
 			t.Parallel()
 
 			var v map[string]any
-			err := yaml.Unmarshal([]byte(tc.src), &v)
+			err := codec.Unmarshal([]byte(tc.src), &v)
 			require.Error(t, err, "decoded to %v", v)
 			assert.Contains(t, err.Error(), tc.want)
 		})
@@ -45,7 +45,7 @@ func TestAliasInsideItsOwnAnchor(t *testing.T) {
 		t.Parallel()
 
 		var v map[string]any
-		require.NoError(t, yaml.Unmarshal([]byte("a: &x\n  b: 1\nc: *x\n"), &v))
+		require.NoError(t, codec.Unmarshal([]byte("a: &x\n  b: 1\nc: *x\n"), &v))
 		assert.Equal(t, map[string]any{
 			"a": map[string]any{"b": uint64(1)},
 			"c": map[string]any{"b": uint64(1)},

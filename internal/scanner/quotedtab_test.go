@@ -1,17 +1,17 @@
 // SPDX-FileCopyrightText: Copyright 2025 go-swagger maintainers
 // SPDX-License-Identifier: Apache-2.0
 
-package yaml_test
+package scanner_test
 
 import (
 	"testing"
 
-	"github.com/go-openapi/testify/v2/assert"
-	"github.com/go-openapi/testify/v2/require"
+	"github.com/go-openapi/go-yaml/codec"
 
-	yaml "github.com/go-openapi/go-yaml"
 	"github.com/go-openapi/go-yaml/ast"
 	"github.com/go-openapi/go-yaml/parser"
+	"github.com/go-openapi/testify/v2/assert"
+	"github.com/go-openapi/testify/v2/require"
 )
 
 // TestATabInADoubleQuotedScalarLeavesTheNextLineWhereItIs covers a tab inside a double-quoted scalar with something
@@ -41,7 +41,7 @@ func TestATabInADoubleQuotedScalarLeavesTheNextLineWhereItIs(t *testing.T) {
 			src := "foo: \"" + tc.value + "\"\nx: 1\n"
 
 			var got map[string]any
-			require.NoError(t, yaml.Unmarshal([]byte(src), &got))
+			require.NoError(t, codec.Unmarshal([]byte(src), &got))
 			assert.Equal(t, map[string]any{"foo": tc.value, "x": uint64(1)}, got)
 
 			file, err := parser.ParseBytes([]byte(src))

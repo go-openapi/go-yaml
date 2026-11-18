@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: Copyright 2025 go-swagger maintainers
 // SPDX-License-Identifier: Apache-2.0
 
-package yaml_test
+package codec_test
 
 import (
 	"errors"
@@ -9,11 +9,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/go-openapi/go-yaml/codec"
 	"github.com/go-openapi/testify/v2/assert"
 	"github.com/go-openapi/testify/v2/require"
-
-	"github.com/go-openapi/go-yaml"
-	"github.com/go-openapi/go-yaml/codec"
 )
 
 // TestAnchorScopeIsOneDocument holds the rule that an anchor belongs to the
@@ -73,7 +71,7 @@ func TestAnchorScopeIsOneDocument(t *testing.T) {
 		// recent event in the serialization having the specified anchor.
 		// Therefore, anchors need not be unique within a serialization."
 		var v map[string]any
-		require.NoError(t, yaml.Unmarshal([]byte("a: &x 1\nb: *x\nc: &x 2\nd: *x\n"), &v))
+		require.NoError(t, codec.Unmarshal([]byte("a: &x 1\nb: *x\nc: &x 2\nd: *x\n"), &v))
 		assert.Equal(t, map[string]any{
 			"a": uint64(1), "b": uint64(1), "c": uint64(2), "d": uint64(2),
 		}, v)

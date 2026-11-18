@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: Copyright 2025 go-swagger maintainers
 // SPDX-License-Identifier: Apache-2.0
 
-package yaml_test
+package codec_test
 
 import (
 	"bytes"
@@ -19,7 +19,6 @@ import (
 	"time"
 	"unsafe"
 
-	"github.com/go-openapi/go-yaml"
 	"github.com/go-openapi/go-yaml/ast"
 	"github.com/go-openapi/go-yaml/codec"
 	"github.com/go-openapi/go-yaml/parser"
@@ -1213,7 +1212,7 @@ func TestEncodeStructIncludeMap(t *testing.T) {
 	type T struct {
 		A U
 	}
-	bytes, err := yaml.Marshal(T{
+	bytes, err := codec.Marshal(T{
 		A: U{
 			M: map[string]string{"x": "y"},
 		},
@@ -1233,7 +1232,7 @@ func TestEncodeDefinedTypeKeyMap(t *testing.T) {
 	type U struct {
 		M map[K]string
 	}
-	bytes, err := yaml.Marshal(U{
+	bytes, err := codec.Marshal(U{
 		M: map[K]string{K("x"): "y"},
 	})
 	if err != nil {
@@ -1412,7 +1411,7 @@ func TestEncodeWithNestedYAML(t *testing.T) {
 		// Convert it back for proper equality testing
 		var unmarshaled any
 
-		if err := yaml.Unmarshal(yamlBytesForced, &unmarshaled); err != nil {
+		if err := codec.Unmarshal(yamlBytesForced, &unmarshaled); err != nil {
 			t.Fatalf("%+v", err)
 		}
 
@@ -1921,7 +1920,7 @@ func ExampleMarshal_node() {
 	if err != nil {
 		panic(err)
 	}
-	bytes, err := yaml.Marshal(T{Text: stringNode})
+	bytes, err := codec.Marshal(T{Text: stringNode})
 	if err != nil {
 		panic(err)
 	}
@@ -1941,7 +1940,7 @@ func ExampleMarshal_explicitAnchorAlias() {
 	}
 	v.C = &T{A: 1, B: "hello"}
 	v.D = v.C
-	bytes, err := yaml.Marshal(v)
+	bytes, err := codec.Marshal(v)
 	if err != nil {
 		panic(err)
 	}
@@ -1968,7 +1967,7 @@ func ExampleMarshal_implicitAnchorAlias() {
 	v.B = &T{I: 2, S: "world"}
 	v.C = v.A // C has same pointer address to A
 	v.D = v.B // D has same pointer address to B
-	bytes, err := yaml.Marshal(v)
+	bytes, err := codec.Marshal(v)
 	if err != nil {
 		panic(err)
 	}
@@ -2005,11 +2004,11 @@ func Test_Marshaler(t *testing.T) {
 
 	// sanity check
 	var l []string
-	if err := yaml.Unmarshal([]byte(expected), &l); err != nil {
+	if err := codec.Unmarshal([]byte(expected), &l); err != nil {
 		t.Fatalf("failed to parse string: %s", err)
 	}
 
-	buf, err := yaml.Marshal(tMarshal{"hello-world"})
+	buf, err := codec.Marshal(tMarshal{"hello-world"})
 	if err != nil {
 		t.Fatalf("failed to marshal: %s", err)
 	}
@@ -2085,7 +2084,7 @@ func ExampleMarshal() {
 	var slow SlowMarshaler
 	slow.A = "Hello slow poke"
 	slow.B = 100
-	buf, err := yaml.Marshal(slow)
+	buf, err := codec.Marshal(slow)
 	if err != nil {
 		panic(err.Error())
 	}
@@ -2095,7 +2094,7 @@ func ExampleMarshal() {
 	var fast FastMarshaler
 	fast.A = "Hello speed demon"
 	fast.B = 100
-	buf, err = yaml.Marshal(fast)
+	buf, err = codec.Marshal(fast)
 	if err != nil {
 		panic(err.Error())
 	}
@@ -2105,7 +2104,7 @@ func ExampleMarshal() {
 	text := TextMarshalerContainer{
 		Field: 11,
 	}
-	buf, err = yaml.Marshal(text)
+	buf, err = codec.Marshal(text)
 	if err != nil {
 		panic(err.Error())
 	}
@@ -2263,11 +2262,11 @@ line3`},
 type bytesMarshaler struct{}
 
 func (b *bytesMarshaler) MarshalYAML() ([]byte, error) {
-	return yaml.Marshal(map[string]any{"d": "foo"})
+	return codec.Marshal(map[string]any{"d": "foo"})
 }
 
 func TestBytesMarshaler(t *testing.T) {
-	b, err := yaml.Marshal(map[string]any{
+	b, err := codec.Marshal(map[string]any{
 		"a": map[string]any{
 			"b": map[string]any{
 				"c": &bytesMarshaler{},
@@ -2293,14 +2292,14 @@ type customMapSliceOneItemMarshaler struct{}
 
 func (m *customMapSliceOneItemMarshaler) MarshalYAML() ([]byte, error) {
 	v := mapSliceOf(item("a", "b"))
-	return yaml.Marshal(v)
+	return codec.Marshal(v)
 }
 
 type customMapSliceTwoItemMarshaler struct{}
 
 func (m *customMapSliceTwoItemMarshaler) MarshalYAML() ([]byte, error) {
 	v := mapSliceOf(item("a", "b"), item("b", "c"))
-	return yaml.Marshal(v)
+	return codec.Marshal(v)
 }
 
 func TestCustomMapSliceMarshaler(t *testing.T) {
@@ -2308,7 +2307,7 @@ func TestCustomMapSliceMarshaler(t *testing.T) {
 		A *customMapSliceOneItemMarshaler `yaml:"a"`
 		B *customMapSliceTwoItemMarshaler `yaml:"b"`
 	}
-	b, err := yaml.Marshal(&T{
+	b, err := codec.Marshal(&T{
 		A: &customMapSliceOneItemMarshaler{},
 		B: &customMapSliceTwoItemMarshaler{},
 	})
@@ -2338,7 +2337,7 @@ func (v Issue174) MarshalYAML() ([]byte, error) {
 }
 
 func TestIssue174(t *testing.T) {
-	b, err := yaml.Marshal(Issue174{"00:00:00-23:59:59", []int{1, 2, 3}})
+	b, err := codec.Marshal(Issue174{"00:00:00-23:59:59", []int{1, 2, 3}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2370,7 +2369,7 @@ func TestIssue259(t *testing.T) {
 		{Baz: "yyy", Value: &anchorValue},
 		{Baz: "zzz", Value: &anchorValue},
 	}
-	b, err := yaml.Marshal(schema)
+	b, err := codec.Marshal(schema)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2417,7 +2416,7 @@ a: &anc !mytag
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			res, _ := parser.ParseBytes([]byte(tt.input))
-			result, err := yaml.Marshal(res.Docs[0])
+			result, err := codec.Marshal(res.Docs[0])
 			if err != nil {
 				t.Fatal(err)
 			}

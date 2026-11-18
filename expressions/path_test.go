@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: Copyright 2025 go-swagger maintainers
 // SPDX-License-Identifier: Apache-2.0
 
-package yaml_test
+package expressions_test
 
 import (
 	"fmt"
@@ -11,7 +11,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/go-openapi/go-yaml"
 	"github.com/go-openapi/go-yaml/ast"
 	"github.com/go-openapi/go-yaml/codec"
 	"github.com/go-openapi/go-yaml/expressions"
@@ -205,7 +204,7 @@ store:
 	})
 	t.Run("filter", func(t *testing.T) {
 		var target any
-		if err := yaml.Unmarshal([]byte(yml), &target); err != nil {
+		if err := codec.Unmarshal([]byte(yml), &target); err != nil {
 			t.Fatalf("failed to unmarshal: %+v", err)
 		}
 		for _, test := range tests {
@@ -287,7 +286,7 @@ key2: value2
 			}
 
 			var actual any
-			if err := yaml.Unmarshal([]byte(node.String()), &actual); err != nil {
+			if err := codec.Unmarshal([]byte(node.String()), &actual); err != nil {
 				t.Fatalf("failed to unmarshal result: %+v", err)
 			}
 
@@ -529,7 +528,7 @@ s:
 				t.Fatal(err)
 			}
 			var v any
-			err = yaml.Unmarshal([]byte(n.String()), &v)
+			err = codec.Unmarshal([]byte(n.String()), &v)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -992,7 +991,7 @@ content: |
 				return
 			}
 			var root any
-			if err := yaml.Unmarshal([]byte(actual), &root); err != nil {
+			if err := codec.Unmarshal([]byte(actual), &root); err != nil {
 				t.Fatalf("decoding the output: %+v", err)
 			}
 			if got := lookup(t, root, test.steps...); got != test.decodes {
@@ -1125,7 +1124,7 @@ b: "hello"
 		A int
 		B string
 	}
-	if err := yaml.Unmarshal([]byte(yml), &v); err != nil {
+	if err := codec.Unmarshal([]byte(yml), &v); err != nil {
 		panic(err)
 	}
 	if v.A != 2 {
