@@ -245,7 +245,10 @@ func (p *Parser) parseMap(ctx context) (*ast.MappingNode, error) {
 	} else {
 		tk = ctx.currentToken()
 	}
-	for tk.Column() == keyTk.Column() {
+	// Inside a flow collection this mapping is a pair of a flow sequence, "[a: b]", which holds one entry: a key
+	// standing below it in the same column is the next element, and needs the ',' in front of it. Read as another
+	// entry, "[a: b # c" over " x: 1, d]" was the one mapping {a: b, x: 1}.
+	for !ctx.isFlow && tk.Column() == keyTk.Column() {
 		typ := tk.Type()
 		if ctx.isFlow && typ == token.SequenceEndType {
 			// [

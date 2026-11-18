@@ -45,6 +45,7 @@ func TestAFlowValueRunsOntoTheNextLine(t *testing.T) {
 		{"sequence/pair-value-after-a-tab", "[a: b\n\tc]", []any{map[string]any{"a": "b c"}}},
 		{"sequence/two-empty-lines-fold-to-two-breaks", "[a: b\n\n\n c]", []any{map[string]any{"a": "b\n\nc"}}},
 		{"sequence/explicit-key-over-two-lines", "[? a\n b : c]", []any{map[string]any{"a b": "c"}}},
+		{"sequence/pairs-on-lines-of-their-own", "[\n  a: b,\n  x: 1\n]", []any{map[string]any{"a": "b"}, map[string]any{"x": uint64(1)}}},
 		{"block/flow-mapping-under-a-key", "x: {a: b\n  c}", map[string]any{"x": map[string]any{"a": "b c"}}},
 		{"block/tab-after-the-block-indent", "x: {a: b\n \tc}", map[string]any{"x": map[string]any{"a": "b c"}}},
 		{"block/flow-mapping-in-a-sequence", "- {a: b\n  c}", []any{map[string]any{"a": "b c"}}},
@@ -63,7 +64,8 @@ func TestAFlowValueRunsOntoTheNextLine(t *testing.T) {
 //
 // A flow mapping entry is one pair, and a ": " after its value starts no second one: "{a: b c: d}" was read as
 // {a: "b c: d"}, and "{a: b: c}" followed by another entry as a nested pair. A pair written as a flow sequence entry
-// is an implicit key, which stays on one line. The fixture flow-mapping-missing-a-separating-comma of the YAML Test
+// is an implicit key, which stays on one line, and holds one entry: a key standing below it is the next element and
+// needs a ',' in front of it, where "[a: b # x" over " x: 1, c]" was read as the one mapping {a: b, x: 1}. The fixture flow-mapping-missing-a-separating-comma of the YAML Test
 // Suite is the case of a comma left out between two lines.
 func TestAFlowEntryHoldsOnePair(t *testing.T) {
 	t.Parallel()
@@ -83,6 +85,8 @@ func TestAFlowEntryHoldsOnePair(t *testing.T) {
 		{"sequence/pair-key-over-two-lines", "[a\n b: c]"},
 		{"sequence/missing-comma-between-two-lines", "[a: b\n c: d]"},
 		{"sequence/nested-pair-as-a-value", "[a: b: c]"},
+		{"sequence/key-below-a-commented-pair", "[a: b # x\n x: 1\n, c]"},
+		{"sequence/key-below-a-pair-holding-a-collection", "[a: [x, y]\n x: 1\n, c]"},
 		{"block/tab-standing-for-the-block-indent", "x: {a: b\n\tc}"},
 		{"block/tab-standing-for-the-sequence-indent", "- [a: b\n\tc]"},
 	} {
