@@ -225,6 +225,13 @@ func (p *Parser) parseTagValue(ctx context, uri string, tagRawTk *token.Token, t
 	tag, _ := token.ReservedTagOf(uri)
 	switch tag {
 	case token.MappingTag, token.SetTag:
+		if p.descent.leftOfSequenceEntry(tk, int(tagRawTk.Position.Line)) {
+			// "- !!map" over "a: 1": the mapping stands at the '-' column, where nothing belongs to the entry, so the
+			// tag stands on the empty node and the mapping is the enclosing collection's to read. Under a key the tag
+			// takes a mapping at the key's column, which is how this library reads !!map; a sequence entry has no such
+			// reading, and "x:" over "- !!map" over "a: 1" gave x the outer mapping's next key.
+			return newTagDefaultScalarValueNode(ctx, uri, tagRawTk)
+		}
 		if !isMapToken(tk) {
 			return p.parseTaggedOtherKind(ctx, uri, tagRawTk, tk)
 		}
