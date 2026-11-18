@@ -470,10 +470,12 @@ func (s *Scanner) scan(ctx *Context) error {
 				continue
 			}
 
-			// The tab counts as indentation in two places: a plain scalar under way at the root, where lastDelimColumn
-			// is 0 (yaml-test-suite's spec-example-7-12-plain-lines), and anywhere the last delimiter stands left of
-			// the cursor.
-			if (ctx.existsBuffer() && s.lastDelimColumn == 0) || s.lastDelimColumn < s.column {
+			// The tab counts as indentation in three places: a plain scalar under way at the root, where lastDelimColumn
+			// is 0 (yaml-test-suite's spec-example-7-12-plain-lines), anywhere the last delimiter stands left of
+			// the cursor, and the leading whitespace of a line inside a flow collection, which s-flow-line-prefix reads
+			// as separation: "{a: b" over "\tc" is {a: "b c"}.
+			if (ctx.existsBuffer() && s.lastDelimColumn == 0) || s.lastDelimColumn < s.column ||
+				(s.isFlowMode() && s.isFirstCharAtLine) {
 				s.indentNum++
 				ctx.addOriginBuf(c)
 				if !s.isFirstCharAtLine && len(ctx.buf) > 0 {

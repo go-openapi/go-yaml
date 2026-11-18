@@ -315,10 +315,19 @@ type placement struct {
 // document until a "\r" began to end the line, and now lands in the first. It
 // counts as disturbed with the 60 other documents written that way, since
 // withoutMarkerLines splits on "\n" and cannot take the entry's line out of one.
+//
+// 1776 -> 1779 when a plain scalar inside a flow collection began to run onto a
+// line left of the last ':', and a flow mapping entry stopped taking a second
+// pair as its value. Three corpus documents holding such a continued value read
+// now. Unreadable went 56 -> 63 at the front and the middle and 12 -> 59 at the
+// back, and back disturbed 190 -> 135, for the reason seed/17697 gives above:
+// the entry goes in as a block line inside a single pair of a flow sequence.
+// The parser read that rendering as a nested pair and refuses it now, and
+// yaml/yaml-reference-parser refuses each of the 51 renderings that moved.
 var insertionCensus = map[string]placement{
-	"front":  {tested: 1776, unreadable: 56, disturbed: 0},
-	"middle": {tested: 1776, unreadable: 56, disturbed: 17},
-	"back":   {tested: 1776, unreadable: 12, disturbed: 190},
+	"front":  {tested: 1779, unreadable: 63, disturbed: 0},
+	"middle": {tested: 1779, unreadable: 63, disturbed: 17},
+	"back":   {tested: 1779, unreadable: 59, disturbed: 135},
 }
 
 // TestInsertingIntoTheCorpus puts one entry into every document the corpus holds

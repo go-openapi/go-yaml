@@ -23,12 +23,6 @@ func (s *Scanner) scanMapDelim(ctx *Context) (bool, error) {
 		// like http://
 		return false, nil
 	}
-	if s.startedFlowMapNum > 0 {
-		tk := ctx.lastToken()
-		if tk != nil && tk.Type == token.MappingValueType {
-			return false, nil
-		}
-	}
 
 	if s.tabStandsWhereAnEntryNeedsIndent(ctx) && !s.isFlowMode() {
 		// A block mapping entry is introduced by s-indent(n), which is spaces and nothing else, so a tab among this line's

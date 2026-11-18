@@ -178,6 +178,11 @@ func TestARefusalSignatureKeepsTheParserAndDropsTheDocument(t *testing.T) {
 // refusing a second tag on one node. 8 documents of the corpus draw it, and the
 // grammar refuses all 8. 4 of them were read before, and the other 4 were
 // refused with "value is not allowed in this context".
+//
+// "map key definition includes an implicit line break" arrived on 2026-11-18,
+// when a pair inside a flow sequence began to be refused for a key that starts
+// on a line above its ':', as in "[a" over " b: c]". The check read only the
+// line the key ends on, so such a key was read as "a b".
 var parserComplaints = []string{
 	"YAML version has already been specified",
 	"_ is a reserved character",
@@ -222,6 +227,7 @@ var parserComplaints = []string{
 	"found unexpected document separator",
 	"found unknown escape character _",
 	"invalid header option",
+	"map key definition includes an implicit line break",
 	"mapping value is not allowed in this context",
 	"non-map value is specified",
 	"not enough length for escaped N-bit character",

@@ -512,7 +512,9 @@ func (p *Parser) validateMapKey(ctx context, key ast.MapKeyNode, colonTk *group.
 		// A flow mapping's key has neither restriction. It may span lines, and a line break before the ':'
 		// is ordinary separation, so "{foo\n: bar}" is as legal as "{foo: bar}".
 		if ctx.inFlowSequence && isScalarKeyToken(tk) {
-			if int(tk.EndLine()) != colonTk.Line() {
+			// The key's own lines count as well as the break before the ':': "[a" over " b: c]" ends its key on the
+			// ':' line and starts it on the line above.
+			if int(tk.Position.Line) != colonTk.Line() || int(tk.EndLine()) != colonTk.Line() {
 				return yamlerrors.NewSyntax("map key definition includes an implicit line break", tk)
 			}
 		}

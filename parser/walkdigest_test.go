@@ -123,7 +123,13 @@ func TestTheWalkHandsOverTheSameTree(t *testing.T) {
 // longer answers, adds root and doc, and reads the position from the node instead of from the step.
 // The walk itself hands over exactly what it did -- a dump of every handover in the fields common to both,
 // 242,506 lines over 19,842 sources, compares byte for byte against the run before the change.
-const fixedWalkDigest = "f812871aad59fb68a6440868cc0333253a8b4a8b8ea605644fce14bbc82fc16b"
+//
+// Re-baselined on 2026-11-18 when a plain scalar inside a flow collection began to run onto a line left of the
+// last ':', and a flow mapping entry stopped taking a second pair as its value. One source moved,
+// suite/flow-mapping-missing-a-separating-comma, which is still refused: the scalar now folds "1" and "bar" into
+// one value, and the ':' after it is refused at the value, "[3:7] mapping value is not allowed in this context",
+// where "[4:2] ',' or '}' must be specified" named the line below. No other source walks differently.
+const fixedWalkDigest = "5cfd1c1f9e58363a7a903e5d683ebfab4973fb635138d7ce7f3719ca143102fb"
 
 // digestVisitor writes each node it is handed, so a node the walk reads from a reused cell changes the digest.
 type digestVisitor struct {

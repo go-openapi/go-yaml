@@ -37,7 +37,7 @@ func (s *Scanner) updateIndentLevel() {
 }
 
 func (s *Scanner) updateIndentState() {
-	if s.lastDelimColumn == 0 {
+	if s.lastDelimColumn == 0 || s.isFlowMode() {
 		return
 	}
 

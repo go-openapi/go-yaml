@@ -239,6 +239,12 @@ func (p *Parser) flowMapValue(ctx context, colonTk *group.TapeToken, omitted boo
 	if ctx.isTokenNotFound() {
 		return nil, yamlerrors.NewSyntax("could not find map value", colonTk.RawToken())
 	}
+	if tk := ctx.currentToken(); tk.GroupType() == group.TokenGroupMapKey || tk.GroupType() == group.TokenGroupMapKeyValue {
+		// "{a: b: c}": a flow mapping entry holds one pair, and its value is a node, not another pair.
+		// parseMapValue refuses the same in block context, where the pair has to stand on the key's line;
+		// in a flow collection the value may run onto the next line, so the line is not asked.
+		return nil, yamlerrors.NewSyntax("mapping value is not allowed in this context", tk.RawToken())
+	}
 
 	return p.parseToken(ctx, ctx.currentToken())
 }
