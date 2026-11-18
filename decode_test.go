@@ -1747,182 +1747,167 @@ func TestDecoder_ScientificNotation(t *testing.T) {
 	}
 }
 
+// conversionErrorCase is a document the decoder cannot read into target, and the text its error contains.
+// With zeroEntry, the "v" entry of the map target must still hold its zero value.
+type conversionErrorCase struct {
+	name      string
+	source    string
+	target    any
+	message   string
+	zeroEntry bool
+}
+
+// TestDecoder_TypeConversionError decodes each case and checks the error names the conversion that failed.
 func TestDecoder_TypeConversionError(t *testing.T) {
-	t.Run("type conversion for struct", func(t *testing.T) {
-		type T struct {
-			A int
-			B uint
-			C float32
-			D bool
+	seen := make(map[string]bool)
+	for tc := range concatCases(
+		conversionStructCases(), conversionSequenceCases(), conversionOverflowCases(), conversionTimeCases(),
+	) {
+		if seen[tc.name] {
+			t.Fatalf("two cases are named %q", tc.name)
 		}
-		type U struct {
-			*T `yaml:",inline"`
+		seen[tc.name] = true
+
+		t.Run(tc.name, testConversionError(tc))
+	}
+}
+
+func testConversionError(tc conversionErrorCase) func(*testing.T) {
+	return func(t *testing.T) {
+		err := yaml.Unmarshal([]byte(tc.source), tc.target)
+		if err == nil {
+			t.Fatal("expected to error")
 		}
-		t.Run("string to int", func(t *testing.T) {
-			var v T
-			err := yaml.Unmarshal([]byte(`a: str`), &v)
-			if err == nil {
-				t.Fatal("expected to error")
-			}
-			msg := "cannot unmarshal string into Go struct field T.A of type int"
-			if !strings.Contains(err.Error(), msg) {
-				t.Fatalf("expected error message: %s to contain: %s", err.Error(), msg)
-			}
-		})
-		t.Run("string to uint", func(t *testing.T) {
-			var v T
-			err := yaml.Unmarshal([]byte(`b: str`), &v)
-			if err == nil {
-				t.Fatal("expected to error")
-			}
-			msg := "cannot unmarshal string into Go struct field T.B of type uint"
-			if !strings.Contains(err.Error(), msg) {
-				t.Fatalf("expected error message: %s to contain: %s", err.Error(), msg)
-			}
-		})
-		t.Run("string to bool", func(t *testing.T) {
-			var v T
-			err := yaml.Unmarshal([]byte(`d: str`), &v)
-			if err == nil {
-				t.Fatal("expected to error")
-			}
-			msg := "cannot unmarshal string into Go struct field T.D of type bool"
-			if !strings.Contains(err.Error(), msg) {
-				t.Fatalf("expected error message: %s to contain: %s", err.Error(), msg)
-			}
-		})
-		t.Run("string to int at inline", func(t *testing.T) {
-			var v U
-			err := yaml.Unmarshal([]byte(`a: str`), &v)
-			if err == nil {
-				t.Fatal("expected to error")
-			}
-			msg := "cannot unmarshal string into Go struct field U.T.A of type int"
-			if !strings.Contains(err.Error(), msg) {
-				t.Fatalf("expected error message: %s to contain: %s", err.Error(), msg)
-			}
-		})
-	})
-	t.Run("type conversion for array", func(t *testing.T) {
-		t.Run("string to int", func(t *testing.T) {
-			var v map[string][]int
-			err := yaml.Unmarshal([]byte(`v: [A,1,C]`), &v)
-			if err == nil {
-				t.Fatal("expected to error")
-			}
-			msg := "cannot unmarshal string into Go value of type int"
-			if !strings.Contains(err.Error(), msg) {
-				t.Fatalf("expected error message: %s to contain: %s", err.Error(), msg)
-			}
-		})
-		t.Run("string to int", func(t *testing.T) {
-			var v map[string][]int
-			err := yaml.Unmarshal([]byte("v:\n - A\n - 1\n - C"), &v)
-			if err == nil {
-				t.Fatal("expected to error")
-			}
-			msg := "cannot unmarshal string into Go value of type int"
-			if !strings.Contains(err.Error(), msg) {
-				t.Fatalf("expected error message: %s to contain: %s", err.Error(), msg)
-			}
-		})
-	})
-	t.Run("overflow error", func(t *testing.T) {
-		t.Run("negative number to uint", func(t *testing.T) {
-			var v map[string]uint
-			err := yaml.Unmarshal([]byte("v: -42"), &v)
-			if err == nil {
-				t.Fatal("expected to error")
-			}
-			msg := "cannot unmarshal -42 into Go value of type uint ( overflow )"
-			if !strings.Contains(err.Error(), msg) {
-				t.Fatalf("expected error message: %s to contain: %s", err.Error(), msg)
-			}
-			if v["v"] != 0 {
-				t.Fatal("failed to decode value")
-			}
-		})
-		t.Run("negative number to uint64", func(t *testing.T) {
-			var v map[string]uint64
-			err := yaml.Unmarshal([]byte("v: -4294967296"), &v)
-			if err == nil {
-				t.Fatal("expected to error")
-			}
-			msg := "cannot unmarshal -4294967296 into Go value of type uint64 ( overflow )"
-			if !strings.Contains(err.Error(), msg) {
-				t.Fatalf("expected error message: %s to contain: %s", err.Error(), msg)
-			}
-			if v["v"] != 0 {
-				t.Fatal("failed to decode value")
-			}
-		})
-		t.Run("larger number for int32", func(t *testing.T) {
-			var v map[string]int32
-			err := yaml.Unmarshal([]byte("v: 4294967297"), &v)
-			if err == nil {
-				t.Fatal("expected to error")
-			}
-			msg := "cannot unmarshal 4294967297 into Go value of type int32 ( overflow )"
-			if !strings.Contains(err.Error(), msg) {
-				t.Fatalf("expected error message: %s to contain: %s", err.Error(), msg)
-			}
-			if v["v"] != 0 {
-				t.Fatal("failed to decode value")
-			}
-		})
-		t.Run("larger number for int8", func(t *testing.T) {
-			var v map[string]int8
-			err := yaml.Unmarshal([]byte("v: 128"), &v)
-			if err == nil {
-				t.Fatal("expected to error")
-			}
-			msg := "cannot unmarshal 128 into Go value of type int8 ( overflow )"
-			if !strings.Contains(err.Error(), msg) {
-				t.Fatalf("expected error message: %s to contain: %s", err.Error(), msg)
-			}
-			if v["v"] != 0 {
-				t.Fatal("failed to decode value")
-			}
-		})
-	})
-	t.Run("type conversion for time", func(t *testing.T) {
-		type T struct {
-			A time.Time
-			B time.Duration
+		if !strings.Contains(err.Error(), tc.message) {
+			t.Fatalf("expected error message: %s to contain: %s", err.Error(), tc.message)
 		}
-		t.Run("int to time", func(t *testing.T) {
-			var v T
-			err := yaml.Unmarshal([]byte(`a: 123`), &v)
-			if err == nil {
-				t.Fatal("expected to error")
-			}
-			msg := "cannot unmarshal uint64 into Go struct field T.A of type time.Time"
-			if !strings.Contains(err.Error(), msg) {
-				t.Fatalf("expected error message: %s to contain: %s", err.Error(), msg)
-			}
-		})
-		t.Run("string to duration", func(t *testing.T) {
-			var v T
-			err := yaml.Unmarshal([]byte(`b: str`), &v)
-			if err == nil {
-				t.Fatal("expected to error")
-			}
-			msg := `time: invalid duration "str"`
-			if !strings.Contains(err.Error(), msg) {
-				t.Fatalf("expected error message: %s to contain: %s", err.Error(), msg)
-			}
-		})
-		t.Run("int to duration", func(t *testing.T) {
-			var v T
-			err := yaml.Unmarshal([]byte(`b: 10`), &v)
-			if err == nil {
-				t.Fatal("expected to error")
-			}
-			msg := "cannot unmarshal uint64 into Go struct field T.B of type time.Duration"
-			if !strings.Contains(err.Error(), msg) {
-				t.Fatalf("expected error message: %s to contain: %s", err.Error(), msg)
-			}
-		})
+		if !tc.zeroEntry {
+			return
+		}
+		if entry := reflect.ValueOf(tc.target).Elem().MapIndex(reflect.ValueOf("v")); entry.IsValid() && !entry.IsZero() {
+			t.Fatal("failed to decode value")
+		}
+	}
+}
+
+// conversionStructCases covers a scalar that does not convert to the type of a struct field, inlined or not.
+func conversionStructCases() iter.Seq[conversionErrorCase] {
+	type T struct {
+		A int
+		B uint
+		C float32
+		D bool
+	}
+	type U struct {
+		*T `yaml:",inline"`
+	}
+
+	return slices.Values([]conversionErrorCase{
+		{
+			name:    "struct/string-to-int",
+			source:  `a: str`,
+			target:  new(T),
+			message: "cannot unmarshal string into Go struct field T.A of type int",
+		},
+		{
+			name:    "struct/string-to-uint",
+			source:  `b: str`,
+			target:  new(T),
+			message: "cannot unmarshal string into Go struct field T.B of type uint",
+		},
+		{
+			name:    "struct/string-to-bool",
+			source:  `d: str`,
+			target:  new(T),
+			message: "cannot unmarshal string into Go struct field T.D of type bool",
+		},
+		{
+			name:    "struct/string-to-int-in-inline",
+			source:  `a: str`,
+			target:  new(U),
+			message: "cannot unmarshal string into Go struct field U.T.A of type int",
+		},
+	})
+}
+
+// conversionSequenceCases covers a sequence element that does not convert to the slice's element type.
+func conversionSequenceCases() iter.Seq[conversionErrorCase] {
+	return slices.Values([]conversionErrorCase{
+		{
+			name:    "sequence/flow-string-to-int",
+			source:  `v: [A,1,C]`,
+			target:  new(map[string][]int),
+			message: "cannot unmarshal string into Go value of type int",
+		},
+		{
+			name:    "sequence/block-string-to-int",
+			source:  "v:\n - A\n - 1\n - C",
+			target:  new(map[string][]int),
+			message: "cannot unmarshal string into Go value of type int",
+		},
+	})
+}
+
+// conversionOverflowCases covers an integer outside the range of its target type, which leaves the entry zero.
+func conversionOverflowCases() iter.Seq[conversionErrorCase] {
+	return slices.Values([]conversionErrorCase{
+		{
+			name:      "overflow/negative-to-uint",
+			source:    "v: -42",
+			target:    new(map[string]uint),
+			message:   "cannot unmarshal -42 into Go value of type uint ( overflow )",
+			zeroEntry: true,
+		},
+		{
+			name:      "overflow/negative-to-uint64",
+			source:    "v: -4294967296",
+			target:    new(map[string]uint64),
+			message:   "cannot unmarshal -4294967296 into Go value of type uint64 ( overflow )",
+			zeroEntry: true,
+		},
+		{
+			name:      "overflow/above-int32",
+			source:    "v: 4294967297",
+			target:    new(map[string]int32),
+			message:   "cannot unmarshal 4294967297 into Go value of type int32 ( overflow )",
+			zeroEntry: true,
+		},
+		{
+			name:      "overflow/above-int8",
+			source:    "v: 128",
+			target:    new(map[string]int8),
+			message:   "cannot unmarshal 128 into Go value of type int8 ( overflow )",
+			zeroEntry: true,
+		},
+	})
+}
+
+// conversionTimeCases covers a scalar that does not convert to time.Time or time.Duration.
+func conversionTimeCases() iter.Seq[conversionErrorCase] {
+	type T struct {
+		A time.Time
+		B time.Duration
+	}
+
+	return slices.Values([]conversionErrorCase{
+		{
+			name:    "time/int-to-time",
+			source:  `a: 123`,
+			target:  new(T),
+			message: "cannot unmarshal uint64 into Go struct field T.A of type time.Time",
+		},
+		{
+			name:    "time/string-to-duration",
+			source:  `b: str`,
+			target:  new(T),
+			message: `time: invalid duration "str"`,
+		},
+		{
+			name:    "time/int-to-duration",
+			source:  `b: 10`,
+			target:  new(T),
+			message: "cannot unmarshal uint64 into Go struct field T.B of type time.Duration",
+		},
 	})
 }
 
