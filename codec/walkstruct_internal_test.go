@@ -684,3 +684,34 @@ func TestADeclaredAnchorTheWalkCannotReadGoesToTheTree(t *testing.T) {
 		})
 	}
 }
+
+// TestUseStringKeysReachesAnAnyFieldOfAStruct holds the walk to the tree on an
+// "any" field under UseStringKeys: its mapping keys are the names of the keys,
+// so "1: x" is "1" and two keys of one name are refused. valueBuilder keys a
+// mapping by value, so the walk hands the decode to the tree.
+func TestUseStringKeysReachesAnAnyFieldOfAStruct(t *testing.T) {
+	type doc struct {
+		K any `yaml:"k"`
+	}
+	tree := CustomUnmarshaler[chan int](func(*chan int, []byte) error { return nil })
+	for _, src := range []string{"k: {1: x, true: y}\n", "k: {1: x, \"1\": y}\n"} {
+		t.Run(src, func(t *testing.T) {
+			var walked, built doc
+			walkErr := NewDecoder(bytes.NewReader([]byte(src)), UseStringKeys()).Decode(&walked)
+			treeErr := NewDecoder(bytes.NewReader([]byte(src)), UseStringKeys(), tree).Decode(&built)
+			if (walkErr == nil) != (treeErr == nil) {
+				t.Fatalf("walk err=%v, tree err=%v", walkErr, treeErr)
+			}
+			if !reflect.DeepEqual(walked, built) {
+				t.Errorf("the two paths disagree:\n  walk %#v\n  tree %#v", walked, built)
+			}
+		})
+	}
+	var v doc
+	if err := NewDecoder(bytes.NewReader([]byte("k: {1: x}\n")), UseStringKeys()).Decode(&v); err != nil {
+		t.Fatal(err)
+	}
+	if want := map[string]any{"1": "x"}; !reflect.DeepEqual(v.K, want) {
+		t.Errorf("got %#v, want %#v", v.K, want)
+	}
+}

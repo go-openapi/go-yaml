@@ -4030,6 +4030,11 @@ func (d *Decoder) canWalk(v reflect.Value) bool {
 	if !typedWalkEnabled || d.disallowUnknownField || d.validator != nil || d.allowDuplicateMapKey || d.useJSONUnmarshaler {
 		return false
 	}
+	if d.useStringKeys {
+		// An "any" field is built by valueBuilder, which keys a mapping by
+		// value whatever the option says, as for a bare "any" above.
+		return false
+	}
 	if dst.Kind() != reflect.Struct || !dst.CanSet() {
 		return false
 	}
