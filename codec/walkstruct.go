@@ -37,9 +37,9 @@ import (
 //   - an alias the walk has no recorded anchor for: one inside its own anchor,
 //     one naming no anchor, one naming an anchor parser.WithAnchors declared
 //     with a nil node;
-//   - a tagged node holding an anchor or an alias, or one the tree decoder
-//     rejects, so the error names the struct field and the fields after it
-//     decode, as the tree does;
+//   - a node the walk hands to the tree decoder alone, a tagged node or a
+//     collection of another kind than its field, when it holds an anchor or
+//     an alias;
 //   - a "<<" into a struct with an ",inline,alias" field;
 //   - a "<<" naming anything but a mapping, an alias to one, or a sequence of
 //     those: a null, a scalar, an anchored or tagged node. The tree reports
@@ -47,15 +47,14 @@ import (
 //   - an anchor named again while a "<<" waits for its mapping to close;
 //   - a collection used as the key of a map.
 //
-// It falls back on these destinations, at the node that writes them:
+// It falls back on a destination it cannot set, such as an embedded pointer to
+// an unexported struct.
 //
-//   - a scalar the tree decoder refuses for its field: text into a number or a
-//     bool, a number that overflows its field. The tree reports the error. A
-//     scalar it converts, such as a number into a string, stays on the walk;
-//   - a mapping into anything but a struct or a map keyed by string, and a
-//     sequence into anything but a slice;
-//   - a destination the walk cannot set, such as an embedded pointer to an
-//     unexported struct.
+// A value of another kind than its field does not fall back. The walk hands
+// the one node to the tree decoder, which converts it -- a number into a
+// string -- or refuses it. A refused value is written as far as it decoded,
+// the first error is kept for the document to return, and the fields after it
+// decode, as on the tree. See decodeNode.
 //
 // The rest are guards for what walkableType turns away first, or what no
 // document has reached: a destination that decodes itself or is a MapSlice, an
@@ -119,6 +118,9 @@ type typedFrame struct {
 	written   writtenFields
 	mergeNext bool
 	merges    []ast.Node
+	// field is the struct field the entry being read writes, for fieldError to
+	// name.
+	field flatField
 	// wrote records the keys a mapping writes into a map that held the
 	// caller's entries when it opened, so a merge tells the two apart. It is
 	// nil for a map that opened empty, where every key it holds was written
@@ -166,13 +168,16 @@ type typedBuilder struct {
 	// merges read their aliases by name as the mapping closes.
 	keeping bool
 	pending int
-	// tagging says the walk holds a tagged node whole, for Leave to decode into
-	// tagInto with nodes, a tree decoder made from opts the first time one is
-	// needed. See keepTagged.
-	tagging bool
-	tagInto reflect.Value
-	opts    []DecodeOption
-	nodes   *Decoder
+	// decoding says the walk holds a node whole, for Leave to decode into
+	// decodeInto with nodes, a tree decoder made from opts the first time one
+	// is needed. See keepWhole.
+	decoding   bool
+	decodeInto reflect.Value
+	// docErr is the first field error of the document, which the document
+	// returns once it is read. See fieldError.
+	docErr error
+	opts   []DecodeOption
+	nodes  *Decoder
 	// naming says the walk holds a key whole, an explicit "?" or a tagged
 	// one, for Leave to name the entry by. See keepKey.
 	naming bool
@@ -253,7 +258,7 @@ func (b *typedBuilder) Enter(node ast.Node, at parser.Cursor) error {
 	case *ast.SequenceNode:
 		return b.openSequence(dst, wanted)
 	case *ast.TagNode:
-		return b.keepTagged(dst, wanted)
+		return b.keepWhole(dst, wanted)
 	default:
 		return b.scalar(n, dst, wanted)
 	}
@@ -267,11 +272,11 @@ func (b *typedBuilder) Leave(node ast.Node, at parser.Closing) error {
 	if b.values != nil {
 		return b.forwardLeave(node, at)
 	}
-	if b.tagging {
+	if b.decoding {
 		// Nothing inside a kept node is handed over, so this Leave is its own.
-		b.tagging = false
+		b.decoding = false
 
-		return b.decodeTagged(node)
+		return b.decodeKept(node)
 	}
 	if b.naming {
 		// Nothing inside a kept node is handed over, so this Leave is its own.
@@ -817,6 +822,7 @@ func (b *typedBuilder) mergeEntry(i int, keyNode, value ast.Node, alias *ast.Ali
 			return nil
 		}
 		top.written.mark(ff.ord)
+		top.field = ff
 		field := top.dst.Field(ff.sf.Index)
 		if ff.at != nil {
 			if field, err = fieldAt(top.dst, ff.at); err != nil {
@@ -866,6 +872,10 @@ func (b *typedBuilder) openMapping(dst reflect.Value, wanted bool) error {
 		return nil
 	}
 
+	if kind := pointedKind(dst.Type()); kind != reflect.Struct && kind != reflect.Map {
+		// The tree decoder converts the mapping or names the error.
+		return b.keepWhole(dst, true)
+	}
 	out := dst
 	dst = b.indirect(dst)
 	if b.handled(dst) {
@@ -905,6 +915,10 @@ func (b *typedBuilder) openSequence(dst reflect.Value, wanted bool) error {
 		return nil
 	}
 
+	if pointedKind(dst.Type()) != reflect.Slice {
+		// The tree decoder converts the sequence or names the error.
+		return b.keepWhole(dst, true)
+	}
 	out := dst
 	dst = b.indirect(dst)
 	if b.handled(dst) {
@@ -923,6 +937,15 @@ func (b *typedBuilder) openSequence(dst reflect.Value, wanted bool) error {
 	b.stack = append(b.stack, typedFrame{kind: typedSlice, dst: dst, out: out})
 
 	return nil
+}
+
+// pointedKind returns the kind of t past its pointers.
+func pointedKind(t reflect.Type) reflect.Kind {
+	for t.Kind() == reflect.Pointer {
+		t = t.Elem()
+	}
+
+	return t.Kind()
 }
 
 // indirect follows and allocates the pointers between a destination and the
@@ -991,43 +1014,41 @@ func (b *typedBuilder) openKeptEntry(key ast.Node) error {
 	return nil
 }
 
-// keepTagged holds a tagged node whole, for decodeTagged to read at its Leave.
+// keepWhole holds a node whole, for decodeKept to hand to the tree decoder at
+// its Leave: a tagged node, or a collection of another kind than its
+// destination.
 //
 // A tag changes what its node decodes to -- "!!str 1" is a string, "!!binary"
-// a []byte, "!!omap" an ordered map -- and the tree decoder holds those rules.
-// The walk asks it for the tagged node alone, and walks the rest of the
-// document on its own.
-func (b *typedBuilder) keepTagged(dst reflect.Value, wanted bool) error {
+// a []byte, "!!omap" an ordered map -- and the tree decoder holds those rules,
+// as it holds the error for a mapping written where a string goes. The walk
+// asks it for the one node, and walks the rest of the document on its own.
+func (b *typedBuilder) keepWhole(dst reflect.Value, wanted bool) error {
 	if !wanted {
 		b.settle(reflect.Value{})
 
 		return parser.ErrSkipNode
 	}
-	b.tagging, b.tagInto = true, dst
+	b.decoding, b.decodeInto = true, dst
 
 	return parser.ErrKeepNode
 }
 
-// decodeTagged decodes the tagged node the walk kept into the destination
-// keepTagged read, with the tree decoder.
-//
-// A tagged node holding an anchor or an alias goes to the tree whole: the node
-// decoder reads neither the anchors the walk recorded nor the ones after it.
-// See decodeNode for the rest.
-func (b *typedBuilder) decodeTagged(node ast.Node) error {
-	dst := b.tagInto
-	b.tagInto = reflect.Value{}
+// decodeKept decodes the node keepWhole held into the destination it read,
+// with the tree decoder. A node holding an anchor or an alias goes to the tree
+// whole: the node decoder reads neither the anchors the walk recorded nor the
+// ones after it.
+func (b *typedBuilder) decodeKept(node ast.Node) error {
+	dst := b.decodeInto
+	b.decodeInto = reflect.Value{}
 	if shapeOf(node).named || !dst.CanSet() {
 		return b.fail(errNeedsTheTree)
 	}
-	if err := b.decodeNode(dst, node); err != nil {
-		return b.fail(err)
-	}
+	b.decodeNode(dst, node)
 	if len(b.stack) > 0 {
 		b.settle(dst)
 	}
 
-	return nil
+	return b.err
 }
 
 // convertScalar writes a scalar of another kind than its field: "name: 1"
@@ -1037,39 +1058,55 @@ func (b *typedBuilder) convertScalar(dst reflect.Value, node ast.Node) error {
 	if !dst.CanSet() {
 		return errNeedsTheTree
 	}
+	b.decodeNode(dst, node)
 
-	return b.decodeNode(dst, node)
+	return b.err
 }
 
 // decodeNode decodes node into dst with the tree decoder's rules: a field, an
 // element and a map value through createDecodedNewValue over what dst holds,
 // as the tree fills them, and the root through decodeValue.
 //
-// A node the tree decoder refuses goes to the tree whole. The tree names the
-// struct field in its error, keeps the first field error and decodes the
-// fields after it, as encoding/json does, where the walk would stop.
-func (b *typedBuilder) decodeNode(dst reflect.Value, node ast.Node) error {
+// What decoded is written whatever the error, and the error is kept for the
+// document to return, through fieldError, as the tree keeps a field's. The walk
+// goes on to the fields after it.
+func (b *typedBuilder) decodeNode(dst reflect.Value, node ast.Node) {
 	d, err := b.nodeDecoder()
 	if err != nil {
-		return err
+		_ = b.fail(err)
+
+		return
 	}
 	if len(b.stack) == 0 {
-		if err := d.decodeValue(dst, node); err != nil {
-			return errNeedsTheTree
-		}
+		b.fieldError(d.decodeValue(dst, node))
 
-		return nil
+		return
 	}
 	v, err := d.createDecodedNewValue(dst.Type(), dst, node)
-	if err != nil {
-		return errNeedsTheTree
-	}
-	dst.Set(v)
-
-	return nil
+	setDecoded(dst, v)
+	b.fieldError(err)
 }
 
-// nodeDecoder returns the tree decoder decodeTagged reads a node with, made
+// fieldError keeps err for the document to return, unless an earlier one is
+// kept already, and the walk carries on. A type mismatch is named after the
+// field of the outermost struct being read: on the tree, each struct the error
+// passes through names it again, and the outermost names it last.
+func (b *typedBuilder) fieldError(err error) {
+	if err == nil {
+		return
+	}
+	recordFieldError(&b.docErr, err, func(te *yamlerrors.Error) string {
+		for _, frame := range b.stack {
+			if frame.kind == typedStruct && !frame.dropped && frame.field.sf != nil {
+				return located{sf: frame.field.sf, at: frame.field.at}.name(frame.dst.Type())
+			}
+		}
+
+		return te.StructField()
+	})
+}
+
+// nodeDecoder returns the tree decoder decodeNode reads a node with, made
 // from the options of the Decoder the walk serves and holding no pointer to it.
 //
 // Its budget is off: a kept node holds no alias, and replayNode counts a
@@ -1185,6 +1222,7 @@ func (b *typedBuilder) openEntry(top *typedFrame, keyNode ast.Node) error {
 			return parser.ErrSkipNode
 		}
 		top.written.mark(ff.ord)
+		top.field = ff
 		if ff.at != nil {
 			// The type embeds another, and the name reaches a field of it.
 			field, err := fieldAt(top.dst, ff.at)
@@ -1456,7 +1494,8 @@ func (b *typedBuilder) reset(root reflect.Value) {
 	b.values, b.anyInto = nil, reflect.Value{}
 	clear(b.anchors)
 	b.keeping, b.pending = false, 0
-	b.tagging, b.tagInto = false, reflect.Value{}
+	b.decoding, b.decodeInto = false, reflect.Value{}
+	b.docErr = nil
 	b.naming = false
 }
 

@@ -65,8 +65,8 @@ func TestATagKeepsTheWalk(t *testing.T) {
 }
 
 // TestATagTheWalkRefusesAsTheTreeDoes requires the tree's error, word for
-// word, from a tagged node the tree decoder refuses. The walk hands such a
-// decode to the tree, which names the field and decodes the fields after it.
+// word, and the value it leaves, from a tagged node the tree decoder refuses,
+// without the decode building a tree.
 func TestATagTheWalkRefusesAsTheTreeDoes(t *testing.T) {
 	for name, src := range map[string]string{
 		"an int tag on text":      "leaf: {i: !!int x}\n",
@@ -84,6 +84,9 @@ func TestATagTheWalkRefusesAsTheTreeDoes(t *testing.T) {
 			}
 			if !reflect.DeepEqual(r.walked, r.built) {
 				t.Errorf("the two paths fill the value differently:\n  walk %+v\n  tree %+v", r.walked, r.built)
+			}
+			if r.dec.parsedFile != nil {
+				t.Error("the decode built a tree")
 			}
 		})
 	}

@@ -147,8 +147,13 @@ func TestADecoderReportsABrokenDocumentOnItsOwnDecode(t *testing.T) {
 // document to the tree before the parse failed, read the drained reader again
 // as an empty source and returned io.EOF.
 func TestADecoderKeepsTheErrorThatStoppedItsStream(t *testing.T) {
+	// The walk cannot set an embedded pointer to an unexported struct, so it
+	// hands the decode to the tree at the first key the embedding holds.
+	type hidden struct {
+		A []int `yaml:"a"`
+	}
 	type small struct {
-		A int `yaml:"a"`
+		*hidden `yaml:",inline"`
 	}
 	type walked struct {
 		A []int `yaml:"a"`

@@ -65,6 +65,9 @@ type walkState struct {
 	// first error, from the parse or from a builder.
 	needsTree bool
 	err       error
+	// docErr is the field error the document in hand returns once it is
+	// read, which does not stop the stream. See typedBuilder.fieldError.
+	docErr error
 }
 
 // newWalkStream returns a walk over src that pauses after each document.
@@ -120,7 +123,7 @@ func unmarshalWalking(d *Decoder, src []byte, v reflect.Value) (*walkState, erro
 		setZero(v.Elem())
 	}
 
-	return st, nil
+	return st, st.docErr
 }
 
 // decode reads the next document of the stream into v.
@@ -131,8 +134,9 @@ func unmarshalWalking(d *Decoder, src []byte, v reflect.Value) (*walkState, erro
 func (w *walkStream) decode(v reflect.Value) error {
 	st := w.st
 	st.reset(v)
+	st.docErr = nil
 	if _, more := w.next(); more {
-		return nil
+		return st.docErr
 	}
 	w.stop()
 
@@ -189,6 +193,9 @@ func (st *walkState) LeaveDocument(doc *ast.DocumentNode, _ int) error {
 	}
 	st.settle(isEmptyDocument(doc))
 	st.delivered++
+	if st.values == nil {
+		st.docErr = st.b.docErr
+	}
 
 	if st.yield == nil {
 		st.rest = true

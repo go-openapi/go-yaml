@@ -752,17 +752,28 @@ func TestAConvertedScalarKeepsTheWalk(t *testing.T) {
 	}
 }
 
-// TestAScalarTheTreeRefusesGoesToTheTree pins the scalars the tree decoder
-// refuses, which the walk hands to the tree, and requires its error from both.
-// The tree keeps the first field error and decodes the fields after it, where
-// the walk would stop.
-func TestAScalarTheTreeRefusesGoesToTheTree(t *testing.T) {
+// TestAValueThatDoesNotFitKeepsTheWalk reads values the tree decoder refuses
+// for their field, and requires the tree's error and the value it leaves,
+// without the decode building a tree. Both keep the first error, write what
+// decoded in place and decode the fields after it.
+func TestAValueThatDoesNotFitKeepsTheWalk(t *testing.T) {
 	for name, src := range map[string]string{
-		"text into an int":       "leaf: {i: x}\n",
-		"a negative into a uint": "leaf: {u: -1}\n",
-		"a number into a bool":   "leaf: {b: 1}\n",
-		"an int that overflows":  "leaf: {i: 9999999999999999999999}\n",
-		"later fields decode":    "leaf: {i: x, s: after}\nname: n\n",
+		"text into an int":            "leaf: {i: x}\n",
+		"a negative into a uint":      "leaf: {u: -1}\n",
+		"a number into a bool":        "leaf: {b: 1}\n",
+		"an int that overflows":       "leaf: {i: 9999999999999999999999}\n",
+		"later fields decode":         "leaf: {i: x, s: after}\nname: n\n",
+		"the first error is kept":     "leaf: {i: x}\nname: [1]\n",
+		"a mapping into a string":     "name: {a: 1}\nleaf: {s: after}\n",
+		"a sequence into a struct":    "leaf: [1]\nname: n\n",
+		"a scalar into a struct":      "leaf: 1\nname: n\n",
+		"a sequence into a map value": "plain: {k: [1], j: v}\n",
+		"in a slice element":          "list: [{s: a}, {i: x}, {s: c}]\n",
+		"in a map of structs":         "byName: {a: {s: new, i: x}, b: {s: b}}\n",
+		"in a slice in a map":         "counts: {a: [1, x, 3]}\n",
+		"in a pointer":                "ptr: {s: new, i: x}\n",
+		"under an alias":              "ptr: &p {i: x}\nleaf: *p\n",
+		"in a merge":                  "leaf: {<<: {i: x}, s: own}\n",
 	} {
 		t.Run(name, func(t *testing.T) {
 			r := decodeBothWays(t, src)
@@ -774,6 +785,9 @@ func TestAScalarTheTreeRefusesGoesToTheTree(t *testing.T) {
 			}
 			if !reflect.DeepEqual(r.walked, r.built) {
 				t.Errorf("the two paths fill the value differently:\n  walk %+v\n  tree %+v", r.walked, r.built)
+			}
+			if r.dec.parsedFile != nil {
+				t.Error("the decode built a tree")
 			}
 		})
 	}
