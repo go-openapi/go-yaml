@@ -137,6 +137,56 @@ func TestADecoderReportsABrokenDocumentOnItsOwnDecode(t *testing.T) {
 	require.Error(t, dec.Decode(&second))
 }
 
+// TestADecoderKeepsTheErrorThatStoppedItsStream holds every decode path to one
+// answer once the source fails to parse: the same error on every Decode after,
+// as encoding/json.Decoder gives, and never io.EOF, which a Decode loop takes
+// for the stream's clean end.
+//
+// The walk kept its own parse error. The tree, and a walk that had handed the
+// document to the tree before the parse failed, read the drained reader again
+// as an empty source and returned io.EOF.
+func TestADecoderKeepsTheErrorThatStoppedItsStream(t *testing.T) {
+	type small struct {
+		A int `yaml:"a"`
+	}
+	type walked struct {
+		A []int `yaml:"a"`
+		B []int `yaml:"b"`
+	}
+	// A custom unmarshaler turns the walk off, and no field holds a chan int.
+	tree := codec.CustomUnmarshaler[chan int](func(*chan int, []byte) error { return nil })
+
+	routes := map[string]struct {
+		into func() any
+		opts []codec.DecodeOption
+	}{
+		"a walk that falls back first": {into: func() any { return new(small) }},
+		"a walk":                       {into: func() any { return new(walked) }},
+		"an any":                       {into: func() any { return new(any) }},
+		"the tree":                     {into: func() any { return new(walked) }, opts: []codec.DecodeOption{tree}},
+	}
+	for _, src := range []string{"a: [\n", "a: *missing\n", "a: [1]\n---\nb: [\n"} {
+		for name, route := range routes {
+			t.Run(name+"/"+src, func(t *testing.T) {
+				dec := codec.NewDecoder(strings.NewReader(src), route.opts...)
+
+				var first error
+				for range 4 {
+					err := dec.Decode(route.into())
+					if first == nil {
+						first = err
+
+						continue
+					}
+					require.Error(t, first, "the source does not parse")
+					require.NotErrorIs(t, err, io.EOF)
+					require.EqualError(t, err, first.Error())
+				}
+			})
+		}
+	}
+}
+
 // TestADecoderSwitchesToTheTreeForADestinationTheWalkCannotFill checks that a
 // Decoder handed a destination the walk cannot fill, after the walk has read
 // some of the stream, carries on from the next document through the tree.

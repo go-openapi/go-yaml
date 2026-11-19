@@ -89,6 +89,13 @@ type Decoder struct {
 	stream      *walkStream
 	walkedFirst bool
 	firstOnly   bool
+	// streamErr is the error that stopped the stream: reading the source,
+	// resolving its references, or parsing it into a tree. Decode returns it
+	// from then on, as encoding/json.Decoder does, and as the walk does for a
+	// parse it stopped itself. Before it was kept, the next Decode read the
+	// drained reader as an empty source and returned io.EOF, which a Decode
+	// loop takes for the stream's clean end.
+	streamErr error
 	// strs holds the text of every string a decode hands back, copied out of
 	// the document so that the values outlive it.
 	strs arena
@@ -168,6 +175,9 @@ func (d *Decoder) Decode(v any) error {
 	if !rv.IsValid() || rv.Type().Kind() != reflect.Pointer {
 		return ErrDecodeRequiredPointerType
 	}
+	if d.streamErr != nil {
+		return yamlerrors.WithSource(d.streamErr, d.source)
+	}
 	if d.isInitialized() {
 		if err := d.decode(rv); err != nil {
 			return yamlerrors.WithSource(err, d.source)
@@ -176,6 +186,8 @@ func (d *Decoder) Decode(v any) error {
 		return nil
 	}
 	if err := d.decodeInit(rv); err != nil {
+		d.streamErr = err
+
 		return yamlerrors.WithSource(err, d.source)
 	}
 	if err := d.decode(rv); err != nil {
@@ -4103,6 +4115,8 @@ func (d *Decoder) decodeWalking(v reflect.Value) (bool, error) {
 func (d *Decoder) buildTree() error {
 	file, err := d.parse(d.src)
 	if err != nil {
+		d.streamErr = err
+
 		return err
 	}
 	d.parsedFile = file
