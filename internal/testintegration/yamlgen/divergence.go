@@ -82,12 +82,12 @@ const (
 	// value gives what reading it into an `any` gives.
 	//
 	// A separate property because it is a separate path through codec. Reading
-	// into an `any` walks the token stream; reading into a Go type gathers a
-	// tree and fills fields by reflection, and since the two stopped sharing
-	// code they can disagree silently. The comparison is against the `any`
-	// answer rather than against Value.Decoded, so a defect on both paths
-	// cancels out and only the destination is left as the variable. See
-	// [TargetFor].
+	// into an `any` builds the value with one builder; reading into a Go type
+	// fills fields by reflection with another, or through a tree where the walk
+	// cannot serve, and the two can disagree silently. The comparison is
+	// against the `any` answer rather than against Value.Decoded, so a defect on
+	// both paths cancels out and only the destination is left as the variable.
+	// See [TargetFor].
 	DecodeTyped
 	// StreamDecode: the documents of a stream read back as the values they
 	// were written from.
@@ -98,6 +98,16 @@ const (
 	// TestAStreamReadsBackAsItsDocuments and by nothing else, so a shape that
 	// only goes wrong in a stream excuses nothing anywhere else.
 	StreamDecode
+	// StreamDecodeTyped: a Decoder reading a stream document by document into
+	// Go types, a different type for each, gives what a Decoder reading it
+	// through a tree gives.
+	//
+	// A property of its own for the reason StreamDecode is: the pause between
+	// documents, a destination that changes type, and a switch to the tree in
+	// the middle of a stream are questions neither a single typed document nor
+	// a stream into `any` asks. Consulted by
+	// TestAStreamDecodesIntoAGoTypePerDocument and by nothing else.
+	StreamDecodeTyped
 )
 
 func (p Property) String() string {
@@ -125,6 +135,9 @@ func (p Property) String() string {
 	}
 	if p&StreamDecode != 0 {
 		names = append(names, "stream-decode")
+	}
+	if p&StreamDecodeTyped != 0 {
+		names = append(names, "stream-decode-typed")
 	}
 
 	return strings.Join(names, "|")

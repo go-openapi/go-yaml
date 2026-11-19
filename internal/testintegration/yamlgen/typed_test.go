@@ -16,10 +16,10 @@ import (
 // TestDecodingIntoAGoTypeGivesTheSameValue reads each document twice, once into
 // an `any` and once into a Go type built from what that read gave.
 //
-// The destination is the only variable. Reading into an `any` walks the token
-// stream; reading into a Go type gathers a tree and fills fields by reflection,
-// and since the two stopped sharing code they can disagree with nothing to say
-// so. Every other property here decodes into an `any`, and so does every
+// The destination is the only variable. Reading into an `any` builds the value
+// with one builder; reading into a Go type fills fields by reflection with
+// another, or through a tree where the walk cannot serve, and the two can
+// disagree with nothing to say so. Every other property here decodes into an `any`, and so does every
 // corpus-driven decode in yamlcorpus and in internal/conformance/ -- three defects were
 // found living on the reflection path in one afternoon of reading it, none of
 // them by any harness.
