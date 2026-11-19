@@ -1222,9 +1222,16 @@ type DuplicateKey struct {
 	// At is where the repeat stands and FirstAt where the key was first
 	// written, so a complaint can name both.
 	At, FirstAt token.Position
-	// JSONNameOnly marks two keys that YAML tells apart and JSON does not: "1"
-	// and "\"1\"" are an integer and a string, and both write the member "1".
-	// Only a parse under parser.WithJSONCompatible records one.
+	// NameOnly marks two keys that YAML tells apart and their name does not:
+	// "1" and "\"1\"" are an integer and a string, and both are named "1". A
+	// reader that keys its entries by value, such as an any or a MapSlice,
+	// holds both and reads no repeat; one that keys them by name, such as a
+	// struct, a map[string]T or JSON, holds one. Every parse records one. See
+	// [DuplicateKey.Repeats].
+	NameOnly bool
+	// JSONNameOnly marks a NameOnly repeat recorded by a parse under
+	// parser.WithJSONCompatible, which asked for a document JSON can hold.
+	// Every reader refuses it, with ErrNotJSON.
 	JSONNameOnly bool
 	// Allowed marks a repeat the parse was told to allow, with
 	// parser.WithAllowDuplicateMapKey. A load keeps one of the entries instead
@@ -1237,6 +1244,26 @@ type DuplicateKey struct {
 	Index int
 }
 
+// Repeats reports whether d repeats a key for a reader that keys its entries by
+// name, byName, or by value. A repeat by name alone is one only for the first,
+// unless the parse was asked for a document JSON can hold.
+func (d DuplicateKey) Repeats(byName bool) bool {
+	return byName || !d.NameOnly || d.JSONNameOnly
+}
+
+// FirstRefused returns the first of dups that a reader keying its entries by
+// name, byName, or by value has to refuse: a repeat for that reader, which the
+// parse did not allow.
+func FirstRefused(dups []DuplicateKey, byName bool) (DuplicateKey, bool) {
+	for _, d := range dups {
+		if d.Repeats(byName) && !d.Allowed {
+			return d, true
+		}
+	}
+
+	return DuplicateKey{}, false
+}
+
 // MappingNode type of mapping node.
 type MappingNode struct {
 	BaseNode
@@ -1245,7 +1272,8 @@ type MappingNode struct {
 	End         *token.Token
 	IsFlowStyle bool
 	// Duplicates holds the entries whose key the mapping already held, in the
-	// order they were written. It is nil for a mapping that repeats none, which
+	// order they were written, and those whose key it held by name alone, marked
+	// [DuplicateKey.NameOnly]. It is nil for a mapping that repeats none, which
 	// is nearly every mapping of nearly every document, so a document without
 	// duplicates carries nothing for them.
 	//

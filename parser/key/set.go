@@ -104,9 +104,13 @@ func (k *Set) UseJSONNames(on bool) { k.jsonNames = on }
 // Record records that the mapping starting at base uses text as a key, written
 // at pos.
 //
-// It returns where text was first written, whether the two keys are one JSON
-// member name written as two YAML nodes, and whether the mapping had already
-// used the name.
+// It returns where text was first written, whether the two keys are one name
+// written as two YAML nodes, and whether the mapping had already used the name.
+//
+// Under UseJSONNames a key that matches an earlier one by name alone is still a
+// key of its own, and is recorded: "{1: a, \"1\": b, \"1\": c}" repeats the
+// string "1", which the third entry has to find as the repeat it is. An exact
+// match wins over a match by name.
 func (k *Set) Record(base int, text string, kind token.KeyKind, pos token.Position) (token.Position, bool, bool) {
 	f := keyFilter(text, kind)
 	if len(k.entries)-base >= spillAt {
@@ -114,19 +118,11 @@ func (k *Set) Record(base int, text string, kind token.KeyKind, pos token.Positi
 	}
 
 	if k.jsonNames {
-		// The kind occupies the low byte whole, so shifting it out compares the
-		// name alone, and comparing the two filters whole then says whether the
-		// keys are also one node.
-		for i := base; i < len(k.entries); i++ {
-			if k.filter[i]>>8 == f>>8 && k.entries[i].text == text {
-				return k.entries[i].at, k.filter[i] != f, true
-			}
-		}
-	} else {
-		for i := base; i < len(k.entries); i++ {
-			if k.filter[i] == f && k.entries[i].text == text {
-				return k.entries[i].at, false, true
-			}
+		return k.recordByName(base, text, pos, f)
+	}
+	for i := base; i < len(k.entries); i++ {
+		if k.filter[i] == f && k.entries[i].text == text {
+			return k.entries[i].at, false, true
 		}
 	}
 	k.push(text, pos, f)
@@ -190,6 +186,33 @@ func (k *Set) Reset() {
 	k.jsonNames = false
 }
 
+// recordByName is Record's scan under UseJSONNames.
+//
+// The kind occupies the low byte of a filter whole, so shifting it out compares
+// the name alone, and comparing the two filters whole then says whether the keys
+// are also one node.
+func (k *Set) recordByName(base int, text string, pos token.Position, f uint32) (token.Position, bool, bool) {
+	var nameAt token.Position
+	named := false
+	for i := base; i < len(k.entries); i++ {
+		if k.filter[i]>>8 != f>>8 || k.entries[i].text != text {
+			continue
+		}
+		if k.filter[i] == f {
+			return k.entries[i].at, false, true
+		}
+		if !named {
+			nameAt, named = k.entries[i].at, true
+		}
+	}
+	k.push(text, pos, f)
+	if named {
+		return nameAt, true, true
+	}
+
+	return token.Position{}, false, false
+}
+
 // push adds one key to the stack.
 func (k *Set) push(text string, pos token.Position, f uint32) {
 	k.filter = append(k.filter, f)
@@ -207,15 +230,21 @@ func (k *Set) recordIndexed(base int, text string, kind token.KeyKind, pos token
 	if prev, defined := k.index[ref]; defined {
 		return prev, false, true
 	}
+	var nameAt token.Position
+	named := false
 	if k.jsonNames {
 		name := mapKeyRef{base: int32(base), kind: anyKind, text: text}
 		if prev, defined := k.index[name]; defined {
-			return prev, true, true
+			nameAt, named = prev, true
+		} else {
+			k.index[name] = pos
 		}
-		k.index[name] = pos
 	}
 	k.index[ref] = pos
 	k.push(text, pos, f)
+	if named {
+		return nameAt, true, true
+	}
 
 	return token.Position{}, false, false
 }

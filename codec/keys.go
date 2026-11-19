@@ -29,7 +29,7 @@ func refuseDuplicateKeys(n ast.Node) error {
 	if !ok {
 		return nil
 	}
-	d, refused := firstRefusedDuplicate(m.Duplicates)
+	d, refused := ast.FirstRefused(m.Duplicates, false)
 	if !refused {
 		return nil
 	}
@@ -74,7 +74,7 @@ func refuseOrderedMapDuplicates(seq *ast.SequenceNode) error {
 	if seq == nil {
 		return nil
 	}
-	d, refused := firstRefusedDuplicate(seq.Duplicates)
+	d, refused := ast.FirstRefused(seq.Duplicates, false)
 	if !refused {
 		return nil
 	}
@@ -106,8 +106,18 @@ func allowedRepeatEntries(seq *ast.SequenceNode) []int {
 // distinctKeys returns how many keys m holds, a repeat the parse recorded
 // counting once: "{a: 1, a: 2}" holds one key written twice, which is a repeat
 // and not a second entry.
+//
+// A repeat by name alone, "{1: a, \"1\": b}", is two keys: the "!!omap" readers
+// key their entries by value. See [ast.DuplicateKey.Repeats].
 func distinctKeys(m *ast.MappingNode) int {
-	return len(m.Values) - len(m.Duplicates)
+	n := len(m.Values)
+	for _, d := range m.Duplicates {
+		if d.Repeats(false) {
+			n--
+		}
+	}
+
+	return n
 }
 
 // orderedMapSequence returns the sequence an "!!omap" tag stands on, looking
@@ -123,18 +133,6 @@ func orderedMapSequence(n ast.Node) *ast.SequenceNode {
 			return nil
 		}
 	}
-}
-
-// firstRefusedDuplicate returns the first repeat of dups that the parse did not
-// allow, and whether there is one.
-func firstRefusedDuplicate(dups []ast.DuplicateKey) (ast.DuplicateKey, bool) {
-	for _, d := range dups {
-		if !d.Allowed {
-			return d, true
-		}
-	}
-
-	return ast.DuplicateKey{}, false
 }
 
 // duplicateKeyError is the error a load returns for the repeat d, pointing at

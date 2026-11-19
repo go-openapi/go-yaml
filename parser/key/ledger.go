@@ -65,6 +65,10 @@ type Ledger struct {
 	// allowRepeats marks each repeat [ast.DuplicateKey.Allowed]. The parser
 	// sets it from its WithAllowDuplicateMapKey option.
 	allowRepeats bool
+	// jsonNames marks each repeat by name alone [ast.DuplicateKey.JSONNameOnly]
+	// as well as NameOnly. The parser sets it from its WithJSONCompatible
+	// option. See UseJSONNames.
+	jsonNames bool
 
 	// orderedMaps holds one key set for each "!!omap" being read, innermost
 	// last, with the sequence the tag stands on. An ordered map's keys are
@@ -195,9 +199,16 @@ func (l *Ledger) Base() int { return l.keys.Base() }
 // See [Set.Holds] for which of the two key questions it answers.
 func (l *Ledger) Holds(base int, text string) bool { return l.keys.Holds(base, text) }
 
-// UseJSONNames compares a key under the name JSON gives it as well as under the
-// node it resolves to. The parser sets it from its WithJSONCompatible option.
-func (l *Ledger) UseJSONNames(on bool) { l.keys.UseJSONNames(on) }
+// UseJSONNames compares every key under its name as well as under the node it
+// resolves to, and records two keys that only the name makes one as
+// [ast.DuplicateKey.NameOnly]: "1: a" and "\"1\": b" are two YAML keys and one
+// name, which a reader keying its entries by name holds once. on marks such a
+// repeat [ast.DuplicateKey.JSONNameOnly] too, which every reader refuses: the
+// parser sets it from its WithJSONCompatible option.
+func (l *Ledger) UseJSONNames(on bool) {
+	l.jsonNames = on
+	l.keys.UseJSONNames(true)
+}
 
 // InMapping reports whether a mapping is being read.
 func (l *Ledger) InMapping() bool { return len(l.builtKeys) > 0 }
@@ -219,11 +230,14 @@ func (l *Ledger) Record(base int, text string, kind token.KeyKind, pos token.Pos
 // RecordOnce records text among the keys of the mapping starting at base, and
 // notes a repeat on the mapping being read.
 func (l *Ledger) RecordOnce(base int, text string, kind token.KeyKind, pos token.Position) {
-	first, jsonOnly, defined := l.Record(base, text, kind, pos)
+	first, nameOnly, defined := l.Record(base, text, kind, pos)
 	if defined {
-		l.noteDuplicate(ast.DuplicateKey{Name: text, At: pos, FirstAt: first, JSONNameOnly: jsonOnly})
-
-		return
+		l.noteDuplicate(l.repeat(text, pos, first, nameOnly))
+		if !nameOnly {
+			return
+		}
+		// A repeat by name alone is still a key of its own, for the "!!omap"
+		// entry to record too.
 	}
 
 	n := len(l.openMaps)
@@ -244,9 +258,9 @@ func (l *Ledger) RecordOnce(base int, text string, kind token.KeyKind, pos token
 // alias it names through [Ledger.RecordEntry], and calls [Ledger.UnmarkEntry]
 // once the value is read.
 func (l *Ledger) RecordMergeOnce(base int, text string, kind token.KeyKind, pos token.Position) {
-	first, jsonOnly, defined := l.Record(base, text, kind, pos)
+	first, nameOnly, defined := l.Record(base, text, kind, pos)
 	if defined {
-		l.noteDuplicate(ast.DuplicateKey{Name: text, At: pos, FirstAt: first, JSONNameOnly: jsonOnly})
+		l.noteDuplicate(l.repeat(text, pos, first, nameOnly))
 
 		return
 	}
@@ -326,13 +340,20 @@ func (l *Ledger) recordInOrderedMap(scope *orderedMapScope, text string, kind to
 	}
 	scope.entryKeys = append(scope.entryKeys, written)
 
-	first, jsonOnly, defined := scope.keys.Record(0, text, kind, pos)
+	first, nameOnly, defined := scope.keys.Record(0, text, kind, pos)
 	if !defined || scope.seq == nil {
 		return
 	}
-	scope.seq.Duplicates = append(scope.seq.Duplicates, ast.DuplicateKey{
-		Name: text, At: pos, FirstAt: first, JSONNameOnly: jsonOnly, Index: index, Allowed: l.allowRepeats,
-	})
+	dup := l.repeat(text, pos, first, nameOnly)
+	dup.Index, dup.Allowed = index, l.allowRepeats
+	scope.seq.Duplicates = append(scope.seq.Duplicates, dup)
+}
+
+// repeat builds the record of text repeated at pos, first written at first.
+func (l *Ledger) repeat(text string, pos, first token.Position, nameOnly bool) ast.DuplicateKey {
+	return ast.DuplicateKey{
+		Name: text, At: pos, FirstAt: first, NameOnly: nameOnly, JSONNameOnly: nameOnly && l.jsonNames,
+	}
 }
 
 // noteDuplicate records dup on the mapping being read, which is the innermost

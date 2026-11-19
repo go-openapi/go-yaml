@@ -123,6 +123,63 @@ func duplicatesOf(f *ast.File) []ast.DuplicateKey {
 	return found
 }
 
+// yamlRepeatsOf returns the keys of f that repeat as 3.2.1.1 says, leaving out two keys only a name makes one.
+func yamlRepeatsOf(f *ast.File) []ast.DuplicateKey {
+	var found []ast.DuplicateKey
+	for _, d := range duplicatesOf(f) {
+		if d.Repeats(false) {
+			found = append(found, d)
+		}
+	}
+
+	return found
+}
+
+// TestARepeatByNameIsRecordedBesideTheYAMLRepeat checks the record of two keys that YAML tells apart and a name
+// does not, below the spill and past it: the parse records them as NameOnly, and a key repeated after them is still
+// found as the repeat it is. "{1: a, \"1\": b, \"1\": c}" repeats the string "1", which the scan used to compare
+// against the integer and stop at.
+func TestARepeatByNameIsRecordedBesideTheYAMLRepeat(t *testing.T) {
+	wide := func(body string) string {
+		var b strings.Builder
+		for i := range 80 {
+			fmt.Fprintf(&b, "k%d: %d\n", i, i)
+		}
+		b.WriteString(body)
+
+		return b.String()
+	}
+	type record struct {
+		name     string
+		nameOnly bool
+	}
+	for name, src := range map[string]string{
+		"in the scan":    "1: a\n\"1\": b\n\"1\": c\n",
+		"past the spill": wide("1: a\n\"1\": b\n\"1\": c\n"),
+	} {
+		t.Run(name, func(t *testing.T) {
+			f, err := parser.ParseBytes([]byte(src))
+			require.NoError(t, err)
+
+			var got []record
+			for _, d := range duplicatesOf(f) {
+				got = append(got, record{d.Name, d.NameOnly})
+				assert.False(t, d.JSONNameOnly, "only WithJSONCompatible marks a repeat for JSON")
+			}
+			assert.Equal(t, []record{{"1", true}, {"1", false}}, got)
+		})
+	}
+
+	t.Run("under WithJSONCompatible the name-only repeat is marked for JSON", func(t *testing.T) {
+		f, err := parser.ParseBytes([]byte("1: a\n\"1\": b\n"), parser.WithJSONCompatible())
+		require.NoError(t, err)
+		found := duplicatesOf(f)
+		require.Len(t, found, 1)
+		assert.True(t, found[0].NameOnly)
+		assert.True(t, found[0].JSONNameOnly)
+	})
+}
+
 type duplicateWalker struct{ out *[]ast.DuplicateKey }
 
 func (w duplicateWalker) Visit(n ast.Node) ast.Visitor {
@@ -326,11 +383,11 @@ func TestDuplicateMapKeyIsPerType(t *testing.T) {
 			require.NoError(t, err)
 
 			if test.duplicate {
-				assert.NotEmpty(t, duplicatesOf(f))
+				assert.NotEmpty(t, yamlRepeatsOf(f))
 
 				return
 			}
-			assert.Empty(t, duplicatesOf(f))
+			assert.Empty(t, yamlRepeatsOf(f))
 		})
 	}
 }
@@ -387,11 +444,11 @@ func TestDuplicateMapKeyUnderATagFollowsTheResolvedName(t *testing.T) {
 			require.NoError(t, err)
 
 			if test.duplicate {
-				assert.NotEmpty(t, duplicatesOf(f))
+				assert.NotEmpty(t, yamlRepeatsOf(f))
 
 				return
 			}
-			assert.Empty(t, duplicatesOf(f))
+			assert.Empty(t, yamlRepeatsOf(f))
 		})
 	}
 }
