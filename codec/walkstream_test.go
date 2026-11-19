@@ -15,6 +15,7 @@ import (
 	"github.com/go-openapi/testify/v2/require"
 
 	"github.com/go-openapi/go-yaml/codec"
+	yamlerrors "github.com/go-openapi/go-yaml/errors"
 )
 
 type streamDoc struct {
@@ -234,4 +235,35 @@ func TestADroppedDecoderReleasesItsWalk(t *testing.T) {
 
 	assert.LessOrEqual(t, runtime.NumGoroutine(), before,
 		"%d decoders dropped halfway through their streams", decoders)
+}
+
+// TestATypeErrorFailsOnlyItsOwnDocument holds both decode paths to one answer
+// for a document holding a value that does not fit: its Decode returns the
+// type error, and the next Decode reads the next document.
+//
+// The tree decoder left its stream index on the document, so every Decode
+// after it returned the same document's error and never reached the end.
+func TestATypeErrorFailsOnlyItsOwnDocument(t *testing.T) {
+	type doc struct {
+		A int    `yaml:"a"`
+		B string `yaml:"b"`
+	}
+	// A custom unmarshaler turns the walk off, and no field holds a chan int.
+	tree := codec.CustomUnmarshaler[chan int](func(*chan int, []byte) error { return nil })
+
+	for name, opts := range map[string][]codec.DecodeOption{"walk": nil, "tree": {tree}} {
+		t.Run(name, func(t *testing.T) {
+			dec := codec.NewDecoder(strings.NewReader("a: x\nb: one\n---\na: 2\nb: two\n"), opts...)
+
+			var first doc
+			require.ErrorIs(t, dec.Decode(&first), yamlerrors.ErrTypeMismatch)
+			assert.Equal(t, doc{B: "one"}, first)
+
+			var second doc
+			require.NoError(t, dec.Decode(&second))
+			assert.Equal(t, doc{A: 2, B: "two"}, second)
+
+			require.ErrorIs(t, dec.Decode(new(doc)), io.EOF)
+		})
+	}
 }

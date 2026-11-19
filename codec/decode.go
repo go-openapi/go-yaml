@@ -4227,11 +4227,14 @@ func (d *Decoder) decode(v reflect.Value) error {
 		maps.Copy(d.toCommentMap, d.commentMaps[d.streamIndex])
 	}
 	d.anchorNodeMap = d.anchorNodeMaps[d.streamIndex]
-	if err := d.decodeValue(v.Elem(), body); err != nil {
-		return err
-	}
+	// The document is read, whatever it held, so the next Decode reads the
+	// next one, as encoding/json.Decoder moves past a value that does not fit.
+	// Left where it was, the index handed the same document and its error to
+	// every Decode after it, and a Decode loop never reached the end.
+	err := d.decodeValue(v.Elem(), body)
 	d.streamIndex++
-	return nil
+
+	return err
 }
 
 // stringType is the string type, for reading a mapping key as text.
