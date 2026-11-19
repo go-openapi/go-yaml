@@ -256,6 +256,38 @@ func TestAnAnchorTheWalkCannotReadGoesToTheTree(t *testing.T) {
 	}
 }
 
+// TestADirectiveKeepsTheWalk reads documents opened by a "%YAML" or a "%TAG"
+// line, and requires the value the tree gives without the decode building one.
+func TestADirectiveKeepsTheWalk(t *testing.T) {
+	for name, src := range map[string]string{
+		"a version":               "%YAML 1.1\n---\nname: x\n",
+		"a tag handle":            "%TAG !e! tag:example.com,2000:\n---\nleaf: {s: x}\n",
+		"a directive and no body": "%YAML 1.2\n---\n",
+	} {
+		t.Run(name, func(t *testing.T) {
+			walked := walkShape{Name: "default"}
+			dec := NewDecoder(bytes.NewReader([]byte(src)))
+			walkErr := dec.Decode(&walked)
+
+			built := walkShape{Name: "default"}
+			treeErr := NewDecoder(
+				bytes.NewReader([]byte(src)),
+				CustomUnmarshaler[chan int](func(*chan int, []byte) error { return nil }),
+			).Decode(&built)
+
+			if walkErr != nil || treeErr != nil {
+				t.Fatalf("walk err=%v, tree err=%v", walkErr, treeErr)
+			}
+			if !reflect.DeepEqual(walked, built) {
+				t.Errorf("the two paths disagree:\n  walk %+v\n  tree %+v", walked, built)
+			}
+			if dec.parsedFile != nil {
+				t.Error("the decode built a tree")
+			}
+		})
+	}
+}
+
 // TestAnAliasKeepsTheWalk reads documents whose aliases name an anchor written
 // before them, with and without ShareAliases, and requires the value the tree
 // gives without the decode building one.

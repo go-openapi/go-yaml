@@ -110,6 +110,12 @@ func holdsAnything(v reflect.Value) bool {
 }
 
 func (b *typedBuilder) Enter(node ast.Node, at parser.Cursor) error {
+	if _, isDirective := node.(*ast.DirectiveNode); isDirective && at.IsRoot() {
+		// A "%YAML" or "%TAG" line is handed over as a root of its own, ahead
+		// of the document it opens, and holds no value.
+		return parser.ErrSkipNode
+	}
+
 	switch n := node.(type) {
 	case *ast.AnchorNode:
 		if b.values != nil || at.IsKey() {
