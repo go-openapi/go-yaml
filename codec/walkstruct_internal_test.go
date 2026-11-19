@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-openapi/go-yaml/ast"
 	"github.com/go-openapi/go-yaml/parser"
 )
 
@@ -553,5 +554,133 @@ func TestAMergeKeepsTheDefaults(t *testing.T) {
 	built := read(CustomUnmarshaler[chan int](func(*chan int, []byte) error { return nil }))
 	if !reflect.DeepEqual(walked, built) {
 		t.Errorf("the two paths disagree:\n  walk %+v\n  tree %+v", walked, built)
+	}
+}
+
+// declaredAnchors parses each source into the tree parser.WithAnchors takes.
+func declaredAnchors(t *testing.T, srcs map[string]string) map[string]ast.Node {
+	t.Helper()
+	anchors := make(map[string]ast.Node, len(srcs))
+	for name, src := range srcs {
+		f, err := parser.ParseBytes([]byte(src))
+		if err != nil {
+			t.Fatal(err)
+		}
+		anchors[name] = f.Docs[0].Body
+	}
+
+	return anchors
+}
+
+// TestADeclaredAnchorKeepsTheWalk reads documents whose aliases name an anchor
+// parser.WithAnchors declared, with and without ShareAliases, and requires the
+// value the tree gives without the decode building one. The tree reads a
+// declared node into each destination again whatever the option says, so no
+// two aliases share a value; TestADeclaredAnchorIsNeverShared holds that.
+func TestADeclaredAnchorKeepsTheWalk(t *testing.T) {
+	anchors := declaredAnchors(t, map[string]string{
+		"l": "{s: declared, i: 1, xs: [1, 2]}\n",
+		"n": "declared\n",
+		"c": "[3, 4]\n",
+	})
+	docs := map[string]string{
+		"a struct":                      "leaf: *l\n",
+		"a pointer":                     "ptr: *l\n",
+		"twice":                         "leaf: *l\nptr: *l\n",
+		"a scalar":                      "name: *n\nleaf: {s: *n}\n",
+		"a slice element":               "list: [*l, {s: own}]\n",
+		"a map value":                   "byName: {a: *l}\n",
+		"a sequence":                    "counts: {a: *c}\n",
+		"a merge":                       "leaf: {<<: *l, s: own}\n",
+		"a merge sequence":              "leaf: {<<: [{s: first}, *l]}\n",
+		"the document's anchor wins":    "name: &n mine\nleaf: {s: *n}\n",
+		"an anchor named after a merge": "leaf: {<<: *l}\nname: &l mine\nplain: {k: *l}\n",
+	}
+	for _, share := range []bool{false, true} {
+		for name, src := range docs {
+			t.Run(fmt.Sprintf("share=%v/%s", share, name), func(t *testing.T) {
+				opts := []DecodeOption{WithParserOptions(parser.WithAnchors(anchors))}
+				if share {
+					opts = append(opts, ShareAliases())
+				}
+				r := decodeBothWays(t, src, opts...)
+				if r.walkErr != nil || r.treeErr != nil {
+					t.Fatalf("walk err=%v, tree err=%v", r.walkErr, r.treeErr)
+				}
+				if !reflect.DeepEqual(r.walked, r.built) {
+					t.Errorf("the two paths disagree:\n  walk %+v\n  tree %+v", r.walked, r.built)
+				}
+				if r.dec.parsedFile != nil {
+					t.Error("the decode built a tree")
+				}
+			})
+		}
+	}
+}
+
+// TestADeclaredAnchorIsNeverShared holds the walk to the tree on identity:
+// under ShareAliases two aliases of a declared anchor still give two values,
+// and writing through one leaves the declared tree and the other alone.
+func TestADeclaredAnchorIsNeverShared(t *testing.T) {
+	anchors := declaredAnchors(t, map[string]string{"l": "{s: declared, xs: [1, 2]}\n"})
+	type shared struct {
+		P *WalkLeaf `yaml:"p"`
+		Q *WalkLeaf `yaml:"q"`
+	}
+	const src = "p: *l\nq: *l\n"
+	for name, extra := range map[string][]DecodeOption{
+		"walk": nil,
+		"tree": {CustomUnmarshaler[chan int](func(*chan int, []byte) error { return nil })},
+	} {
+		t.Run(name, func(t *testing.T) {
+			var v shared
+			opts := append([]DecodeOption{WithParserOptions(parser.WithAnchors(anchors)), ShareAliases()}, extra...)
+			if err := NewDecoder(bytes.NewReader([]byte(src)), opts...).Decode(&v); err != nil {
+				t.Fatal(err)
+			}
+			if v.P == nil || v.Q == nil {
+				t.Fatalf("an alias decoded to nil: %+v", v)
+			}
+			if v.P == v.Q {
+				t.Error("two aliases of a declared anchor share a value")
+			}
+			v.P.Xs[0] = 9
+			if v.Q.Xs[0] != 1 {
+				t.Error("writing through one alias reached the other")
+			}
+		})
+	}
+}
+
+// TestADeclaredAnchorTheWalkCannotReadGoesToTheTree pins the declared anchors
+// the walk hands to the tree, and requires the tree's value or error from both.
+func TestADeclaredAnchorTheWalkCannotReadGoesToTheTree(t *testing.T) {
+	anchors := declaredAnchors(t, map[string]string{"t": "!!str 1\n", "l": "{s: declared}\n"})
+	anchors["nothing"] = nil
+	for name, src := range map[string]string{
+		"a declaration with no node":                "name: *nothing\n",
+		"a tag in the declared tree":                "name: *t\n",
+		"an alias inside an any":                    "any: {k: *l}\n",
+		"an anchor named again while a merge waits": "leaf: {<<: {s: *l}, p: &l mine}\n",
+	} {
+		t.Run(name, func(t *testing.T) {
+			r := decodeBothWays(t, src, WithParserOptions(parser.WithAnchors(anchors)))
+			if (r.walkErr == nil) != (r.treeErr == nil) {
+				t.Fatalf("walk err=%v, tree err=%v", r.walkErr, r.treeErr)
+			}
+			if r.walkErr != nil {
+				if r.walkErr.Error() != r.treeErr.Error() {
+					t.Errorf("the two paths refuse differently:\n  walk %v\n  tree %v", r.walkErr, r.treeErr)
+				}
+
+				return
+			}
+			if !reflect.DeepEqual(r.walked, r.built) {
+				t.Errorf("the two paths disagree:\n  walk %+v\n  tree %+v", r.walked, r.built)
+			}
+			if r.dec.parsedFile == nil {
+				t.Error("the walk read it: move the case to TestADeclaredAnchorKeepsTheWalk")
+			}
+		})
 	}
 }

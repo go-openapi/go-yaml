@@ -21,7 +21,7 @@ import (
 // The decode reads the source again and builds a tree for it.
 //
 // SPIKE. It falls back on tags, explicit "?" keys, an anchor or an alias used
-// as a key or inside an "any", an anchor parser.WithAnchors declared, and on
+// as a key or inside an "any", and on
 // any destination holding an interface, a custom unmarshaler, an ast.Node, a
 // non-string map key, or a Go kind the setter below does not write.
 var errNeedsTheTree = errors.New("this decode needs the tree")
@@ -115,6 +115,10 @@ type typedBuilder struct {
 	// inside that node is not recorded again.
 	anchors   map[string]typedAnchored
 	replaying int
+	// declared holds the anchors parser.WithAnchors passed. Their trees come
+	// from another parse and stay whole, so an alias decodes one as it decodes
+	// a recorded clone. See named.
+	declared map[string]ast.Node
 	// keeping says the walk holds a "<<"'s mapping or sequence whole, for
 	// Leave to clone it. pending counts the frames holding merges not yet
 	// applied, during which an anchor named again goes to the tree: the
@@ -381,7 +385,8 @@ func (b *typedBuilder) record(name string, n *ast.AnchorNode, value reflect.Valu
 	if name == "" || b.replaying > 0 {
 		return
 	}
-	if _, again := b.anchors[name]; again && b.pending > 0 {
+	_, again := b.anchors[name]
+	if _, declared := b.declared[name]; (again || declared) && b.pending > 0 {
 		// A merge waiting for its mapping to close would read the new one.
 		_ = b.fail(errNeedsTheTree)
 
@@ -393,6 +398,23 @@ func (b *typedBuilder) record(name string, n *ast.AnchorNode, value reflect.Valu
 	b.anchors[name] = typedAnchored{node: ast.Clone(n.Value), value: value}
 }
 
+// named returns what the anchor name stands for: the anchor the document wrote,
+// or else one parser.WithAnchors declared, as the parse resolves an alias.
+//
+// A declared anchor carries no value. The tree decoder reads its node into each
+// destination again, ShareAliases or not, and so does the walk. A name declared
+// with a nil node is not one: the tree reports it.
+func (b *typedBuilder) named(name string) (typedAnchored, bool) {
+	if anchored, known := b.anchors[name]; known {
+		return anchored, anchored.node != nil
+	}
+	if node := b.declared[name]; node != nil {
+		return typedAnchored{node: node}, true
+	}
+
+	return typedAnchored{}, false
+}
+
 // alias writes what alias n names into the destination it stands at.
 //
 // Under ShareAliases it hands over the value the anchor wrote, wherever
@@ -402,12 +424,11 @@ func (b *typedBuilder) record(name string, n *ast.AnchorNode, value reflect.Valu
 // node again into the destination, as the tree does, so two aliases of one
 // anchor give two values.
 //
-// An alias naming an anchor the walk has not recorded -- one inside its own
-// anchor, one parser.WithAnchors declared, or one that does not exist -- goes to
-// the tree, which reads or refuses it.
+// Where named finds no anchor -- the alias stands inside its own anchor, or
+// names none -- the decode goes to the tree, which reads or refuses it.
 func (b *typedBuilder) alias(n *ast.AliasNode) error {
-	anchored, known := b.anchors[anchorName(n.Value)]
-	if !known || anchored.node == nil {
+	anchored, known := b.named(anchorName(n.Value))
+	if !known {
 		return b.fail(errNeedsTheTree)
 	}
 
@@ -541,8 +562,8 @@ func (b *typedBuilder) mergeValue(top *typedFrame, node ast.Node) error {
 	top.mergeNext = false
 	switch n := node.(type) {
 	case *ast.AliasNode:
-		anchored, known := b.anchors[anchorName(n.Value)]
-		if !known || anchored.node == nil {
+		anchored, known := b.named(anchorName(n.Value))
+		if !known {
 			return b.fail(errNeedsTheTree)
 		}
 		b.holdMerge(top, anchored.node)
@@ -573,8 +594,8 @@ func (b *typedBuilder) keepMerge(top *typedFrame, node ast.Node) error {
 	for _, value := range seq.Values {
 		switch v := value.(type) {
 		case *ast.AliasNode:
-			anchored, known := b.anchors[anchorName(v.Value)]
-			if !known || anchored.node == nil {
+			anchored, known := b.named(anchorName(v.Value))
+			if !known {
 				return b.fail(errNeedsTheTree)
 			}
 			b.holdMerge(top, anchored.node)
@@ -647,7 +668,7 @@ func (b *typedBuilder) mergeFrom(i int, node ast.Node, alias *ast.AliasNode) err
 
 		return nil
 	case *ast.AliasNode:
-		anchored, known := b.anchors[anchorName(n.Value)]
+		anchored, known := b.named(anchorName(n.Value))
 		if !known {
 			return b.fail(errNeedsTheTree)
 		}
