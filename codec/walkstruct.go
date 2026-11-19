@@ -17,14 +17,50 @@ import (
 	"github.com/go-openapi/go-yaml/token"
 )
 
-// errNeedsTheTree says a document or a destination this walk cannot serve.
-// The decode reads the source again and builds a tree for it.
+// errNeedsTheTree reports a document or a destination the walk cannot fill.
 //
-// SPIKE. It falls back on a tagged node that holds an anchor or an alias or
-// that the tree decoder refuses, an anchor or an alias used as a key or inside
-// an "any", and on
-// any destination holding an interface, a custom unmarshaler, an ast.Node, a
-// non-string map key, or a Go kind the setter below does not write.
+// The walk stops where it meets one, and decodeWalking parses the whole source
+// again into a tree. The tree decodes the document in hand from its start, over
+// what the walk wrote, and serves every later Decode of the Decoder.
+//
+// A fallback costs the walk up to that node, then a tree decode of the source.
+// citm_catalog (0.56 MiB) into its Go types peaks at 1.30 MiB walked and
+// 20.07 MiB on the tree (peakLive, max of 5 runs).
+// canWalk and walkableType choose the tree before any walk where an option or
+// the Go type alone decides, so those decodes cost the tree and no more.
+//
+// The walk falls back on these documents:
+//
+//   - an anchor or an alias inside an "any" field, which valueBuilder would
+//     record as its own;
+//   - an anchor or an alias used as a key, or inside a "?" or a tagged key;
+//   - an alias the walk has no recorded anchor for: one inside its own anchor,
+//     one naming no anchor, one naming an anchor parser.WithAnchors declared
+//     with a nil node;
+//   - a tagged node holding an anchor or an alias, or one the tree decoder
+//     rejects, so the error names the struct field and the fields after it
+//     decode, as the tree does;
+//   - a "<<" into a struct with an ",inline,alias" field;
+//   - a "<<" naming anything but a mapping, an alias to one, or a sequence of
+//     those: a null, a scalar, an anchored or tagged node. The tree reports
+//     the error;
+//   - an anchor named again while a "<<" waits for its mapping to close;
+//   - a collection used as the key of a map.
+//
+// It falls back on these destinations, at the node that writes them:
+//
+//   - a scalar setScalar does not write: a number or a bool into a string, a
+//     number that overflows its field, text into a number or a bool. The tree
+//     converts it or reports the error;
+//   - a mapping into anything but a struct or a map keyed by string, and a
+//     sequence into anything but a slice;
+//   - a destination the walk cannot set, such as an embedded pointer to an
+//     unexported struct.
+//
+// The rest are guards for what walkableType turns away first, or what no
+// document has reached: a destination that decodes itself or is a MapSlice, an
+// anchor with no node under it, and a lone entry (an ast.MappingValueNode)
+// replayed for an alias.
 var errNeedsTheTree = errors.New("this decode needs the tree")
 
 type typedFrameKind uint8

@@ -715,3 +715,45 @@ func TestUseStringKeysReachesAnAnyFieldOfAStruct(t *testing.T) {
 		t.Errorf("got %#v, want %#v", v.K, want)
 	}
 }
+
+// TestAScalarTheWalkCannotWriteGoesToTheTree pins the scalars setScalar does
+// not write, so each one that starts to walk is noticed. The tree converts the
+// first group, and those documents are valid: each costs a tree decode of the
+// whole source. It refuses the second, and both paths give its error.
+func TestAScalarTheWalkCannotWriteGoesToTheTree(t *testing.T) {
+	for name, src := range map[string]string{
+		"a number into a string": "name: 1\n",
+		"a float into a string":  "name: 1.5\n",
+		"a bool into a string":   "name: true\n",
+		"a float into an int":    "leaf: {i: 1.5}\n",
+	} {
+		t.Run(name, func(t *testing.T) {
+			r := decodeBothWays(t, src)
+			if r.walkErr != nil || r.treeErr != nil {
+				t.Fatalf("walk err=%v, tree err=%v", r.walkErr, r.treeErr)
+			}
+			if !reflect.DeepEqual(r.walked, r.built) {
+				t.Errorf("the two paths disagree:\n  walk %+v\n  tree %+v", r.walked, r.built)
+			}
+			if r.dec.parsedFile == nil {
+				t.Error("the walk wrote it: move the case to TestTypedWalkMatchesTheTree")
+			}
+		})
+	}
+	for name, src := range map[string]string{
+		"text into an int":       "leaf: {i: x}\n",
+		"a negative into a uint": "leaf: {u: -1}\n",
+		"a number into a bool":   "leaf: {b: 1}\n",
+		"an int that overflows":  "leaf: {i: 9999999999999999999999}\n",
+	} {
+		t.Run(name, func(t *testing.T) {
+			r := decodeBothWays(t, src)
+			if r.walkErr == nil || r.treeErr == nil {
+				t.Fatalf("walk err=%v, tree err=%v", r.walkErr, r.treeErr)
+			}
+			if r.walkErr.Error() != r.treeErr.Error() {
+				t.Errorf("the two paths refuse differently:\n  walk %v\n  tree %v", r.walkErr, r.treeErr)
+			}
+		})
+	}
+}
