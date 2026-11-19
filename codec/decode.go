@@ -85,9 +85,14 @@ type Decoder struct {
 	// rather than by building a tree and walking that. src is kept beside it so
 	// that a later Decode wanting something the walk cannot serve can still
 	// build the tree. See canWalk.
-	walked    []any
-	walkedOK  bool
+	walked   []any
+	walkedOK bool
+	// stream walks the source into a Go struct, one document for each Decode.
+	// typedWalk records that Unmarshal has filled its destination that way.
+	// firstOnly marks a Decoder that Unmarshal made, which reads one document.
+	stream    *walkStream
 	typedWalk bool
+	firstOnly bool
 	// strs holds the text of every string a decode hands back, copied out of
 	// the document so that the values outlive it.
 	strs arena
@@ -1694,8 +1699,15 @@ func (d *Decoder) canDecodeByUnmarshaler(dst reflect.Value) bool {
 	if d.existsTypeInCustomUnmarshalerMap(ptrValue.Type()) {
 		return true
 	}
-	iface := ptrValue.Interface()
-	switch iface.(type) {
+
+	return decodesItself(ptrValue, d.useJSONUnmarshaler)
+}
+
+// decodesItself reports whether the value ptr points to reads itself from the
+// document, through an interface it implements or a type the decoder reads
+// specially. A json.Unmarshaler counts only with useJSONUnmarshaler.
+func decodesItself(ptr reflect.Value, useJSONUnmarshaler bool) bool {
+	switch ptr.Interface().(type) {
 	case *MapSlice, *MapSliceSeq, *MapItem, *Base64:
 		// Read by the decoder itself, ahead of any interface they satisfy.
 		// [UseJSONUnmarshaler] is the counterpart of [UseJSONMarshaler] and a
@@ -1711,7 +1723,7 @@ func (d *Decoder) canDecodeByUnmarshaler(dst reflect.Value) bool {
 		encoding.TextUnmarshaler:
 		return true
 	case jsonUnmarshaler:
-		return d.useJSONUnmarshaler
+		return useJSONUnmarshaler
 	}
 	return false
 }
@@ -3829,7 +3841,7 @@ func (d *Decoder) collectComments(body ast.Node) error {
 }
 
 func (d *Decoder) isInitialized() bool {
-	return d.parsedFile != nil || d.walkedOK
+	return d.parsedFile != nil || d.walkedOK || d.stream != nil
 }
 
 // canWalk reports whether this decode can read the source by walking it rather
@@ -3915,9 +3927,13 @@ func (d *Decoder) decodeInit(v reflect.Value) error {
 	// SPIKE: reading into a Go type by walking, falling back to the tree for
 	// everything it cannot serve. See errNeedsTheTree.
 	if d.canWalkTyped(v) {
-		switch err := d.walkInto(src, v); {
+		if !d.firstOnly {
+			d.stream = newWalkStream(d, src)
+
+			return nil
+		}
+		switch _, err := unmarshalWalking(d, src, v); {
 		case err == nil:
-			d.walkedOK, d.walked = true, nil
 			d.typedWalk = true
 
 			return nil
@@ -3959,6 +3975,35 @@ func (d *Decoder) canWalkTyped(v reflect.Value) bool {
 	}
 
 	return walkableType(dst.Type(), d.tagMode())
+}
+
+// decodeWalking reads the next document of the stream into v by walking it, and
+// returns true when it has.
+//
+// It returns false where the document needs a tree, or where v is a destination
+// the walk cannot fill. The walk then stops for good, the source is read into a
+// tree, and the decode carries on from the document in hand. A document the
+// walk had started is decoded again from the start, over what the walk wrote.
+func (d *Decoder) decodeWalking(v reflect.Value) (bool, error) {
+	w := d.stream
+	if d.canWalkTyped(v) {
+		err := w.decode(v)
+		d.streamIndex = w.st.delivered
+		switch {
+		case err == nil:
+			return true, nil
+		case errors.Is(err, errEndOfStream):
+			return true, io.EOF
+		case !errors.Is(err, errNeedsTheTree):
+			return true, err
+		}
+	}
+
+	w.stop()
+	d.stream = nil
+	d.streamIndex = w.st.delivered
+
+	return false, d.buildTree()
 }
 
 // buildTree reads the source into a tree, for a decode the walk cannot serve.
@@ -4008,11 +4053,16 @@ func (d *Decoder) handWalked(v reflect.Value) error {
 
 func (d *Decoder) decode(v reflect.Value) error {
 	if d.typedWalk {
-		// The destination was filled as the parse read the source.
-		d.typedWalk, d.walkedOK = false, false
+		// Unmarshal's destination was filled as the parse read the source.
+		d.typedWalk = false
 		d.streamIndex++
 
 		return nil
+	}
+	if d.stream != nil {
+		if done, err := d.decodeWalking(v); done || err != nil {
+			return err
+		}
 	}
 	if d.walkedOK {
 		if d.canWalk(v) {

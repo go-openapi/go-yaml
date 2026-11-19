@@ -120,6 +120,7 @@ func Unmarshal(data []byte, v any) error {
 // and assigns decoded values into the out value.
 func UnmarshalWithOptions(data []byte, v any, opts ...DecodeOption) error {
 	dec := NewDecoder(bytes.NewBuffer(data), opts...)
+	dec.firstOnly = true
 	if err := dec.Decode(v); err != nil {
 		if errors.Is(err, io.EOF) {
 			return nil

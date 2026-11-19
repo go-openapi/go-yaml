@@ -56,8 +56,12 @@ type typedFrame struct {
 
 // typedBuilder fills a Go value as the parse hands the document over, without
 // a tree in between.
+//
+// It holds no Decoder: a walkStream runs it inside a coroutine, which must not
+// keep the Decoder alive. See walkStream.
 type typedBuilder struct {
-	dec   *Decoder
+	// mode is the Decoder's tagMode, which names the fields of a struct.
+	mode  tagMode
 	root  reflect.Value
 	stack []typedFrame
 	strs  *arena
@@ -410,7 +414,7 @@ func (b *typedBuilder) openEntry(top *typedFrame, keyNode ast.Node) error {
 
 	switch top.kind {
 	case typedStruct:
-		fields, err := structFields(top.dst.Type(), b.dec.tagMode())
+		fields, err := structFields(top.dst.Type(), b.mode)
 		if err != nil {
 			return b.fail(err)
 		}
@@ -554,7 +558,9 @@ func (b *typedBuilder) handled(dst reflect.Value) bool {
 	if !dst.CanAddr() {
 		return true
 	}
-	if b.dec.canDecodeByUnmarshaler(dst) {
+	// canWalkTyped turns the walk away from a Decoder holding a custom
+	// unmarshaler or UseJSONUnmarshaler, so neither applies here.
+	if decodesItself(dst.Addr(), false) {
 		return true
 	}
 	switch dst.Interface().(type) {
@@ -671,22 +677,13 @@ func readWalkable(t reflect.Type, seen map[reflect.Type]bool, mode tagMode) bool
 	}
 }
 
-// walkInto reads src into v by walking it. It returns errNeedsTheTree where the
-// document or the destination needs one.
-func (d *Decoder) walkInto(src []byte, v reflect.Value) error {
-	b := &typedBuilder{
-		dec:    d,
-		root:   v.Elem(),
-		strs:   &d.strs,
-		share:  d.shareAliases,
-		budget: aliasBudget(len(src)),
-	}
-	opts := append(d.parserOptions(), parser.WithOmitNodePaths())
-	if _, err := parser.New(opts...).Walk(src, b); err != nil {
-		return err
-	}
-
-	return b.err
+// reset readies b to fill root with the next document, keeping the room its
+// stack has grown.
+func (b *typedBuilder) reset(root reflect.Value) {
+	b.root = root
+	b.stack = b.stack[:0]
+	b.err = nil
+	b.values, b.anyInto = nil, reflect.Value{}
 }
 
 // typedWalkEnabled turns the spike on. SPIKE.
