@@ -241,6 +241,41 @@ func TestOrderedMapRepeatIsRecordedOnTheSequence(t *testing.T) {
 	})
 }
 
+// TestAMergeInAnOrderedMapEntryRecordsWhatItBringsIn checks the key the parse records for an "!!omap" entry holding a
+// "<<" under YAML 1.1: the keys the merge brings in, through a mapping, an alias or a sequence of them, and not the
+// "<<". A key one entry writes twice -- its own and a merged one, or two mappings of the merge -- is no repeat.
+func TestAMergeInAnOrderedMapEntryRecordsWhatItBringsIn(t *testing.T) {
+	type repeat struct {
+		name  string
+		index int
+	}
+
+	for src, want := range map[string][]repeat{
+		"k: !!omap [{<<: {a: 1}}, {<<: {b: 2}}]\n":                     nil,
+		"k: !!omap\n- <<: {a: 1}\n- <<: {b: 2}\n":                      nil,
+		"k: !!omap [{<<: {a: 1}, a: 2}]\n":                             nil,
+		"k: !!omap [{<<: [{a: 1}, {a: 2}]}]\n":                         nil,
+		"k: !!omap [{a: 1}, {<<: {a: 2}}]\n":                           {{"a", 1}},
+		"k: !!omap [{<<: {a: 1}}, {a: 2}]\n":                           {{"a", 1}},
+		"k: !!omap\n- a: 1\n- <<: {a: 2}\n":                            {{"a", 1}},
+		"m: &m {a: 2}\nk: !!omap [{a: 1}, {<<: *m}]\n":                 {{"a", 1}},
+		"m: &m {a: 2}\nk: !!omap [{a: 1}, {<<: [{a: 3}, *m]}]\n":       {{"a", 1}},
+		"m: &m {a: 2}\nk: !!omap\n- a: 1\n- <<:\n  - {b: 3}\n  - *m\n": {{"a", 1}},
+		"m: &m {<<: {a: 2}}\nk: !!omap [{b: 1}, *m]\n":                 nil,
+	} {
+		t.Run(src, func(t *testing.T) {
+			f, err := parser.ParseBytes([]byte(src), parser.WithYAMLVersion(parser.YAML11))
+			require.NoError(t, err)
+
+			var got []repeat
+			for _, d := range sequenceDuplicatesOf(f) {
+				got = append(got, repeat{d.Name, d.Index})
+			}
+			assert.Equal(t, want, got)
+		})
+	}
+}
+
 // sequenceDuplicatesOf returns every key the parse recorded as repeated across the entries of an "!!omap" in f.
 func sequenceDuplicatesOf(f *ast.File) []ast.DuplicateKey {
 	var found []ast.DuplicateKey

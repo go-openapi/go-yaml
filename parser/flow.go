@@ -7,6 +7,7 @@ import (
 	"github.com/go-openapi/go-yaml/ast"
 	yamlerrors "github.com/go-openapi/go-yaml/errors"
 	"github.com/go-openapi/go-yaml/parser/group"
+	"github.com/go-openapi/go-yaml/parser/key"
 	"github.com/go-openapi/go-yaml/token"
 )
 
@@ -356,7 +357,10 @@ func (p *Parser) parseFlowSequence(ctx context) (*ast.SequenceNode, error) {
 	if orderedMap {
 		defer p.keys.OpenOrderedMap(node)()
 	}
+	// A sequence a "<<" in an "!!omap" entry names: each of its mappings is a source of the entry's key.
+	mergeMark, mergeSeq := p.keys.MergeSequence()
 	p.keys.UnmarkEntry()
+	marks := entryMarks{orderedMap: orderedMap, merge: mergeMark, mergeSeq: mergeSeq}
 
 	ctx.goNext() // Skip the '['.
 
@@ -407,7 +411,7 @@ func (p *Parser) parseFlowSequence(ctx context) (*ast.SequenceNode, error) {
 		}
 
 		ctx := ctx.withIndex(p, index)
-		value, seqEntry, err := p.parseFlowSequenceElement(ctx, index, orderedMap, entryTk, headComment)
+		value, seqEntry, err := p.parseFlowSequenceElement(ctx, index, marks, entryTk, headComment)
 		if err != nil {
 			return nil, err
 		}
@@ -428,18 +432,29 @@ func (p *Parser) parseFlowSequence(ctx context) (*ast.SequenceNode, error) {
 	return node, nil
 }
 
+// entryMarks says how the elements of a flow sequence are recorded: as the entries of an "!!omap", or as sources of
+// the key of the "!!omap" entry whose "<<" names the sequence.
+type entryMarks struct {
+	orderedMap bool
+	merge      key.Mark
+	mergeSeq   bool
+}
+
 // parseFlowSequenceElement reads the element of a flow sequence at index, and the sequenceEntry node holding the ','
 // before it and its comments, nil when the parse drops comments. Under an ordered map, the element is marked as an
 // entry while it is read.
 func (p *Parser) parseFlowSequenceElement(
-	ctx context, index uint, orderedMap bool, entryTk *group.TapeToken, headComment *ast.CommentGroupNode,
+	ctx context, index uint, marks entryMarks, entryTk *group.TapeToken, headComment *ast.CommentGroupNode,
 ) (ast.Node, *ast.SequenceEntryNode, error) {
-	if orderedMap {
+	switch {
+	case marks.orderedMap:
 		p.keys.MarkEntry(int(index))
+	case marks.mergeSeq:
+		p.keys.Remark(marks.merge)
 	}
 	p.markNodes(ctx)
 	value, err := p.parseToken(ctx, ctx.currentToken())
-	if orderedMap {
+	if marks.orderedMap || marks.mergeSeq {
 		p.recordAliasEntry(value)
 	}
 	p.keys.UnmarkEntry()

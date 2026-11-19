@@ -664,3 +664,71 @@ func TestAnOrderedMapEntryIsCountedAfterItsMerge(t *testing.T) {
 		})
 	}
 }
+
+// TestAnOrderedMapRepeatAMergeBringsInIsAKeyWrittenTwice holds every reader to
+// one answer for an "!!omap" whose entries hold a "<<": the key of each entry
+// is what its merge brings in, and a key two entries hold is a repeat across
+// entries, refused by default and kept once under AllowDuplicateMapKey, as a
+// repeat written out is.
+//
+// The parse recorded "<<" itself as an entry's key, so two entries merging
+// different keys were refused as a repeat of "<<", and never recorded what the
+// merge brought in, so a merged repeat went through: the decoders kept the
+// later value and ToJSON wrote the member twice.
+func TestAnOrderedMapRepeatAMergeBringsInIsAKeyWrittenTwice(t *testing.T) {
+	for _, c := range []struct {
+		body    string
+		json    string // "" where every reader refuses the document by default
+		allowed string // the JSON under AllowDuplicateMapKey, where it differs
+	}{
+		{body: "k: !!omap\n- {<<: {a: 1}}\n- {<<: {b: 2}}\n", json: `{"k":{"a":1,"b":2}}`},
+		{body: "k: !!omap\n- {<<: {a: 1}, a: 2}\n", json: `{"k":{"a":2}}`},
+		{body: "k: !!omap\n- {<<: [{a: 1}, {a: 2}]}\n- {b: 3}\n", json: `{"k":{"a":1,"b":3}}`},
+		{body: "k: !!omap\n- <<: {a: 1}\n- <<: {b: 2}\n", json: `{"k":{"a":1,"b":2}}`},
+		{body: "k: !!omap\n- {a: 1}\n- {<<: {a: 2}}\n", allowed: `{"k":{"a":1}}`},
+		{body: "k: !!omap\n- {<<: {a: 1}}\n- {a: 2}\n", allowed: `{"k":{"a":1}}`},
+		{body: "m: &m {a: 2}\nk: !!omap\n- {a: 1}\n- {<<: *m}\n", allowed: `{"m":{"a":2},"k":{"a":1}}`},
+		{body: "m: &m {a: 2}\nk: !!omap\n- {a: 1}\n- {<<: [{a: 3}, *m]}\n", allowed: `{"m":{"a":2},"k":{"a":1}}`},
+	} {
+		t.Run(c.body, func(t *testing.T) {
+			src := []byte("%YAML 1.1\n---\n" + c.body)
+
+			read := func(t *testing.T, want string, decodeOpts []codec.DecodeOption, parseOpts []parser.Option) {
+				t.Helper()
+				check := func(err error, what string) {
+					t.Helper()
+					if want == "" {
+						require.Errorf(t, err, "%s", what)
+
+						return
+					}
+					require.NoErrorf(t, err, "%s", what)
+				}
+
+				var walked any
+				check(codec.UnmarshalWithOptions(src, &walked, decodeOpts...), "walk")
+				var treed any
+				check(codec.UnmarshalWithOptions(src, &treed, append(decodeOpts, codec.UseOrderedMap())...), "tree")
+
+				got, err := codec.ToJSON(src, parseOpts...)
+				check(err, "ToJSON")
+				tokens := codec.ToJSONTokens(src, parseOpts...)
+				for range tokens.Tokens() {
+				}
+				check(tokens.Err(), "ToJSONTokens")
+				if want != "" {
+					assert.JSONEq(t, want, string(got))
+				}
+			}
+
+			read(t, c.json, nil, nil)
+			if c.json == "" {
+				t.Run("AllowDuplicateMapKey", func(t *testing.T) {
+					read(t, c.allowed,
+						[]codec.DecodeOption{codec.AllowDuplicateMapKey()},
+						[]parser.Option{parser.WithAllowDuplicateMapKey()})
+				})
+			}
+		})
+	}
+}

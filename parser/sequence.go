@@ -76,6 +76,8 @@ func (p *Parser) parseSequence(ctx context) (*ast.SequenceNode, error) {
 	if orderedMap {
 		defer p.keys.OpenOrderedMap(seqNode)()
 	}
+	// A sequence a "<<" in an "!!omap" entry names: each of its mappings is a source of the entry's key.
+	mergeMark, mergeSeq := p.keys.MergeSequence()
 	p.keys.UnmarkEntry()
 
 	// The entries gather on a stack that every sequence reuses, so fillSequence allocates this one's slices once.
@@ -93,12 +95,15 @@ func (p *Parser) parseSequence(ctx context) (*ast.SequenceNode, error) {
 		ctx.goNext() // Skip the '-'.
 
 		ctx := ctx.withIndex(p, index)
-		if orderedMap {
+		switch {
+		case orderedMap:
 			p.keys.MarkEntry(int(index))
+		case mergeSeq:
+			p.keys.Remark(mergeMark)
 		}
 		index++
 		value, err := p.parseSequenceValue(ctx, seqTk)
-		if orderedMap {
+		if orderedMap || mergeSeq {
 			p.recordAliasEntry(value)
 		}
 		p.keys.UnmarkEntry()

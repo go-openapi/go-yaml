@@ -15,6 +15,7 @@ package key
 
 import (
 	"fmt"
+	"slices"
 
 	"github.com/go-openapi/go-yaml/ast"
 	"github.com/go-openapi/go-yaml/internal/probe"
@@ -75,6 +76,10 @@ type Ledger struct {
 	// The next mapping to open takes both.
 	pending      int
 	pendingIndex int
+	// pendingMerge says a "<<" in that entry set the mark: what the "<<"
+	// names is one more source of the entry's key. A sequence it names passes
+	// the mark to each of its mappings. See RecordMergeOnce.
+	pendingMerge bool
 	// expectOrderedMap marks the next sequence to open as the one an "!!omap"
 	// tag stands on. A mapping opening first clears it, so "!!omap {a: [1]}"
 	// makes no ordered map of the "[1]".
@@ -109,6 +114,23 @@ type openMap struct {
 type orderedMapScope struct {
 	keys *Set
 	seq  *ast.SequenceNode
+	// entry is the index of the entry recording now, and entryKeys the keys it
+	// has recorded. An entry may write its one key more than once -- its own and
+	// a merged one, or two mappings of a "<<" sequence -- which is no repeat
+	// across entries.
+	entry     int
+	entryKeys []entryKey
+}
+
+type entryKey struct {
+	text string
+	kind token.KeyKind
+}
+
+// Mark is an "!!omap" entry a "<<" stands in, handed from a "<<" sequence to
+// each of its mappings. See [Ledger.MergeSequence].
+type Mark struct {
+	scope, index int
 }
 
 // OpenOrderedMap starts the key set of the "!!omap" whose sequence seq is, as
@@ -121,7 +143,7 @@ type orderedMapScope struct {
 func (l *Ledger) OpenOrderedMap(seq *ast.SequenceNode) func() {
 	keys := &Set{}
 	keys.UseJSONNames(l.keys.jsonNames)
-	l.orderedMaps = append(l.orderedMaps, orderedMapScope{keys: keys, seq: seq})
+	l.orderedMaps = append(l.orderedMaps, orderedMapScope{keys: keys, seq: seq, entry: -1})
 
 	return func() {
 		l.orderedMaps = l.orderedMaps[:len(l.orderedMaps)-1]
@@ -131,18 +153,34 @@ func (l *Ledger) OpenOrderedMap(seq *ast.SequenceNode) func() {
 
 // MarkEntry says that the next mapping to open is the entry at index of the
 // innermost "!!omap".
-func (l *Ledger) MarkEntry(index int) { l.pending, l.pendingIndex = len(l.orderedMaps), index }
+func (l *Ledger) MarkEntry(index int) {
+	l.pending, l.pendingIndex, l.pendingMerge = len(l.orderedMaps), index, false
+}
 
 // UnmarkEntry forgets a mark no mapping took: an entry that is not a mapping,
 // or a sequence opening inside one.
-func (l *Ledger) UnmarkEntry() { l.pending = 0 }
+func (l *Ledger) UnmarkEntry() { l.pending, l.pendingMerge = 0, false }
+
+// MergeSequence returns the mark a "<<" set, where the sequence opening now is
+// what the "<<" names: each mapping of the sequence is one more source of the
+// entry's key. Hand it to [Ledger.Remark] before each element.
+func (l *Ledger) MergeSequence() (Mark, bool) {
+	if l.pending == 0 || !l.pendingMerge {
+		return Mark{}, false
+	}
+
+	return Mark{scope: l.pending, index: l.pendingIndex}, true
+}
+
+// Remark marks the next mapping to open as a source of the entry m names.
+func (l *Ledger) Remark(m Mark) { l.pending, l.pendingIndex, l.pendingMerge = m.scope, m.index, true }
 
 // RecordEntry records text as the key of the "!!omap" entry MarkEntry marked,
 // for an entry that opened no mapping of its own: an alias naming a one-entry
 // mapping. The parser names the key from what the anchor recorded.
 func (l *Ledger) RecordEntry(text string, kind token.KeyKind, pos token.Position) {
 	if l.pending > 0 {
-		l.recordInOrderedMap(l.orderedMaps[l.pending-1], text, kind, pos, l.pendingIndex)
+		l.recordInOrderedMap(&l.orderedMaps[l.pending-1], text, kind, pos, l.pendingIndex)
 	}
 }
 
@@ -193,7 +231,32 @@ func (l *Ledger) RecordOnce(base int, text string, kind token.KeyKind, pos token
 		return
 	}
 	top := l.openMaps[n-1]
-	l.recordInOrderedMap(l.orderedMaps[top.entryOf], text, kind, pos, top.entryIndex)
+	l.recordInOrderedMap(&l.orderedMaps[top.entryOf], text, kind, pos, top.entryIndex)
+}
+
+// RecordMergeOnce records a "<<" among the keys of the mapping starting at
+// base, as RecordOnce does, and notes a repeat on the mapping being read.
+//
+// A "<<" is no key of an "!!omap" entry: the entry's key is what the "<<"
+// brings in. So where the mapping is an entry, the "<<" is not recorded among
+// the ordered map's keys, and the mapping that follows is marked as one more
+// source of the entry's key, as an entry is marked. The parser records an
+// alias it names through [Ledger.RecordEntry], and calls [Ledger.UnmarkEntry]
+// once the value is read.
+func (l *Ledger) RecordMergeOnce(base int, text string, kind token.KeyKind, pos token.Position) {
+	first, jsonOnly, defined := l.Record(base, text, kind, pos)
+	if defined {
+		l.noteDuplicate(ast.DuplicateKey{Name: text, At: pos, FirstAt: first, JSONNameOnly: jsonOnly})
+
+		return
+	}
+
+	n := len(l.openMaps)
+	if n == 0 || l.openMaps[n-1].entryOf < 0 {
+		return
+	}
+	top := l.openMaps[n-1]
+	l.pending, l.pendingIndex, l.pendingMerge = top.entryOf+1, top.entryIndex, true
 }
 
 // RecordBuilt records identity among the built keys of the mapping being read,
@@ -226,7 +289,7 @@ func (l *Ledger) Close(base int) {
 func (l *Ledger) Open(node *ast.MappingNode) func() {
 	l.openMaps = append(l.openMaps, openMap{node: node, entryOf: l.pending - 1, entryIndex: l.pendingIndex})
 	l.builtKeys = append(l.builtKeys, nil)
-	l.pending = 0
+	l.pending, l.pendingMerge = 0, false
 	l.expectOrderedMap = false
 
 	return func() {
@@ -247,13 +310,22 @@ func (l *Ledger) Reset() {
 	l.builtKeys = l.builtKeys[:0]
 	clear(l.orderedMaps[:cap(l.orderedMaps)])
 	l.orderedMaps = l.orderedMaps[:0]
-	l.pending = 0
+	l.pending, l.pendingMerge = 0, false
 	l.expectOrderedMap = false
 }
 
 // recordInOrderedMap records a key among the entries of scope, and a repeat on
 // its sequence.
-func (l *Ledger) recordInOrderedMap(scope orderedMapScope, text string, kind token.KeyKind, pos token.Position, index int) {
+func (l *Ledger) recordInOrderedMap(scope *orderedMapScope, text string, kind token.KeyKind, pos token.Position, index int) {
+	if index != scope.entry {
+		scope.entry, scope.entryKeys = index, scope.entryKeys[:0]
+	}
+	written := entryKey{text: text, kind: kind}
+	if slices.Contains(scope.entryKeys, written) {
+		return
+	}
+	scope.entryKeys = append(scope.entryKeys, written)
+
 	first, jsonOnly, defined := scope.keys.Record(0, text, kind, pos)
 	if !defined || scope.seq == nil {
 		return

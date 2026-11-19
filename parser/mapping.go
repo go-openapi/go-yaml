@@ -15,6 +15,12 @@ import (
 // Every entry the parser builds goes through here, block and flow alike,
 // so a consumer can fold entries without walking the tree.
 func (p *Parser) mappingValue(ctx context, colon, entry *group.TapeToken, key ast.MapKeyNode, value ast.Node) (*ast.MappingValueNode, error) {
+	if key != nil && key.IsMergeKey() {
+		// What a "<<" in an "!!omap" entry names is a source of the entry's key.
+		// A mapping recorded its keys as it was read; an alias is recorded here.
+		p.recordAliasEntry(value)
+		p.keys.UnmarkEntry()
+	}
 	if p.opts.jsonCompatible {
 		if err := refuseCollectionKey(key); err != nil {
 			return nil, err
@@ -509,7 +515,11 @@ func (p *Parser) parseExplicitMapKey(ctx context, g *group.TokenGroup) (ast.MapK
 func (p *Parser) validateMapKey(ctx context, key ast.MapKeyNode, colonTk *group.TapeToken) error {
 	tk := key.GetToken()
 	name, kind := p.mapKeyIdentity(key)
-	p.recordKeyOnce(ctx, tk, name, kind)
+	if key.IsMergeKey() {
+		p.recordMergeKeyOnce(ctx, tk, name, kind)
+	} else {
+		p.recordKeyOnce(ctx, tk, name, kind)
+	}
 	if ctx.isFlow {
 		// A pair written inside a flow sequence is an implicit key: it must fit on one line, with its ':' on that line.
 		// A flow mapping's key has neither restriction. It may span lines, and a line break before the ':'

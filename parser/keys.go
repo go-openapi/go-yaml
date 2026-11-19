@@ -34,6 +34,17 @@ func (p *Parser) recordKeyOnce(ctx context, tk *token.Token, name string, kind t
 	p.keys.RecordOnce(ctx.keyBase, name, kind, tk.Position)
 }
 
+// recordMergeKeyOnce records a "<<" as recordKeyOnce records a key. Where the mapping is an "!!omap" entry, the
+// "<<" is no key of the ordered map, and what it names is read as the source of the entry's key instead.
+// See [key.Ledger.RecordMergeOnce].
+func (p *Parser) recordMergeKeyOnce(ctx context, tk *token.Token, name string, kind token.KeyKind) {
+	if unnamedKey(name, kind) {
+		return
+	}
+
+	p.keys.RecordMergeOnce(ctx.keyBase, name, kind, tk.Position)
+}
+
 // unnamedKey reports whether mapKeyIdentity returned no name for a key: "" under [token.KeyOther].
 func unnamedKey(name string, kind token.KeyKind) bool {
 	return name == "" && kind == token.KeyOther
@@ -195,12 +206,17 @@ func (p *Parser) oneEntryKeyIdentity(n ast.Node) (string, token.KeyKind) {
 		case *ast.AnchorNode:
 			n = nn.Value
 		case *ast.MappingNode:
-			if len(nn.Values) != 1 {
+			if len(nn.Values) != 1 || nn.Values[0].Key.IsMergeKey() {
+				// A "<<" names no key of its own: the mapping's key is what it merges in.
 				return "", token.KeyOther
 			}
 
 			return p.mapKeyIdentity(nn.Values[0].Key)
 		case *ast.MappingValueNode:
+			if nn.Key.IsMergeKey() {
+				return "", token.KeyOther
+			}
+
 			return p.mapKeyIdentity(nn.Key)
 		default:
 			return "", token.KeyOther
