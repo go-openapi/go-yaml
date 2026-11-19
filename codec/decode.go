@@ -3429,6 +3429,13 @@ func (d *Decoder) orderedEntriesOf(src ast.Node) (MapSlice, error) {
 	return m, err
 }
 
+// decodeMap reads the mapping src names into dst.
+//
+// A map dst already holds keeps its entries, and the mapping's entries are
+// written over them, as encoding/json and go.yaml.in/yaml/v3 do and as the
+// walk does. A merged entry is written over a caller's entry too, as it is
+// over a struct field's default; only a key the mapping or an earlier "<<"
+// wrote stops it.
 func (d *Decoder) decodeMap(dst reflect.Value, src ast.Node) error {
 	d.stepIn()
 	defer d.stepOut()
@@ -3441,9 +3448,15 @@ func (d *Decoder) decodeMap(dst reflect.Value, src ast.Node) error {
 		return err
 	}
 	mapType := dst.Type()
-	mapValue := reflect.MakeMap(mapType)
+	mapValue := dst
+	if mapValue.IsNil() {
+		mapValue = reflect.MakeMap(mapType)
+	}
 	keyType := mapValue.Type().Key()
 	valueType := mapValue.Type().Elem()
+	// keyMap records the keys this mapping writes, its own and the merged
+	// ones, which is what a later merge has to step around. The keys a
+	// caller's map held before are not in it.
 	keyMap := map[any]struct{}{}
 	// A mapping read under a merge is the fold getMapNode makes of "<<: [a, b]",
 	// so two entries alike in it are the sequence doing its job -- the earlier
@@ -3464,7 +3477,7 @@ func (d *Decoder) decodeMap(dst reflect.Value, src ast.Node) error {
 			// sequence that define one key is what the sequence is for, and a
 			// merged key equal to an own key is the override the type
 			// describes -- neither is the repeated key 3.2.1.1 refuses.
-			if err := d.mergeIntoMap(dst, mapValue, value); err != nil {
+			if err := d.mergeIntoMap(mapValue, keyMap, value); err != nil {
 				return err
 			}
 
@@ -3496,7 +3509,9 @@ func (d *Decoder) decodeMap(dst reflect.Value, src ast.Node) error {
 		}
 		if !k.IsValid() {
 			// expect nil key
-			mapValue.SetMapIndex(d.createDecodableValue(decodeKeyAs), dstValue)
+			nilKey := d.createDecodableValue(decodeKeyAs)
+			keyMap[nilKey.Interface()] = struct{}{}
+			mapValue.SetMapIndex(nilKey, dstValue)
 			continue
 		}
 		if decodeKeyAs.Kind() != k.Kind() {
@@ -3512,20 +3527,26 @@ func (d *Decoder) decodeMap(dst reflect.Value, src ast.Node) error {
 	return foundErr
 }
 
-// mergeIntoMap decodes the mapping a "<<" brings in, value, and copies into mapValue each of its entries whose key
-// mapValue does not hold yet.
-func (d *Decoder) mergeIntoMap(dst, mapValue reflect.Value, value ast.Node) error {
+// mergeIntoMap decodes the mapping a "<<" brings in, value, into a map of its own, and copies into mapValue each of
+// its entries whose key the mapping has not written, recording the key in written.
+//
+// The merged mapping is decoded apart because mapValue may be the caller's map, which decodeMap writes into: decoding
+// the merge straight into it would write over the mapping's own entries.
+func (d *Decoder) mergeIntoMap(mapValue reflect.Value, written map[any]struct{}, value ast.Node) error {
+	merged := reflect.New(mapValue.Type()).Elem()
 	leave := d.enterMerge()
-	err := d.decodeMap(dst, value)
+	err := d.decodeMap(merged, value)
 	leave()
 	if err != nil {
 		return err
 	}
-	iter := dst.MapRange()
+	iter := merged.MapRange()
 	for iter.Next() {
-		if mapValue.MapIndex(iter.Key()).IsValid() {
+		key := iter.Key().Interface()
+		if _, wrote := written[key]; wrote {
 			continue
 		}
+		written[key] = struct{}{}
 		mapValue.SetMapIndex(iter.Key(), iter.Value())
 	}
 

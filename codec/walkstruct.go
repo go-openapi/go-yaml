@@ -78,6 +78,11 @@ type typedFrame struct {
 	written   writtenFields
 	mergeNext bool
 	merges    []ast.Node
+	// wrote records the keys a mapping writes into a map that held the
+	// caller's entries when it opened, so a merge tells the two apart. It is
+	// nil for a map that opened empty, where every key it holds was written
+	// here.
+	wrote map[string]struct{}
 }
 
 // typedBuilder fills a Go value as the parse hands the document over, without
@@ -677,7 +682,8 @@ func (b *typedBuilder) mergeNested(i int, value ast.Node, alias *ast.AliasNode) 
 
 // mergeEntry writes one merged entry into the frame at index i, unless the
 // mapping or an earlier merge wrote it. A struct skips a field its written
-// marks hold, and a map a key it holds.
+// marks hold. A map skips a key it holds, or one its wrote set holds where it
+// opened with the caller's entries, which a merged entry writes over.
 func (b *typedBuilder) mergeEntry(i int, keyNode, value ast.Node, alias *ast.AliasNode) error {
 	top := &b.stack[i]
 	name, named := entryText(keyNode)
@@ -708,8 +714,14 @@ func (b *typedBuilder) mergeEntry(i int, keyNode, value ast.Node, alias *ast.Ali
 		}
 		top.skip, top.target = false, field
 	case typedMap:
-		key := reflect.ValueOf(b.strs.clone(name)).Convert(top.dst.Type().Key())
-		if top.dst.MapIndex(key).IsValid() {
+		name = b.strs.clone(name)
+		key := reflect.ValueOf(name).Convert(top.dst.Type().Key())
+		if top.wrote != nil {
+			if _, wrote := top.wrote[name]; wrote {
+				return nil
+			}
+			top.wrote[name] = struct{}{}
+		} else if top.dst.MapIndex(key).IsValid() {
 			return nil
 		}
 		top.skip, top.key = false, key
@@ -763,7 +775,11 @@ func (b *typedBuilder) openMapping(dst reflect.Value, wanted bool) error {
 			}
 			dst.Set(reflect.MakeMap(dst.Type()))
 		}
-		b.stack = append(b.stack, typedFrame{kind: typedMap, dst: dst, out: out})
+		frame := typedFrame{kind: typedMap, dst: dst, out: out}
+		if dst.Len() > 0 {
+			frame.wrote = map[string]struct{}{}
+		}
+		b.stack = append(b.stack, frame)
 
 		return nil
 	default:
@@ -916,7 +932,11 @@ func (b *typedBuilder) openEntry(top *typedFrame, keyNode ast.Node) error {
 		top.target = top.dst.Field(ff.sf.Index)
 	case typedMap:
 		top.skip = false
-		top.key = reflect.ValueOf(b.strs.clone(name)).Convert(top.dst.Type().Key())
+		name = b.strs.clone(name)
+		if top.wrote != nil {
+			top.wrote[name] = struct{}{}
+		}
+		top.key = reflect.ValueOf(name).Convert(top.dst.Type().Key())
 		top.target = reflect.New(top.dst.Type().Elem()).Elem()
 	case typedSlice:
 		return b.fail(errNeedsTheTree)

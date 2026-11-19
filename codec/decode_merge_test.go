@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/go-openapi/go-yaml/codec"
@@ -535,5 +536,27 @@ func TestFixedATypedMapSliceMergesLikeTheOrderedAny(t *testing.T) {
 		var walked any
 		require.NoErrorf(t, codec.UnmarshalWithOptions([]byte(src), &walked, codec.UseOrderedMap()), "%q", src)
 		assert.Equalf(t, typed.M, mapSliceAt(t, walked, "m"), "%q: the two destinations disagree", src)
+	}
+}
+
+// TestAMergeWritesOverTheCallersMapEntries holds both decode paths to the
+// precedence a "<<" takes in a map the caller filled: the mapping's own keys
+// first, then the merge, then the caller's entries. A caller's entry no longer
+// stops a merged key, as a struct field's default never did.
+func TestAMergeWritesOverTheCallersMapEntries(t *testing.T) {
+	type doc struct {
+		Plain map[string]string `yaml:"plain"`
+	}
+	// A custom unmarshaler turns the walk off, and no field holds a chan int.
+	tree := codec.CustomUnmarshaler[chan int](func(*chan int, []byte) error { return nil })
+	const src = "%YAML 1.1\n---\nplain: {<<: [{a: merged, b: first}, {b: second, c: merged}], a: own}\n"
+	want := doc{Plain: map[string]string{"a": "own", "b": "first", "c": "merged", "z": "kept"}}
+
+	for name, opts := range map[string][]codec.DecodeOption{"walk": nil, "tree": {tree}} {
+		t.Run(name, func(t *testing.T) {
+			v := doc{Plain: map[string]string{"a": "default", "b": "default", "c": "default", "z": "kept"}}
+			require.NoError(t, codec.NewDecoder(strings.NewReader(src), opts...).Decode(&v))
+			require.Equal(t, want, v)
+		})
 	}
 }

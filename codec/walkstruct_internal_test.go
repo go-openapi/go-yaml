@@ -531,13 +531,17 @@ func TestAMergeTheWalkCannotReadGoesToTheTree(t *testing.T) {
 }
 
 // TestAMergeKeepsTheDefaults holds the walk to the tree on what a merge does to
-// the fields of a struct the caller set: a merged entry is written over the
-// default, as an own entry is, and a field neither writes keeps it.
+// the fields of a struct and the entries of a map the caller set: a merged
+// entry is written over the default, as an own entry is, and one neither
+// writes keeps it.
 func TestAMergeKeepsTheDefaults(t *testing.T) {
-	const src = "ptr: &b {s: base}\nleaf: {<<: *b, i: 2}\n"
+	const src = "ptr: &b {s: base}\nleaf: {<<: *b, i: 2}\nplain: {<<: {a: x, b: y}, b: own}\n"
 	read := func(opts ...DecodeOption) walkShape {
 		t.Helper()
-		v := walkShape{Leaf: WalkLeaf{S: "default", U: 9, F: 1.5}}
+		v := walkShape{
+			Leaf:  WalkLeaf{S: "default", U: 9, F: 1.5},
+			Plain: map[string]string{"a": "default", "b": "default", "z": "kept"},
+		}
 		opts = append(opts, WithParserOptions(parser.WithYAMLVersion(parser.YAML11)))
 		if err := NewDecoder(bytes.NewReader([]byte(src)), opts...).Decode(&v); err != nil {
 			t.Fatal(err)
