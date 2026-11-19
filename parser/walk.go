@@ -216,7 +216,10 @@ type walkState struct {
 	// The flag reaches whichever it is, so the key is announced once, as a key.
 	keyNext bool
 	// skip counts the depths below a node that Enter declined, which are walked without being handed over.
-	skip int
+	// skipKeyNext holds keyNext as the skip started, for the node's own leave to put back: the keys inside
+	// the node set keyNext and are never handed over to clear it.
+	skip        int
+	skipKeyNext bool
 	// keeping records a node Enter answered with [ErrKeepNode], whose content the parse keeps until its Leave.
 	// Nothing inside it is handed over, so at most one is open at a time.
 	keeping bool
@@ -448,7 +451,7 @@ func (p *Parser) enterAs(ctx context, node ast.Node, in Kind, key bool) bool {
 	if p.walk.quiet > 0 || p.walk.done() {
 		// Nothing inside this node is handed over on its own: either the node reads its content back through
 		// the descent, or a visitor has already failed. leave unwinds the skip.
-		p.walk.skip = 1
+		p.startSkip()
 
 		return true
 	}
@@ -470,7 +473,7 @@ func (p *Parser) enterAs(ctx context, node ast.Node, in Kind, key bool) bool {
 			p.walk.fail(err)
 		}
 		// The node's own leave unwinds this, so the next node the descent reaches starts level.
-		p.walk.skip = 1
+		p.startSkip()
 
 		return false
 	}
@@ -493,10 +496,16 @@ func (p *Parser) enterAs(ctx context, node ast.Node, in Kind, key bool) bool {
 func (p *Parser) keep() {
 	p.walk.keeping = true
 	// The node's own leave unwinds this and then hands the node over.
-	p.walk.skip = 1
+	p.startSkip()
 	if p.tokens != nil {
 		p.tokens.Pin()
 	}
+}
+
+// startSkip stops the handovers below the node being entered, until its own leave.
+func (p *Parser) startSkip() {
+	p.walk.skip = 1
+	p.walk.skipKeyNext = p.walk.keyNext
 }
 
 // leave hands a node over after its content.
@@ -506,6 +515,11 @@ func (p *Parser) leave(ctx context, node ast.Node) {
 	}
 	if p.walk.skip > 0 {
 		p.walk.skip--
+		if p.walk.skip == 0 {
+			// The last key inside the node set keyNext and was never handed over. Left set, it marked
+			// the node after this one as a key: the next entry of a sequence came over as a mapping key.
+			p.walk.keyNext = p.walk.skipKeyNext
+		}
 		if p.walk.skip > 0 || !p.walk.keeping {
 			p.releaseSkipped(ctx)
 

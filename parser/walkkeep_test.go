@@ -296,3 +296,65 @@ func TestKeepingASubtreeCostsTheSubtree(t *testing.T) {
 
 	assert.LessOrEqual(t, allocs(false), allocs(true)+16)
 }
+
+// keyRecorder answers answer to every node at depth, and records whether the walk handed each node over as a
+// mapping key.
+type keyRecorder struct {
+	depth  int
+	answer error
+	keys   map[string]bool
+}
+
+func (r *keyRecorder) Enter(node ast.Node, at parser.Cursor) error {
+	if tk := node.GetToken(); tk != nil {
+		// The depth tells apart two nodes of one kind at one offset: "? : x" holds an empty key and an
+		// empty value, both nulls at the ":".
+		key := fmt.Sprintf("%s@%d", keptKey(int(tk.Position.Offset()), node.Type()), at.Depth())
+		if _, seen := r.keys[key]; !seen {
+			r.keys[key] = at.IsKey()
+		}
+	}
+	if r.answer != nil && at.Depth() == r.depth {
+		return r.answer
+	}
+
+	return nil
+}
+
+func (r *keyRecorder) Leave(ast.Node, parser.Closing) error { return nil }
+
+// TestASkippedNodeLeavesTheNextNodeItsKeyFlag holds a walk that keeps or skips the nodes at one depth to the
+// key flag a plain walk gives every node it still hands over.
+//
+// The keys inside a skipped or kept node set the flag that marks the next node as a key, and nothing
+// inside the node is handed over to clear it. In a mapping the next key sets it anyway; in a sequence the
+// next entry came over as a mapping key: "[!!map {s: one}, {s: two}]" read "{s: two}" as a key.
+func TestASkippedNodeLeavesTheNextNodeItsKeyFlag(t *testing.T) {
+	t.Parallel()
+
+	sources := append(keepSources(t),
+		[]byte("list: [!!map {s: one}, {s: two}]\n"),
+		[]byte("list:\n- {s: one}\n- b\n"),
+		[]byte("- [{a: 1}, {b: 2}]\n- c\n"),
+	)
+	var checked int
+	for _, src := range sources {
+		plain := &keyRecorder{keys: map[string]bool{}}
+		if _, err := parser.New().Walk(src, plain); err != nil {
+			continue
+		}
+		for depth := 1; depth < 5; depth++ {
+			for _, answer := range []error{parser.ErrKeepNode, parser.ErrSkipNode} {
+				r := &keyRecorder{depth: depth, answer: answer, keys: map[string]bool{}}
+				_, err := parser.New().Walk(src, r)
+				require.NoErrorf(t, err, "%q", src)
+				for key, isKey := range r.keys {
+					checked++
+					require.Equalf(t, plain.keys[key], isKey,
+						"%q, %v at depth %d: the node at %s came over with key=%v", src, answer, depth, key, isKey)
+				}
+			}
+		}
+	}
+	assert.Positive(t, checked)
+}
