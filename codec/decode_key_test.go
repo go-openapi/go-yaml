@@ -331,3 +331,77 @@ func TestANullKeyIsTheWordNull(t *testing.T) {
 		assert.ErrorIs(t, err, yamlerrors.ErrDuplicateKey)
 	})
 }
+
+// TestAReaderKeyedByNameRefusesTwoKeysOfOneName holds every reader that keys
+// its entries by name to one answer for two keys YAML tells apart and their
+// name does not: refused by default, and the last of them under
+// AllowDuplicateMapKey, as a repeat is. A reader keyed by value holds both.
+//
+// The parse records such a pair as ast.DuplicateKey.NameOnly. Before, only the
+// tree's map[string]T refused it, through a check of its own; the walk's map and
+// both struct paths wrote the second over the first.
+func TestAReaderKeyedByNameRefusesTwoKeysOfOneName(t *testing.T) {
+	type leaf struct {
+		One any `yaml:"1"`
+	}
+	type inline struct {
+		Rest map[string]any `yaml:",inline"`
+	}
+	// A custom unmarshaler turns the walk off, and no field holds a chan int.
+	tree := codec.CustomUnmarshaler[chan int](func(*chan int, []byte) error { return nil })
+	const src = "k: {1: x, \"1\": y}\n"
+
+	byName := map[string]struct {
+		into func() any
+		opts []codec.DecodeOption
+		last func(v any) any
+	}{
+		"a struct, walked": {
+			into: func() any { return new(struct{ K leaf }) },
+			last: func(v any) any { return v.(*struct{ K leaf }).K.One },
+		},
+		"a struct, through the tree": {
+			into: func() any { return new(struct{ K leaf }) }, opts: []codec.DecodeOption{tree},
+			last: func(v any) any { return v.(*struct{ K leaf }).K.One },
+		},
+		"a map[string]any, walked": {
+			into: func() any { return new(struct{ K map[string]any }) },
+			last: func(v any) any { return v.(*struct{ K map[string]any }).K["1"] },
+		},
+		"a map[string]any, through the tree": {
+			into: func() any { return new(struct{ K map[string]any }) }, opts: []codec.DecodeOption{tree},
+			last: func(v any) any { return v.(*struct{ K map[string]any }).K["1"] },
+		},
+		"an inline map": {
+			into: func() any { return new(struct{ K inline }) },
+			last: func(v any) any { return v.(*struct{ K inline }).K.Rest["1"] },
+		},
+		"an any under UseStringKeys": {
+			into: func() any { return new(any) }, opts: []codec.DecodeOption{codec.UseStringKeys()},
+			last: func(v any) any { return (*v.(*any)).(map[string]any)["k"].(map[string]any)["1"] },
+		},
+	}
+	for name, r := range byName {
+		t.Run(name, func(t *testing.T) {
+			err := codec.NewDecoder(strings.NewReader(src), r.opts...).Decode(r.into())
+			require.ErrorIs(t, err, yamlerrors.ErrDuplicateKey)
+			assert.Contains(t, err.Error(), `two keys name the entry "1"`)
+
+			v := r.into()
+			opts := append([]codec.DecodeOption{codec.AllowDuplicateMapKey()}, r.opts...)
+			require.NoError(t, codec.NewDecoder(strings.NewReader(src), opts...).Decode(v))
+			assert.Equal(t, "y", r.last(v), "the last of the two stands")
+		})
+	}
+
+	t.Run("a reader keyed by value holds both", func(t *testing.T) {
+		var v any
+		require.NoError(t, codec.Unmarshal([]byte(src), &v))
+		assert.Equal(t, map[any]any{uint64(1): "x", "1": "y"}, v.(map[string]any)["k"])
+
+		var ordered any
+		require.NoError(t, codec.UnmarshalWithOptions([]byte(src), &ordered, codec.UseOrderedMap()))
+		k, _ := ordered.(codec.MapSlice).Get("k")
+		assert.Equal(t, 2, k.(codec.MapSlice).Len())
+	})
+}

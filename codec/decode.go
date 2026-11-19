@@ -1243,7 +1243,8 @@ func (d *Decoder) nodeToValue(node ast.Node) (any, error) {
 		}
 		return map[string]any{key: v}, nil
 	case *ast.MappingNode:
-		if err := refuseDuplicateKeys(n); err != nil {
+		// Under UseStringKeys an any keys its entries by name.
+		if err := refuseRepeats(n, d.useStringKeys); err != nil {
 			return nil, err
 		}
 		if d.useOrderedMap {
@@ -2203,7 +2204,12 @@ func (d *Decoder) keyToNodeMap(node ast.Node, ignoreMergeKey bool, getKeyOrValue
 	if err != nil {
 		return nil, err
 	}
-	keyMap := map[any]struct{}{}
+	// The map is keyed by name.
+	if m, isMapping := mapNode.(*ast.MappingNode); isMapping {
+		if err := refuseRepeats(m, true); err != nil {
+			return nil, err
+		}
+	}
 	keyToNodeMap := map[string]ast.Node{}
 	var merged []map[string]ast.Node
 	mapIter := mapNode.MapRange()
@@ -2234,9 +2240,8 @@ func (d *Decoder) keyToNodeMap(node ast.Node, ignoreMergeKey bool, getKeyOrValue
 			// A collection key names no field and no string-keyed entry.
 			continue
 		}
-		if err := d.validateDuplicateKey(keyMap, key, keyNode); err != nil {
-			return nil, err
-		}
+		// refuseRepeats refused a repeat the parse did not allow; one it
+		// allowed leaves the last value standing.
 		keyToNodeMap[key] = getKeyOrValueNode(mapIter)
 	}
 
@@ -2735,6 +2740,12 @@ func (d *Decoder) rangeMapEntries(src ast.Node, ignoreMergeKey bool, visit mapEn
 	mapNode, err := d.getMapNode(src, false)
 	if err != nil {
 		return err
+	}
+	// A struct names its fields, so two keys of one name are one field.
+	if m, isMapping := mapNode.(*ast.MappingNode); isMapping {
+		if err := refuseRepeats(m, true); err != nil {
+			return err
+		}
 	}
 
 	var merges []ast.Node
@@ -3530,6 +3541,14 @@ func (d *Decoder) decodeMap(dst reflect.Value, src ast.Node) error {
 		return err
 	}
 	mapType := dst.Type()
+	if m, isMapping := mapNode.(*ast.MappingNode); isMapping && !d.merging && mapType.Key().Kind() == reflect.String {
+		// A string-keyed map holds one entry for two keys of one name. A key
+		// of another type answers through admitMapKey, on the value it
+		// decodes to: 1 and 1.0 are two names and one float64.
+		if err := refuseRepeats(m, true); err != nil {
+			return err
+		}
+	}
 	mapValue := dst
 	if mapValue.IsNil() {
 		mapValue = reflect.MakeMap(mapType)

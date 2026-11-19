@@ -1345,8 +1345,8 @@ func TestFixedATypedKeyKeepsItsOwnNamespace(t *testing.T) {
 			t.Run("a typed string map refuses it as a duplicate", func(t *testing.T) {
 				var got map[string]any
 				err := codec.Unmarshal([]byte(tc.src), &got)
-				require.Error(t, err)
-				assert.Contains(t, err.Error(), `duplicate key "`+tc.merged+`"`)
+				require.ErrorIs(t, err, yamlerrors.ErrDuplicateKey)
+				assert.Contains(t, err.Error(), `"`+tc.merged+`"`)
 			})
 
 			t.Run("an `any` keeps both, under the values they resolve to", func(t *testing.T) {

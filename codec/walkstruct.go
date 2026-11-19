@@ -221,8 +221,9 @@ func (b *typedBuilder) Leave(node ast.Node, at parser.Closing) error {
 
 	if _, isMapping := node.(*ast.MappingNode); isMapping {
 		// The parser hangs the repeats on the mapping as it closes, so they are
-		// read here rather than as it opened.
-		if err := refuseDuplicateKeys(node); err != nil {
+		// read here rather than as it opened. A struct and a string-keyed map
+		// key their entries by name; a mapping no field claims holds nothing.
+		if err := refuseRepeats(node, !b.stack[len(b.stack)-1].dropped); err != nil {
 			return b.fail(err)
 		}
 		if err := b.applyMerges(&b.stack[len(b.stack)-1]); err != nil {

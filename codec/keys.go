@@ -24,12 +24,22 @@ import (
 // A parse under parser.WithJSONCompatible records one more pair: two keys that
 // YAML tells apart and JSON does not, such as "1" and "\"1\"". Those are two
 // keys rather than a repeat, so the complaint is ErrNotJSON.
-func refuseDuplicateKeys(n ast.Node) error {
+func refuseDuplicateKeys(n ast.Node) error { return refuseRepeats(n, false) }
+
+// refuseRepeats reports the first key the parse recorded as repeated on the
+// mapping for a reader that keys its entries by name, byName, or by value.
+//
+// A reader keyed by name -- a struct, a map[string]T, an inline map, an any
+// under UseStringKeys -- holds one entry for "1" and "\"1\"", two keys YAML
+// tells apart, and refuses the pair as it refuses a repeat: by default, and not
+// under AllowDuplicateMapKey, where the last of them stands. A reader keyed by
+// value holds both. See [ast.DuplicateKey.Repeats].
+func refuseRepeats(n ast.Node, byName bool) error {
 	m, ok := n.(*ast.MappingNode)
 	if !ok {
 		return nil
 	}
-	d, refused := ast.FirstRefused(m.Duplicates, false)
+	d, refused := ast.FirstRefused(m.Duplicates, byName)
 	if !refused {
 		return nil
 	}
@@ -142,6 +152,13 @@ func duplicateKeyError(d ast.DuplicateKey, tk *token.Token) error {
 		return yamlerrors.NewNotJSON(
 			fmt.Sprintf("two keys write the JSON member %q, first defined at [%d:%d]",
 				d.Name, d.FirstAt.Line, d.FirstAt.Column),
+			tk,
+		)
+	}
+
+	if d.NameOnly {
+		return yamlerrors.NewDuplicateKey(
+			fmt.Sprintf("two keys name the entry %q, first defined at [%d:%d]", d.Name, d.FirstAt.Line, d.FirstAt.Column),
 			tk,
 		)
 	}
