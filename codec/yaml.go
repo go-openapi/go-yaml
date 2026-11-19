@@ -112,6 +112,12 @@ func ValueToNode(v any, opts ...EncodeOption) (ast.Node, error) {
 //
 // See the documentation of Marshal for the format of tags and a list of
 // supported tag options.
+//
+// A value that does not fit its field, such as "a: x" into an int, is skipped
+// and decoding goes on, as encoding/json does. Unmarshal returns the first such
+// error, which matches [github.com/go-openapi/go-yaml/errors.ErrTypeMismatch],
+// and out holds everything decoded around it: the fields after it,
+// and the parts of a nested struct, slice or map read before it.
 func Unmarshal(data []byte, v any) error {
 	return UnmarshalWithOptions(data, v)
 }

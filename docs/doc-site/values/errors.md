@@ -46,6 +46,25 @@ The conditions the library distinguishes: syntax, type mismatch, overflow,
 duplicate key, unknown field, unknown anchor, recursive alias, excessive
 aliasing, unhashable key, not-JSON, and unexpected node type.
 
+## A value that does not fit its field
+
+A value of the wrong type for its field does not stop the decode. The decoder
+skips it, keeps the first such error, and decodes the rest, as `encoding/json`
+does:
+
+```go
+var v struct {
+	Port int
+	Name string
+}
+err := yaml.Unmarshal([]byte("port: eighty\nname: web\n"), &v)
+// errors.Is(err, yamlerrors.ErrTypeMismatch) is true, and v.Name is "web".
+```
+
+The destination is decoded in place. A nested struct keeps the fields it read
+before the error and the defaults you set, a slice keeps a zero value where
+the element failed, and a map keeps your own entries.
+
 ## Pointing at a value your own code rejected
 
 The parse succeeded, your validation did not, and you want the same rendering.

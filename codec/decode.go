@@ -1924,14 +1924,16 @@ func (d *Decoder) decodeValue(dst reflect.Value, src ast.Node) error {
 			return nil
 		}
 		v := d.createDecodableValue(dst.Type())
-		if err := d.decodeValue(v, src); err != nil {
-			return err
-		}
+		decodeErr := d.decodeValue(v, src)
 		castedValue, err := castToAssignableValue(v, dst.Type(), src)
 		if err != nil {
-			return err
+			return errors.Join(decodeErr, err)
 		}
+		// What decoded stands, error or not: see createDecodedNewValue.
 		dst.Set(castedValue)
+		if decodeErr != nil {
+			return decodeErr
+		}
 	case reflect.Interface:
 		if dst.Type() == astNodeType {
 			dst.Set(reflect.ValueOf(src))
@@ -2196,6 +2198,15 @@ func (d *Decoder) createDecodedNewValue(
 	}
 	if !isNullNode(node) {
 		if err := d.decodeValue(newValue, node); err != nil {
+			// The value is decoded in place, as encoding/json decodes it: what
+			// decoded before the error stands, beside the error, and the caller
+			// writes it. Handing back nothing threw away a nested struct's other
+			// fields, and a map's caller lost the entry, which SetMapIndex
+			// deletes for an invalid value.
+			if v, castErr := castToAssignableValue(newValue, typ, node); castErr == nil {
+				return v, err
+			}
+
 			return reflect.Value{}, err
 		}
 	}
@@ -2940,6 +2951,7 @@ func (d *Decoder) decodeInlineFields(
 				return err
 			}
 		}
+		setDecoded(fieldValue, newFieldValue)
 		if err != nil {
 			recordFieldError(foundErr, err, func(te *yamlerrors.Error) string {
 				leaf := te.StructField()
@@ -2949,10 +2961,7 @@ func (d *Decoder) decodeInlineFields(
 
 				return structType.Name() + "." + leaf
 			})
-
-			continue
 		}
-		fieldValue.Set(newFieldValue)
 	}
 
 	return nil
@@ -2990,6 +2999,14 @@ func inlineMapNode(entries map[string]ast.Node, fields *readFields, takesUnclaim
 	}
 
 	return mapNode
+}
+
+// setDecoded writes v, what createDecodedNewValue decoded, into dst. v is
+// invalid only where nothing decoded at all, and dst then keeps what it held.
+func setDecoded(dst, v reflect.Value) {
+	if v.IsValid() {
+		dst.Set(v)
+	}
 }
 
 // recordFieldError keeps err in foundErr unless an earlier field error is there already. A type mismatch is
@@ -3129,13 +3146,11 @@ func (d *Decoder) decodeStruct(dst reflect.Value, src ast.Node) error {
 		prevEntry := d.enterEntry(entryNode)
 		newFieldValue, err := d.createDecodedNewValue(fieldValue.Type(), fieldValue, valueNode)
 		d.entry = prevEntry
+		setDecoded(fieldValue, newFieldValue)
 		if err != nil {
 			// Only the first field error is kept, and decoding goes on, as encoding/json does.
 			recordFieldError(&foundErr, err, func(*yamlerrors.Error) string { return found.name(structType) })
-
-			return nil
 		}
-		fieldValue.Set(newFieldValue)
 
 		return nil
 	}
@@ -3280,13 +3295,12 @@ func (d *Decoder) decodeArray(dst reflect.Value, src ast.Node) error {
 			arrayValue.Index(idx).Set(reflect.Zero(elemType))
 		} else {
 			dstValue, err := d.createDecodedNewValue(elemType, reflect.Value{}, v)
-			if err != nil {
-				if foundErr == nil {
-					foundErr = err
-				}
-				continue
+			if err != nil && foundErr == nil {
+				foundErr = err
 			}
-			arrayValue.Index(idx).Set(dstValue)
+			if dstValue.IsValid() {
+				arrayValue.Index(idx).Set(dstValue)
+			}
 		}
 		idx++
 	}
@@ -3338,11 +3352,12 @@ func (d *Decoder) decodeSlice(dst reflect.Value, src ast.Node) error {
 		prevEntry := d.enterEntry(sequenceEntryNode(arrayNode, entryIdx))
 		dstValue, err := d.createDecodedNewValue(elemType, reflect.Value{}, v)
 		d.entry = prevEntry
-		if err != nil {
-			if foundErr == nil {
-				foundErr = err
-			}
-			continue
+		if err != nil && foundErr == nil {
+			foundErr = err
+		}
+		if !dstValue.IsValid() {
+			// The element decoded to nothing at all: keep its place.
+			dstValue = reflect.Zero(elemType)
 		}
 		sliceValue = reflect.Append(sliceValue, dstValue)
 	}
@@ -3612,10 +3627,13 @@ func (d *Decoder) decodeMap(dst reflect.Value, src ast.Node) error {
 		prevEntry := d.enterEntry(entry.keyValue)
 		dstValue, err := d.createDecodedNewValue(valueType, reflect.Value{}, value)
 		d.entry = prevEntry
-		if err != nil {
-			if foundErr == nil {
-				foundErr = err
-			}
+		if err != nil && foundErr == nil {
+			foundErr = err
+		}
+		if !dstValue.IsValid() {
+			// SetMapIndex deletes the key for an invalid value, which took the
+			// caller's own entry away with it.
+			continue
 		}
 		if !k.IsValid() {
 			// expect nil key

@@ -11,6 +11,7 @@ import (
 
 	"github.com/go-openapi/go-yaml/codec"
 	yamlerrors "github.com/go-openapi/go-yaml/errors"
+	"github.com/go-openapi/testify/v2/assert"
 	"github.com/go-openapi/testify/v2/require"
 )
 
@@ -532,5 +533,73 @@ func TestAnInlineMapKeepsAKeyThatIsNotAString(t *testing.T) {
 			require.Equal(t, "nm", v.Name)
 			require.Equal(t, whole, v.Rest)
 		})
+	}
+}
+
+// TestAFailedValueStandsAsFarAsItDecoded holds both decode paths to
+// encoding/json's rule for a value that does not fit its field: the decode
+// writes in place, keeps the first error, and decodes everything after it. What
+// decoded before the error stands. A nested struct keeps the fields it read and
+// the caller's other defaults, an element keeps its place, and a map keeps the
+// caller's entries.
+//
+// The tree decoded each value into a copy and wrote it only on success, so a
+// nested struct lost the fields it had read, a slice field came back empty and
+// a map lost the caller's entry under the failing key.
+func TestAFailedValueStandsAsFarAsItDecoded(t *testing.T) {
+	type leaf struct {
+		S string `yaml:"s"`
+		I int64  `yaml:"i"`
+	}
+	type shape struct {
+		Name   string             `yaml:"name"`
+		Leaf   leaf               `yaml:"leaf"`
+		Ptr    *leaf              `yaml:"ptr"`
+		List   []leaf             `yaml:"list"`
+		ByName map[string]leaf    `yaml:"byName"`
+		Counts map[string][]int64 `yaml:"counts"`
+	}
+	preset := func() shape {
+		return shape{
+			Leaf:   leaf{S: "pre", I: 7},
+			ByName: map[string]leaf{"a": {S: "pre"}, "z": {S: "kept"}},
+			Counts: map[string][]int64{"a": {9}, "z": {8}},
+		}
+	}
+	paths := map[string][]codec.DecodeOption{
+		"walk": nil,
+		// A custom unmarshaler turns the walk off, and no field holds a chan int.
+		"tree": {codec.CustomUnmarshaler[chan int](func(*chan int, []byte) error { return nil })},
+	}
+	for _, tc := range []struct {
+		name, src string
+		want      func(*shape)
+	}{
+		{"a nested struct", "leaf: {s: new, i: x}\nname: after\n", func(v *shape) {
+			v.Leaf.S, v.Name = "new", "after"
+		}},
+		{"a pointer", "ptr: {s: new, i: x}\n", func(v *shape) { v.Ptr = &leaf{S: "new"} }},
+		{"a slice element", "list: [{s: a}, {i: x}, {s: c}]\n", func(v *shape) {
+			v.List = []leaf{{S: "a"}, {}, {S: "c"}}
+		}},
+		{"a map value", "byName: {a: {s: new, i: x}, b: {s: b}}\n", func(v *shape) {
+			v.ByName = map[string]leaf{"a": {S: "new"}, "b": {S: "b"}, "z": {S: "kept"}}
+		}},
+		{"a slice in a map", "counts: {a: [1, x, 3]}\n", func(v *shape) {
+			v.Counts = map[string][]int64{"a": {1, 0, 3}, "z": {8}}
+		}},
+		{"a scalar field", "leaf: {i: x, s: new}\n", func(v *shape) { v.Leaf.S = "new" }},
+	} {
+		for path, opts := range paths {
+			t.Run(path+"/"+tc.name, func(t *testing.T) {
+				want := preset()
+				tc.want(&want)
+
+				got := preset()
+				err := codec.NewDecoder(strings.NewReader(tc.src), opts...).Decode(&got)
+				require.ErrorIs(t, err, yamlerrors.ErrTypeMismatch)
+				assert.Equal(t, want, got)
+			})
+		}
 	}
 }
