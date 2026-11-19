@@ -97,7 +97,6 @@ func TestATagTheWalkCannotReadGoesToTheTree(t *testing.T) {
 		"an anchor inside a tagged node": "leaf: !!map {s: &s x}\nname: *s\n",
 		"an alias inside a tagged node":  "name: &n x\nleaf: !!map {s: *n}\n",
 		"a tag on an anchor":             "name: !!str &n 1\nplain: {k: *n}\n",
-		"a tagged key":                   "plain: {!!str 1: v}\n",
 	} {
 		t.Run(name, func(t *testing.T) {
 			r := decodeBothWays(t, src)

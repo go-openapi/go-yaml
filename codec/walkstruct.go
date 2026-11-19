@@ -20,9 +20,9 @@ import (
 // errNeedsTheTree says a document or a destination this walk cannot serve.
 // The decode reads the source again and builds a tree for it.
 //
-// SPIKE. It falls back on explicit "?" keys, a tagged key, a tagged node that
-// holds an anchor or an alias or that the tree decoder refuses, an anchor or an
-// alias used as a key or inside an "any", and on
+// SPIKE. It falls back on a tagged node that holds an anchor or an alias or
+// that the tree decoder refuses, an anchor or an alias used as a key or inside
+// an "any", and on
 // any destination holding an interface, a custom unmarshaler, an ast.Node, a
 // non-string map key, or a Go kind the setter below does not write.
 var errNeedsTheTree = errors.New("this decode needs the tree")
@@ -133,6 +133,9 @@ type typedBuilder struct {
 	tagInto reflect.Value
 	opts    []DecodeOption
 	nodes   *Decoder
+	// naming says the walk holds a key whole, an explicit "?" or a tagged
+	// one, for Leave to name the entry by. See keepKey.
+	naming bool
 }
 
 // holdsAnything reports a destination that takes whatever the document writes.
@@ -169,14 +172,17 @@ func (b *typedBuilder) Enter(node ast.Node, at parser.Cursor) error {
 
 		return b.alias(n)
 	case *ast.TagNode:
-		if b.values == nil && at.IsKey() {
-			// A tagged key names its entry through the tag, which openEntry
-			// does not read.
-			return b.fail(errNeedsTheTree)
+		if b.values == nil && at.IsKey() && len(b.stack) > 0 {
+			return b.keepKey(&b.stack[len(b.stack)-1])
 		}
 	case *ast.MappingKeyNode:
-		// A property this walk does not read yet.
-		return b.fail(errNeedsTheTree)
+		if b.values == nil {
+			if !at.IsKey() || len(b.stack) == 0 {
+				return b.fail(errNeedsTheTree)
+			}
+
+			return b.keepKey(&b.stack[len(b.stack)-1])
+		}
 	case *ast.CommentGroupNode:
 		return parser.ErrSkipNode
 	}
@@ -226,6 +232,12 @@ func (b *typedBuilder) Leave(node ast.Node, at parser.Closing) error {
 		b.tagging = false
 
 		return b.decodeTagged(node)
+	}
+	if b.naming {
+		// Nothing inside a kept node is handed over, so this Leave is its own.
+		b.naming = false
+
+		return b.openKeptEntry(node)
 	}
 	if b.keeping {
 		// Nothing inside a kept node is handed over, so this Leave is its own.
@@ -906,6 +918,35 @@ func (b *typedBuilder) scalar(node ast.Node, dst reflect.Value, wanted bool) err
 	return parser.ErrSkipNode
 }
 
+// keepKey holds an explicit "?" key or a tagged key whole, for openKeptEntry to
+// name the entry by at its Leave.
+//
+// Both enclose the key's content and are handed over as they open, before the
+// content is read. ast.KeyName looks through the "?" and reads the tag, as the
+// tree decoder names the entry, so the whole key gives the name.
+func (b *typedBuilder) keepKey(top *typedFrame) error {
+	if top.dropped {
+		return parser.ErrSkipNode
+	}
+	b.naming = true
+
+	return parser.ErrKeepNode
+}
+
+// openKeptEntry opens the entry the key keepKey held names. A key holding an
+// anchor or an alias goes to the tree, which records the anchor and reads
+// the alias.
+func (b *typedBuilder) openKeptEntry(key ast.Node) error {
+	if shapeOf(key).named {
+		return b.fail(errNeedsTheTree)
+	}
+	if err := b.openEntry(&b.stack[len(b.stack)-1], key); !errors.Is(err, parser.ErrSkipNode) {
+		return err
+	}
+
+	return nil
+}
+
 // keepTagged holds a tagged node whole, for decodeTagged to read at its Leave.
 //
 // A tag changes what its node decodes to -- "!!str 1" is a string, "!!binary"
@@ -1344,6 +1385,7 @@ func (b *typedBuilder) reset(root reflect.Value) {
 	clear(b.anchors)
 	b.keeping, b.pending = false, 0
 	b.tagging, b.tagInto = false, reflect.Value{}
+	b.naming = false
 }
 
 // typedWalkEnabled turns the spike on. SPIKE.
