@@ -25,7 +25,8 @@
 //
 // A repeated mapping key does not stop the parse: the parser records it in the Duplicates of the [ast.MappingNode],
 // and the decoder rejects the document with [github.com/go-openapi/go-yaml/errors.ErrDuplicateKey].
-// Use [WithAllowDuplicateMapKey] to accept duplicate keys (last wins).
+// Use [WithAllowDuplicateMapKey] to accept duplicate keys:
+// a decoder keeps the last value, and a converter writing JSON as it reads keeps the first.
 //
 // # Errors
 //

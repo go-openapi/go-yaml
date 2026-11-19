@@ -49,6 +49,25 @@ A non-string scalar key is stringified, which can produce a duplicate JSON name:
 `parser.WithJSONCompatible` reports that pair as `ErrNotJSON` rather than letting
 it through.
 
+## Repeated keys
+
+A document that repeats a mapping key is refused, by the converters as by the
+decoder. Pass `parser.WithAllowDuplicateMapKey` to accept it:
+
+```go
+out, err := codec.ToJSON([]byte("a: 1\na: 2\n"), parser.WithAllowDuplicateMapKey())
+// out: {"a":1}
+```
+
+The converter keeps the **first** value, where `codec.AllowDuplicateMapKey` makes
+a decoder keep the last. `ToJSONTokens` hands each token over as the parse reaches
+it, so the first value is already with the caller when the repeat is read, and
+`ToJSON` writes the same tokens. Keeping the last value would mean holding back
+every mapping until it closes, which a streaming converter does not do.
+
+A document read both ways under the option can therefore give two values for one
+key. Leave the option off where the JSON and a decoded value must agree.
+
 ## Go values from a tree
 
 `codec.NodeToValue` fills a Go value from a node you already have, and

@@ -32,7 +32,7 @@ document has one entry; `---` starts another.
 | `WithAnchors` | publishes anchors declared in another parse |
 | `WithMergeKeys` | resolves a bare `<<` as a merge key at any version, and changes nothing else |
 | `WithLaxTags` | reads `!!int abc` as the text `abc` instead of refusing the document |
-| `WithAllowDuplicateMapKey` | accepts a repeated key instead of refusing it |
+| `WithAllowDuplicateMapKey` | accepts a repeated key instead of refusing it: a decoder keeps the last value, `ToJSON` keeps the first |
 | `WithJSONCompatible` | reports `1:` and `"1":` in one mapping as `ErrNotJSON`, since both write the JSON name `"1"` |
 | `WithOmitNodePaths` | stops recording each node's path |
 | `WithChunkSize` | how many tokens one chunk of the token arena holds |

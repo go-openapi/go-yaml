@@ -39,6 +39,10 @@ import (
 // [github.com/go-openapi/go-yaml/parser.WithJSONCompatible] is always on and
 // cannot be turned off: a document JSON has no spelling for is refused rather
 // than given one this converter invented.
+//
+// Under [github.com/go-openapi/go-yaml/parser.WithAllowDuplicateMapKey] a
+// repeated key keeps its first value, as in [ToJSONTokens], where a decoder
+// keeps the last.
 func ToJSON(src []byte, opts ...parser.Option) ([]byte, error) {
 	// The JSON runs from half the source to a little under it on the workload
 	// corpus -- 0.51x on golang_source, 0.93x on twitter_status -- so the

@@ -158,6 +158,11 @@ type jsonPathFrame struct {
 // opts are passed to the parse. [github.com/go-openapi/go-yaml/parser.WithJSONCompatible]
 // is always on and cannot be turned off.
 //
+// A document that repeats a mapping key is refused, as [Unmarshal] refuses it.
+// Under [github.com/go-openapi/go-yaml/parser.WithAllowDuplicateMapKey] the conversion keeps the first entry and
+// drops the later one, where a decoder under [AllowDuplicateMapKey] keeps the last value.
+// The first entry's tokens are handed over before the repeat is read, and cannot be taken back.
+//
 // Nothing is read until [JSONTokens.Tokens] is ranged over, and ranging twice
 // converts twice.
 func ToJSONTokens(src []byte, opts ...parser.Option) *JSONTokens {

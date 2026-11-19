@@ -82,7 +82,22 @@ func AllowFieldPrefixes(prefixes ...string) DecodeOption {
 	}
 }
 
-// AllowDuplicateMapKey ignore syntax error when mapping keys that are duplicates.
+// AllowDuplicateMapKey accepts a document that repeats a mapping key, and keeps the last value written under it.
+//
+// By default a repeated key fails the decode with [github.com/go-openapi/go-yaml/errors.ErrDuplicateKey],
+// as YAML 1.2.2 section 3.2.1.1 requires.
+// Under this option a Go map and a struct field hold the last value,
+// and a [MapSlice] holds it at the place the key was first written.
+//
+// Two keys that YAML tells apart and that share one name, such as 1 and "1", are a repeat for a destination keyed
+// by name: a struct, a map[string]T, an inline map, or an any under [UseStringKeys].
+// An any and a [MapSlice] key their entries by value and hold both, with or without this option.
+//
+// [ToJSON] and [ToJSONTokens] keep the first value instead,
+// under [github.com/go-openapi/go-yaml/parser.WithAllowDuplicateMapKey].
+// They hand each token over as the parse reaches it, so the first value has gone to the caller before the repeat
+// is read. A document read both ways under the option can therefore give two values for one repeated key.
+// Leave the option off where a decode and a conversion must agree.
 func AllowDuplicateMapKey() DecodeOption {
 	return func(d *Decoder) error {
 		d.allowDuplicateMapKey = true

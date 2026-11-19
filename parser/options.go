@@ -52,6 +52,12 @@ func WithComments() Option {
 // and by default a load rejects the document with [github.com/go-openapi/go-yaml/errors.ErrDuplicateKey].
 // Under this option each repeat is marked [ast.DuplicateKey.Allowed] and the load keeps one entry:
 // a decoder filling a Go map keeps the last, a converter writing JSON keeps the first.
+// Two keys that share a name and not a node, such as 1 and "1", are marked the same way:
+// see [ast.DuplicateKey.NameOnly].
+//
+// The converter cannot keep the last: [github.com/go-openapi/go-yaml/codec.ToJSONTokens] hands each token to its
+// caller as the parse reaches it, so the first value has gone by the time the repeat is read.
+// Keeping the last would mean holding back every mapping until it closes.
 func WithAllowDuplicateMapKey() Option {
 	return func(p *Parser) {
 		p.opts.allowDuplicateMapKey = true

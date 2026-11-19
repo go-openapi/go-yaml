@@ -15,9 +15,26 @@ Options go to `codec.UnmarshalWithOptions` for one call, or to
 |---|---|
 | `DisallowUnknownField()` | a key matching no exported field is an error |
 | `AllowFieldPrefixes(p...)` | a key beginning with one of `p` escapes that check |
-| `AllowDuplicateMapKey()` | a repeated key is accepted; the last one wins |
+| `AllowDuplicateMapKey()` | a repeated key is accepted; the last value wins |
 | `Validator(v)` | runs a `StructValidator` over the decoded struct |
 | `Strict()` | **only** `DisallowUnknownField` |
+
+{{% notice style="warning" title="A repeated key keeps the last value here, and the first in `ToJSON`" %}}
+Under `AllowDuplicateMapKey`, `a: 1` followed by `a: 2` decodes to `a: 2`. A `MapSlice` keeps the
+value at the place the key was first written.
+
+`codec.ToJSON` and `codec.ToJSONTokens`, given `parser.WithAllowDuplicateMapKey`, write
+`{"a":1}` instead. They hand each token to the caller as the parse reaches it, so `"a":1` has
+gone out before the repeat is read, and cannot be taken back. Keeping the last value would mean
+holding back every mapping until it closes.
+
+So a document read both ways under the option can give two values for one key. Leave the option
+off where a decode and a conversion must agree.
+
+Two keys YAML tells apart that share one name, such as `1` and `"1"`, are a repeat for a
+destination keyed by name: a struct, a `map[string]T`, an inline map, or an `any` under
+`UseStringKeys`. An `any` and a `MapSlice` key entries by value and hold both.
+{{% /notice %}}
 
 {{% notice style="warning" title="`Strict()` is one option, not a posture" %}}
 `Strict()` enables `DisallowUnknownField` and nothing else. It does not refuse
