@@ -178,4 +178,18 @@ func RegisterCustomUnmarshaler[T any](unmarshaler func(*T, []byte) error) {
 	globalCustomUnmarshalerMap[reflect.TypeOf(typ)] = func(v any, b []byte) error {
 		return unmarshaler(customArg[*T](v), b)
 	}
+	// A type walkableType read before the registration may hold T.
+	for mode := range walkableTypes {
+		walkableTypes[mode].Clear()
+	}
+}
+
+// registeredUnmarshaler reports whether RegisterCustomUnmarshaler holds a
+// function for the type ptr, a pointer to the type it was registered for.
+func registeredUnmarshaler(ptr reflect.Type) bool {
+	globalCustomUnmarshalerMu.Lock()
+	defer globalCustomUnmarshalerMu.Unlock()
+	_, exists := globalCustomUnmarshalerMap[ptr]
+
+	return exists
 }

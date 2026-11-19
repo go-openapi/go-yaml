@@ -1152,3 +1152,36 @@ func TestAnInlineFieldThatUnmarshalsItselfIsRendered(t *testing.T) {
 	assert.True(t, v.Leaf.Seen, "the field read the mapping itself")
 	assert.Equal(t, "T", v.Tail, "and the rest of the struct is filled too")
 }
+
+type registeredLeaf struct {
+	Foo string `yaml:"foo"`
+}
+
+// TestARegisteredUnmarshalerReadsItsTypeOnEveryPath holds every decode path
+// to RegisterCustomUnmarshaler, for the type at the root and as a field. The
+// walk wrote the type's fields from the document and never called the
+// function, where the tree called it.
+func TestARegisteredUnmarshalerReadsItsTypeOnEveryPath(t *testing.T) {
+	codec.RegisterCustomUnmarshaler[registeredLeaf](func(v *registeredLeaf, _ []byte) error {
+		v.Foo = "override"
+
+		return nil
+	})
+	type holder struct {
+		Leaf registeredLeaf `yaml:"leaf"`
+	}
+	// A custom unmarshaler turns the walk off, and no field holds a chan int.
+	tree := codec.CustomUnmarshaler[chan int](func(*chan int, []byte) error { return nil })
+
+	for name, opts := range map[string][]codec.DecodeOption{"walk": nil, "tree": {tree}} {
+		t.Run(name, func(t *testing.T) {
+			var root registeredLeaf
+			require.NoError(t, codec.UnmarshalWithOptions([]byte("foo: bar\n"), &root, opts...))
+			assert.Equal(t, "override", root.Foo)
+
+			var field holder
+			require.NoError(t, codec.UnmarshalWithOptions([]byte("leaf: {foo: bar}\n"), &field, opts...))
+			assert.Equal(t, "override", field.Leaf.Foo)
+		})
+	}
+}

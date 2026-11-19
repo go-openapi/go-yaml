@@ -38,3 +38,8 @@ func (c *typeCache[V]) LoadOrStore(t reflect.Type, v V) V {
 func (c *typeCache[V]) Store(t reflect.Type, v V) {
 	c.m.Store(t, v)
 }
+
+// Clear forgets every value stored.
+func (c *typeCache[V]) Clear() {
+	c.m.Clear()
+}

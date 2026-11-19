@@ -1391,6 +1391,11 @@ func readWalkable(t reflect.Type, seen map[reflect.Type]bool, mode tagMode) bool
 		return false
 	}
 	pointer := reflect.PointerTo(t)
+	if registeredUnmarshaler(pointer) {
+		// RegisterCustomUnmarshaler: the tree decoder hands the node's text to
+		// the function, which the walk has no node for.
+		return false
+	}
 	for _, iface := range unmarshalerTypes {
 		if t.Implements(iface) || pointer.Implements(iface) {
 			return false
