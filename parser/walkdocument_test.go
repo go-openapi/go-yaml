@@ -4,8 +4,10 @@
 package parser_test
 
 import (
+	"errors"
 	"iter"
 	"slices"
+	"strconv"
 	"testing"
 
 	"github.com/go-openapi/testify/v2/assert"
@@ -142,3 +144,121 @@ func (e *everyStep) Enter(_ ast.Node, at parser.Cursor) error {
 }
 
 func (e *everyStep) Leave(ast.Node, parser.Closing) error { return nil }
+
+// TestLeaveDocumentEndsEachDocument checks that a DocumentVisitor hears of every document of the stream once it is
+// read, in order, between the last Leave of one document and the first Enter of the next.
+//
+// An empty document hands no node over, so without LeaveDocument a visitor cannot see it at all, and sees the end
+// of any other document only once the next one hands its root over.
+func TestLeaveDocumentEndsEachDocument(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name, src string
+		want      []string
+	}{
+		{
+			name: "two documents",
+			src:  "a: 1\n---\nb: 2\n",
+			want: []string{"enter 0", "leave 0", "document 0", "enter 1", "leave 1", "document 1"},
+		},
+		{
+			name: "an empty document between two",
+			src:  "a: 1\n---\n---\nb: 2\n",
+			want: []string{"enter 0", "leave 0", "document 0", "document 1", "enter 2", "leave 2", "document 2"},
+		},
+		{
+			name: "a directive line is a document of its own",
+			src:  "%YAML 1.2\n---\na: 1\n",
+			want: []string{"enter 0", "leave 0", "document 0", "enter 1", "leave 1", "document 1"},
+		},
+		{
+			name: "an empty source holds one document",
+			src:  "",
+			want: []string{"document 0"},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			v := &documentEnds{}
+			f, err := parser.New(parser.WithOmitNodePaths()).Walk([]byte(tc.src), v)
+			require.NoError(t, err)
+
+			assert.Equal(t, tc.want, v.events)
+			assert.Len(t, v.docs, len(f.Docs), "one call for each document the walk returns")
+			for i, doc := range v.docs {
+				assert.Same(t, f.Docs[i], doc, "document %d", i)
+			}
+		})
+	}
+}
+
+// TestLeaveDocumentStopsTheWalk checks the two ways LeaveDocument ends a walk: ErrStopWalk after the document,
+// with no error, and any other error, which Walk returns.
+func TestLeaveDocumentStopsTheWalk(t *testing.T) {
+	t.Parallel()
+
+	// The second document would be refused, so a walk that read it would fail.
+	const src = "a: 1\n---\nb: [\n"
+
+	t.Run("ErrStopWalk ends the walk after the document", func(t *testing.T) {
+		t.Parallel()
+
+		v := &documentEnds{stopAt: 0, stop: parser.ErrStopWalk}
+		f, err := parser.New(parser.WithOmitNodePaths()).Walk([]byte(src), v)
+		require.NoError(t, err, "the parse never reads the broken document")
+
+		require.NotNil(t, f)
+		assert.Len(t, f.Docs, 1, "the file ends with the document the walk stopped after")
+		assert.Equal(t, []string{"enter 0", "leave 0", "document 0"}, v.events)
+	})
+
+	t.Run("an error stops the walk and Walk returns it", func(t *testing.T) {
+		t.Parallel()
+
+		v := &documentEnds{stopAt: 0, stop: errLeftTheDocument}
+		_, err := parser.New(parser.WithOmitNodePaths()).Walk([]byte("a: 1\n---\nb: 2\n"), v)
+		require.ErrorIs(t, err, errLeftTheDocument)
+
+		assert.Equal(t, []string{"enter 0", "leave 0", "document 0"}, v.events,
+			"nothing more is handed over, and LeaveDocument is not called again")
+	})
+}
+
+var errLeftTheDocument = errors.New("left the document")
+
+// documentEnds records the roots it is handed and the documents it is told have ended, in order. It returns stop
+// from the LeaveDocument of document stopAt, when stop is set.
+type documentEnds struct {
+	events []string
+	docs   []*ast.DocumentNode
+	stopAt int
+	stop   error
+}
+
+func (d *documentEnds) Enter(_ ast.Node, at parser.Cursor) error {
+	if at.IsRoot() {
+		d.events = append(d.events, "enter "+strconv.Itoa(at.Document()))
+	}
+
+	return nil
+}
+
+func (d *documentEnds) Leave(_ ast.Node, at parser.Closing) error {
+	if at.IsRoot() {
+		d.events = append(d.events, "leave "+strconv.Itoa(at.Document()))
+	}
+
+	return nil
+}
+
+func (d *documentEnds) LeaveDocument(doc *ast.DocumentNode, n int) error {
+	d.events = append(d.events, "document "+strconv.Itoa(n))
+	d.docs = append(d.docs, doc)
+	if d.stop != nil && n == d.stopAt {
+		return d.stop
+	}
+
+	return nil
+}

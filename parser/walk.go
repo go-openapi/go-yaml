@@ -71,8 +71,8 @@ type Cursor interface {
 	In() Kind
 	// IsRoot reports the body of a document, which nothing encloses.
 	//
-	// The walk hands no DocumentNode over, so a consumer reads this and Document to see one document end
-	// and the next begin.
+	// The walk hands no DocumentNode over, so a consumer reads this and Document to see the next document begin.
+	// Implement [DocumentVisitor] to be told when one ends, which an empty document also does.
 	IsRoot() bool
 	// IsKey reports that the node is a mapping key, and that its value is the next handover in the same mapping.
 	// A key and its value are two handovers of one entry, and nothing on the node tells them apart.
@@ -182,10 +182,30 @@ type Visitor interface {
 	Leave(node ast.Node, at Closing) error
 }
 
+// DocumentVisitor is a [Visitor] that is also told where each document of the stream ends.
+//
+// [Parser.Walk] calls LeaveDocument once the parse has read a document: after the Leave of its body, and before
+// the next document opens. It is called for every entry of the Docs of the [ast.File] that Walk returns, an empty
+// document and one holding only a "%YAML" or "%TAG" directive included, and n is the index [Cursor.Document] gave
+// the document's nodes.
+//
+// doc is valid until LeaveDocument returns, as a node is until its Leave returns. Its Body is the node the walk
+// handed over, without its content.
+//
+// Return [ErrStopWalk] to end the walk after this document: Walk returns no error and a file ending with doc.
+// Return any other error to stop the walk, as from Leave.
+// LeaveDocument is not called once a visitor has stopped the walk or returned an error.
+type DocumentVisitor interface {
+	Visitor
+	LeaveDocument(doc *ast.DocumentNode, n int) error
+}
+
 // walkState holds the state of a walk.
 // It is nil when the parse is not walking, and every hook below then returns at once.
 type walkState struct {
 	visitor Visitor
+	// documents is visitor as a [DocumentVisitor], or nil when it is not one.
+	documents DocumentVisitor
 	// in and index hold the collection at each depth and the node's entry number within it.
 	// key records whether the node opened at that depth was a mapping key, so that Leave repeats what Enter reported.
 	in    []Kind
@@ -299,6 +319,7 @@ func (p *Parser) Walk(src []byte, v Visitor) (*ast.File, error) {
 	}
 	p.used = true
 	p.walk = &walkState{visitor: v, keys: &p.keys, keyBase: -1}
+	p.walk.documents, _ = v.(DocumentVisitor)
 	defer func() { p.walk = nil }()
 
 	p.begin(src)
@@ -382,6 +403,16 @@ func (p *Parser) openWalkDocument(n int) {
 		return
 	}
 	p.walk.document = n
+}
+
+// leaveDocument tells a [DocumentVisitor] that the parse has read doc, the nth document of the stream.
+func (p *Parser) leaveDocument(doc *ast.DocumentNode, n int) {
+	if p.walk == nil || p.walk.documents == nil || p.walk.done() {
+		return
+	}
+	if err := p.walk.documents.LeaveDocument(doc, n); err != nil {
+		p.walk.fail(err)
+	}
 }
 
 // releaseDocument releases the chunks the document's anchors saved.

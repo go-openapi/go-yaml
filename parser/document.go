@@ -107,6 +107,7 @@ func (p *Parser) parse(ctx context) (*ast.File, error) {
 			break
 		}
 		file.Docs = append(file.Docs, doc)
+		p.leaveDocument(doc, len(file.Docs)-1)
 
 		// An alias names an anchor of its own document, so the tokens this document saved are released here.
 		p.releaseDocument()
