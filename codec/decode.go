@@ -1861,7 +1861,7 @@ func (d *Decoder) decodeValue(dst reflect.Value, src ast.Node) error {
 		if err := d.decodeValue(v, src); err != nil {
 			return err
 		}
-		castedValue, err := d.castToAssignableValue(v, dst.Type(), src)
+		castedValue, err := castToAssignableValue(v, dst.Type(), src)
 		if err != nil {
 			return err
 		}
@@ -2028,7 +2028,11 @@ func (d *Decoder) keyToKeyNodeMap(node ast.Node, ignoreMergeKey bool) (map[strin
 }
 */
 
-func (d *Decoder) castToAssignableValue(value reflect.Value, target reflect.Type, src ast.Node) (reflect.Value, error) {
+// castToAssignableValue returns value in a form a target of type target can hold:
+// value itself where it is assignable, or, for a pointer target, its address,
+// taken up to five times. It reports a type mismatch at src otherwise. This is
+// how an alias reuses its anchor's value under ShareAliases.
+func castToAssignableValue(value reflect.Value, target reflect.Type, src ast.Node) (reflect.Value, error) {
 	if target.Kind() != reflect.Pointer {
 		if !value.Type().AssignableTo(target) {
 			return reflect.Value{}, yamlerrors.NewTypeMismatch(target, value.Type(), src.GetToken())
@@ -2062,7 +2066,7 @@ func (d *Decoder) castToAssignableValue(value reflect.Value, target reflect.Type
 func (d *Decoder) aliasedValue(alias *ast.AliasNode, typ reflect.Type) (reflect.Value, ast.Node, bool) {
 	target, name := d.aliasTarget(alias)
 	if value := d.anchorValueMap[name]; value.IsValid() && (d.shareAliases || target == nil) {
-		if v, err := d.castToAssignableValue(value, typ, alias); err == nil {
+		if v, err := castToAssignableValue(value, typ, alias); err == nil {
 			return v, nil, true
 		}
 	}
@@ -2120,7 +2124,7 @@ func (d *Decoder) createDecodedNewValue(
 			return reflect.Value{}, err
 		}
 	}
-	return d.castToAssignableValue(newValue, typ, node)
+	return castToAssignableValue(newValue, typ, node)
 }
 
 func (d *Decoder) keyToNodeMap(node ast.Node, ignoreMergeKey bool, getKeyOrValueNode func(*ast.MapNodeIter) ast.Node) (map[string]ast.Node, error) {
@@ -2862,7 +2866,7 @@ func (d *Decoder) setAliasedField(fieldValue reflect.Value, aliasName string) er
 	if !anchored.IsValid() {
 		return nil
 	}
-	value, err := d.castToAssignableValue(anchored, fieldValue.Type(), d.anchorNodeMap[aliasName])
+	value, err := castToAssignableValue(anchored, fieldValue.Type(), d.anchorNodeMap[aliasName])
 	if err != nil {
 		return err
 	}

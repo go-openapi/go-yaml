@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/go-openapi/go-yaml/ast"
+	yamlerrors "github.com/go-openapi/go-yaml/errors"
 	"github.com/go-openapi/go-yaml/parser"
 	"github.com/go-openapi/go-yaml/token"
 )
@@ -33,9 +34,18 @@ const (
 	typedSlice
 	// typedAnchor stands for an anchor around one node. It holds the
 	// destination the node writes into, read once as the anchor opens, and
-	// passes the node's value on to the collection around it as it closes.
+	// passes the node's value on to the collection around it as it closes. An
+	// alias decoded from its anchor's node uses one too, with no name.
 	typedAnchor
 )
+
+// typedAnchored is what an anchor of the document named, for an alias to name
+// again: a clone of the node, which the parse reuses once the anchor's Leave
+// returns, and the value the walk wrote for it.
+type typedAnchored struct {
+	node  ast.Node
+	value reflect.Value
+}
 
 type typedFrame struct {
 	kind typedFrameKind
@@ -56,8 +66,10 @@ type typedFrame struct {
 	// is looked up at all.
 	skip    bool
 	dropped bool
-	// got says the node under an anchor has settled, into out.
-	got bool
+	// got says the node under an anchor has settled, into out. name is the
+	// anchor's, and empty for the frame an alias decodes into.
+	got  bool
+	name string
 }
 
 // typedBuilder fills a Go value as the parse hands the document over, without
@@ -80,7 +92,16 @@ type typedBuilder struct {
 	values  *valueBuilder
 	anyInto reflect.Value
 	share   bool
-	budget  int
+	// budget bounds the nodes decoded again for an alias over the whole
+	// stream, and built counts them. See aliasBudget.
+	budget int
+	built  int
+	// anchors holds what each anchor of the document named, and is emptied at
+	// each document, since an anchor belongs to one. replaying counts the
+	// aliases being decoded from their anchor's node, during which an anchor
+	// inside that node is not recorded again.
+	anchors   map[string]typedAnchored
+	replaying int
 }
 
 // holdsAnything reports a destination that takes whatever the document writes.
@@ -89,7 +110,7 @@ func holdsAnything(v reflect.Value) bool {
 }
 
 func (b *typedBuilder) Enter(node ast.Node, at parser.Cursor) error {
-	switch node.(type) {
+	switch n := node.(type) {
 	case *ast.AnchorNode:
 		if b.values != nil || at.IsKey() {
 			// Inside an "any" subtree, the nested builder would read the anchor
@@ -98,9 +119,17 @@ func (b *typedBuilder) Enter(node ast.Node, at parser.Cursor) error {
 			return b.fail(errNeedsTheTree)
 		}
 
-		return b.openAnchor()
-	case *ast.AliasNode, *ast.TagNode, *ast.MappingKeyNode:
-		// An alias, or a property this walk does not read yet.
+		return b.openAnchor(anchorName(n.Name))
+	case *ast.AliasNode:
+		if b.values != nil || at.IsKey() {
+			// Inside an "any" subtree, see the anchor above. An alias as a key
+			// names its entry through the anchor's node.
+			return b.fail(errNeedsTheTree)
+		}
+
+		return b.alias(n)
+	case *ast.TagNode, *ast.MappingKeyNode:
+		// A property this walk does not read yet.
 		return b.fail(errNeedsTheTree)
 	case *ast.CommentGroupNode:
 		return parser.ErrSkipNode
@@ -144,10 +173,10 @@ func (b *typedBuilder) Leave(node ast.Node, at parser.Closing) error {
 	if b.values != nil {
 		return b.forwardLeave(node, at)
 	}
-	switch node.(type) {
+	switch n := node.(type) {
 	case *ast.MappingNode, *ast.SequenceNode:
 	case *ast.AnchorNode:
-		return b.closeAnchor()
+		return b.closeAnchor(n)
 	default:
 		return nil
 	}
@@ -275,19 +304,25 @@ func (b *typedBuilder) settle(v reflect.Value) {
 //
 // The destination is read here, once, and the node takes it from the frame: a
 // sequence makes an element each time it is asked for one.
-func (b *typedBuilder) openAnchor() error {
+func (b *typedBuilder) openAnchor(name string) error {
 	dst, wanted := b.destination()
-	b.stack = append(b.stack, typedFrame{kind: typedAnchor, target: dst, skip: !wanted})
+	b.stack = append(b.stack, typedFrame{kind: typedAnchor, target: dst, skip: !wanted, name: name})
 
 	return nil
 }
 
 // closeAnchor hands what the anchored node wrote to the collection around the
-// anchor.
-func (b *typedBuilder) closeAnchor() error {
+// anchor, and records the anchor for the aliases after it.
+//
+// The node is cloned here because the parse hands its cells out again once
+// Leave returns, and an alias further on would read another part of the
+// document through them. The clone costs the anchored subtrees and nothing
+// else.
+func (b *typedBuilder) closeAnchor(n *ast.AnchorNode) error {
 	frame := b.stack[len(b.stack)-1]
 	b.stack = b.stack[:len(b.stack)-1]
 	if frame.skip {
+		b.record(frame.name, n, reflect.Value{})
 		b.settle(reflect.Value{})
 
 		return nil
@@ -297,10 +332,141 @@ func (b *typedBuilder) closeAnchor() error {
 		// over on its own: "&a" alone, or "&a !!str 1".
 		return b.fail(errNeedsTheTree)
 	}
+	b.record(frame.name, n, frame.out)
 	b.settle(frame.out)
 
 	return nil
 }
+
+// record keeps what anchor n named. An anchor inside the node an alias is
+// decoded from was recorded where the document wrote it, and stays as it was.
+func (b *typedBuilder) record(name string, n *ast.AnchorNode, value reflect.Value) {
+	if name == "" || b.replaying > 0 {
+		return
+	}
+	if b.anchors == nil {
+		b.anchors = map[string]typedAnchored{}
+	}
+	b.anchors[name] = typedAnchored{node: ast.Clone(n.Value), value: value}
+}
+
+// alias writes what alias n names into the destination it stands at.
+//
+// Under ShareAliases it hands over the value the anchor wrote, wherever
+// castToAssignableValue accepts it for the destination: the value itself, or a
+// pointer to it for a pointer destination, so the caller holds one value under
+// both names. Otherwise, and where the cast is refused, it decodes the anchor's
+// node again into the destination, as the tree does, so two aliases of one
+// anchor give two values.
+//
+// An alias naming an anchor the walk has not recorded -- one inside its own
+// anchor, one parser.WithAnchors declared, or one that does not exist -- goes to
+// the tree, which reads or refuses it.
+func (b *typedBuilder) alias(n *ast.AliasNode) error {
+	anchored, known := b.anchors[anchorName(n.Value)]
+	if !known || anchored.node == nil {
+		return b.fail(errNeedsTheTree)
+	}
+
+	dst, wanted := b.destination()
+	if !wanted {
+		b.settle(reflect.Value{})
+
+		return nil
+	}
+	if b.share && anchored.value.IsValid() {
+		if v, err := castToAssignableValue(anchored.value, dst.Type(), n); err == nil {
+			dst.Set(v)
+			b.settle(dst)
+
+			return nil
+		}
+	}
+
+	return b.replay(anchored.node, dst, n)
+}
+
+// replay decodes node, a clone an anchor recorded, into dst, handing its nodes
+// to the builder in the order the parse hands a document's over.
+func (b *typedBuilder) replay(node ast.Node, dst reflect.Value, at *ast.AliasNode) error {
+	b.stack = append(b.stack, typedFrame{kind: typedAnchor, target: dst})
+	b.replaying++
+	err := b.replayNode(node, false, at)
+	b.replaying--
+	if err != nil {
+		return err
+	}
+
+	frame := b.stack[len(b.stack)-1]
+	b.stack = b.stack[:len(b.stack)-1]
+	if !frame.got {
+		return b.fail(errNeedsTheTree)
+	}
+	b.settle(frame.out)
+
+	return nil
+}
+
+func (b *typedBuilder) replayNode(node ast.Node, key bool, at *ast.AliasNode) error {
+	if b.err != nil {
+		return b.err
+	}
+	b.built++
+	if b.budget > 0 && b.built > b.budget {
+		return b.fail(yamlerrors.NewExcessiveAliasing(b.built, b.budget, at.GetToken()))
+	}
+
+	cursor := replayCursor{key: key}
+	switch err := b.Enter(node, cursor); {
+	case errors.Is(err, parser.ErrSkipNode):
+		return nil
+	case err != nil:
+		return err
+	}
+
+	switch n := node.(type) {
+	case *ast.MappingNode:
+		for _, entry := range n.Values {
+			if err := b.replayNode(entry.Key, true, at); err != nil {
+				return err
+			}
+			if err := b.replayNode(entry.Value, false, at); err != nil {
+				return err
+			}
+		}
+	case *ast.SequenceNode:
+		for _, value := range n.Values {
+			if err := b.replayNode(value, false, at); err != nil {
+				return err
+			}
+		}
+	case *ast.AnchorNode:
+		if err := b.replayNode(n.Value, false, at); err != nil {
+			return err
+		}
+	case *ast.MappingValueNode:
+		// A single entry standing where a mapping stands. The walk hands a
+		// MappingNode over; a clone of one is the same, but the tree builds this
+		// too, and nothing here turns it into a mapping.
+		return b.fail(errNeedsTheTree)
+	}
+
+	return b.Leave(node, cursor)
+}
+
+// replayCursor answers for the nodes replay hands over. typedBuilder reads
+// IsKey, and the valueBuilder of an "any" inside the node reads IsKey and
+// IsRoot; none of the nodes is a document's root.
+type replayCursor struct {
+	key bool
+}
+
+func (c replayCursor) Depth() int           { return 1 }
+func (c replayCursor) In() parser.Kind      { return parser.KindNone }
+func (c replayCursor) IsRoot() bool         { return false }
+func (c replayCursor) IsKey() bool          { return c.key }
+func (c replayCursor) Document() int        { return 0 }
+func (c replayCursor) HoldsKey(string) bool { return false }
 
 func (b *typedBuilder) openMapping(dst reflect.Value, wanted bool) error {
 	if !wanted {
@@ -732,6 +898,7 @@ func (b *typedBuilder) reset(root reflect.Value) {
 	b.stack = b.stack[:0]
 	b.err = nil
 	b.values, b.anyInto = nil, reflect.Value{}
+	clear(b.anchors)
 }
 
 // typedWalkEnabled turns the spike on. SPIKE.

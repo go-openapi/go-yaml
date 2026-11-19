@@ -5,6 +5,7 @@ package codec
 
 import (
 	"bytes"
+	"fmt"
 	"reflect"
 	"testing"
 	"time"
@@ -236,7 +237,8 @@ func TestAnAnchorKeepsTheWalk(t *testing.T) {
 // to the tree, so each one that starts to walk is noticed and moved above.
 func TestAnAnchorTheWalkCannotReadGoesToTheTree(t *testing.T) {
 	for name, src := range map[string]string{
-		"an alias":                     "name: &n top\nleaf:\n  s: *n\n",
+		"an alias as a key":            "name: &n k\nplain: {*n : v}\n",
+		"an alias inside an any":       "name: &n top\nany: {k: *n}\n",
 		"an anchored key":              "&k name: top\n",
 		"an anchor on a tagged scalar": "name: &n !!str top\n",
 		"an anchor inside an any":      "any: {k: &a v}\n",
@@ -249,6 +251,136 @@ func TestAnAnchorTheWalkCannotReadGoesToTheTree(t *testing.T) {
 			}
 			if dec.parsedFile == nil {
 				t.Error("the walk read it: move the case to TestAnAnchorKeepsTheWalk")
+			}
+		})
+	}
+}
+
+// TestAnAliasKeepsTheWalk reads documents whose aliases name an anchor written
+// before them, with and without ShareAliases, and requires the value the tree
+// gives without the decode building one.
+//
+// Without the option an alias decodes its anchor's node again, so two aliases
+// give two values. With it an alias takes the anchor's own value wherever
+// castToAssignableValue accepts it, as the tree does, and decodes the node again
+// where it does not: an anchor written into a map[string]string has nothing to
+// hand to a map[string]any.
+func TestAnAliasKeepsTheWalk(t *testing.T) {
+	docs := map[string]string{
+		"a scalar":                   "name: &n top\nleaf:\n  s: *n\n",
+		"a struct into a pointer":    "leaf: &l {s: x, i: 1}\nptr: *l\n",
+		"a pointer into a struct":    "ptr: &p {s: x}\nleaf: *p\n",
+		"twice into a slice":         "leaf: &l {s: x}\nlist: [*l, *l]\n",
+		"into map values":            "leaf: &l {s: x}\nbyName: {a: *l, b: *l}\n",
+		"a struct holding a slice":   "leaf: &l {xs: [1, 2]}\nptr: *l\n",
+		"into another map type":      "plain: &p {k: v}\nanys: *p\n",
+		"into an any":                "leaf: &l {s: x}\nany: *l\n",
+		"into a slice of any":        "leaf: &l {s: x}\nlist2: [*l]\n",
+		"a scalar deeper down":       "name: &n top\nlist: [{s: *n}]\n",
+		"an anchor inside an anchor": "leaf: &l {s: &s x}\nname: *s\n",
+		"an anchor no field claims":  "nope: &n {k: v}\nplain: *n\n",
+		"an alias to an alias":       "name: &a x\nleaf: &l {s: *a}\nptr: *l\n",
+		"a sequence":                 "counts: {a: &c [1, 2]}\nleaf: {xs: *c}\n",
+		"a block anchor":             "leaf: &l\n  s: x\n  i: 2\nptr: *l\n",
+	}
+	for _, share := range []bool{false, true} {
+		for name, src := range docs {
+			t.Run(fmt.Sprintf("share=%v/%s", share, name), func(t *testing.T) {
+				var opts []DecodeOption
+				if share {
+					opts = append(opts, ShareAliases())
+				}
+
+				var walked walkShape
+				dec := NewDecoder(bytes.NewReader([]byte(src)), opts...)
+				walkErr := dec.Decode(&walked)
+
+				var built walkShape
+				treeErr := NewDecoder(
+					bytes.NewReader([]byte(src)),
+					append(opts, CustomUnmarshaler[chan int](func(*chan int, []byte) error { return nil }))...,
+				).Decode(&built)
+
+				if walkErr != nil || treeErr != nil {
+					t.Fatalf("walk err=%v, tree err=%v", walkErr, treeErr)
+				}
+				if !reflect.DeepEqual(walked, built) {
+					t.Errorf("the two paths disagree:\n  walk %+v\n  tree %+v", walked, built)
+				}
+				if dec.parsedFile != nil {
+					t.Error("the decode built a tree")
+				}
+			})
+		}
+	}
+}
+
+// TestASharedAliasPointsWhereTheTreeDoes holds ShareAliases to the tree on
+// identity, which DeepEqual does not see: a pointer alias either points at the
+// anchor's own value or holds a copy, and both paths must make the same choice.
+func TestASharedAliasPointsWhereTheTreeDoes(t *testing.T) {
+	type shared struct {
+		A  WalkLeaf            `yaml:"a"`
+		P  *WalkLeaf           `yaml:"p"`
+		Q  *WalkLeaf           `yaml:"q"`
+		L  []WalkLeaf          `yaml:"l"`
+		LP *WalkLeaf           `yaml:"lp"`
+		M  map[string]WalkLeaf `yaml:"m"`
+		MP *WalkLeaf           `yaml:"mp"`
+	}
+	const src = "a: &x {s: one}\np: *x\nq: *x\nl: [&y {s: two}]\nlp: *y\nm: {k: &z {s: three}}\nmp: *z\n"
+
+	read := func(opts ...DecodeOption) shared {
+		t.Helper()
+		var v shared
+		if err := NewDecoder(bytes.NewReader([]byte(src)), append(opts, ShareAliases())...).Decode(&v); err != nil {
+			t.Fatal(err)
+		}
+
+		return v
+	}
+	walked := read()
+	built := read(CustomUnmarshaler[chan int](func(*chan int, []byte) error { return nil }))
+
+	for _, c := range []struct {
+		name       string
+		walk, tree bool
+	}{
+		{"p points at a", walked.P == &walked.A, built.P == &built.A},
+		{"p and q are one value", walked.P == walked.Q, built.P == built.Q},
+		{"lp points at the slice element", len(walked.L) > 0 && walked.LP == &walked.L[0], len(built.L) > 0 && built.LP == &built.L[0]},
+	} {
+		if c.walk != c.tree {
+			t.Errorf("%s: walk %v, tree %v", c.name, c.walk, c.tree)
+		}
+	}
+	if !reflect.DeepEqual(walked, built) {
+		t.Errorf("the two paths disagree:\n  walk %+v\n  tree %+v", walked, built)
+	}
+}
+
+// TestABrokenAliasIsRefusedAsByTheTree holds the walk to the tree's error on an
+// alias that names nothing it can read. The parse refuses an alias to an anchor
+// written after it; one inside its own anchor goes to the tree, which refuses
+// the cycle.
+func TestABrokenAliasIsRefusedAsByTheTree(t *testing.T) {
+	for name, src := range map[string]string{
+		"an alias to a later anchor": "leaf:\n  s: *n\nname: &n top\n",
+		"an alias inside its anchor": "leaf: &l {s: x, xs: *l}\n",
+	} {
+		t.Run(name, func(t *testing.T) {
+			var walked, built walkShape
+			walkErr := NewDecoder(bytes.NewReader([]byte(src))).Decode(&walked)
+			treeErr := NewDecoder(
+				bytes.NewReader([]byte(src)),
+				CustomUnmarshaler[chan int](func(*chan int, []byte) error { return nil }),
+			).Decode(&built)
+
+			if walkErr == nil || treeErr == nil {
+				t.Fatalf("walk err=%v, tree err=%v", walkErr, treeErr)
+			}
+			if walkErr.Error() != treeErr.Error() {
+				t.Errorf("the two paths refuse differently:\n  walk %v\n  tree %v", walkErr, treeErr)
 			}
 		})
 	}
