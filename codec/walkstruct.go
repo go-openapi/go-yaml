@@ -49,9 +49,9 @@ import (
 //
 // It falls back on these destinations, at the node that writes them:
 //
-//   - a scalar setScalar does not write: a number or a bool into a string, a
-//     number that overflows its field, text into a number or a bool. The tree
-//     converts it or reports the error;
+//   - a scalar the tree decoder refuses for its field: text into a number or a
+//     bool, a number that overflows its field. The tree reports the error. A
+//     scalar it converts, such as a number into a string, stays on the walk;
 //   - a mapping into anything but a struct or a map keyed by string, and a
 //     sequence into anything but a slice;
 //   - a destination the walk cannot set, such as an embedded pointer to an
@@ -62,6 +62,10 @@ import (
 // anchor with no node under it, and a lone entry (an ast.MappingValueNode)
 // replayed for an alias.
 var errNeedsTheTree = errors.New("this decode needs the tree")
+
+// errNotWritten reports a scalar setScalar does not write itself, because the
+// field is of another kind than the node. scalar hands it to convertScalar.
+var errNotWritten = errors.New("this scalar needs a conversion")
 
 type typedFrameKind uint8
 
@@ -945,7 +949,11 @@ func (b *typedBuilder) scalar(node ast.Node, dst reflect.Value, wanted bool) err
 
 		return parser.ErrSkipNode
 	}
-	if err := b.setScalar(dst, node); err != nil {
+	err := b.setScalar(dst, node)
+	if errors.Is(err, errNotWritten) {
+		err = b.convertScalar(dst, node)
+	}
+	if err != nil {
 		return b.fail(err)
 	}
 	b.settle(dst)
@@ -1003,37 +1011,60 @@ func (b *typedBuilder) keepTagged(dst reflect.Value, wanted bool) error {
 // decodeTagged decodes the tagged node the walk kept into the destination
 // keepTagged read, with the tree decoder.
 //
-// It decodes a field, an element and a map value as the tree does, through
-// createDecodedNewValue over what dst holds, and the root through decodeValue.
-//
-// Two cases go to the tree whole. A tagged node holding an anchor or an alias:
-// the node decoder reads neither the anchors the walk recorded nor the ones
-// after it. A tagged node the node decoder refuses: the tree names the struct
-// field in its error, keeps the first field error and decodes the fields after
-// it, as encoding/json does, where the walk would stop.
+// A tagged node holding an anchor or an alias goes to the tree whole: the node
+// decoder reads neither the anchors the walk recorded nor the ones after it.
+// See decodeNode for the rest.
 func (b *typedBuilder) decodeTagged(node ast.Node) error {
 	dst := b.tagInto
 	b.tagInto = reflect.Value{}
 	if shapeOf(node).named || !dst.CanSet() {
 		return b.fail(errNeedsTheTree)
 	}
+	if err := b.decodeNode(dst, node); err != nil {
+		return b.fail(err)
+	}
+	if len(b.stack) > 0 {
+		b.settle(dst)
+	}
+
+	return nil
+}
+
+// convertScalar writes a scalar of another kind than its field: "name: 1"
+// into a string, "i: 1.5" into an int. The tree decoder converts it, through
+// decodeNode, so the walk and the tree convert by the one set of rules.
+func (b *typedBuilder) convertScalar(dst reflect.Value, node ast.Node) error {
+	if !dst.CanSet() {
+		return errNeedsTheTree
+	}
+
+	return b.decodeNode(dst, node)
+}
+
+// decodeNode decodes node into dst with the tree decoder's rules: a field, an
+// element and a map value through createDecodedNewValue over what dst holds,
+// as the tree fills them, and the root through decodeValue.
+//
+// A node the tree decoder refuses goes to the tree whole. The tree names the
+// struct field in its error, keeps the first field error and decodes the
+// fields after it, as encoding/json does, where the walk would stop.
+func (b *typedBuilder) decodeNode(dst reflect.Value, node ast.Node) error {
 	d, err := b.nodeDecoder()
 	if err != nil {
-		return b.fail(err)
+		return err
 	}
 	if len(b.stack) == 0 {
 		if err := d.decodeValue(dst, node); err != nil {
-			return b.fail(errNeedsTheTree)
+			return errNeedsTheTree
 		}
 
 		return nil
 	}
 	v, err := d.createDecodedNewValue(dst.Type(), dst, node)
 	if err != nil {
-		return b.fail(errNeedsTheTree)
+		return errNeedsTheTree
 	}
 	dst.Set(v)
-	b.settle(dst)
 
 	return nil
 }
@@ -1212,7 +1243,7 @@ func (b *typedBuilder) setScalar(dst reflect.Value, node ast.Node) error {
 	case reflect.String:
 		s, isText := node.(*ast.StringNode)
 		if !isText {
-			return errNeedsTheTree
+			return errNotWritten
 		}
 		dst.SetString(b.strs.clone(s.Value))
 
@@ -1220,7 +1251,7 @@ func (b *typedBuilder) setScalar(dst reflect.Value, node ast.Node) error {
 	case reflect.Bool:
 		v, isBool := node.(*ast.BoolNode)
 		if !isBool {
-			return errNeedsTheTree
+			return errNotWritten
 		}
 		dst.SetBool(v.Value)
 
@@ -1229,40 +1260,40 @@ func (b *typedBuilder) setScalar(dst reflect.Value, node ast.Node) error {
 		switch v := scalarNumber(node).(type) {
 		case int64:
 			if dst.OverflowInt(v) {
-				return errNeedsTheTree
+				return errNotWritten
 			}
 			dst.SetInt(v)
 
 			return nil
 		case uint64:
 			if v > 1<<63-1 || dst.OverflowInt(int64(v)) {
-				return errNeedsTheTree
+				return errNotWritten
 			}
 			dst.SetInt(int64(v))
 
 			return nil
 		}
 
-		return errNeedsTheTree
+		return errNotWritten
 	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
 		switch v := scalarNumber(node).(type) {
 		case uint64:
 			if dst.OverflowUint(v) {
-				return errNeedsTheTree
+				return errNotWritten
 			}
 			dst.SetUint(v)
 
 			return nil
 		case int64:
 			if v < 0 || dst.OverflowUint(uint64(v)) {
-				return errNeedsTheTree
+				return errNotWritten
 			}
 			dst.SetUint(uint64(v))
 
 			return nil
 		}
 
-		return errNeedsTheTree
+		return errNotWritten
 	case reflect.Float32, reflect.Float64:
 		switch v := scalarNumber(node).(type) {
 		case float64:
@@ -1279,9 +1310,9 @@ func (b *typedBuilder) setScalar(dst reflect.Value, node ast.Node) error {
 			return nil
 		}
 
-		return errNeedsTheTree
+		return errNotWritten
 	default:
-		return errNeedsTheTree
+		return errNotWritten
 	}
 }
 
