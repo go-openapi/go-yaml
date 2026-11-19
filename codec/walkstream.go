@@ -34,9 +34,23 @@ type walkStream struct {
 
 // walkState is what the paused walk shares with the Decoder that resumes it.
 // Nothing in it points at the Decoder.
+//
+// Each document goes to one of two builders, picked by its destination: a bare
+// "any" to a valueBuilder made for the document, which reads every node of it,
+// anchors and aliases included; anything else to typedBuilder.
 type walkState struct {
+	p *parser.Parser
 	b typedBuilder
-	// strs holds the text of the strings the walk builds.
+	// values builds the document in hand when its destination, anyInto, is a
+	// bare "any", and is nil otherwise.
+	values  *valueBuilder
+	anyInto reflect.Value
+	// declared are the anchors parser.WithAnchors passed, and budget bounds the
+	// values copied for an alias over the whole stream. See aliasBudget.
+	declared map[string]ast.Node
+	share    bool
+	budget   int
+	// strs holds the text of the strings typedBuilder builds.
 	strs arena
 	// yield pauses the walk at the end of a document, and is nil for a walk
 	// that reads the stream through without pausing.
@@ -48,7 +62,7 @@ type walkState struct {
 	// keeps, as decode's streamIndex counts them.
 	delivered int
 	// needsTree records that the document in hand needs a tree. err holds the
-	// first error, from the parse or from the builder.
+	// first error, from the parse or from a builder.
 	needsTree bool
 	err       error
 }
@@ -56,10 +70,9 @@ type walkState struct {
 // newWalkStream returns a walk over src that pauses after each document.
 func newWalkStream(d *Decoder, src []byte) *walkStream {
 	st := newWalkState(d, src)
-	opts := append(d.parserOptions(), parser.WithOmitNodePaths())
 	seq := func(yield func(struct{}) bool) {
 		st.yield = yield
-		st.walk(src, opts)
+		st.walk(src)
 	}
 
 	next, stop := iter.Pull(seq)
@@ -70,24 +83,31 @@ func newWalkStream(d *Decoder, src []byte) *walkStream {
 }
 
 func newWalkState(d *Decoder, src []byte) *walkState {
-	st := &walkState{}
+	p := parser.New(append(d.parserOptions(), parser.WithOmitNodePaths())...)
+	budget := aliasBudget(len(src))
+	st := &walkState{
+		p:        p,
+		declared: p.DeclaredAnchors(),
+		share:    d.shareAliases,
+		budget:   budget,
+	}
 	st.b = typedBuilder{
 		mode:   d.tagMode(),
 		strs:   &st.strs,
 		share:  d.shareAliases,
-		budget: aliasBudget(len(src)),
+		budget: budget,
 	}
 
 	return st
 }
 
-// unmarshalWalking reads the first document of src into v and then the rest of the
-// stream, without pausing. Unmarshal reads one document, and still refuses a
-// stream the parse refuses further on.
+// unmarshalWalking reads the first document of src into v and then the rest of
+// the stream, without pausing. Unmarshal reads one document, and still refuses
+// a stream the parse refuses further on.
 func unmarshalWalking(d *Decoder, src []byte, v reflect.Value) (*walkState, error) {
 	st := newWalkState(d, src)
-	st.b.reset(v.Elem())
-	st.walk(src, append(d.parserOptions(), parser.WithOmitNodePaths()))
+	st.reset(v)
+	st.walk(src)
 	if st.needsTree {
 		return st, errNeedsTheTree
 	}
@@ -95,7 +115,7 @@ func unmarshalWalking(d *Decoder, src []byte, v reflect.Value) (*walkState, erro
 		return st, st.err
 	}
 	if st.delivered == 0 {
-		zeroDestination(v)
+		setZero(v.Elem())
 	}
 
 	return st, nil
@@ -103,12 +123,12 @@ func unmarshalWalking(d *Decoder, src []byte, v reflect.Value) (*walkState, erro
 
 // decode reads the next document of the stream into v.
 //
-// It returns errNeedsTheTree when the document needs a tree, io.EOF once the
-// stream has no document left, and otherwise what the walk made of the
-// document.
+// It returns errNeedsTheTree when the document needs a tree, errEndOfStream
+// once the stream has no document left, and otherwise what the walk made of
+// the document.
 func (w *walkStream) decode(v reflect.Value) error {
 	st := w.st
-	st.b.reset(v.Elem())
+	st.reset(v)
 	if _, more := w.next(); more {
 		return nil
 	}
@@ -122,7 +142,7 @@ func (w *walkStream) decode(v reflect.Value) error {
 	case st.delivered == 0:
 		// An empty stream holds no document, and the destination takes its
 		// zero, as on the tree.
-		zeroDestination(v)
+		setZero(v.Elem())
 	}
 
 	return errEndOfStream
@@ -132,19 +152,31 @@ func (w *walkStream) decode(v reflect.Value) error {
 var errEndOfStream = errors.New("end of the stream")
 
 func (st *walkState) Enter(node ast.Node, at parser.Cursor) error {
-	if st.rest {
+	switch {
+	case st.rest:
 		return parser.ErrSkipNode
-	}
+	case st.values != nil:
+		err := st.values.Enter(node, at)
 
-	return st.handed(st.b.Enter(node, at))
+		return st.handed(err, st.values.err)
+	}
+	err := st.b.Enter(node, at)
+
+	return st.handed(err, st.b.err)
 }
 
 func (st *walkState) Leave(node ast.Node, at parser.Closing) error {
-	if st.rest {
+	switch {
+	case st.rest:
 		return nil
-	}
+	case st.values != nil:
+		err := st.values.Leave(node, at)
 
-	return st.handed(st.b.Leave(node, at))
+		return st.handed(err, st.values.err)
+	}
+	err := st.b.Leave(node, at)
+
+	return st.handed(err, st.b.err)
 }
 
 // LeaveDocument hands the document just read to the Decode waiting for it, and
@@ -153,13 +185,7 @@ func (st *walkState) LeaveDocument(doc *ast.DocumentNode, _ int) error {
 	if st.rest || !holdsAValue(doc) {
 		return nil
 	}
-	if isEmptyDocument(doc) {
-		// A document written with "---" or "..." and nothing else decodes to
-		// null. It hands no node over, so the builder wrote nothing.
-		if st.b.root.IsValid() && st.b.root.CanSet() {
-			st.b.root.Set(reflect.Zero(st.b.root.Type()))
-		}
-	}
+	st.settle(isEmptyDocument(doc))
 	st.delivered++
 
 	if st.yield == nil {
@@ -174,30 +200,77 @@ func (st *walkState) LeaveDocument(doc *ast.DocumentNode, _ int) error {
 	return nil
 }
 
-// handed passes on what the builder made of a node. A builder that failed ends
-// the walk where it stands, so a Decode returns its error without reading the
-// rest of the stream.
-func (st *walkState) handed(err error) error {
-	if st.b.err == nil {
+// reset readies the walk to read the next document into v, with the builder its
+// destination asks for.
+func (st *walkState) reset(v reflect.Value) {
+	if st.values != nil {
+		// The budget covers the stream, so what one document spent is gone for
+		// the next.
+		st.budget -= st.values.built
+	}
+	st.values, st.anyInto = nil, reflect.Value{}
+
+	dst := v.Elem()
+	if holdsAnything(dst) {
+		st.anyInto = dst
+		st.values = &valueBuilder{share: st.share, budget: st.budget, declared: st.declared}
+
+		return
+	}
+	st.b.reset(dst)
+}
+
+// settle writes the document's value into its destination. A document written
+// with "---" or "..." and nothing else is empty and decodes to null: it hands
+// no node over, so neither builder wrote anything.
+func (st *walkState) settle(empty bool) {
+	if st.values == nil {
+		if empty {
+			setZero(st.b.root)
+		}
+
+		return
+	}
+
+	dst := st.anyInto
+	if empty || len(st.values.docs) == 0 || !dst.CanSet() {
+		setZero(dst)
+
+		return
+	}
+	// "&!" hands two roots over for one document: the tag on the empty node,
+	// then the anchor on it. The last is the document's value.
+	if built := st.values.docs[len(st.values.docs)-1]; built != nil {
+		dst.Set(reflect.ValueOf(built))
+	} else {
+		setZero(dst)
+	}
+}
+
+// handed passes on what a builder returned for a node. failed is the builder's
+// own error, which ends the walk where it stands, so a Decode returns it
+// without reading the rest of the stream.
+func (st *walkState) handed(err, failed error) error {
+	if failed == nil {
 		return err
 	}
-	if errors.Is(st.b.err, errNeedsTheTree) {
+	if errors.Is(failed, errNeedsTheTree) {
 		st.needsTree = true
 	} else {
-		st.err = st.b.err
+		st.err = failed
 	}
 
 	return parser.ErrStopWalk
 }
 
-func (st *walkState) walk(src []byte, opts []parser.Option) {
-	if _, err := parser.New(opts...).Walk(src, st); err != nil && st.err == nil {
+func (st *walkState) walk(src []byte) {
+	if _, err := st.p.Walk(src, st); err != nil && st.err == nil {
 		st.err = err
 	}
 }
 
-func zeroDestination(v reflect.Value) {
-	if dst := v.Elem(); dst.IsValid() && dst.CanSet() {
+func setZero(dst reflect.Value) {
+	if dst.IsValid() && dst.CanSet() {
 		dst.Set(reflect.Zero(dst.Type()))
 	}
 }

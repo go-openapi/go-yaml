@@ -49,7 +49,7 @@ func readStructStream(src string, opts ...codec.DecodeOption) []streamRead {
 }
 
 // treeOnly turns the walk off without changing the decode, as agDecode does:
-// canWalkTyped refuses a decoder holding a custom unmarshaler, and a chan int
+// canWalk refuses a decoder holding a custom unmarshaler, and a chan int
 // stands nowhere in streamDoc.
 func treeOnly() codec.DecodeOption {
 	return codec.CustomUnmarshaler[chan int](func(*chan int, []byte) error { return nil })

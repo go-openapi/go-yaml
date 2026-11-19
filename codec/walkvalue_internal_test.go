@@ -51,12 +51,28 @@ func decodedStream(src string) ([]any, error) {
 // walkFirst reads the first document of src by walking it, and nil for an empty
 // stream.
 func walkFirst(src []byte) (any, error) {
-	docs, err := walkValues(src, false)
-	if err != nil || len(docs) == 0 {
-		return nil, err
-	}
+	var v any
+	err := Unmarshal(src, &v)
 
-	return docs[0], nil
+	return v, err
+}
+
+// walkedStream is every document a Decoder hands back by walking src, which
+// TestWalkMatchesTheStream holds to decodedStream.
+func walkedStream(src string) ([]any, error) {
+	dec := NewDecoder(bytes.NewReader([]byte(src)))
+	var out []any
+	for {
+		var v any
+		err := dec.Decode(&v)
+		if errors.Is(err, io.EOF) {
+			return out, nil
+		}
+		if err != nil {
+			return out, err
+		}
+		out = append(out, v)
+	}
 }
 
 // TestReferenceStreamBuildsATree holds treeDecoder to its name. Without it a
@@ -69,7 +85,7 @@ func TestReferenceStreamBuildsATree(t *testing.T) {
 	if err := dec.Decode(&v); err != nil {
 		t.Fatal(err)
 	}
-	if dec.walkedOK {
+	if dec.stream != nil {
 		t.Error("the reference decoder walked the source")
 	}
 	if dec.parsedFile == nil {
@@ -192,7 +208,7 @@ func TestWalkMatchesTheStream(t *testing.T) {
 		}
 
 		want, wantErr := decodedStream(src.text)
-		got, gotErr := walkValues([]byte(src.text), false)
+		got, gotErr := walkedStream(src.text)
 
 		switch {
 		case wantErr != nil && gotErr != nil:
@@ -224,10 +240,11 @@ func TestWalkMatchesTheStream(t *testing.T) {
 }
 
 // TestStreamSwitchesFromWalkToTree covers a Decoder handed an any for one
-// document of a stream and a struct for the next. The first decode read the
-// source by walking it, and the second needs the tree the walk never built.
+// document of a stream and a map keyed by integers for the next. The first
+// decode read the source by walking it, and the second needs the tree the walk
+// never built: the walk fills no map with keys other than strings.
 func TestStreamSwitchesFromWalkToTree(t *testing.T) {
-	const src = "a: 1\n---\nb: two\n---\nc: 3\n"
+	const src = "a: 1\n---\n2: two\n---\nc: 3\n"
 
 	dec := NewDecoder(bytes.NewReader([]byte(src)))
 
@@ -235,24 +252,22 @@ func TestStreamSwitchesFromWalkToTree(t *testing.T) {
 	if err := dec.Decode(&first); err != nil {
 		t.Fatal(err)
 	}
-	if !dec.walkedOK {
+	if dec.stream == nil {
 		t.Fatal("the first document was not walked")
 	}
 	if got, want := fmt.Sprintf("%v", first), "map[a:1]"; got != want {
 		t.Errorf("first document: got %s, want %s", got, want)
 	}
 
-	var second struct {
-		B string `yaml:"b"`
-	}
+	var second map[int]string
 	if err := dec.Decode(&second); err != nil {
 		t.Fatal(err)
 	}
-	if dec.walkedOK {
+	if dec.stream != nil {
 		t.Error("the Decoder stayed on the walking path")
 	}
-	if second.B != "two" {
-		t.Errorf("second document: got %q, want %q", second.B, "two")
+	if second[2] != "two" {
+		t.Errorf("second document: got %v, want map[2:two]", second)
 	}
 
 	// The stream carries on from where the walk left it rather than starting

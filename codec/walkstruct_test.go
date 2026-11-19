@@ -163,9 +163,9 @@ var agModes = []struct {
 // agDecode reads src into a fresh value of the shape, through the walk or
 // through the tree.
 //
-// CustomUnmarshaler turns both walks off -- canWalk and canWalkTyped refuse a
-// decoder holding one -- and the chan it names appears in no shape here, so
-// nothing else about the decode changes.
+// CustomUnmarshaler turns the walk off -- canWalk refuses a decoder holding
+// one -- and the chan it names appears in no shape here, so nothing else about
+// the decode changes.
 func agDecode(c agShape, tree bool, jsonTags, inferred bool) (any, error) {
 	opts := []codec.DecodeOption{
 		codec.UseJSONTags(jsonTags),

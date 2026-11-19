@@ -558,7 +558,7 @@ func (b *typedBuilder) handled(dst reflect.Value) bool {
 	if !dst.CanAddr() {
 		return true
 	}
-	// canWalkTyped turns the walk away from a Decoder holding a custom
+	// canWalk turns the walk away from a Decoder holding a custom
 	// unmarshaler or UseJSONUnmarshaler, so neither applies here.
 	if decodesItself(dst.Addr(), false) {
 		return true

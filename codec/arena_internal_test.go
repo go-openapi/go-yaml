@@ -87,7 +87,7 @@ func TestDecodedStringsLeaveTheDocument(t *testing.T) {
 		if err := dec.Decode(&v); err != nil {
 			t.Fatal(err)
 		}
-		if dec.walkedOK {
+		if dec.stream != nil {
 			t.Fatal("did not take the tree path")
 		}
 		var got []string

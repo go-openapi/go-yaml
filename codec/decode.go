@@ -81,18 +81,14 @@ type Decoder struct {
 	useJSONTags          bool
 	useInferredNames     bool
 
-	// walked holds the value of each document, read by walking the source
-	// rather than by building a tree and walking that. src is kept beside it so
-	// that a later Decode wanting something the walk cannot serve can still
-	// build the tree. See canWalk.
-	walked   []any
-	walkedOK bool
-	// stream walks the source into a Go struct, one document for each Decode.
-	// typedWalk records that Unmarshal has filled its destination that way.
+	// stream walks the source into Go values, one document for each Decode,
+	// without building a tree. src is kept so that a later Decode wanting
+	// something the walk cannot serve can still build the tree. See canWalk.
+	// walkedFirst records that Unmarshal filled its destination that way, and
 	// firstOnly marks a Decoder that Unmarshal made, which reads one document.
-	stream    *walkStream
-	typedWalk bool
-	firstOnly bool
+	stream      *walkStream
+	walkedFirst bool
+	firstOnly   bool
 	// strs holds the text of every string a decode hands back, copied out of
 	// the document so that the values outlive it.
 	strs arena
@@ -3841,23 +3837,20 @@ func (d *Decoder) collectComments(body ast.Node) error {
 }
 
 func (d *Decoder) isInitialized() bool {
-	return d.parsedFile != nil || d.walkedOK || d.stream != nil
+	return d.parsedFile != nil || d.stream != nil
 }
 
-// canWalk reports whether this decode can read the source by walking it rather
-// than by building a tree and walking that.
+// canWalk reports whether this decode can read the source into v by walking it,
+// without building a tree.
 //
-// Reading into an interface asks for the value the document denotes and nothing
-// else, which is what valueBuilder folds as the parse goes. Everything else
-// needs the tree: reflection into a concrete type reads nodes, a CommentMap is
-// keyed by the paths of the nodes carrying the comments, MapSlice keeps the
-// order the tree holds, and ReferenceFiles publishes anchors from documents
-// this one never sees.
+// A bare "any" asks for the value the document denotes, which valueBuilder
+// builds as the parse goes, anchors and aliases included. A struct is filled by
+// typedBuilder, which gives up on what it cannot serve; see errNeedsTheTree.
+// Everything else needs the tree: a CommentMap is keyed by the paths of the
+// nodes carrying the comments, MapSlice keeps the order the tree holds, and
+// ReferenceFiles publishes anchors from documents this one never sees.
 func (d *Decoder) canWalk(v reflect.Value) bool {
-	// UseStringKeys names every key by its text, which mapKeyNodeToValue does on
-	// the tree. The walk keys a mapping by what each key resolves to, so it
-	// would give "1: a" the key uint64(1) whatever the option says.
-	if d.toCommentMap != nil || d.useOrderedMap || d.useStringKeys {
+	if d.toCommentMap != nil || d.useOrderedMap {
 		return false
 	}
 	if len(d.referenceFiles) > 0 || len(d.referenceDirs) > 0 || len(d.referenceReaders) > 0 {
@@ -3866,13 +3859,28 @@ func (d *Decoder) canWalk(v reflect.Value) bool {
 	if len(d.customUnmarshalerMap) > 0 {
 		return false
 	}
-	if !v.IsValid() || v.Kind() != reflect.Pointer {
+	if !v.IsValid() || v.Kind() != reflect.Pointer || v.IsNil() {
 		return false
 	}
 
 	dst := v.Elem()
+	if holdsAnything(dst) {
+		// UseStringKeys names every key by its text, which mapKeyNodeToValue
+		// does on the tree. valueBuilder keys a mapping by what each key
+		// resolves to, so it would give "1: a" the key uint64(1) whatever the
+		// option says.
+		return !d.useStringKeys
+	}
 
-	return dst.Kind() == reflect.Interface && dst.NumMethod() == 0
+	// SPIKE: reading into a Go struct by walking.
+	if !typedWalkEnabled || d.disallowUnknownField || d.validator != nil || d.allowDuplicateMapKey || d.useJSONUnmarshaler {
+		return false
+	}
+	if dst.Kind() != reflect.Struct || !dst.CanSet() {
+		return false
+	}
+
+	return walkableType(dst.Type(), d.tagMode())
 }
 
 // isEmptyDocument reports whether doc holds no value and is a document all the
@@ -3915,18 +3923,6 @@ func (d *Decoder) decodeInit(v reflect.Value) error {
 	d.expanding, d.expanded = nil, nil
 
 	if d.canWalk(v) {
-		walked, err := walkValues(src, d.shareAliases, d.parserOptions()...)
-		if err != nil {
-			return err
-		}
-		d.walked, d.walkedOK = walked, true
-
-		return nil
-	}
-
-	// SPIKE: reading into a Go type by walking, falling back to the tree for
-	// everything it cannot serve. See errNeedsTheTree.
-	if d.canWalkTyped(v) {
 		if !d.firstOnly {
 			d.stream = newWalkStream(d, src)
 
@@ -3934,7 +3930,7 @@ func (d *Decoder) decodeInit(v reflect.Value) error {
 		}
 		switch _, err := unmarshalWalking(d, src, v); {
 		case err == nil:
-			d.typedWalk = true
+			d.walkedFirst = true
 
 			return nil
 		case !errors.Is(err, errNeedsTheTree):
@@ -3952,31 +3948,6 @@ func (d *Decoder) decodeInit(v reflect.Value) error {
 	return nil
 }
 
-// canWalkTyped reports whether this decode may try the typed walk. SPIKE.
-func (d *Decoder) canWalkTyped(v reflect.Value) bool {
-	if !typedWalkEnabled {
-		return false
-	}
-	if d.toCommentMap != nil || d.useOrderedMap || d.disallowUnknownField || d.validator != nil {
-		return false
-	}
-	if len(d.referenceFiles) > 0 || len(d.referenceDirs) > 0 || len(d.referenceReaders) > 0 {
-		return false
-	}
-	if len(d.customUnmarshalerMap) > 0 || d.allowDuplicateMapKey || d.useJSONUnmarshaler {
-		return false
-	}
-	if !v.IsValid() || v.Kind() != reflect.Pointer || v.IsNil() {
-		return false
-	}
-	dst := v.Elem()
-	if dst.Kind() != reflect.Struct || !dst.CanSet() {
-		return false
-	}
-
-	return walkableType(dst.Type(), d.tagMode())
-}
-
 // decodeWalking reads the next document of the stream into v by walking it, and
 // returns true when it has.
 //
@@ -3986,7 +3957,7 @@ func (d *Decoder) canWalkTyped(v reflect.Value) bool {
 // walk had started is decoded again from the start, over what the walk wrote.
 func (d *Decoder) decodeWalking(v reflect.Value) (bool, error) {
 	w := d.stream
-	if d.canWalkTyped(v) {
+	if d.canWalk(v) {
 		err := w.decode(v)
 		d.streamIndex = w.st.delivered
 		switch {
@@ -4016,62 +3987,20 @@ func (d *Decoder) buildTree() error {
 		return err
 	}
 	d.parsedFile = file
-	d.walked, d.walkedOK = nil, false
-
-	return nil
-}
-
-// handWalked gives the caller the value the walk read for the document in hand.
-func (d *Decoder) handWalked(v reflect.Value) error {
-	if len(d.walked) == 0 {
-		// An empty source holds one empty document: the destination takes its
-		// zero and the stream then ends, which is what the tree path does.
-		if dst := v.Elem(); dst.IsValid() {
-			dst.Set(reflect.Zero(dst.Type()))
-		}
-	}
-	if d.streamIndex >= len(d.walked) {
-		return io.EOF
-	}
-
-	value := d.walked[d.streamIndex]
-	d.streamIndex++
-
-	dst := v.Elem()
-	if !dst.IsValid() {
-		return nil
-	}
-	if value == nil {
-		dst.Set(reflect.Zero(dst.Type()))
-
-		return nil
-	}
-	dst.Set(reflect.ValueOf(value))
 
 	return nil
 }
 
 func (d *Decoder) decode(v reflect.Value) error {
-	if d.typedWalk {
+	if d.walkedFirst {
 		// Unmarshal's destination was filled as the parse read the source.
-		d.typedWalk = false
+		d.walkedFirst = false
 		d.streamIndex++
 
 		return nil
 	}
 	if d.stream != nil {
 		if done, err := d.decodeWalking(v); done || err != nil {
-			return err
-		}
-	}
-	if d.walkedOK {
-		if d.canWalk(v) {
-			return d.handWalked(v)
-		}
-		// This Decoder read the source by walking it for an earlier document,
-		// and now holds a destination the walk cannot serve. Read it again into
-		// a tree, which is what the rest of this reads.
-		if err := d.buildTree(); err != nil {
 			return err
 		}
 	}
