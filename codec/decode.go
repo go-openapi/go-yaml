@@ -2232,9 +2232,16 @@ func notAnOrderedMap(node ast.Node) error {
 // is refused and reads under AllowDuplicateMapKey with the last value standing,
 // as the walk does. Counting the entries instead refused it as the wrong shape,
 // where every other reader reported the repeat.
+//
+// A mapping holding a "<<" comes back whole too, and orderedMapOf counts its
+// keys once the merge is read: "{<<: {a: 0}, a: 1}" is one entry, and
+// "{<<: {a: 0, b: 1}}" is two. The walk and ToJSON count them the same way.
 func entryMapping(entry ast.Node) ast.Node {
 	switch n := entry.(type) {
 	case *ast.MappingNode:
+		if slices.ContainsFunc(n.Values, func(v *ast.MappingValueNode) bool { return mergeEntry(v) }) {
+			return n
+		}
 		if distinctKeys(n) != 1 {
 			return nil
 		}
@@ -2448,6 +2455,10 @@ func (d *Decoder) orderedMapOf(seq *ast.SequenceNode) (MapSliceSeq, error) {
 		var one MapSlice
 		if err := d.setToOrderedMapValue(entryMapping(entry), &one, false); err != nil {
 			return MapSliceSeq{}, err
+		}
+		if len(one.items) != 1 {
+			// A "<<" left the count to now. See entryMapping.
+			return MapSliceSeq{}, notAnOrderedMap(seq)
 		}
 		for _, item := range one.items {
 			if err := m.Set(item.Key, item.Value); err != nil {

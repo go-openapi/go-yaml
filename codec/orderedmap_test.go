@@ -613,3 +613,54 @@ func TestFixedAMergeDoesNotOverrideAcrossATypeBoundary(t *testing.T) {
 		), b)
 	})
 }
+
+// TestAnOrderedMapEntryIsCountedAfterItsMerge holds every reader to one count
+// of an "!!omap" entry holding a "<<": the keys of the mapping the merge
+// produces, not the keys written. The tree counted the written ones, so it
+// refused an entry that merges to one key and read one that merges to two.
+func TestAnOrderedMapEntryIsCountedAfterItsMerge(t *testing.T) {
+	type field struct {
+		K any `yaml:"k"`
+	}
+	for _, c := range []struct {
+		body string
+		json string // "" where every reader refuses the document
+	}{
+		{"k: !!omap\n- {<<: {a: 0}, a: 1}\n", `{"k":{"a":1}}`},
+		{"k: !!omap\n- {<<: {b: 0}}\n", `{"k":{"b":0}}`},
+		{"k: !!omap\n- {<<: [{a: 0}, {a: 1}]}\n", `{"k":{"a":0}}`},
+		{"k: !!omap\n- {<<: {a: 0, b: 1}}\n", ""},
+		{"m: &m {a: 0, b: 1}\nk: !!omap\n- {<<: *m}\n", ""},
+	} {
+		t.Run(c.body, func(t *testing.T) {
+			src := []byte("%YAML 1.1\n---\n" + c.body)
+			check := func(t *testing.T, err error) {
+				t.Helper()
+				if c.json == "" {
+					require.Error(t, err)
+
+					return
+				}
+				require.NoError(t, err)
+			}
+
+			var walked any
+			check(t, codec.Unmarshal(src, &walked))
+			var treed any
+			check(t, codec.UnmarshalWithOptions(src, &treed, codec.UseOrderedMap()))
+			// A tag sends the field to the tree.
+			var typed field
+			check(t, codec.Unmarshal(src, &typed))
+
+			got, err := codec.ToJSON(src)
+			check(t, err)
+			tokens := codec.ToJSONTokens(src)
+			for range tokens.Tokens() {
+			}
+			check(t, tokens.Err())
+			if c.json != "" {
+				assert.JSONEq(t, c.json, string(got))
+			}
+		})
+	}
+}
