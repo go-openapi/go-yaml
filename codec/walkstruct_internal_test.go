@@ -180,3 +180,98 @@ func TestWalkPreservesDefaults(t *testing.T) {
 		t.Errorf("got %+v, want the defaults kept", dst)
 	}
 }
+
+// TestAnAnchorKeepsTheWalk reads documents whose values carry an anchor, and
+// requires the value the tree gives without the decode building one.
+//
+// The walk handed every anchor to the tree, which parses the whole source again:
+// citm_catalog into its Go types peaked at 0.69 MiB, and at 19.5 MiB with one
+// anchor written anywhere in it.
+func TestAnAnchorKeepsTheWalk(t *testing.T) {
+	for name, src := range map[string]string{
+		"a scalar":                    "name: &n top\n",
+		"a block mapping":             "leaf: &l\n  s: text\n  i: 3\n",
+		"a flow mapping":              "leaf: &l {s: text, i: 3}\n",
+		"a sequence":                  "leaf:\n  xs: &x [1, 2]\n",
+		"a sequence entry":            "list:\n  - &e {s: one}\n  - s: two\n",
+		"a scalar in a sequence":      "leaf:\n  xs: [1, &x 2, 3]\n",
+		"a map value":                 "byName:\n  a: &a {s: aa}\n  b: {i: 3}\n",
+		"a plain map value":           "plain:\n  k: &k v\n",
+		"a pointer":                   "ptr: &p {s: inner}\n",
+		"an any":                      "any: &a {k: [1, 2]}\n",
+		"the root":                    "&r\nname: top\n",
+		"a field no field claims":     "nope: &n {k: v}\nname: x\n",
+		"two anchors":                 "name: &a x\nleaf: &b {s: y}\n",
+		"an anchor inside an anchor":  "leaf: &l {s: &s text}\n",
+		"a sequence of anchored maps": "list: [&a {s: one}, &b {s: two}]\n",
+		"an anchor on nothing":        "name: &n\nlist: &l\n",
+	} {
+		t.Run(name, func(t *testing.T) {
+			var walked walkShape
+			dec := NewDecoder(bytes.NewReader([]byte(src)))
+			walkErr := dec.Decode(&walked)
+
+			var built walkShape
+			treeErr := NewDecoder(
+				bytes.NewReader([]byte(src)),
+				CustomUnmarshaler[chan int](func(*chan int, []byte) error { return nil }),
+			).Decode(&built)
+
+			if walkErr != nil || treeErr != nil {
+				t.Fatalf("walk err=%v, tree err=%v", walkErr, treeErr)
+			}
+			if !reflect.DeepEqual(walked, built) {
+				t.Errorf("the two paths disagree:\n  walk %+v\n  tree %+v", walked, built)
+			}
+			if dec.parsedFile != nil {
+				t.Error("the decode built a tree")
+			}
+		})
+	}
+}
+
+// TestAnAnchoredNullFillsAStructWithItsZero checks the walk alone on an anchor
+// standing on nothing where the destination is a struct or a pointer to one.
+//
+// The walk reads it as the empty node, as it reads "leaf:" without the anchor,
+// and so does go.yaml.in/yaml/v3. The tree refuses it with "null was used where
+// mapping is expected", which is defect 148 and not the walk's.
+func TestAnAnchoredNullFillsAStructWithItsZero(t *testing.T) {
+	for _, src := range []string{"leaf: &l\n", "leaf: &l ~\n", "ptr: &p\n"} {
+		t.Run(src, func(t *testing.T) {
+			walked := walkShape{Name: "preset"}
+			dec := NewDecoder(bytes.NewReader([]byte(src)))
+			if err := dec.Decode(&walked); err != nil {
+				t.Fatal(err)
+			}
+			if want := (walkShape{Name: "preset"}); !reflect.DeepEqual(walked, want) {
+				t.Errorf("got %+v, want %+v", walked, want)
+			}
+			if dec.parsedFile != nil {
+				t.Error("the decode built a tree")
+			}
+		})
+	}
+}
+
+// TestAnAnchorTheWalkCannotReadGoesToTheTree pins the anchors the walk still hands
+// to the tree, so each one that starts to walk is noticed and moved above.
+func TestAnAnchorTheWalkCannotReadGoesToTheTree(t *testing.T) {
+	for name, src := range map[string]string{
+		"an alias":                     "name: &n top\nleaf:\n  s: *n\n",
+		"an anchored key":              "&k name: top\n",
+		"an anchor on a tagged scalar": "name: &n !!str top\n",
+		"an anchor inside an any":      "any: {k: &a v}\n",
+	} {
+		t.Run(name, func(t *testing.T) {
+			var walked walkShape
+			dec := NewDecoder(bytes.NewReader([]byte(src)))
+			if err := dec.Decode(&walked); err != nil {
+				t.Fatal(err)
+			}
+			if dec.parsedFile == nil {
+				t.Error("the walk read it: move the case to TestAnAnchorKeepsTheWalk")
+			}
+		})
+	}
+}

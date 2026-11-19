@@ -31,6 +31,10 @@ const (
 	typedStruct typedFrameKind = iota
 	typedMap
 	typedSlice
+	// typedAnchor stands for an anchor around one node. It holds the
+	// destination the node writes into, read once as the anchor opens, and
+	// passes the node's value on to the collection around it as it closes.
+	typedAnchor
 )
 
 type typedFrame struct {
@@ -52,6 +56,8 @@ type typedFrame struct {
 	// is looked up at all.
 	skip    bool
 	dropped bool
+	// got says the node under an anchor has settled, into out.
+	got bool
 }
 
 // typedBuilder fills a Go value as the parse hands the document over, without
@@ -84,10 +90,17 @@ func holdsAnything(v reflect.Value) bool {
 
 func (b *typedBuilder) Enter(node ast.Node, at parser.Cursor) error {
 	switch node.(type) {
-	case *ast.AnchorNode, *ast.AliasNode, *ast.TagNode, *ast.MappingKeyNode:
-		// A property or an alias, inside an "any" subtree or out of one. The
-		// nested builder reads anchors of its own and would answer for the
-		// document's, so both go to the tree together.
+	case *ast.AnchorNode:
+		if b.values != nil || at.IsKey() {
+			// Inside an "any" subtree, the nested builder would read the anchor
+			// as its own and answer for the document's. An anchored key names
+			// its entry through the anchor, which openEntry does not read yet.
+			return b.fail(errNeedsTheTree)
+		}
+
+		return b.openAnchor()
+	case *ast.AliasNode, *ast.TagNode, *ast.MappingKeyNode:
+		// An alias, or a property this walk does not read yet.
 		return b.fail(errNeedsTheTree)
 	case *ast.CommentGroupNode:
 		return parser.ErrSkipNode
@@ -133,6 +146,8 @@ func (b *typedBuilder) Leave(node ast.Node, at parser.Closing) error {
 	}
 	switch node.(type) {
 	case *ast.MappingNode, *ast.SequenceNode:
+	case *ast.AnchorNode:
+		return b.closeAnchor()
 	default:
 		return nil
 	}
@@ -250,8 +265,41 @@ func (b *typedBuilder) settle(v reflect.Value) {
 		if v.IsValid() {
 			top.dst.Set(reflect.Append(top.dst, v))
 		}
+	case top.kind == typedAnchor:
+		top.out, top.got = v, true
 	}
 	top.target = reflect.Value{}
+}
+
+// openAnchor opens an anchor on the destination of the node it stands on.
+//
+// The destination is read here, once, and the node takes it from the frame: a
+// sequence makes an element each time it is asked for one.
+func (b *typedBuilder) openAnchor() error {
+	dst, wanted := b.destination()
+	b.stack = append(b.stack, typedFrame{kind: typedAnchor, target: dst, skip: !wanted})
+
+	return nil
+}
+
+// closeAnchor hands what the anchored node wrote to the collection around the
+// anchor.
+func (b *typedBuilder) closeAnchor() error {
+	frame := b.stack[len(b.stack)-1]
+	b.stack = b.stack[:len(b.stack)-1]
+	if frame.skip {
+		b.settle(reflect.Value{})
+
+		return nil
+	}
+	if !frame.got {
+		// The anchor stands on nothing, or on a node the walk does not hand
+		// over on its own: "&a" alone, or "&a !!str 1".
+		return b.fail(errNeedsTheTree)
+	}
+	b.settle(frame.out)
+
+	return nil
 }
 
 func (b *typedBuilder) openMapping(dst reflect.Value, wanted bool) error {
