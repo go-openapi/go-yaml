@@ -560,3 +560,95 @@ func TestAMergeWritesOverTheCallersMapEntries(t *testing.T) {
 		})
 	}
 }
+
+// TestAMergeSequenceReadsEachMappingWhole holds every reader to the precedence
+// of "<<: [a, b]" where a mapping of the sequence has a "<<" of its own: each
+// mapping is read whole -- its own keys, then its own merge -- before the next,
+// and the earlier mapping wins.
+//
+// The tree folded the sequence into one mapping and lost where each ended. Its
+// any, MapSlice and inline-map readers then let a's merged key beat a's own,
+// and its struct reader let b's own key beat the key a merges in.
+func TestAMergeSequenceReadsEachMappingWhole(t *testing.T) {
+	type leaf struct {
+		K string `json:"k" yaml:"k"`
+	}
+	type inline struct {
+		Rest map[string]any `yaml:",inline"`
+	}
+	// A custom unmarshaler turns the walk off, and no field holds a chan int.
+	tree := codec.CustomUnmarshaler[chan int](func(*chan int, []byte) error { return nil })
+
+	for _, c := range []struct{ defs, seq, want string }{
+		{"a: &a {<<: {k: zero}, k: own}\n", "[*a]", "own"},
+		{"a: &a {<<: {k: zero}}\nb: &b {k: bee}\n", "[*a, *b]", "zero"},
+		{"a: &a {<<: {k: zero}, k: own}\n", "[{k: first}, *a]", "first"},
+	} {
+		src := "%YAML 1.1\n---\n" + c.defs + "leaf: {<<: " + c.seq + "}\npair: [<<: " + c.seq + "]\n"
+		decode := func(t *testing.T, v any, opts ...codec.DecodeOption) {
+			t.Helper()
+			require.NoError(t, codec.NewDecoder(strings.NewReader(src), opts...).Decode(v))
+		}
+
+		t.Run(c.seq, func(t *testing.T) {
+			t.Run("struct", func(t *testing.T) {
+				for name, opts := range map[string][]codec.DecodeOption{"walk": nil, "tree": {tree}} {
+					var v struct {
+						Leaf leaf `yaml:"leaf"`
+					}
+					decode(t, &v, opts...)
+					assert.Equalf(t, c.want, v.Leaf.K, "%s", name)
+				}
+			})
+			t.Run("typed map", func(t *testing.T) {
+				for name, opts := range map[string][]codec.DecodeOption{"walk": nil, "tree": {tree}} {
+					var v struct {
+						Leaf map[string]string `yaml:"leaf"`
+					}
+					decode(t, &v, opts...)
+					assert.Equalf(t, c.want, v.Leaf["k"], "%s", name)
+				}
+			})
+			t.Run("inline map", func(t *testing.T) {
+				var v struct {
+					Leaf inline `yaml:"leaf"`
+				}
+				decode(t, &v)
+				assert.Equal(t, c.want, v.Leaf.Rest["k"])
+			})
+			t.Run("any", func(t *testing.T) {
+				var walked any
+				decode(t, &walked)
+				var treed map[string]any
+				decode(t, &treed)
+				for name, v := range map[string]map[string]any{"walk": walked.(map[string]any), "tree": treed} {
+					assert.Equalf(t, c.want, v["leaf"].(map[string]any)["k"], "%s leaf", name)
+					assert.Equalf(t, c.want, v["pair"].([]any)[0].(map[string]any)["k"], "%s pair", name)
+				}
+			})
+			t.Run("MapSlice", func(t *testing.T) {
+				var v any
+				decode(t, &v, codec.UseOrderedMap())
+				m := v.(codec.MapSlice)
+				l, _ := m.Get("leaf")
+				k, _ := l.(codec.MapSlice).Get("k")
+				assert.Equal(t, c.want, k, "leaf")
+				p, _ := m.Get("pair")
+				k, _ = p.([]any)[0].(codec.MapSlice).Get("k")
+				assert.Equal(t, c.want, k, "pair")
+			})
+			t.Run("ToJSON", func(t *testing.T) {
+				got, err := codec.ToJSON([]byte(src))
+				require.NoError(t, err)
+				var v struct {
+					Leaf leaf   `json:"leaf"`
+					Pair []leaf `json:"pair"`
+				}
+				require.NoError(t, json.Unmarshal(got, &v))
+				assert.Equal(t, c.want, v.Leaf.K)
+				require.Len(t, v.Pair, 1)
+				assert.Equal(t, c.want, v.Pair[0].K)
+			})
+		})
+	}
+}

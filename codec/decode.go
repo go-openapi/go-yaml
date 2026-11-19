@@ -786,13 +786,10 @@ func (d *Decoder) setToMapValue(node ast.Node, m *keyedMap, merged bool) error {
 	switch n := node.(type) {
 	case *ast.MappingValueNode:
 		if n.Key.IsMergeKey() {
-			value, err := d.getMapNode(n.Value, true)
-			if err != nil {
-				return err
-			}
-
-			return eachMergedEntry(value, func(v ast.Node) error {
-				return d.setToMapValue(v, m, true)
+			return d.eachMergeSource(n.Value, func(value ast.MapNode) error {
+				return eachMergedEntry(value, func(v ast.Node) error {
+					return d.setToMapValue(v, m, true)
+				})
 			})
 		}
 		key, err := d.mapKeyNodeToValue(n.Key)
@@ -852,13 +849,10 @@ func (d *Decoder) setToOrderedMapValue(node ast.Node, m *MapSlice, merged bool) 
 	switch n := node.(type) {
 	case *ast.MappingValueNode:
 		if n.Key.IsMergeKey() {
-			value, err := d.getMapNode(n.Value, true)
-			if err != nil {
-				return err
-			}
-
-			return eachMergedEntry(value, func(v ast.Node) error {
-				return d.setToOrderedMapValue(v, m, true)
+			return d.eachMergeSource(n.Value, func(value ast.MapNode) error {
+				return eachMergedEntry(value, func(v ast.Node) error {
+					return d.setToOrderedMapValue(v, m, true)
+				})
 			})
 		}
 		key, err := d.mapKeyNodeToValue(n.Key)
@@ -1370,6 +1364,67 @@ func outOfFloatRange(f float64, text string) bool {
 	})
 }
 
+// eachMergeSource hands fn each mapping a "<<" names, one at a time and in the
+// order written: the mapping itself, or each mapping of a sequence of them.
+//
+// getMapNode folds a sequence into one MapNode, which loses where one of its
+// mappings ends. Each mapping has to be read whole -- its own keys, then what
+// its own "<<" brings -- before the next, since an earlier mapping wins over a
+// later one: "<<: [*a, *b]" takes a key a merges in over the same key b writes.
+func (d *Decoder) eachMergeSource(node ast.Node, fn func(ast.MapNode) error) error {
+	return d.eachMergeNode(node, func(one ast.Node, inSequence bool) error {
+		value, err := d.getMapNode(one, !inSequence)
+		if err != nil {
+			return err
+		}
+
+		return fn(value)
+	})
+}
+
+// eachMergeNode hands fn the node of each mapping a "<<" names, as
+// eachMergeSource reads them. inSequence says the node is an element of a
+// sequence, which has to be a mapping: a sequence inside it is refused.
+func (d *Decoder) eachMergeNode(node ast.Node, fn func(one ast.Node, inSequence bool) error) error {
+	seq := d.mergeSequence(node)
+	if seq == nil {
+		return fn(node, false)
+	}
+	for _, one := range seq.Values {
+		if err := fn(one, true); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// mergeSequence returns the sequence a "<<" names, through an anchor, an alias
+// or a tag, and nil where it names anything else. It records an anchor on the
+// way, as getMapNode does.
+func (d *Decoder) mergeSequence(node ast.Node) *ast.SequenceNode {
+	for {
+		switch n := node.(type) {
+		case *ast.SequenceNode:
+			return n
+		case *ast.AnchorNode:
+			d.anchorNodeMap[n.Name.GetToken().Value] = n.Value
+			node = n.Value
+		case *ast.AliasNode:
+			target, _ := d.aliasTarget(n)
+			if target == nil {
+				// getMapNode reports the unknown anchor.
+				return nil
+			}
+			node = target
+		case *ast.TagNode:
+			node = n.Value
+		default:
+			return nil
+		}
+	}
+}
+
 func (d *Decoder) getMapNode(node ast.Node, isMerge bool) (ast.MapNode, error) {
 	d.stepIn()
 	defer d.stepOut()
@@ -1503,26 +1558,24 @@ func (d *Decoder) binaryBytes(node ast.Node) ([]byte, bool) {
 // mergeKeyValue reads the mapping a "<<" names as a value of its own, an
 // ordered one under UseOrderedMap.
 func (d *Decoder) mergeKeyValue(node ast.Node) (any, error) {
-	value, err := d.getMapNode(node, true)
-	if err != nil {
-		return nil, err
-	}
-	iter := value.MapRange()
 	if d.useOrderedMap {
 		m := MapSlice{}
-		for iter.Next() {
-			if err := d.setToOrderedMapValue(iter.KeyValue(), &m, true); err != nil {
-				return nil, err
-			}
-		}
+		err := d.eachMergeSource(node, func(value ast.MapNode) error {
+			return eachMergedEntry(value, func(v ast.Node) error {
+				return d.setToOrderedMapValue(v, &m, true)
+			})
+		})
 
-		return m, nil
+		return m, err
 	}
 	m := newKeyedMap(0)
-	for iter.Next() {
-		if err := d.setToMapValue(iter.KeyValue(), m, true); err != nil {
-			return nil, err
-		}
+	err := d.eachMergeSource(node, func(value ast.MapNode) error {
+		return eachMergedEntry(value, func(v ast.Node) error {
+			return d.setToMapValue(v, m, true)
+		})
+	})
+	if err != nil {
+		return nil, err
 	}
 
 	return m.value(), nil
@@ -2308,43 +2361,48 @@ func (d *Decoder) mergedKeyToNodeMap(
 		return nil, ErrExceededMaxDepth
 	}
 
-	mapNode, err := d.getMapNode(node, true)
-	if err != nil {
-		return nil, err
-	}
-
 	keyToNodeMap := map[string]ast.Node{}
-	mapIter := mapNode.MapRange()
-	for mapIter.Next() {
-		keyNode := mapIter.Key()
-		if keyNode.IsMergeKey() {
-			if ignoreMergeKey {
+	hold := func(k string, v ast.Node) {
+		if _, held := keyToNodeMap[k]; !held {
+			keyToNodeMap[k] = v
+		}
+	}
+	err := d.eachMergeSource(node, func(mapNode ast.MapNode) error {
+		// The mapping's own keys first, then what its own "<<" bring in.
+		var merges []ast.Node
+		mapIter := mapNode.MapRange()
+		for mapIter.Next() {
+			keyNode := mapIter.Key()
+			if keyNode.IsMergeKey() {
+				if !ignoreMergeKey {
+					merges = append(merges, mapIter.Value())
+				}
+
 				continue
 			}
-			nested, err := d.mergedKeyToNodeMap(mapIter.Value(), ignoreMergeKey, getKeyOrValueNode)
+
+			keyVal, err := d.nodeToValue(keyNode)
 			if err != nil {
-				return nil, err
+				return err
+			}
+			if key, isText := keyVal.(string); isText {
+				hold(key, getKeyOrValueNode(mapIter))
+			}
+		}
+		for _, from := range merges {
+			nested, err := d.mergedKeyToNodeMap(from, ignoreMergeKey, getKeyOrValueNode)
+			if err != nil {
+				return err
 			}
 			for k, v := range nested {
-				if _, held := keyToNodeMap[k]; !held {
-					keyToNodeMap[k] = v
-				}
+				hold(k, v)
 			}
-
-			continue
 		}
 
-		keyVal, err := d.nodeToValue(keyNode)
-		if err != nil {
-			return nil, err
-		}
-		key, isText := keyVal.(string)
-		if !isText {
-			continue
-		}
-		if _, held := keyToNodeMap[key]; !held {
-			keyToNodeMap[key] = getKeyOrValueNode(mapIter)
-		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
 	}
 
 	return keyToNodeMap, nil
@@ -2698,8 +2756,8 @@ func (d *Decoder) rangeMapEntries(src ast.Node, ignoreMergeKey bool, visit mapEn
 }
 
 // rangeMergedEntries hands over the entries of what a "<<" names, which is a
-// mapping or a sequence of them: getMapNode folds a sequence into one MapNode,
-// in the order it was written.
+// mapping or a sequence of them, each mapping whole before the next: see
+// eachMergeSource.
 func (d *Decoder) rangeMergedEntries(src ast.Node, ignoreMergeKey bool, visit mapEntryFunc) error {
 	d.stepIn()
 	defer d.stepOut()
@@ -2707,43 +2765,40 @@ func (d *Decoder) rangeMergedEntries(src ast.Node, ignoreMergeKey bool, visit ma
 		return ErrExceededMaxDepth
 	}
 
-	mapNode, err := d.getMapNode(src, true)
-	if err != nil {
-		return err
-	}
+	return d.eachMergeSource(src, func(mapNode ast.MapNode) error {
+		var merges []ast.Node
 
-	var merges []ast.Node
+		mapIter := mapNode.MapRange()
+		for mapIter.Next() {
+			keyNode := mapIter.Key()
+			if keyNode.IsMergeKey() {
+				if !ignoreMergeKey {
+					merges = append(merges, mapIter.Value())
+				}
 
-	mapIter := mapNode.MapRange()
-	for mapIter.Next() {
-		keyNode := mapIter.Key()
-		if keyNode.IsMergeKey() {
-			if !ignoreMergeKey {
-				merges = append(merges, mapIter.Value())
+				continue
 			}
 
-			continue
+			name, named, err := d.entryName(keyNode)
+			if err != nil {
+				return err
+			}
+			if !named {
+				continue
+			}
+			if err := visit(name, keyNode, mapIter.Value(), mapIter.KeyValue(), true); err != nil {
+				return err
+			}
 		}
 
-		name, named, err := d.entryName(keyNode)
-		if err != nil {
-			return err
+		for _, from := range merges {
+			if err := d.rangeMergedEntries(from, ignoreMergeKey, visit); err != nil {
+				return err
+			}
 		}
-		if !named {
-			continue
-		}
-		if err := visit(name, keyNode, mapIter.Value(), mapIter.KeyValue(), true); err != nil {
-			return err
-		}
-	}
 
-	for _, from := range merges {
-		if err := d.rangeMergedEntries(from, ignoreMergeKey, visit); err != nil {
-			return err
-		}
-	}
-
-	return nil
+		return nil
+	})
 }
 
 // entryName reads the text a mapping key addresses its entry by. named is false
@@ -3543,25 +3598,35 @@ func (d *Decoder) decodeMap(dst reflect.Value, src ast.Node) error {
 //
 // The merged mapping is decoded apart because mapValue may be the caller's map, which decodeMap writes into: decoding
 // the merge straight into it would write over the mapping's own entries.
+//
+// Each mapping of a merge sequence is decoded whole before the next, so an
+// earlier one wins with what its own "<<" brought: see eachMergeSource.
 func (d *Decoder) mergeIntoMap(mapValue reflect.Value, written map[any]struct{}, value ast.Node) error {
-	merged := reflect.New(mapValue.Type()).Elem()
-	leave := d.enterMerge()
-	err := d.decodeMap(merged, value)
-	leave()
-	if err != nil {
-		return err
-	}
-	iter := merged.MapRange()
-	for iter.Next() {
-		key := iter.Key().Interface()
-		if _, wrote := written[key]; wrote {
-			continue
+	return d.eachMergeNode(value, func(source ast.Node, inSequence bool) error {
+		merged := reflect.New(mapValue.Type()).Elem()
+		leave := func() {}
+		if !inSequence {
+			// A sequence here is the merge's own, and decodeMap reads it
+			// only under a merge.
+			leave = d.enterMerge()
 		}
-		written[key] = struct{}{}
-		mapValue.SetMapIndex(iter.Key(), iter.Value())
-	}
+		err := d.decodeMap(merged, source)
+		leave()
+		if err != nil {
+			return err
+		}
+		iter := merged.MapRange()
+		for iter.Next() {
+			key := iter.Key().Interface()
+			if _, wrote := written[key]; wrote {
+				continue
+			}
+			written[key] = struct{}{}
+			mapValue.SetMapIndex(iter.Key(), iter.Value())
+		}
 
-	return nil
+		return nil
+	})
 }
 
 // decodeMapKey decodes key into a map whose keys are of keyType, and returns the key with the type it was decoded as.
