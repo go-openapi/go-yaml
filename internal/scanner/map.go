@@ -43,7 +43,15 @@ func (s *Scanner) scanMapDelim(ctx *Context) (bool, error) {
 
 	switch {
 	case ok:
-		s.lastDelimColumn = tk.Position.Column
+		// A property written in front of the key belongs to the entry, so the lines below are measured from the
+		// '&' or the '!' and not from the key behind it. Measured from the key, "&a a: >-" over " x" put the level
+		// at column 4 and the content in column 2 read as a dedent: the block scalar came back empty and its
+		// content was read as a node of its own, which the parser then refused.
+		col := tk.Position.Column
+		if start := ctx.keyPropertyColumnOn(tk.Position.Line); start != 0 && start < col {
+			col = start
+		}
+		s.lastDelimColumn = col
 		ctx.addTokenValue(tk)
 
 	case last == nil || last.Position.Line != s.line:

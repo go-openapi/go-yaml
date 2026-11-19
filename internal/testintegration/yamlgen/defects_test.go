@@ -106,61 +106,6 @@ func readTheStream(t *testing.T, src string) []any {
 	}
 }
 
-// TestDefectAPropertiedKeyRefusesABlockScalarValue pins the combination.
-//
-// An anchor or a tag on an *implicit* key, over a block scalar value, is refused
-// with "value is not allowed in this context. map key-value is pre-defined".
-// Nothing about how the value is written is the key's business: 8.2.2 puts an
-// implicit key at ns-s-block-map-implicit-key, a flow node, and a flow node
-// carries its properties.
-//
-// Four controls place it exactly. The same key with a plain value reads, the
-// same key over a block collection reads, the same block scalar under a bare key
-// reads, and -- the sharpest -- the same entry written the long way reads:
-// "? &a1 k" over ": >-" over " x" is the mapping, where "&a1 k: >-" is refused.
-//
-// Reached on 2026-09-08 by TestAStreamReadsBackAsItsDocuments, on the first run
-// after the tagger and the aliaser began walking keys.
-func TestDefectAPropertiedKeyRefusesABlockScalarValue(t *testing.T) {
-	t.Run("today a property on the key refuses the block scalar", func(t *testing.T) {
-		for _, src := range []string{
-			"&a1 k: >-\n x\n",
-			"&a1 k: |-\n x\n",
-			"!!str k: >-\n x\n",
-			"&a1 \"k\": &a2 !!str >-\n x\n",
-		} {
-			var got any
-			err := codec.Unmarshal([]byte(src), &got)
-			require.Errorf(t, err, "%q", src)
-			assert.Containsf(t, err.Error(), "value is not allowed in this context", "%q", src)
-		}
-	})
-
-	t.Run("and every adjacent shape reads", func(t *testing.T) {
-		for _, tc := range []struct {
-			src  string
-			want map[string]any
-		}{
-			// The block scalar under a bare key.
-			{src: "k: >-\n x\n", want: map[string]any{"k": "x"}},
-			// The propertied key over a plain value.
-			{src: "&a1 k: v\n", want: map[string]any{"k": "v"}},
-			{src: "!!str k: v\n", want: map[string]any{"k": "v"}},
-			// The propertied key over a block collection.
-			{src: "&a1 k:\n  a: 1\n", want: map[string]any{"k": map[string]any{"a": uint64(1)}}},
-			{src: "&a1 k:\n  - 1\n", want: map[string]any{"k": []any{uint64(1)}}},
-			// And the same entry written the long way, which is the control
-			// that places the fault on the implicit key: "? &a1 k" over
-			// ": >-" reads where "&a1 k: >-" is refused.
-			{src: "? &a1 k\n: >-\n x\n", want: map[string]any{"k": "x"}},
-		} {
-			var got any
-			require.NoErrorf(t, codec.Unmarshal([]byte(tc.src), &got), "%q", tc.src)
-			assert.Equalf(t, tc.want, got, "%q", tc.src)
-		}
-	})
-}
-
 // TestDefectAPropertiedEmptyKeyIsMishandled pins the three arrangements.
 //
 // No generated document reaches these: the tagger leaves keys untagged until

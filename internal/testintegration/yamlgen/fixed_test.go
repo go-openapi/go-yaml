@@ -3441,3 +3441,39 @@ func TestFixedACollectionKeyWrittenAloneInFlow(t *testing.T) {
 	var got any
 	assert.Error(t, codec.Unmarshal([]byte("{{a: 0}: v}\n"), &got), "read %v", got)
 }
+
+// TestFixedPropertiedKeyOverABlockScalar holds the entry whose key carries an
+// anchor or a tag and whose value is a block scalar.
+//
+// It was refused with "value is not allowed in this context. map key-value is
+// pre-defined" from 2026-09-08, when the tagger and the aliaser began walking
+// keys and a document could carry a propertied key for the first time. The
+// scanner measured the entry from the key and not from the property in front of
+// it, so the block scalar's content read as a dedent: the scalar came back empty
+// and its content was read as a node of its own.
+//
+// The controls stay with it. A bare key over the same block scalar reads, a
+// propertied key over a plain value reads, and the same entry written the long
+// way reads -- which is what placed the fault on the implicit key.
+func TestFixedPropertiedKeyOverABlockScalar(t *testing.T) {
+	for _, tc := range []struct {
+		src  string
+		want map[string]any
+	}{
+		{src: "&a1 k: >-\n x\n", want: map[string]any{"k": "x"}},
+		{src: "&a1 k: |-\n x\n", want: map[string]any{"k": "x"}},
+		{src: "!!str k: >-\n x\n", want: map[string]any{"k": "x"}},
+		{src: "&a1 \"k\": &a2 !!str >-\n x\n", want: map[string]any{"k": "x"}},
+
+		{src: "k: >-\n x\n", want: map[string]any{"k": "x"}},
+		{src: "&a1 k: v\n", want: map[string]any{"k": "v"}},
+		{src: "!!str k: v\n", want: map[string]any{"k": "v"}},
+		{src: "&a1 k:\n  a: 1\n", want: map[string]any{"k": map[string]any{"a": uint64(1)}}},
+		{src: "&a1 k:\n  - 1\n", want: map[string]any{"k": []any{uint64(1)}}},
+		{src: "? &a1 k\n: >-\n x\n", want: map[string]any{"k": "x"}},
+	} {
+		var got any
+		require.NoErrorf(t, codec.Unmarshal([]byte(tc.src), &got), "%q", tc.src)
+		assert.Equalf(t, tc.want, got, "%q", tc.src)
+	}
+}

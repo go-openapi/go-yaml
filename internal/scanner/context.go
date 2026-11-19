@@ -131,6 +131,28 @@ func (c *Context) keyStartColumn() int32 {
 	return column
 }
 
+// keyPropertyColumnOn returns the column the run of properties in front of a key starts at, where that run stands
+// on line, and 0 otherwise.
+//
+// The line matters. A property on the line above belongs to the node under it and not to an entry further down:
+// "!<tag:clarkevans.com,2002:invoice>" over "  invoice: 34843" keys that entry at its own column, and measuring it
+// from the tag put every line of the document one level out.
+func (c *Context) keyPropertyColumnOn(line int32) int32 {
+	if !c.hasLastTk || c.lastTk.Position.Line != line {
+		return 0
+	}
+	// Both runs are read: the run ending at the token before the key holds an anchor and its name, and the run
+	// ending at the last token holds a tag, which is one token and carries no name.
+	if c.prevPropRun.length > 0 && c.prevPropRun.line == line {
+		return c.prevPropRun.startColumn
+	}
+	if c.propRun.length > 0 && c.propRun.line == line {
+		return c.propRun.startColumn
+	}
+
+	return 0
+}
+
 // reset points a context that Reset has cleared at src.
 func (c *Context) reset(src string) {
 	c.size = int32(len(src))
@@ -222,7 +244,7 @@ func (c *Context) addTokenValue(tk token.Token) {
 func (c *Context) recordToken(tk *token.Token) {
 	c.prevPropRun = c.propRun
 	switch {
-	case !isPropertyToken(tk):
+	case !isPropertyToken(tk) && !c.namesAnAnchor(tk):
 		c.propRun = propertyRun{}
 	case c.propRun.length > 0 && c.propRun.line == tk.Position.Line:
 		c.propRun.length++
@@ -623,6 +645,19 @@ func (c *Context) followsJSONLikeKey() bool {
 // isPropertyToken reports whether tk introduces a node property: an anchor, an alias or a tag.
 //
 // Each may stand alone, with the empty scalar as its node.
+// namesAnAnchor reports whether tk is the name behind a '&' or a '*'.
+//
+// The scanner cuts that name as a token of its own, and it belongs to the property that opened it: read as an
+// ordinary scalar it ends the run of properties, and a key written as "&a !!str a:" then starts at the tag rather
+// than at the anchor.
+func (c *Context) namesAnAnchor(tk *token.Token) bool {
+	if !c.hasLastTk || c.lastTk.Position.Line != tk.Position.Line {
+		return false
+	}
+
+	return c.lastTk.Type == token.AnchorType || c.lastTk.Type == token.AliasType
+}
+
 func isPropertyToken(tk *token.Token) bool {
 	switch tk.Type {
 	case token.AnchorType, token.AliasType, token.TagType:

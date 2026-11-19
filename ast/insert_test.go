@@ -408,10 +408,15 @@ type placement struct {
 // yaml/yaml-reference-parser and libfyaml refuse, and it was the document left
 // unreadable at the front and the middle: the entry went in after the tag and
 // the tag was copied in front of the line it pushed down. Nothing fails now.
+//
+// 1780 -> 1784 when a property in front of an implicit key stopped moving the
+// column its value is measured from. Four documents that were refused now read,
+// which is the parser and not the renderer, and they insert cleanly at every
+// placement: unreadable and disturbed stand.
 var insertionCensus = map[string]placement{
-	"front":  {tested: 1780, unreadable: 0, disturbed: 64},
-	"middle": {tested: 1780, unreadable: 0, disturbed: 81},
-	"back":   {tested: 1780, unreadable: 0, disturbed: 190},
+	"front":  {tested: 1784, unreadable: 0, disturbed: 64},
+	"middle": {tested: 1784, unreadable: 0, disturbed: 81},
+	"back":   {tested: 1784, unreadable: 0, disturbed: 190},
 }
 
 // TestInsertingIntoTheCorpus puts one entry into every document the corpus holds
