@@ -2140,19 +2140,28 @@ func (d *Decoder) aliasedValue(alias *ast.AliasNode, typ reflect.Type) (reflect.
 	return reflect.Value{}, target, false
 }
 
-// isNullNode reports whether n is the empty node, written as one or under an
-// anchor: "&a ~" and "&a" alone are null as "~" is, since an anchor names a
-// node and does not change it.
+// isNullNode reports whether n is the empty node, written as one, under an
+// anchor or under a "!!null" tag: "&a ~", "&a" alone, "!!null ~" and "!!null"
+// alone are null as "~" is. An anchor names a node and does not change it, and
+// the tag names the type the node already has.
+//
+// Without the tag case, "!!null ~" into a struct or a pointer read as a
+// mapping and was refused with "null was used where mapping is expected".
 func isNullNode(n ast.Node) bool {
 	for {
-		anchor, anchored := n.(*ast.AnchorNode)
-		if !anchored {
-			break
-		}
-		n = anchor.Value
-	}
+		switch node := n.(type) {
+		case *ast.AnchorNode:
+			n = node.Value
 
-	return n == nil || n.Type() == ast.NullType
+			continue
+		case *ast.TagNode:
+			res := node.Resolve()
+
+			return res.Verdict == ast.TagResolved && res.Tag == token.NullTag
+		}
+
+		return n == nil || n.Type() == ast.NullType
+	}
 }
 
 func (d *Decoder) createDecodedNewValue(

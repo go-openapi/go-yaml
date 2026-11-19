@@ -653,3 +653,43 @@ func TestAnAnchoredNullDecodesAsTheNullItNames(t *testing.T) {
 		})
 	}
 }
+
+// TestATaggedNullDecodesAsNull holds a node tagged "!!null" to the null it
+// is written without the tag, through the tree decoder.
+func TestATaggedNullDecodesAsNull(t *testing.T) {
+	type leaf struct{ S string }
+	type shape struct {
+		Leaf  leaf             `yaml:"leaf"`
+		Ptr   *leaf            `yaml:"ptr"`
+		Ptrs  []*leaf          `yaml:"ptrs"`
+		Leafs []leaf           `yaml:"leafs"`
+		ByPtr map[string]*leaf `yaml:"byPtr"`
+		By    map[string]leaf  `yaml:"by"`
+	}
+	// A custom unmarshaler turns the walk off, and no field holds a chan int.
+	tree := codec.CustomUnmarshaler[chan int](func(*chan int, []byte) error { return nil })
+
+	for _, tc := range []struct{ plain, tagged string }{
+		{"leaf: ~\n", "leaf: !!null ~\n"},
+		{"leaf:\n", "leaf: !!null\n"},
+		{"ptr: ~\n", "ptr: !!null ~\n"},
+		{"ptrs: [~]\n", "ptrs: [!!null ~]\n"},
+		{"leafs: [~]\n", "leafs: [!!null ~]\n"},
+		{"byPtr: {k: ~}\n", "byPtr: {k: !!null ~}\n"},
+		{"by: {k: ~}\n", "by: {k: !!null}\n"},
+		{"ptr: &a ~\n", "ptr: &a !!null ~\n"},
+		{"~\n", "!!null ~\n"},
+	} {
+		t.Run(tc.tagged, func(t *testing.T) {
+			preset := shape{Leaf: leaf{S: "preset"}, Ptr: &leaf{S: "preset"}}
+
+			want := preset
+			require.NoError(t, codec.NewDecoder(strings.NewReader(tc.plain), tree).Decode(&want))
+
+			got := preset
+			require.NoError(t, codec.NewDecoder(strings.NewReader(tc.tagged), tree).Decode(&got))
+
+			assert.Equal(t, want, got)
+		})
+	}
+}
