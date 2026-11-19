@@ -2222,13 +2222,17 @@ func (d *Decoder) keyToNodeMap(node ast.Node, ignoreMergeKey bool, getKeyOrValue
 			continue
 		}
 
-		keyVal, err := d.nodeToValue(keyNode)
+		// Named as decodeStruct names an entry, so "1: x" reaches an inline
+		// map as "1", as it reaches a map[string]any. Keeping only the keys
+		// that decoded to a Go string returned an empty map, and no error, on
+		// the first that did not.
+		key, named, err := d.entryName(keyNode)
 		if err != nil {
 			return nil, err
 		}
-		key, ok := keyVal.(string)
-		if !ok {
-			return nil, err
+		if !named {
+			// A collection key names no field and no string-keyed entry.
+			continue
 		}
 		if err := d.validateDuplicateKey(keyMap, key, keyNode); err != nil {
 			return nil, err
@@ -2393,11 +2397,11 @@ func (d *Decoder) mergedKeyToNodeMap(
 				continue
 			}
 
-			keyVal, err := d.nodeToValue(keyNode)
+			key, named, err := d.entryName(keyNode)
 			if err != nil {
 				return err
 			}
-			if key, isText := keyVal.(string); isText {
+			if named {
 				hold(key, getKeyOrValueNode(mapIter))
 			}
 		}

@@ -504,3 +504,33 @@ func TestANullDocumentLeavesAStructAsItWas(t *testing.T) {
 		})
 	}
 }
+
+// TestAnInlineMapKeepsAKeyThatIsNotAString holds a `,inline` map to what a
+// map[string]any reads from the same mapping, less the entries a field claims:
+// a key that is not a string is named by its canonical spelling, own or merged.
+// The inline map came back empty, with no error, as soon as one key was not a
+// string.
+func TestAnInlineMapKeepsAKeyThatIsNotAString(t *testing.T) {
+	type doc struct {
+		Name string         `yaml:"name"`
+		Rest map[string]any `yaml:",inline"`
+	}
+	for _, src := range []string{
+		"name: nm\n1: x\nc: y\n",
+		"name: nm\ntrue: x\nc: y\n",
+		"name: nm\n~: x\nc: y\n",
+		"name: nm\n1.5: x\n",
+		"%YAML 1.1\n---\nname: nm\n<<: {2: m, c: merged}\nc: own\n",
+	} {
+		t.Run(src, func(t *testing.T) {
+			var whole map[string]any
+			require.NoError(t, codec.Unmarshal([]byte(src), &whole))
+			delete(whole, "name")
+
+			var v doc
+			require.NoError(t, codec.Unmarshal([]byte(src), &v))
+			require.Equal(t, "nm", v.Name)
+			require.Equal(t, whole, v.Rest)
+		})
+	}
+}
