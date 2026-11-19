@@ -2948,7 +2948,10 @@ func (d *Decoder) getMergeAliasName(src ast.Node) string {
 }
 
 func (d *Decoder) decodeStruct(dst reflect.Value, src ast.Node) error {
-	if src == nil {
+	if src == nil || isNullNode(src) {
+		// A null writes nothing, so the struct keeps what it holds. A field's
+		// null never gets here: createDecodedNewValue reads it first. A
+		// document that is only "~" does.
 		return nil
 	}
 	d.stepIn()

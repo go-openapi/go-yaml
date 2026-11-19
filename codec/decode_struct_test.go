@@ -476,3 +476,31 @@ nested:
 		t.Fatal("decoder doesn't preserve struct defaults")
 	}
 }
+
+// TestANullDocumentLeavesAStructAsItWas holds a decode into a struct to a
+// document that is only a null: it writes nothing, so the struct keeps what the
+// caller put in it, through the tree as through the walk.
+//
+// The tree handed the null to decodeStruct, which read every source as a
+// mapping and refused it with "null was used where mapping is expected".
+// go.yaml.in/yaml/v3 leaves the struct as it was.
+func TestANullDocumentLeavesAStructAsItWas(t *testing.T) {
+	type doc struct {
+		A string `yaml:"a"`
+	}
+	// A custom unmarshaler turns the walk off, and no field holds a chan int.
+	tree := codec.CustomUnmarshaler[chan int](func(*chan int, []byte) error { return nil })
+
+	for _, src := range []string{"~\n", "null\n", "&a ~\n", "--- ~\n"} {
+		t.Run(src, func(t *testing.T) {
+			walked := doc{A: "preset"}
+			require.NoError(t, codec.NewDecoder(strings.NewReader(src)).Decode(&walked))
+
+			treed := doc{A: "preset"}
+			require.NoError(t, codec.NewDecoder(strings.NewReader(src), tree).Decode(&treed))
+
+			require.Equal(t, doc{A: "preset"}, walked)
+			require.Equal(t, walked, treed)
+		})
+	}
+}
