@@ -97,6 +97,7 @@ func newWalkState(d *Decoder, src []byte) *walkState {
 		share:    d.shareAliases,
 		budget:   budget,
 		declared: st.declared,
+		opts:     d.opts,
 	}
 
 	return st

@@ -248,11 +248,10 @@ func TestAnAnchorKeepsTheWalk(t *testing.T) {
 // to the tree, so each one that starts to walk is noticed and moved above.
 func TestAnAnchorTheWalkCannotReadGoesToTheTree(t *testing.T) {
 	for name, src := range map[string]string{
-		"an alias as a key":            "name: &n k\nplain: {*n : v}\n",
-		"an alias inside an any":       "name: &n top\nany: {k: *n}\n",
-		"an anchored key":              "&k name: top\n",
-		"an anchor on a tagged scalar": "name: &n !!str top\n",
-		"an anchor inside an any":      "any: {k: &a v}\n",
+		"an alias as a key":       "name: &n k\nplain: {*n : v}\n",
+		"an alias inside an any":  "name: &n top\nany: {k: *n}\n",
+		"an anchored key":         "&k name: top\n",
+		"an anchor inside an any": "any: {k: &a v}\n",
 	} {
 		t.Run(name, func(t *testing.T) {
 			var walked walkShape
@@ -579,6 +578,7 @@ func declaredAnchors(t *testing.T, srcs map[string]string) map[string]ast.Node {
 // two aliases share a value; TestADeclaredAnchorIsNeverShared holds that.
 func TestADeclaredAnchorKeepsTheWalk(t *testing.T) {
 	anchors := declaredAnchors(t, map[string]string{
+		"t": "!!str 1\n",
 		"l": "{s: declared, i: 1, xs: [1, 2]}\n",
 		"n": "declared\n",
 		"c": "[3, 4]\n",
@@ -595,6 +595,7 @@ func TestADeclaredAnchorKeepsTheWalk(t *testing.T) {
 		"a merge sequence":              "leaf: {<<: [{s: first}, *l]}\n",
 		"the document's anchor wins":    "name: &n mine\nleaf: {s: *n}\n",
 		"an anchor named after a merge": "leaf: {<<: *l}\nname: &l mine\nplain: {k: *l}\n",
+		"a tag in the declared tree":    "name: *t\n",
 	}
 	for _, share := range []bool{false, true} {
 		for name, src := range docs {
@@ -655,11 +656,10 @@ func TestADeclaredAnchorIsNeverShared(t *testing.T) {
 // TestADeclaredAnchorTheWalkCannotReadGoesToTheTree pins the declared anchors
 // the walk hands to the tree, and requires the tree's value or error from both.
 func TestADeclaredAnchorTheWalkCannotReadGoesToTheTree(t *testing.T) {
-	anchors := declaredAnchors(t, map[string]string{"t": "!!str 1\n", "l": "{s: declared}\n"})
+	anchors := declaredAnchors(t, map[string]string{"l": "{s: declared}\n"})
 	anchors["nothing"] = nil
 	for name, src := range map[string]string{
 		"a declaration with no node":                "name: *nothing\n",
-		"a tag in the declared tree":                "name: *t\n",
 		"an alias inside an any":                    "any: {k: *l}\n",
 		"an anchor named again while a merge waits": "leaf: {<<: {s: *l}, p: &l mine}\n",
 	} {
