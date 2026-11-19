@@ -607,3 +607,49 @@ func TestFixedTheWalkKeepsAnAnchorOnATaggedFlowKeyAlone(t *testing.T) {
 		}
 	})
 }
+
+// TestAnAnchoredNullDecodesAsTheNullItNames holds the tree to the null an anchor
+// stands on: "&a ~" decodes as "~" does, in every place a null can stand.
+//
+// The tree tested a node for null by its type, and an anchored null has the
+// anchor's. It decoded the null into a struct and refused it with "null was used
+// where mapping is expected", and into a pointer it made a value where a null
+// leaves nil. go.yaml.in/yaml/v3 and the walk both read it as the null.
+func TestAnAnchoredNullDecodesAsTheNullItNames(t *testing.T) {
+	type leaf struct{ S string }
+	type shape struct {
+		Leaf  leaf             `yaml:"leaf"`
+		Ptr   *leaf            `yaml:"ptr"`
+		Ptrs  []*leaf          `yaml:"ptrs"`
+		Leafs []leaf           `yaml:"leafs"`
+		Arr   [1]*leaf         `yaml:"arr"`
+		ByPtr map[string]*leaf `yaml:"byPtr"`
+		By    map[string]leaf  `yaml:"by"`
+	}
+	// A custom unmarshaler turns the walk off, and no field holds a chan int.
+	tree := codec.CustomUnmarshaler[chan int](func(*chan int, []byte) error { return nil })
+
+	for _, tc := range []struct{ plain, anchored string }{
+		{"leaf:\n", "leaf: &a\n"},
+		{"leaf: ~\n", "leaf: &a ~\n"},
+		{"ptr:\n", "ptr: &a\n"},
+		{"ptrs: [~]\n", "ptrs: [&a ~]\n"},
+		{"leafs: [~]\n", "leafs: [&a ~]\n"},
+		{"arr: [~]\n", "arr: [&a ~]\n"},
+		{"byPtr: {k: ~}\n", "byPtr: {k: &a ~}\n"},
+		{"by: {k: ~}\n", "by: {k: &a ~}\n"},
+		{"ptr: &a ~\nleaf: *a\n", "ptr: &a ~\nleaf: *a\n"},
+	} {
+		t.Run(tc.anchored, func(t *testing.T) {
+			preset := shape{Leaf: leaf{S: "preset"}}
+
+			want := preset
+			require.NoError(t, codec.NewDecoder(strings.NewReader(tc.plain), tree).Decode(&want))
+
+			got := preset
+			require.NoError(t, codec.NewDecoder(strings.NewReader(tc.anchored), tree).Decode(&got))
+
+			assert.Equal(t, want, got)
+		})
+	}
+}

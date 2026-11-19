@@ -205,6 +205,8 @@ func TestAnAnchorKeepsTheWalk(t *testing.T) {
 		"an anchor inside an anchor":  "leaf: &l {s: &s text}\n",
 		"a sequence of anchored maps": "list: [&a {s: one}, &b {s: two}]\n",
 		"an anchor on nothing":        "name: &n\nlist: &l\n",
+		"an anchored null struct":     "leaf: &l\nptr: &p\n",
+		"an anchored null pointer":    "ptr: &p ~\nleaf: &l ~\n",
 	} {
 		t.Run(name, func(t *testing.T) {
 			var walked walkShape
@@ -222,30 +224,6 @@ func TestAnAnchorKeepsTheWalk(t *testing.T) {
 			}
 			if !reflect.DeepEqual(walked, built) {
 				t.Errorf("the two paths disagree:\n  walk %+v\n  tree %+v", walked, built)
-			}
-			if dec.parsedFile != nil {
-				t.Error("the decode built a tree")
-			}
-		})
-	}
-}
-
-// TestAnAnchoredNullFillsAStructWithItsZero checks the walk alone on an anchor
-// standing on nothing where the destination is a struct or a pointer to one.
-//
-// The walk reads it as the empty node, as it reads "leaf:" without the anchor,
-// and so does go.yaml.in/yaml/v3. The tree refuses it with "null was used where
-// mapping is expected", which is defect 148 and not the walk's.
-func TestAnAnchoredNullFillsAStructWithItsZero(t *testing.T) {
-	for _, src := range []string{"leaf: &l\n", "leaf: &l ~\n", "ptr: &p\n"} {
-		t.Run(src, func(t *testing.T) {
-			walked := walkShape{Name: "preset"}
-			dec := NewDecoder(bytes.NewReader([]byte(src)))
-			if err := dec.Decode(&walked); err != nil {
-				t.Fatal(err)
-			}
-			if want := (walkShape{Name: "preset"}); !reflect.DeepEqual(walked, want) {
-				t.Errorf("got %+v, want %+v", walked, want)
 			}
 			if dec.parsedFile != nil {
 				t.Error("the decode built a tree")

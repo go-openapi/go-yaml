@@ -2070,6 +2070,21 @@ func (d *Decoder) aliasedValue(alias *ast.AliasNode, typ reflect.Type) (reflect.
 	return reflect.Value{}, target, false
 }
 
+// isNullNode reports whether n is the empty node, written as one or under an
+// anchor: "&a ~" and "&a" alone are null as "~" is, since an anchor names a
+// node and does not change it.
+func isNullNode(n ast.Node) bool {
+	for {
+		anchor, anchored := n.(*ast.AnchorNode)
+		if !anchored {
+			break
+		}
+		n = anchor.Value
+	}
+
+	return n == nil || n.Type() == ast.NullType
+}
+
 func (d *Decoder) createDecodedNewValue(
 	typ reflect.Type, defaultVal reflect.Value, node ast.Node,
 ) (reflect.Value, error) {
@@ -2089,7 +2104,7 @@ func (d *Decoder) createDecodedNewValue(
 		}
 	}
 	var newValue reflect.Value
-	if node.Type() == ast.NullType {
+	if isNullNode(node) {
 		newValue = reflect.New(typ).Elem()
 	} else {
 		newValue = d.createDecodableValue(typ)
@@ -2100,7 +2115,7 @@ func (d *Decoder) createDecodedNewValue(
 	if defaultVal.IsValid() && defaultVal.Type().AssignableTo(newValue.Type()) {
 		newValue.Set(defaultVal)
 	}
-	if node.Type() != ast.NullType {
+	if !isNullNode(node) {
 		if err := d.decodeValue(newValue, node); err != nil {
 			return reflect.Value{}, err
 		}
@@ -2792,7 +2807,7 @@ func (d *Decoder) decodeInlineFields(
 
 			return fmt.Errorf("cannot set embedded type as unexported field %s.%s", field.PkgPath, field.Name)
 		}
-		if fieldValue.Type().Kind() == reflect.Pointer && src.Type() == ast.NullType {
+		if fieldValue.Type().Kind() == reflect.Pointer && isNullNode(src) {
 			// set nil value to pointer
 			fieldValue.Set(reflect.Zero(fieldValue.Type()))
 
@@ -2995,7 +3010,7 @@ func (d *Decoder) decodeStruct(dst reflect.Value, src ast.Node) error {
 		written.mark(found.ord)
 
 		fieldValue := found.value
-		if fieldValue.Type().Kind() == reflect.Pointer && src.Type() == ast.NullType {
+		if fieldValue.Type().Kind() == reflect.Pointer && isNullNode(src) {
 			// set nil value to pointer
 			fieldValue.Set(reflect.Zero(fieldValue.Type()))
 
@@ -3151,7 +3166,7 @@ func (d *Decoder) decodeArray(dst reflect.Value, src ast.Node) error {
 	var foundErr error
 	for iter.Next() {
 		v := iter.Value()
-		if elemType.Kind() == reflect.Pointer && v.Type() == ast.NullType {
+		if elemType.Kind() == reflect.Pointer && isNullNode(v) {
 			// set nil value to pointer
 			arrayValue.Index(idx).Set(reflect.Zero(elemType))
 		} else {
@@ -3206,7 +3221,7 @@ func (d *Decoder) decodeSlice(dst reflect.Value, src ast.Node) error {
 		v := iter.Value()
 		entryIdx := idx
 		idx++
-		if elemType.Kind() == reflect.Pointer && v.Type() == ast.NullType {
+		if elemType.Kind() == reflect.Pointer && isNullNode(v) {
 			// set nil value to pointer
 			sliceValue = reflect.Append(sliceValue, reflect.Zero(elemType))
 			continue
@@ -3459,7 +3474,7 @@ func (d *Decoder) decodeMap(dst reflect.Value, src ast.Node) error {
 		} else if seen {
 			continue
 		}
-		if valueType.Kind() == reflect.Pointer && value.Type() == ast.NullType {
+		if valueType.Kind() == reflect.Pointer && isNullNode(value) {
 			// set nil value to pointer
 			mapValue.SetMapIndex(k, reflect.Zero(valueType))
 			continue
