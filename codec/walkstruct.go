@@ -20,9 +20,9 @@ import (
 // errNeedsTheTree says a document or a destination this walk cannot serve.
 // The decode reads the source again and builds a tree for it.
 //
-// SPIKE. What it refuses is the measure of what is left to build: anchors,
-// aliases and merge keys, which need a subtree the walk has handed over; any
-// destination holding an interface, a custom unmarshaler, an ast.Node, a
+// SPIKE. It falls back on tags, explicit "?" keys, an anchor or an alias used
+// as a key or inside an "any", an anchor parser.WithAnchors declared, and on
+// any destination holding an interface, a custom unmarshaler, an ast.Node, a
 // non-string map key, or a Go kind the setter below does not write.
 var errNeedsTheTree = errors.New("this decode needs the tree")
 
@@ -70,6 +70,14 @@ type typedFrame struct {
 	// anchor's, and empty for the frame an alias decodes into.
 	got  bool
 	name string
+
+	// written marks the fields of a struct the mapping wrote itself, by their
+	// ord, so a "<<" applied at the close skips them. mergeNext says the key
+	// just read was a "<<", so the node that follows is what it merges, and
+	// merges holds those nodes until the mapping closes.
+	written   writtenFields
+	mergeNext bool
+	merges    []ast.Node
 }
 
 // typedBuilder fills a Go value as the parse hands the document over, without
@@ -102,6 +110,12 @@ type typedBuilder struct {
 	// inside that node is not recorded again.
 	anchors   map[string]typedAnchored
 	replaying int
+	// keeping says the walk holds a "<<"'s mapping or sequence whole, for
+	// Leave to clone it. pending counts the frames holding merges not yet
+	// applied, during which an anchor named again goes to the tree: the
+	// merges read their aliases by name as the mapping closes.
+	keeping bool
+	pending int
 }
 
 // holdsAnything reports a destination that takes whatever the document writes.
@@ -114,6 +128,9 @@ func (b *typedBuilder) Enter(node ast.Node, at parser.Cursor) error {
 		// A "%YAML" or "%TAG" line is handed over as a root of its own, ahead
 		// of the document it opens, and holds no value.
 		return parser.ErrSkipNode
+	}
+	if b.values == nil && !at.IsKey() && len(b.stack) > 0 && b.stack[len(b.stack)-1].mergeNext {
+		return b.mergeValue(&b.stack[len(b.stack)-1], node)
 	}
 
 	switch n := node.(type) {
@@ -179,6 +196,12 @@ func (b *typedBuilder) Leave(node ast.Node, at parser.Closing) error {
 	if b.values != nil {
 		return b.forwardLeave(node, at)
 	}
+	if b.keeping {
+		// Nothing inside a kept node is handed over, so this Leave is its own.
+		b.keeping = false
+
+		return b.keepMerge(&b.stack[len(b.stack)-1], node)
+	}
 	switch n := node.(type) {
 	case *ast.MappingNode, *ast.SequenceNode:
 	case *ast.AnchorNode:
@@ -192,6 +215,9 @@ func (b *typedBuilder) Leave(node ast.Node, at parser.Closing) error {
 		// read here rather than as it opened.
 		if err := refuseDuplicateKeys(node); err != nil {
 			return b.fail(err)
+		}
+		if err := b.applyMerges(&b.stack[len(b.stack)-1]); err != nil {
+			return err
 		}
 	}
 
@@ -341,13 +367,19 @@ func (b *typedBuilder) closeAnchor(n *ast.AnchorNode) error {
 	b.record(frame.name, n, frame.out)
 	b.settle(frame.out)
 
-	return nil
+	return b.err
 }
 
 // record keeps what anchor n named. An anchor inside the node an alias is
 // decoded from was recorded where the document wrote it, and stays as it was.
 func (b *typedBuilder) record(name string, n *ast.AnchorNode, value reflect.Value) {
 	if name == "" || b.replaying > 0 {
+		return
+	}
+	if _, again := b.anchors[name]; again && b.pending > 0 {
+		// A merge waiting for its mapping to close would read the new one.
+		_ = b.fail(errNeedsTheTree)
+
 		return
 	}
 	if b.anchors == nil {
@@ -413,19 +445,27 @@ func (b *typedBuilder) replay(node ast.Node, dst reflect.Value, at *ast.AliasNod
 	return nil
 }
 
+// replayNode hands node and everything under it to the builder. at is the
+// alias the node is decoded for, and counts against aliasBudget; a merge
+// written in place passes nil and counts nothing, as the tree counts nothing.
 func (b *typedBuilder) replayNode(node ast.Node, key bool, at *ast.AliasNode) error {
 	if b.err != nil {
 		return b.err
 	}
-	b.built++
-	if b.budget > 0 && b.built > b.budget {
-		return b.fail(yamlerrors.NewExcessiveAliasing(b.built, b.budget, at.GetToken()))
+	if at != nil {
+		b.built++
+		if b.budget > 0 && b.built > b.budget {
+			return b.fail(yamlerrors.NewExcessiveAliasing(b.built, b.budget, at.GetToken()))
+		}
 	}
 
 	cursor := replayCursor{key: key}
 	switch err := b.Enter(node, cursor); {
 	case errors.Is(err, parser.ErrSkipNode):
 		return nil
+	case errors.Is(err, parser.ErrKeepNode):
+		// The node is whole already: hand it straight to Leave.
+		return b.Leave(node, cursor)
 	case err != nil:
 		return err
 	}
@@ -458,6 +498,227 @@ func (b *typedBuilder) replayNode(node ast.Node, key bool, at *ast.AliasNode) er
 	}
 
 	return b.Leave(node, cursor)
+}
+
+// openMerge reads a "<<" key: the node after it names what the mapping merges.
+//
+// A struct with a `,inline,alias` field goes to the tree, which points that
+// field at the anchor the "<<" names, so the encoder writes the alias back.
+func (b *typedBuilder) openMerge(top *typedFrame) error {
+	if top.kind == typedStruct {
+		fields, err := structFields(top.dst.Type(), b.mode)
+		if err != nil {
+			return b.fail(err)
+		}
+		if slices.ContainsFunc(fields.inline, func(sf *StructField) bool { return sf.IsAutoAlias }) {
+			return b.fail(errNeedsTheTree)
+		}
+	}
+	top.mergeNext, top.skip, top.target = true, false, reflect.Value{}
+
+	return parser.ErrSkipNode
+}
+
+// mergeValue holds what a "<<" names until its mapping closes.
+//
+// The merged entries cannot be written as the "<<" is met. A mapping's own
+// entries win over merged ones on either side of the "<<", and an own entry
+// written after it would decode into a field the merge had already filled,
+// keeping what the merge put in the parts the entry leaves out. The tree
+// decoder reads the own entries first and the merges after, and so does
+// applyMerges.
+//
+// An alias holds the clone its anchor recorded. A mapping or a sequence written
+// in place is kept whole by the walk and cloned at its Leave, in keepMerge.
+// Anything else -- a null, a scalar, an anchor or a tag on the merged node --
+// goes to the tree, which reads or rejects it.
+func (b *typedBuilder) mergeValue(top *typedFrame, node ast.Node) error {
+	top.mergeNext = false
+	switch n := node.(type) {
+	case *ast.AliasNode:
+		anchored, known := b.anchors[anchorName(n.Value)]
+		if !known || anchored.node == nil {
+			return b.fail(errNeedsTheTree)
+		}
+		b.holdMerge(top, anchored.node)
+
+		return nil
+	case *ast.MappingNode, *ast.SequenceNode:
+		b.keeping = true
+
+		return parser.ErrKeepNode
+	default:
+		return b.fail(errNeedsTheTree)
+	}
+}
+
+// keepMerge clones the mapping or the sequence of mappings a "<<" writes in
+// place, now the walk hands it over whole. The aliases of a sequence are read
+// here, while each names the anchor written before it.
+func (b *typedBuilder) keepMerge(top *typedFrame, node ast.Node) error {
+	seq, isSeq := node.(*ast.SequenceNode)
+	if !isSeq {
+		if err := refuseDuplicateKeys(node); err != nil {
+			return b.fail(err)
+		}
+		b.holdMerge(top, ast.Clone(node))
+
+		return nil
+	}
+	for _, value := range seq.Values {
+		switch v := value.(type) {
+		case *ast.AliasNode:
+			anchored, known := b.anchors[anchorName(v.Value)]
+			if !known || anchored.node == nil {
+				return b.fail(errNeedsTheTree)
+			}
+			b.holdMerge(top, anchored.node)
+		case *ast.MappingNode:
+			if err := refuseDuplicateKeys(v); err != nil {
+				return b.fail(err)
+			}
+			b.holdMerge(top, ast.Clone(v))
+		default:
+			return b.fail(errNeedsTheTree)
+		}
+	}
+
+	return nil
+}
+
+func (b *typedBuilder) holdMerge(top *typedFrame, node ast.Node) {
+	if len(top.merges) == 0 {
+		b.pending++
+	}
+	top.merges = append(top.merges, node)
+}
+
+// applyMerges writes what the mapping on top of the stack merges, once its own
+// entries are in: each "<<" in the order the document wrote them, each entry
+// only where neither the mapping nor an earlier merge wrote one.
+func (b *typedBuilder) applyMerges(top *typedFrame) error {
+	if len(top.merges) == 0 {
+		return nil
+	}
+	merges := top.merges
+	top.merges = nil
+	b.pending--
+
+	// Decoding a merged value pushes frames, which can move the stack, so the
+	// frame is found again by its index.
+	at := len(b.stack) - 1
+	for _, node := range merges {
+		if err := b.mergeFrom(at, node, nil); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// mergeFrom writes the entries of node, a mapping, into the frame at index i:
+// its own entries first, then what its own "<<" merge, as rangeMergedEntries
+// orders them on the tree. alias is the alias node was reached through, for
+// aliasBudget to count, and nil for a mapping written in place.
+func (b *typedBuilder) mergeFrom(i int, node ast.Node, alias *ast.AliasNode) error {
+	switch n := node.(type) {
+	case *ast.MappingNode:
+		var nested []ast.Node
+		for _, entry := range n.Values {
+			if entry.Key != nil && entry.Key.IsMergeKey() {
+				nested = append(nested, entry.Value)
+
+				continue
+			}
+			if err := b.mergeEntry(i, entry.Key, entry.Value, alias); err != nil {
+				return err
+			}
+		}
+		for _, value := range nested {
+			if err := b.mergeNested(i, value, alias); err != nil {
+				return err
+			}
+		}
+
+		return nil
+	case *ast.AliasNode:
+		anchored, known := b.anchors[anchorName(n.Value)]
+		if !known {
+			return b.fail(errNeedsTheTree)
+		}
+		if _, isMapping := anchored.node.(*ast.MappingNode); !isMapping {
+			return b.fail(errNeedsTheTree)
+		}
+
+		return b.mergeFrom(i, anchored.node, n)
+	default:
+		return b.fail(errNeedsTheTree)
+	}
+}
+
+// mergeNested writes what a "<<" inside a merged mapping names: a mapping, an
+// alias of one, or a sequence of either.
+func (b *typedBuilder) mergeNested(i int, value ast.Node, alias *ast.AliasNode) error {
+	seq, isSeq := value.(*ast.SequenceNode)
+	if !isSeq {
+		return b.mergeFrom(i, value, alias)
+	}
+	for _, one := range seq.Values {
+		if _, isSeq := one.(*ast.SequenceNode); isSeq {
+			return b.fail(errNeedsTheTree)
+		}
+		if err := b.mergeFrom(i, one, alias); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// mergeEntry writes one merged entry into the frame at index i, unless the
+// mapping or an earlier merge wrote it. A struct skips a field its written
+// marks hold, and a map a key it holds.
+func (b *typedBuilder) mergeEntry(i int, keyNode, value ast.Node, alias *ast.AliasNode) error {
+	top := &b.stack[i]
+	name, named := entryText(keyNode)
+	if !named {
+		if top.kind == typedMap {
+			return b.fail(errNeedsTheTree)
+		}
+
+		return nil
+	}
+
+	switch top.kind {
+	case typedStruct:
+		fields, err := structFields(top.dst.Type(), b.mode)
+		if err != nil {
+			return b.fail(err)
+		}
+		ff, known := fields.lookup(name)
+		if !known || top.written.has(ff.ord) {
+			return nil
+		}
+		top.written.mark(ff.ord)
+		field := top.dst.Field(ff.sf.Index)
+		if ff.at != nil {
+			if field, err = fieldAt(top.dst, ff.at); err != nil {
+				return b.fail(err)
+			}
+		}
+		top.skip, top.target = false, field
+	case typedMap:
+		key := reflect.ValueOf(b.strs.clone(name)).Convert(top.dst.Type().Key())
+		if top.dst.MapIndex(key).IsValid() {
+			return nil
+		}
+		top.skip, top.key = false, key
+		top.target = reflect.New(top.dst.Type().Elem()).Elem()
+	default:
+		return b.fail(errNeedsTheTree)
+	}
+
+	return b.replayNode(value, false, alias)
 }
 
 // replayCursor answers for the nodes replay hands over. typedBuilder reads
@@ -614,11 +875,7 @@ func (b *typedBuilder) openEntry(top *typedFrame, keyNode ast.Node) error {
 	}
 
 	if key, isKey := keyNode.(ast.MapKeyNode); isKey && key.IsMergeKey() {
-		// "<<" folds another mapping's entries into this one, which the walk
-		// does not do yet. A merge written as an alias gives up on the alias;
-		// one written in place -- "<<: {a: 1}" -- has nothing else to give up
-		// on, and was read as a key no field claims and dropped.
-		return b.fail(errNeedsTheTree)
+		return b.openMerge(top)
 	}
 
 	name, named := entryText(keyNode)
@@ -644,6 +901,7 @@ func (b *typedBuilder) openEntry(top *typedFrame, keyNode ast.Node) error {
 
 			return parser.ErrSkipNode
 		}
+		top.written.mark(ff.ord)
 		if ff.at != nil {
 			// The type embeds another, and the name reaches a field of it.
 			field, err := fieldAt(top.dst, ff.at)
@@ -905,6 +1163,7 @@ func (b *typedBuilder) reset(root reflect.Value) {
 	b.err = nil
 	b.values, b.anyInto = nil, reflect.Value{}
 	clear(b.anchors)
+	b.keeping, b.pending = false, 0
 }
 
 // typedWalkEnabled turns the spike on. SPIKE.

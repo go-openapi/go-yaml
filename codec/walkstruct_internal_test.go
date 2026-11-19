@@ -9,6 +9,8 @@ import (
 	"reflect"
 	"testing"
 	"time"
+
+	"github.com/go-openapi/go-yaml/parser"
 )
 
 type WalkLeaf struct {
@@ -46,6 +48,14 @@ type walkShape struct {
 	ByName map[string]WalkLeaf `yaml:"byName"`
 	Counts map[string][]int64  `yaml:"counts"`
 	Plain  map[string]string   `yaml:"plain"`
+	// Aliased takes the anchor a "<<" names into its `,inline,alias` field.
+	Aliased aliasedLeaf `yaml:"aliased"`
+}
+
+type aliasedLeaf struct {
+	*WalkLeaf `yaml:",inline,alias"`
+
+	Extra string `yaml:"extra"`
 }
 
 // TestTypedWalkMatchesTheTree reads each document both ways and requires the
@@ -415,5 +425,129 @@ func TestABrokenAliasIsRefusedAsByTheTree(t *testing.T) {
 				t.Errorf("the two paths refuse differently:\n  walk %v\n  tree %v", walkErr, treeErr)
 			}
 		})
+	}
+}
+
+// bothWays holds one document read through the walk and through the tree. dec
+// is the walk's decoder, to ask whether it built a tree.
+type bothWays struct {
+	walked, built    walkShape
+	walkErr, treeErr error
+	dec              *Decoder
+}
+
+// decodeBothWays reads src into a walkShape through the walk and through the
+// tree, under YAML 1.1 where "<<" merges.
+func decodeBothWays(t *testing.T, src string, opts ...DecodeOption) bothWays {
+	t.Helper()
+	var r bothWays
+	opts = append(opts, WithParserOptions(parser.WithYAMLVersion(parser.YAML11)))
+	r.dec = NewDecoder(bytes.NewReader([]byte(src)), opts...)
+	r.walkErr = r.dec.Decode(&r.walked)
+	r.treeErr = NewDecoder(
+		bytes.NewReader([]byte(src)),
+		append(opts, CustomUnmarshaler[chan int](func(*chan int, []byte) error { return nil }))...,
+	).Decode(&r.built)
+
+	return r
+}
+
+// TestAMergeKeepsTheWalk reads documents whose "<<" merges into a struct or a
+// typed map, and requires the value the tree gives without the decode building
+// one. A mapping's own entries win on either side of the "<<", and the earlier
+// mapping of a merge sequence wins over a later one.
+func TestAMergeKeepsTheWalk(t *testing.T) {
+	docs := map[string]string{
+		"an alias before the own keys":   "ptr: &b {s: base, i: 1}\nleaf: {<<: *b, s: own}\n",
+		"an alias after the own keys":    "ptr: &b {s: base, i: 1}\nleaf: {s: own, <<: *b}\n",
+		"a mapping in place":             "leaf: {<<: {s: base, i: 1}, s: own}\n",
+		"a sequence of aliases":          "ptr: &a {s: a}\nlist: [&b {s: b, i: 2}]\nleaf: {<<: [*a, *b]}\n",
+		"a sequence in place":            "ptr: &a {s: a}\nleaf: {<<: [{i: 3, s: first}, *a]}\n",
+		"into a map":                     "plain: {<<: {a: x, b: w}, a: own}\n",
+		"into a map of structs":          "ptr: &b {s: base}\nbyName: {<<: {k: *b, j: {s: no}}, j: {s: j}}\n",
+		"an own struct replaces a merge": "<<: {leaf: {s: base, i: 1}}\nleaf: {s: own}\n",
+		"a merge inside a merged anchor": "ptr: &a {i: 7}\nlist: [&b {<<: *a, s: b}]\nleaf: {<<: *b}\n",
+		"an aliased mapping that merges": "ptr: &a {i: 7}\nleaf: &l {<<: *a, s: l}\nlist: [*l]\n",
+		"a merge no field claims":        "nope: {<<: {s: x}}\nname: m\n",
+		"a merge into an any":            "any: {<<: {a: 1}, b: 2}\n",
+		"a block mapping":                "ptr: &b\n  s: base\n  i: 1\nleaf:\n  <<: *b\n  s: own\n",
+		"a sequence naming a merger":     "ptr: &a {<<: {s: zero}, s: own}\nleaf: {<<: [*a]}\n",
+		"a merged slice":                 "ptr: &b {xs: [1, 2]}\nleaf: {<<: *b}\nlist: [{<<: *b, xs: [3]}]\n",
+	}
+	for _, share := range []bool{false, true} {
+		for name, src := range docs {
+			t.Run(fmt.Sprintf("share=%v/%s", share, name), func(t *testing.T) {
+				var opts []DecodeOption
+				if share {
+					opts = append(opts, ShareAliases())
+				}
+				r := decodeBothWays(t, src, opts...)
+				if r.walkErr != nil || r.treeErr != nil {
+					t.Fatalf("walk err=%v, tree err=%v", r.walkErr, r.treeErr)
+				}
+				if !reflect.DeepEqual(r.walked, r.built) {
+					t.Errorf("the two paths disagree:\n  walk %+v\n  tree %+v", r.walked, r.built)
+				}
+				if r.dec.parsedFile != nil {
+					t.Error("the decode built a tree")
+				}
+			})
+		}
+	}
+}
+
+// TestAMergeTheWalkCannotReadGoesToTheTree pins the merges the walk hands to
+// the tree, and requires the tree's value or the tree's error from both.
+func TestAMergeTheWalkCannotReadGoesToTheTree(t *testing.T) {
+	for name, src := range map[string]string{
+		"an anchor named again before the close": "name: &x one\nleaf: {<<: {s: *x}, p: &x two}\n",
+		"an anchored merge":                      "leaf: {<<: &m {s: x}}\nptr: *m\n",
+		"a merge of a scalar":                    "name: &n top\nleaf: {<<: *n}\n",
+		"a null merge":                           "leaf: {<<: }\n",
+		"a sequence holding a scalar":            "leaf: {<<: [{s: x}, 1]}\n",
+		"a sequence holding a sequence":          "leaf: {<<: [[{s: x}]]}\n",
+		"a struct with an alias field":           "ptr: &b {s: base}\naliased: {<<: *b, extra: e}\n",
+	} {
+		t.Run(name, func(t *testing.T) {
+			r := decodeBothWays(t, src)
+			if (r.walkErr == nil) != (r.treeErr == nil) {
+				t.Fatalf("walk err=%v, tree err=%v", r.walkErr, r.treeErr)
+			}
+			if r.walkErr != nil {
+				if r.walkErr.Error() != r.treeErr.Error() {
+					t.Errorf("the two paths refuse differently:\n  walk %v\n  tree %v", r.walkErr, r.treeErr)
+				}
+
+				return
+			}
+			if !reflect.DeepEqual(r.walked, r.built) {
+				t.Errorf("the two paths disagree:\n  walk %+v\n  tree %+v", r.walked, r.built)
+			}
+			if r.dec.parsedFile == nil {
+				t.Error("the walk read it: move the case to TestAMergeKeepsTheWalk")
+			}
+		})
+	}
+}
+
+// TestAMergeKeepsTheDefaults holds the walk to the tree on what a merge does to
+// the fields of a struct the caller set: a merged entry is written over the
+// default, as an own entry is, and a field neither writes keeps it.
+func TestAMergeKeepsTheDefaults(t *testing.T) {
+	const src = "ptr: &b {s: base}\nleaf: {<<: *b, i: 2}\n"
+	read := func(opts ...DecodeOption) walkShape {
+		t.Helper()
+		v := walkShape{Leaf: WalkLeaf{S: "default", U: 9, F: 1.5}}
+		opts = append(opts, WithParserOptions(parser.WithYAMLVersion(parser.YAML11)))
+		if err := NewDecoder(bytes.NewReader([]byte(src)), opts...).Decode(&v); err != nil {
+			t.Fatal(err)
+		}
+
+		return v
+	}
+	walked := read()
+	built := read(CustomUnmarshaler[chan int](func(*chan int, []byte) error { return nil }))
+	if !reflect.DeepEqual(walked, built) {
+		t.Errorf("the two paths disagree:\n  walk %+v\n  tree %+v", walked, built)
 	}
 }
