@@ -2973,6 +2973,9 @@ func (d *Decoder) decodeInlineFields(
 			}
 		}
 		setDecoded(fieldValue, newFieldValue)
+		if stopsTheDocument(err) {
+			return err
+		}
 		if err != nil {
 			recordFieldError(foundErr, err, func(te *yamlerrors.Error) string {
 				leaf := te.StructField()
@@ -3028,6 +3031,21 @@ func setDecoded(dst, v reflect.Value) {
 	if v.IsValid() {
 		dst.Set(v)
 	}
+}
+
+// stopsTheDocument reports whether err ends the decoding of its document, at any depth: a repeated key, which
+// makes the document invalid YAML, and the limits, ErrExceededMaxDepth and the alias budget. Any other error is a
+// field error: the first one is kept and the fields after it decode.
+func stopsTheDocument(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	return errors.Is(err, yamlerrors.ErrDuplicateKey) ||
+		errors.Is(err, ErrExceededMaxDepth) ||
+		errors.Is(err, yamlerrors.ErrExcessiveAliasing) ||
+		errors.Is(err, yamlerrors.ErrRecursiveAlias) ||
+		errors.Is(err, yamlerrors.ErrUnknownAnchor)
 }
 
 // recordFieldError keeps err in foundErr unless an earlier field error is there already. A type mismatch is
@@ -3168,6 +3186,9 @@ func (d *Decoder) decodeStruct(dst reflect.Value, src ast.Node) error {
 		newFieldValue, err := d.createDecodedNewValue(fieldValue.Type(), fieldValue, valueNode)
 		d.entry = prevEntry
 		setDecoded(fieldValue, newFieldValue)
+		if stopsTheDocument(err) {
+			return err
+		}
 		if err != nil {
 			// Only the first field error is kept, and decoding goes on, as encoding/json does.
 			recordFieldError(&foundErr, err, func(*yamlerrors.Error) string { return found.name(structType) })
@@ -3316,6 +3337,9 @@ func (d *Decoder) decodeArray(dst reflect.Value, src ast.Node) error {
 			arrayValue.Index(idx).Set(reflect.Zero(elemType))
 		} else {
 			dstValue, err := d.createDecodedNewValue(elemType, reflect.Value{}, v)
+			if stopsTheDocument(err) {
+				return err
+			}
 			if err != nil && foundErr == nil {
 				foundErr = err
 			}
@@ -3373,6 +3397,9 @@ func (d *Decoder) decodeSlice(dst reflect.Value, src ast.Node) error {
 		prevEntry := d.enterEntry(sequenceEntryNode(arrayNode, entryIdx))
 		dstValue, err := d.createDecodedNewValue(elemType, reflect.Value{}, v)
 		d.entry = prevEntry
+		if stopsTheDocument(err) {
+			return err
+		}
 		if err != nil && foundErr == nil {
 			foundErr = err
 		}
@@ -3648,6 +3675,9 @@ func (d *Decoder) decodeMap(dst reflect.Value, src ast.Node) error {
 		prevEntry := d.enterEntry(entry.keyValue)
 		dstValue, err := d.createDecodedNewValue(valueType, reflect.Value{}, value)
 		d.entry = prevEntry
+		if stopsTheDocument(err) {
+			return err
+		}
 		if err != nil && foundErr == nil {
 			foundErr = err
 		}

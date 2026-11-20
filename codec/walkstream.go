@@ -68,6 +68,10 @@ type walkState struct {
 	// docErr is the field error the document in hand returns once it is
 	// read, which does not stop the stream. See typedBuilder.fieldError.
 	docErr error
+	// broken is the builder error that stopped the document in hand, such as a
+	// repeated key or the alias budget. The walk hands nothing more over until
+	// the document ends, and its Decode returns broken.
+	broken error
 }
 
 // newWalkStream returns a walk over src that pauses after each document.
@@ -159,7 +163,7 @@ var errEndOfStream = errors.New("end of the stream")
 
 func (st *walkState) Enter(node ast.Node, at parser.Cursor) error {
 	switch {
-	case st.rest:
+	case st.rest, st.broken != nil:
 		return parser.ErrSkipNode
 	case st.values != nil:
 		err := st.values.Enter(node, at)
@@ -173,7 +177,7 @@ func (st *walkState) Enter(node ast.Node, at parser.Cursor) error {
 
 func (st *walkState) Leave(node ast.Node, at parser.Closing) error {
 	switch {
-	case st.rest:
+	case st.rest, st.broken != nil:
 		return nil
 	case st.values != nil:
 		err := st.values.Leave(node, at)
@@ -193,7 +197,10 @@ func (st *walkState) LeaveDocument(doc *ast.DocumentNode, _ int) error {
 	}
 	st.settle(isEmptyDocument(doc))
 	st.delivered++
-	if st.values == nil {
+	switch {
+	case st.broken != nil:
+		st.docErr = st.broken
+	case st.values == nil:
 		st.docErr = st.b.docErr
 	}
 
@@ -218,6 +225,7 @@ func (st *walkState) reset(v reflect.Value) {
 		st.budget -= st.values.built
 	}
 	st.values, st.anyInto = nil, reflect.Value{}
+	st.broken = nil
 
 	dst := v.Elem()
 	if holdsAnything(dst) {
@@ -257,19 +265,22 @@ func (st *walkState) settle(empty bool) {
 }
 
 // handed passes on what a builder returned for a node. failed is the builder's
-// own error, which ends the walk where it stands, so a Decode returns it
-// without reading the rest of the stream.
+// own error. errNeedsTheTree ends the walk where it stands. Any other error
+// stops the document in hand only: the walk skips to its end, and the next
+// Decode reads the next document, as on the tree.
 func (st *walkState) handed(err, failed error) error {
-	if failed == nil {
+	switch {
+	case failed == nil:
 		return err
-	}
-	if errors.Is(failed, errNeedsTheTree) {
+	case errors.Is(failed, errNeedsTheTree):
 		st.needsTree = true
-	} else {
-		st.err = failed
-	}
 
-	return parser.ErrStopWalk
+		return parser.ErrStopWalk
+	default:
+		st.broken = failed
+
+		return nil
+	}
 }
 
 func (st *walkState) walk(src []byte) {

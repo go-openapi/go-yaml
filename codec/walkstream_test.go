@@ -5,6 +5,7 @@ package codec_test
 
 import (
 	"errors"
+	"fmt"
 	"io"
 	"runtime"
 	"strings"
@@ -270,5 +271,75 @@ func TestATypeErrorFailsOnlyItsOwnDocument(t *testing.T) {
 
 			require.ErrorIs(t, dec.Decode(new(doc)), io.EOF)
 		})
+	}
+}
+
+// TestADocumentErrorFailsOnlyItsOwnDocument holds both decode paths to one
+// answer for a document that stops decoding at any depth -- a repeated key, or
+// the alias budget spent: its Decode returns the error, and the next Decode
+// reads the next document, and no field after the error decodes. The budget covers the whole stream, so once it is
+// spent the next document fails at its first node, and the stream still ends.
+//
+// The walk kept the error for the whole stream, so every Decode after it
+// returned it again and never reached io.EOF. The tree took a repeated key
+// below the root for a field error and decoded the fields after it.
+//
+// The parser records a mapping's repeats as it closes, so the walk finds a
+// repeat in the root mapping only once every field of it is written.
+func TestADocumentErrorFailsOnlyItsOwnDocument(t *testing.T) {
+	type inner struct {
+		S string `yaml:"s"`
+	}
+	type doc struct {
+		A inner            `yaml:"a"`
+		L []inner          `yaml:"l"`
+		M map[string]inner `yaml:"m"`
+		X any              `yaml:"x"`
+		B string           `yaml:"b"`
+	}
+	// A custom unmarshaler turns the walk off, and no field holds a chan int.
+	tree := codec.CustomUnmarshaler[chan int](func(*chan int, []byte) error { return nil })
+
+	// Each alias of the chain names the one before nine times: 9^9 values out
+	// of a few hundred bytes.
+	var laughs strings.Builder
+	laughs.WriteString("x:\n  l0: &l0 [lol, lol, lol, lol, lol, lol, lol, lol, lol]\n")
+	for i := 1; i < 10; i++ {
+		fmt.Fprintf(&laughs, "  l%d: &l%d [*l%d, *l%d, *l%d, *l%d, *l%d, *l%d, *l%d, *l%d, *l%d]\n",
+			i, i, i-1, i-1, i-1, i-1, i-1, i-1, i-1, i-1, i-1)
+	}
+
+	docs := map[string]struct {
+		src   string
+		kind  error
+		spent bool
+	}{
+		"a repeat in a struct field":   {src: "a: {s: x, s: y}\nb: after\n", kind: yamlerrors.ErrDuplicateKey},
+		"a repeat in the root mapping": {src: "a: {s: x}\na: {s: y}\n", kind: yamlerrors.ErrDuplicateKey},
+		"a repeat in a slice element":  {src: "l: [{s: x, s: y}]\nb: after\n", kind: yamlerrors.ErrDuplicateKey},
+		"a repeat in a map value":      {src: "m: {k: {s: x, s: y}}\nb: after\n", kind: yamlerrors.ErrDuplicateKey},
+		"a repeat in an any":           {src: "x: {s: x, s: y}\nb: after\n", kind: yamlerrors.ErrDuplicateKey},
+		"the alias budget":             {src: laughs.String() + "b: after\n", kind: yamlerrors.ErrExcessiveAliasing, spent: true},
+	}
+	for name, first := range docs {
+		for path, opts := range map[string][]codec.DecodeOption{"walk": nil, "tree": {tree}} {
+			t.Run(name+"/"+path, func(t *testing.T) {
+				dec := codec.NewDecoder(strings.NewReader(first.src+"---\nb: two\n"), opts...)
+
+				var broken doc
+				require.ErrorIs(t, dec.Decode(&broken), first.kind)
+				assert.Empty(t, broken.B)
+
+				var second doc
+				if first.spent {
+					require.ErrorIs(t, dec.Decode(&second), yamlerrors.ErrExcessiveAliasing)
+				} else {
+					require.NoError(t, dec.Decode(&second))
+					assert.Equal(t, doc{B: "two"}, second)
+				}
+
+				require.ErrorIs(t, dec.Decode(new(doc)), io.EOF)
+			})
+		}
 	}
 }

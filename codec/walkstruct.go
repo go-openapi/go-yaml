@@ -1091,8 +1091,16 @@ func (b *typedBuilder) decodeNode(dst reflect.Value, node ast.Node) {
 // kept already, and the walk carries on. A type mismatch is named after the
 // field of the outermost struct being read: on the tree, each struct the error
 // passes through names it again, and the outermost names it last.
+//
+// An error that stops the document, such as a repeated key the tree decoder
+// found inside the node it was handed, ends the walk's reading of it instead.
 func (b *typedBuilder) fieldError(err error) {
 	if err == nil {
+		return
+	}
+	if stopsTheDocument(err) {
+		_ = b.fail(err)
+
 		return
 	}
 	recordFieldError(&b.docErr, err, func(te *yamlerrors.Error) string {
