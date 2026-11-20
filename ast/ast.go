@@ -895,7 +895,20 @@ func quotedString(n *StringNode) string {
 //
 // A node built rather than parsed carries no token, and there is nothing then
 // to say it was quoted or where it stood: it comes out as its plain value.
+//
+// A plain value opening with "---" or "..." comes out single-quoted: the text
+// starts in column 0, where written plain it reads back as a document marker.
 func (n *StringNode) String() string {
+	if readsAsMarker(n) {
+		return quotedMarker(n, true)
+	}
+
+	return n.plainString()
+}
+
+// plainString renders n as String does, without quoting a value that opens with
+// a document marker. The renderer uses it wherever n does not start a line.
+func (n *StringNode) plainString() string {
 	if n.Token == nil {
 		if n.Comment != nil {
 			return addCommentString(n.Value, n.Comment)

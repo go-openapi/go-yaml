@@ -4,13 +4,16 @@
 package ast_test
 
 import (
+	"bytes"
 	"testing"
 
 	"github.com/go-openapi/testify/v2/assert"
 	"github.com/go-openapi/testify/v2/require"
 
+	"github.com/go-openapi/go-yaml/ast"
 	"github.com/go-openapi/go-yaml/codec"
 	"github.com/go-openapi/go-yaml/parser"
+	"github.com/go-openapi/go-yaml/token"
 )
 
 // TestAPlainScalarReadingAsAMarkerIsQuotedInColumnZero checks how File.String
@@ -50,6 +53,54 @@ func TestAPlainScalarReadingAsAMarkerIsQuotedInColumnZero(t *testing.T) {
 
 			want, got := allDocuments(t, tc.src), allDocuments(t, rendered)
 			assert.Equalf(t, want, got, "%q renders to %q", tc.src, rendered)
+		})
+	}
+}
+
+// TestANodeRenderedAloneQuotesAMarkerInColumnZero holds a document's node,
+// rendered without its document, to the rule File.String follows: its first
+// line starts in column 0, so a plain scalar there opening with "---" or "..."
+// comes out quoted, and so does such a key of a block mapping.
+//
+// Node.String, Renderer.String, Renderer.Render and codec.Marshal of the node
+// wrote it plain: "---" read back as null, "--- x" as "x", and "... x" or a key
+// "--- x" did not parse. A key one level down stays plain.
+func TestANodeRenderedAloneQuotesAMarkerInColumnZero(t *testing.T) {
+	built := func(v string) ast.Node { return ast.String(token.New(v, v, token.Position{})) }
+	parsed := func(src string) ast.Node {
+		f, err := parser.ParseBytes([]byte(src), parser.WithComments())
+		require.NoErrorf(t, err, "%q", src)
+
+		return f.Docs[0].Body
+	}
+	for name, tc := range map[string]struct {
+		node ast.Node
+		want string
+	}{
+		"three dashes":               {node: parsed(" ---\r # c1\r"), want: "'---' # c1"},
+		"three dots":                 {node: parsed(" ...\n"), want: "'...'"},
+		"dots and text":              {node: parsed("   ... x\n"), want: "'... x'"},
+		"a key at the root":          {node: parsed(" --- x: 1\n"), want: "'--- x': 1"},
+		"built dashes":               {node: built("---"), want: "'---'"},
+		"built dashes and text":      {node: built("--- x"), want: "'--- x'"},
+		"a nested key stays plain":   {node: parsed("k:\n  --- x: 1\n"), want: "k:\n  --- x: 1"},
+		"a nested value stays plain": {node: parsed("k:\n  --- b\n"), want: "k: --- b"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			var buf bytes.Buffer
+			require.NoError(t, ast.NewRenderer().Render(&buf, tc.node))
+			marshaled, err := codec.Marshal(tc.node)
+			require.NoError(t, err)
+
+			for path, out := range map[string]string{
+				"Node.String":     tc.node.String(),
+				"Renderer.String": ast.NewRenderer().String(tc.node),
+				"Renderer.Render": buf.String(),
+				"codec.Marshal":   string(bytes.TrimSuffix(marshaled, []byte("\n"))),
+			} {
+				assert.Equalf(t, tc.want, out, "%s", path)
+				assert.Equalf(t, allDocuments(t, tc.want), allDocuments(t, out), "%s wrote %q", path, out)
+			}
 		})
 	}
 }

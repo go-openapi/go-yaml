@@ -116,7 +116,7 @@ func NewRenderer(opts ...RenderOption) *Renderer {
 // Render writes n to w.
 func (r *Renderer) Render(w io.Writer, n Node) error {
 	lw := lineWriter{w: w}
-	r.render(n).writeTo(&lw, 0)
+	r.fromMargin(n).render(n).writeTo(&lw, 0)
 
 	return lw.err
 }
@@ -126,8 +126,12 @@ func (r *Renderer) Render(w io.Writer, n Node) error {
 // The result is relative to nothing: the node's own first line carries no
 // indentation, and everything nested under it is indented from there. A caller
 // placing the result somewhere indented adds that indentation itself.
+//
+// The first line starts in column 0, so a plain scalar there opening with "---"
+// or "..." comes out quoted, as it does at the top of a document: written plain,
+// it reads back as a document marker.
 func (r *Renderer) String(n Node) string {
-	return r.render(n).string()
+	return r.fromMargin(n).render(n).string()
 }
 
 // File renders a whole file. It is separate from String because *File is not a
@@ -147,6 +151,28 @@ func (r *Renderer) File(n *File) string {
 	// The final line break belongs to the file: a node's rendering never ends
 	// in one, so that it can be placed anywhere.
 	return join(sepNone, join(sepBreak, docs...), leaf("\n")).string()
+}
+
+// text renders n with the margin the caller stands at, for the renderer's own
+// use. String is the entry point, and starts in column 0.
+func (r *Renderer) text(n Node) string {
+	return r.render(n).string()
+}
+
+// fromMargin returns a Renderer for n standing in column 0: a document's own
+// node, or the root of what String and Render write. A scalar starts there, and
+// so do the keys of a block mapping. See [Renderer.atMargin].
+func (r *Renderer) fromMargin(n Node) *Renderer {
+	switch node := n.(type) {
+	case *StringNode:
+		return r.withMargin(true)
+	case *MappingNode:
+		if !r.flowsInline(node.IsFlowStyle) {
+			return r.withMargin(true)
+		}
+	}
+
+	return r
 }
 
 // bare returns a Renderer that writes no comments, for the places a comment
@@ -411,7 +437,7 @@ func (r *Renderer) mappingValue(n *MappingValueNode) rendered {
 		// the line, so the value goes below whatever shape it is.
 		var lineComment string
 		if r.comments && !n.LineComment.Blank() {
-			lineComment = " " + r.String(n.LineComment)
+			lineComment = " " + r.text(n.LineComment)
 		}
 
 		value := r.value(n.Value, lineComment != "")
@@ -508,7 +534,7 @@ func (r *Renderer) endsOnProperty(n Node) bool {
 	if r.absorbsColon(n) {
 		return true
 	}
-	return r.bare().String(n) == ""
+	return r.bare().text(n) == ""
 }
 
 // hoistBlockComment takes a block collection's own leading comment off the
@@ -547,7 +573,7 @@ func (r *Renderer) hoistBlockComment(key, n Node, value rendered) (string, rende
 		return "", value
 	}
 
-	return r.String(comment), leaf("\n" + rest)
+	return r.text(comment), leaf("\n" + rest)
 }
 
 // sameLine reports whether two nodes were written on the same source line.
@@ -577,7 +603,7 @@ func (r *Renderer) keyComment(key Node) string {
 		return ""
 	}
 
-	return r.String(comment)
+	return r.text(comment)
 }
 
 // value renders what follows a "key:", including the space or newline that
@@ -601,7 +627,7 @@ func (r *Renderer) alias(n *AliasNode) string {
 	r.resolving[name] = true
 	defer delete(r.resolving, name)
 
-	return r.String(target)
+	return r.text(target)
 }
 
 // deref returns the node an alias names, for the layout questions below that
@@ -940,7 +966,7 @@ func (r *Renderer) entryLineComment(n *SequenceNode, i int) string {
 		return ""
 	}
 
-	return " " + r.String(comment)
+	return " " + r.text(comment)
 }
 
 func (r *Renderer) anchor(n *AnchorNode) string {
@@ -954,7 +980,7 @@ func (r *Renderer) anchor(n *AnchorNode) string {
 	// reaching it through the value rather than through a name.
 	own := firstComment(n.Comment, n.Name.GetComment())
 
-	return r.withOwnComment(own, r.prefixed("&"+r.bare().String(n.Name), n.Value, own))
+	return r.withOwnComment(own, r.prefixed("&"+r.bare().text(n.Name), n.Value, own))
 }
 
 // firstComment returns whichever of two comment groups is present, preferring
@@ -994,7 +1020,7 @@ func (r *Renderer) tag(n *TagNode) string {
 	if n.Implicit {
 		// The parse resolved a type the document left implicit, so the document
 		// holds no tag to write back. See TagNode.Implicit.
-		return r.withOwnComment(n.Comment, r.String(n.Value))
+		return r.withOwnComment(n.Comment, r.text(n.Value))
 	}
 
 	return r.withOwnComment(n.Comment, r.prefixed(n.Start.Value, n.Value, n.Comment))
@@ -1045,7 +1071,7 @@ func (r *Renderer) prefixedAt(marker string, value Node, own *CommentGroupNode, 
 	}
 	r = r.withMargin(false)
 
-	text := r.String(value)
+	text := r.text(value)
 	if lift > 0 {
 		// A marker does not enclose what it names: "&a |2" is still the
 		// enclosing node's child, and the width its header states is counted
@@ -1110,16 +1136,7 @@ func (r *Renderer) startsBlock(n Node) bool {
 // so a block scalar written one column in states a width of two. See
 // [Renderer.lifted].
 func (r *Renderer) documentBody(n Node) rendered {
-	switch node := n.(type) {
-	case *StringNode:
-		r = r.withMargin(true)
-	case *MappingNode:
-		if !r.flowsInline(node.IsFlowStyle) {
-			r = r.withMargin(true)
-		}
-	}
-
-	return r.lifted(n, 1)
+	return r.fromMargin(n).lifted(n, 1)
 }
 
 // withMargin returns a Renderer whose next node starts in column 0 or not. See
@@ -1139,6 +1156,25 @@ func (r *Renderer) withMargin(on bool) *Renderer {
 func isQuoted(n *StringNode) bool {
 	return n.Token != nil &&
 		(n.Token.Type == token.SingleQuoteType || n.Token.Type == token.DoubleQuoteType)
+}
+
+// readsAsMarker reports whether n is a plain one-line scalar whose text opens
+// with "---" or "...", which written plain in column 0 reads back as a document
+// marker.
+func readsAsMarker(n *StringNode) bool {
+	return blockScalarHeader(n) == "" && !isQuoted(n) && startsWithDocumentMarker(n.Value)
+}
+
+// quotedMarker returns n single-quoted, with its comment where comments is set.
+// Single quotes keep the value and its type: a scalar opening with "---" or
+// "..." resolves to a string either way.
+func quotedMarker(n *StringNode, comments bool) string {
+	quoted := "'" + strings.ReplaceAll(n.Value, "'", "''") + "'"
+	if comments && !n.Comment.Blank() {
+		return addCommentString(quoted, n.Comment)
+	}
+
+	return quoted
 }
 
 // startsWithDocumentMarker reports whether value, written plain at the start of
@@ -1193,7 +1229,7 @@ func (r *Renderer) lifted(n Node, lift int) rendered {
 
 		return r.withHeadComment(n,
 			leaf(r.withOwnComment(own,
-				r.prefixedAt("&"+r.bare().String(node.Name), node.Value, own, lift))))
+				r.prefixedAt("&"+r.bare().text(node.Name), node.Value, own, lift))))
 	case *TagNode:
 		if node.Implicit {
 			// No tag to write back, as in Renderer.tag.
@@ -1306,7 +1342,7 @@ func (r *Renderer) literalAt(n *LiteralNode, lift int) string {
 	}
 
 	if comment := blockComment(n); r.comments && !comment.Blank() && n != r.hoisted {
-		header += " " + r.String(comment)
+		header += " " + r.text(comment)
 	}
 
 	value := n.Value.Value
@@ -1524,21 +1560,14 @@ func restateIndent(header string, width int) string {
 func (r *Renderer) stringNode(n *StringNode) string {
 	header := blockScalarHeader(n)
 	if header == "" {
-		if r.atMargin && !isQuoted(n) && startsWithDocumentMarker(n.Value) {
-			// Single quotes keep the value and its type: a scalar opening with
-			// "---" or "..." resolves to a string either way.
-			quoted := "'" + strings.ReplaceAll(n.Value, "'", "''") + "'"
-			if r.comments && !n.Comment.Blank() {
-				return addCommentString(quoted, n.Comment)
-			}
-
-			return quoted
+		if r.atMargin && readsAsMarker(n) {
+			return quotedMarker(n, r.comments)
 		}
 		if !r.comments {
 			return n.stringWithoutComment()
 		}
 
-		return n.String()
+		return n.plainString()
 	}
 
 	// One trailing break belongs to the block structure rather than to the
@@ -1599,7 +1628,7 @@ func (r *Renderer) directive(n *DirectiveNode) string {
 		return n.String()
 	}
 
-	comment := r.String(n.Comment)
+	comment := r.text(n.Comment)
 	if commentTk := n.Comment.GetToken(); commentTk != nil && commentTk.Position.Line != 0 &&
 		n.Start != nil && commentTk.Position.Line < n.Start.Position.Line {
 		// Written above the directive rather than below it.
@@ -1689,7 +1718,7 @@ func (r *Renderer) flowCarriesComments(values []Node, comments flowComments) boo
 func (r *Renderer) flowBlock(open, closing string, values []Node, comments flowComments) string {
 	lines := make([]string, 0, len(values)+2)
 	if !comments.start.Blank() {
-		open += " " + r.String(comments.start)
+		open += " " + r.text(comments.start)
 	}
 	lines = append(lines, open)
 
@@ -1697,10 +1726,10 @@ func (r *Renderer) flowBlock(open, closing string, values []Node, comments flowC
 	bare := r.bare()
 	for i, value := range values {
 		if i < len(heads) && !heads[i].Blank() {
-			lines = append(lines, r.indented(r.String(heads[i])))
+			lines = append(lines, r.indented(r.text(heads[i])))
 		}
 		if head := headCommentOf(value); head != nil {
-			lines = append(lines, r.indented(r.String(head)))
+			lines = append(lines, r.indented(r.text(head)))
 		}
 
 		// The ',' separates the entries, so it goes before the comment: after
@@ -1710,12 +1739,12 @@ func (r *Renderer) flowBlock(open, closing string, values []Node, comments flowC
 			entry += ","
 		}
 		if comment := lineCommentOf(value); comment != nil {
-			entry += " " + r.String(comment)
+			entry += " " + r.text(comment)
 		}
 		lines = append(lines, r.indented(entry))
 	}
 	if !comments.foot.Blank() {
-		lines = append(lines, r.indented(r.String(comments.foot)))
+		lines = append(lines, r.indented(r.text(comments.foot)))
 	}
 
 	return strings.Join(append(lines, closing), "\n")
@@ -1758,7 +1787,7 @@ func present(c *CommentGroupNode) *CommentGroupNode {
 
 // inline renders a node for a context that cannot hold a line break.
 func (r *Renderer) inline(n Node) string {
-	return strings.TrimLeft(strings.ReplaceAll(r.String(n), "\n", " "), " ")
+	return strings.TrimLeft(strings.ReplaceAll(r.text(n), "\n", " "), " ")
 }
 
 func (r *Renderer) withComment(text rendered, c *CommentGroupNode) rendered {
