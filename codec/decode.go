@@ -172,7 +172,7 @@ func aliasBudget(n int) int {
 // conversion of YAML into a Go value.
 func (d *Decoder) Decode(v any) error {
 	rv := reflect.ValueOf(v)
-	if !rv.IsValid() || rv.Type().Kind() != reflect.Pointer {
+	if !isPointer(rv) {
 		return ErrDecodeRequiredPointerType
 	}
 	if d.streamErr != nil {
@@ -199,7 +199,7 @@ func (d *Decoder) Decode(v any) error {
 // DecodeFromNode decodes node into the value pointed to by v.
 func (d *Decoder) DecodeFromNode(node ast.Node, v any) error {
 	rv := reflect.ValueOf(v)
-	if rv.Type().Kind() != reflect.Pointer {
+	if !isPointer(rv) {
 		return ErrDecodeRequiredPointerType
 	}
 	if !d.isInitialized() {
@@ -336,6 +336,12 @@ func floatOf(v *big.Float) (float64, bool) {
 	}
 
 	return f, true
+}
+
+// isPointer reports whether rv holds a pointer a decode can write through.
+// A nil target holds nothing, and reflect panics on asking its type.
+func isPointer(rv reflect.Value) bool {
+	return rv.IsValid() && rv.Kind() == reflect.Pointer
 }
 
 func (d *Decoder) isExceededMaxDepth() bool {
@@ -1834,7 +1840,7 @@ func (d *Decoder) decodeByUnmarshaler(dst reflect.Value, src ast.Node) error {
 	if unmarshaler, ok := iface.(GoYAMLUnmarshaler); ok {
 		if err := unmarshaler.UnmarshalYAML(func(v any) error {
 			rv := reflect.ValueOf(v)
-			if rv.Type().Kind() != reflect.Pointer {
+			if !isPointer(rv) {
 				return ErrDecodeRequiredPointerType
 			}
 			if err := d.decodeValue(rv.Elem(), src); err != nil {

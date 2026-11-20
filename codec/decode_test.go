@@ -2224,3 +2224,27 @@ func TestAMapFieldKeepsTheCallersEntries(t *testing.T) {
 		})
 	}
 }
+
+type callsBackWithNil struct{}
+
+func (*callsBackWithNil) UnmarshalYAML(unmarshal func(any) error) error { return unmarshal(nil) }
+
+// TestANilDecodeTargetIsNotAPointer holds the pointer check on every path that makes it: a nil target returns
+// ErrDecodeRequiredPointerType, as a non-pointer does, and does not panic in reflect.
+func TestANilDecodeTargetIsNotAPointer(t *testing.T) {
+	file, err := parser.ParseBytes([]byte("a: 1\n"))
+	require.NoError(t, err)
+
+	t.Run("Unmarshal", func(t *testing.T) {
+		require.ErrorIs(t, codec.Unmarshal([]byte("a: 1\n"), nil), codec.ErrDecodeRequiredPointerType)
+	})
+
+	t.Run("NodeToValue", func(t *testing.T) {
+		require.ErrorIs(t, codec.NodeToValue(file.Docs[0].Body, nil), codec.ErrDecodeRequiredPointerType)
+	})
+
+	t.Run("the callback of an UnmarshalYAML", func(t *testing.T) {
+		var v callsBackWithNil
+		require.ErrorIs(t, codec.Unmarshal([]byte("a: 1\n"), &v), codec.ErrDecodeRequiredPointerType)
+	})
+}
