@@ -736,6 +736,14 @@ func TestAConvertedScalarKeepsTheWalk(t *testing.T) {
 		"in a sequence of structs":      "list: [{s: 1}, {s: two}]\n",
 		"under an anchor and its alias": "name: &n 1\nplain: {k: *n}\n",
 		"the fields after it":           "leaf: {s: 1, i: 2, b: true}\nname: n\n",
+		"a date into a string":          "name: 2001-12-14\n",
+		"a tagged date into a string":   "name: !!timestamp 2001-12-14\n",
+		"a tagged quoted date":          "name: !!timestamp \"2001-12-14\"\n",
+		"a time in its own zone":        "name: 2001-12-14t21:59:43.10-05:00\n",
+		"a date into a pointer":         "leaf: {p: 2001-12-14}\n",
+		"a date into a map value":       "plain: {k: 2001-12-14, j: !!timestamp 2002-01-01}\n",
+		"a date into an any":            "any: 2001-12-14\nanys: {a: !!timestamp 2002-01-01}\n",
+		"a date under an alias":         "name: &d 2001-12-14\nplain: {k: *d}\nany: *d\n",
 	} {
 		t.Run(name, func(t *testing.T) {
 			r := decodeBothWays(t, src)
@@ -766,6 +774,9 @@ func TestAValueThatDoesNotFitKeepsTheWalk(t *testing.T) {
 		"the first error is kept":     "leaf: {i: x}\nname: [1]\n",
 		"a mapping into a string":     "name: {a: 1}\nleaf: {s: after}\n",
 		"a sequence into a struct":    "leaf: [1]\nname: n\n",
+		"a date into an int":          "leaf: {i: 2001-12-14, s: after}\n",
+		"a date into a slice element": "leaf: {xs: [1, 2001-12-14, 3]}\n",
+		"a tag that is no timestamp":  "name: !!timestamp nope\nleaf: {s: after}\n",
 		"a scalar into a struct":      "leaf: 1\nname: n\n",
 		"a sequence into a map value": "plain: {k: [1], j: v}\n",
 		"in a slice element":          "list: [{s: a}, {i: x}, {s: c}]\n",

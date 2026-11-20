@@ -1615,6 +1615,15 @@ func (d *Decoder) convertValue(v reflect.Value, typ reflect.Type, src ast.Node) 
 		strVal = strconv.FormatUint(v.Uint(), 10)
 	case reflect.Bool:
 		strVal = strconv.FormatBool(v.Bool())
+	case reflect.Struct:
+		// A timestamp is written as its instant in RFC 3339, in its own zone,
+		// as ast.KeyName names a timestamp key and ToJSON writes one.
+		// "2001-12-14" under YAML 1.1 is "2001-12-14T00:00:00Z".
+		t, isTime := reflect.TypeAssert[time.Time](v)
+		if !isTime {
+			return reflect.Zero(typ), yamlerrors.NewTypeMismatch(typ, v.Type(), src.GetToken())
+		}
+		strVal = t.Format(time.RFC3339Nano)
 	default:
 		if !v.Type().ConvertibleTo(typ) {
 			return reflect.Zero(typ), yamlerrors.NewTypeMismatch(typ, v.Type(), src.GetToken())

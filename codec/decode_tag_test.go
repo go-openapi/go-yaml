@@ -503,6 +503,73 @@ func TestTimestampTagDoesNotFollowTheVersion(t *testing.T) {
 	}
 }
 
+// TestATimestampIntoAStringIsWrittenInRFC3339 holds that a timestamp decoded
+// into a string kind is the RFC 3339 text of its instant, in its own zone.
+//
+// A timestamp key into a map keyed by string has that name, and ToJSON writes
+// that text. A string field used to refuse the time.Time, so "name: 2001-12-14"
+// failed under YAML 1.1 and "name: !!timestamp 2001-12-14" under every version.
+func TestATimestampIntoAStringIsWrittenInRFC3339(t *testing.T) {
+	type day string
+	type fields struct {
+		S string            `yaml:"s"`
+		D day               `yaml:"d"`
+		P *string           `yaml:"p"`
+		M map[string]string `yaml:"m"`
+		L []string          `yaml:"l"`
+	}
+	const (
+		midnight = "2001-12-14T00:00:00Z"
+		zoned    = "2001-12-14T21:59:43.1-05:00"
+	)
+	read := func(t *testing.T, version parser.YAMLVersion, value string) fields {
+		t.Helper()
+		src := "s: " + value + "\nd: " + value + "\np: " + value + "\nm: {k: " + value +
+			"}\nl: [" + value + "]\n"
+		var v fields
+		require.NoError(t, codec.UnmarshalWithOptions([]byte(src), &v,
+			codec.WithParserOptions(parser.WithYAMLVersion(version))))
+
+		return v
+	}
+	written := func(text string) fields {
+		return fields{
+			S: text, D: day(text), P: &text, M: map[string]string{"k": text}, L: []string{text},
+		}
+	}
+
+	for _, tc := range []struct {
+		version parser.YAMLVersion
+		value   string
+		want    string
+	}{
+		{parser.YAML11, "2001-12-14", midnight},
+		{parser.YAML11, "2001-12-14t21:59:43.10-05:00", zoned},
+		{parser.YAML11, "!!timestamp 2001-12-14", midnight},
+		{parser.YAML11, `!!timestamp "2001-12-14"`, midnight},
+		{parser.YAML12, "!!timestamp 2001-12-14", midnight},
+		{parser.YAML12, "!!timestamp 2001-12-14t21:59:43.10-05:00", zoned},
+		// YAML 1.2 resolves no timestamp, so the text stands as written.
+		{parser.YAML12, "2001-12-14", "2001-12-14"},
+		{parser.YAML12, "2001-12-14t21:59:43.10-05:00", "2001-12-14t21:59:43.10-05:00"},
+		// A quoted scalar is a string under every version.
+		{parser.YAML11, `"2001-12-14"`, "2001-12-14"},
+	} {
+		t.Run(string(tc.version)+"/"+tc.value, func(t *testing.T) {
+			assert.Equal(t, written(tc.want), read(t, tc.version, tc.value))
+		})
+	}
+
+	t.Run("a tag that is no timestamp is refused", func(t *testing.T) {
+		for field, at := range map[string]string{"s": "[1:16]", "p": "[1:16]"} {
+			var v fields
+			err := codec.Unmarshal([]byte(field+": !!timestamp nope\n"), &v)
+			require.Error(t, err, field)
+			assert.Contains(t, err.Error(), at+` cannot read "nope" as !!timestamp`, field)
+		}
+	})
+}
+
 // TestATagThatCannotConvertIsRefused records that a scalar no format reads is
 // an error rather than a zero value.
 //
