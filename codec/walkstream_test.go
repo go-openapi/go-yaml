@@ -275,8 +275,8 @@ func TestATypeErrorFailsOnlyItsOwnDocument(t *testing.T) {
 }
 
 // TestADocumentErrorFailsOnlyItsOwnDocument holds both decode paths to one
-// answer for a document that stops decoding at any depth -- a repeated key, or
-// the alias budget spent: its Decode returns the error, and the next Decode
+// answer for a document that stops decoding at any depth -- a repeated key, an
+// unknown field under DisallowUnknownField, or the alias budget spent: its Decode returns the error, and the next Decode
 // reads the next document, and no field after the error decodes. The budget covers the whole stream, so once it is
 // spent the next document fails at its first node, and the stream still ends.
 //
@@ -285,7 +285,9 @@ func TestATypeErrorFailsOnlyItsOwnDocument(t *testing.T) {
 // below the root for a field error and decoded the fields after it.
 //
 // The parser records a mapping's repeats as it closes, so the walk finds a
-// repeat in the root mapping only once every field of it is written.
+// repeat in the root mapping only once every field of it is written. Both
+// paths refuse an unknown field of the root mapping once it is read, since an
+// inline field may still claim the key.
 func TestADocumentErrorFailsOnlyItsOwnDocument(t *testing.T) {
 	type inner struct {
 		S string `yaml:"s"`
@@ -310,20 +312,33 @@ func TestADocumentErrorFailsOnlyItsOwnDocument(t *testing.T) {
 	}
 
 	docs := map[string]struct {
-		src   string
-		kind  error
-		spent bool
+		src    string
+		kind   error
+		spent  bool
+		strict bool
 	}{
 		"a repeat in a struct field":   {src: "a: {s: x, s: y}\nb: after\n", kind: yamlerrors.ErrDuplicateKey},
 		"a repeat in the root mapping": {src: "a: {s: x}\na: {s: y}\n", kind: yamlerrors.ErrDuplicateKey},
 		"a repeat in a slice element":  {src: "l: [{s: x, s: y}]\nb: after\n", kind: yamlerrors.ErrDuplicateKey},
 		"a repeat in a map value":      {src: "m: {k: {s: x, s: y}}\nb: after\n", kind: yamlerrors.ErrDuplicateKey},
 		"a repeat in an any":           {src: "x: {s: x, s: y}\nb: after\n", kind: yamlerrors.ErrDuplicateKey},
-		"the alias budget":             {src: laughs.String() + "b: after\n", kind: yamlerrors.ErrExcessiveAliasing, spent: true},
+		"an unknown field in a struct field": {
+			src: "a: {s: x, t: y}\nb: after\n", kind: yamlerrors.ErrUnknownField, strict: true,
+		},
+		"an unknown field in a slice element": {
+			src: "l: [{s: x, t: y}]\nb: after\n", kind: yamlerrors.ErrUnknownField, strict: true,
+		},
+		"an unknown field in the root mapping": {
+			src: "t: y\n", kind: yamlerrors.ErrUnknownField, strict: true,
+		},
+		"the alias budget": {src: laughs.String() + "b: after\n", kind: yamlerrors.ErrExcessiveAliasing, spent: true},
 	}
 	for name, first := range docs {
 		for path, opts := range map[string][]codec.DecodeOption{"walk": nil, "tree": {tree}} {
 			t.Run(name+"/"+path, func(t *testing.T) {
+				if first.strict {
+					opts = append([]codec.DecodeOption{codec.DisallowUnknownField()}, opts...)
+				}
 				dec := codec.NewDecoder(strings.NewReader(first.src+"---\nb: two\n"), opts...)
 
 				var broken doc

@@ -3034,8 +3034,9 @@ func setDecoded(dst, v reflect.Value) {
 }
 
 // stopsTheDocument reports whether err ends the decoding of its document, at any depth: a repeated key, which
-// makes the document invalid YAML, and the limits, ErrExceededMaxDepth and the alias budget. Any other error is a
-// field error: the first one is kept and the fields after it decode.
+// makes the document invalid YAML, the limits, ErrExceededMaxDepth and the alias budget, and an unknown field,
+// which the caller asked to stop on with DisallowUnknownField. Any other error is a field error: the first one is
+// kept and the fields after it decode.
 func stopsTheDocument(err error) bool {
 	if err == nil {
 		return false
@@ -3045,7 +3046,8 @@ func stopsTheDocument(err error) bool {
 		errors.Is(err, ErrExceededMaxDepth) ||
 		errors.Is(err, yamlerrors.ErrExcessiveAliasing) ||
 		errors.Is(err, yamlerrors.ErrRecursiveAlias) ||
-		errors.Is(err, yamlerrors.ErrUnknownAnchor)
+		errors.Is(err, yamlerrors.ErrUnknownAnchor) ||
+		errors.Is(err, yamlerrors.ErrUnknownField)
 }
 
 // recordFieldError keeps err in foundErr unless an earlier field error is there already. A type mismatch is
