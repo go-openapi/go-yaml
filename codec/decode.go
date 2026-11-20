@@ -165,6 +165,31 @@ func aliasBudget(n int) int {
 	return aliasBudgetFloor + 32*n
 }
 
+// nodeBudget bounds what a decode may build from node, as aliasBudget does
+// from a document's bytes.
+//
+// A node handed to [Decoder.DecodeFromNode] has no source to measure, so this
+// counts the nodes the tree holds written out, comment groups included.
+// [ast.Walk] visits an alias once and does not follow its target, so an alias
+// adds one to the count however much it names.
+func nodeBudget(node ast.Node) int {
+	var n nodeCount
+	ast.Walk(&n, node)
+
+	return aliasBudget(int(n))
+}
+
+// nodeCount counts the nodes [ast.Walk] visits.
+type nodeCount int
+
+func (c *nodeCount) Visit(node ast.Node) ast.Visitor {
+	if node != nil {
+		*c++
+	}
+
+	return c
+}
+
 // Decode reads the next YAML-encoded value from its input
 // and stores it in the value pointed to by v.
 //
@@ -208,6 +233,10 @@ func (d *Decoder) DecodeFromNode(node ast.Node, v any) error {
 			return err
 		}
 	}
+	// A node has no source of its own, and decodeInit budgeted the reader's,
+	// so each call budgets the node it is given and starts its count afresh.
+	d.built, d.budget = 0, nodeBudget(node)
+	d.expanding, d.expanded = nil, nil
 	// resolve references to the anchor on the same file
 	if _, err := d.nodeToValue(node); err != nil {
 		return err

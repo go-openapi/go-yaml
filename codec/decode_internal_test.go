@@ -426,3 +426,59 @@ func TestReadAllReadsAByteReader(t *testing.T) {
 		t.Fatal("bytes.Reader does not expose its slice; this now aliases it, which is worth knowing")
 	}
 }
+
+// TestNodeToValueBudgetsTheNodeItIsGiven holds the alias budget of a decode from a node. Such a decode has no source,
+// and its budget fell to aliasBudgetFloor, so any document past a few hundred nodes was refused as excessive aliasing.
+// The budget now comes from the nodes the tree holds written out, an alias counting once.
+func TestNodeToValueBudgetsTheNodeItIsGiven(t *testing.T) {
+	flat := func(n int) string {
+		var b strings.Builder
+		for i := range n {
+			fmt.Fprintf(&b, "k%d: v\n", i)
+		}
+
+		return b.String()
+	}
+
+	t.Run("a document with no alias reads", func(t *testing.T) {
+		for _, n := range []int{300, 5000} {
+			file, err := parser.ParseBytes([]byte(flat(n)))
+			if err != nil {
+				t.Fatal(err)
+			}
+			var dst map[string]string
+			if err := NodeToValue(file.Docs[0].Body, &dst); err != nil {
+				t.Fatalf("%d entries: %v", n, err)
+			}
+			if len(dst) != n {
+				t.Fatalf("%d entries: read %d", n, len(dst))
+			}
+		}
+	})
+
+	t.Run("one decoder reads one node after another", func(t *testing.T) {
+		file, err := parser.ParseBytes([]byte(flat(100)))
+		if err != nil {
+			t.Fatal(err)
+		}
+		dec := NewDecoder(&bytes.Buffer{})
+		for i := range 50 {
+			var dst map[string]string
+			if err := dec.DecodeFromNode(file.Docs[0].Body, &dst); err != nil {
+				t.Fatalf("decode %d: %v", i, err)
+			}
+		}
+	})
+
+	t.Run("an alias bomb is still refused", func(t *testing.T) {
+		file, err := parser.ParseBytes([]byte(aliasBomb(5, 12)))
+		if err != nil {
+			t.Fatal(err)
+		}
+		var dst bombDestination
+		err = NodeToValue(file.Docs[0].Body, &dst)
+		if !errors.Is(err, yamlerrors.ErrExcessiveAliasing) {
+			t.Fatalf("refused as %v, want ErrExcessiveAliasing", err)
+		}
+	})
+}
