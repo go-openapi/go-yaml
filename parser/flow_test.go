@@ -399,13 +399,22 @@ func TestAFlowMappingEntryIsAKeyWhateverFollowsIt(t *testing.T) {
 	long := longFlowSeq(1200)
 
 	for name, source := range map[string]string{
-		"a collection key with no value":        "{[a]}\n",
-		"a mapping as a collection key":         "{{\"\": 0}}\n",
-		"a collection key across lines":         "{[a,\n b]}\n",
-		"a collection key across lines, valued": "{[a,\n b]: v}\n",
-		"a collection key past the bound":       "{" + long + ": v}\n",
-		"a collection key past the bound alone": "{" + long + "}\n",
-		"a scalar key with no value":            "{a}\n",
+		"a collection key with no value":         "{[a]}\n",
+		"a mapping as a collection key":          "{{\"\": 0}}\n",
+		"a collection key across lines":          "{[a,\n b]}\n",
+		"a collection key across lines, valued":  "{[a,\n b]: v}\n",
+		"a collection key past the bound":        "{" + long + ": v}\n",
+		"a collection key past the bound alone":  "{" + long + "}\n",
+		"a scalar key with no value":             "{a}\n",
+		"an anchored mapping key with no value":  "{&a {x: 1}}\n",
+		"an anchored sequence key with no value": "{&a [1]}\n",
+		"a tagged mapping key with no value":     "{!!map {x: 1}}\n",
+		"a tagged sequence key with no value":    "{!!seq [1]}\n",
+		"an anchor then a tag on a key":          "{&a !!map {x: 1}}\n",
+		"a tag then an anchor on a key":          "{!!map &a {x: 1}}\n",
+		"a property key after an entry":          "{y: 2, &a {x: 1}}\n",
+		"a property key before an entry":         "{&a {x: 1}, y: 2}\n",
+		"a property key across lines":            "{&a\n {x: 1}}\n",
 	} {
 		t.Run(name, func(t *testing.T) {
 			_, err := parser.ParseBytes([]byte(source))
@@ -425,5 +434,21 @@ func TestAFlowMappingEntryIsAKeyWhateverFollowsIt(t *testing.T) {
 		require.True(t, ok, "the key is the sequence")
 		assert.Len(t, key.Values, 2, "with both its entries")
 		assert.IsType(t, &ast.NullNode{}, mapping.Values[0].Value)
+	})
+
+	t.Run("a property on a collection key alone stays on the key", func(t *testing.T) {
+		file, err := parser.ParseBytes([]byte("{&a {x: 1}, b: *a}\n"))
+		require.NoError(t, err)
+
+		mapping, ok := file.Docs[0].Body.(*ast.MappingNode)
+		require.True(t, ok)
+		require.Len(t, mapping.Values, 2)
+
+		anchor, ok := mapping.Values[0].Key.(*ast.AnchorNode)
+		require.True(t, ok, "the key is the anchor")
+		assert.Equal(t, "a", anchor.Name.GetToken().Value)
+		assert.IsType(t, &ast.MappingNode{}, anchor.Value, "naming the mapping")
+		assert.IsType(t, &ast.NullNode{}, mapping.Values[0].Value)
+		assert.IsType(t, &ast.AliasNode{}, mapping.Values[1].Value)
 	})
 }

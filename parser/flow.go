@@ -148,13 +148,18 @@ func (p *Parser) parseFlowMapPair(ctx context, mapKeyTk, entryTk *group.TapeToke
 // parseFlowMapBareKey reads the entry of a flow mapping written as a key alone, as in "{a}", "{&a}" or "{[a, b]}".
 // The value is a null the walk hands over, and tk is the token the loop stood on, for the error position.
 func (p *Parser) parseFlowMapBareKey(ctx context, tk, mapKeyTk, entryTk *group.TapeToken) (*ast.MappingValueNode, error) {
-	if opensAFlowCollection(mapKeyTk) {
+	if opensAFlowCollection(mapKeyTk) || ctx.propertiesOpenAFlowCollection() {
 		// A collection written as an entry of a flow mapping is a key
 		// with no value: "{[a, b]}" holds the one entry [a, b]: null,
 		// as "{a}" holds a: null. It takes more than one token, so the
 		// ',' or '}' follows its closer and not the token that opens
 		// it, and the branch below -- which reads a key of one token --
 		// cannot reach it.
+		//
+		// Properties in front of the collection, as in "{&a {x: 1}}" or
+		// "{!!seq [1]}", belong to the key. The grouper joins a property only
+		// to a scalar, so the entry opens on the property and the collection
+		// comes after it.
 		return p.flowCollectionKeyAlone(ctx, mapKeyTk, entryTk)
 	}
 	if !p.isFlowMapDelim(ctx.nextToken()) {
@@ -330,6 +335,36 @@ func (p *Parser) flowCollectionKeyAlone(ctx context, keyTk, entryTk *group.TapeT
 	}
 
 	return p.mappingValue(ctx, at, entryTk, key, value)
+}
+
+// propertiesOpenAFlowCollection reports whether the current token is an anchor or a tag, and the first token after
+// the run of anchors and tags opens a flow collection, as "&a !!map {" does.
+//
+// The collection must stand ungrouped. A key group opening on '{', as "{x: 1}:" makes when a comment keeps the
+// property off it, belongs to the ':' path.
+func (c context) propertiesOpenAFlowCollection() bool {
+	i := c.tokenRef.idx
+	for isProperty(c.tokenRef.at(i)) {
+		i++
+	}
+	if i == c.tokenRef.idx {
+		return false
+	}
+	tk := c.tokenRef.at(i)
+
+	return tk.GroupType() == group.TokenGroupNone && opensAFlowCollection(tk)
+}
+
+// isProperty reports whether tk is an anchor or a tag standing on its own, before the node it belongs to.
+func isProperty(tk *group.TapeToken) bool {
+	if tk == nil {
+		return false
+	}
+	if tk.GroupType() == group.TokenGroupAnchorName {
+		return true
+	}
+
+	return tk.GroupType() == group.TokenGroupNone && tk.Type() == token.TagType
 }
 
 func (p *Parser) isFlowMapDelim(tk *group.TapeToken) bool {
