@@ -1728,13 +1728,20 @@ func (d *Decoder) unmarshalableDocument(node ast.Node) ([]byte, error) { //nolin
 	return []byte(doc), nil
 }
 
-func (d *Decoder) unmarshalableText(node ast.Node) ([]byte, bool) {
-	doc := format.NodeWithResolvedAlias(node, d.anchorNodeMap)
+// unmarshalableText decodes node as a string field would, for an
+// encoding.TextUnmarshaler: under the document's YAML version, through its
+// anchors, and with an error at the node's own position.
+//
+// It used to render the node back to text and decode that as a document of
+// its own, under YAML 1.2 and from line 1: under 1.1, "yes" reached
+// UnmarshalText as "yes" where a string field holds "true", and a
+// "!!timestamp" the string field accepts was refused.
+func (d *Decoder) unmarshalableText(node ast.Node) ([]byte, error) {
 	var v string
-	if err := Unmarshal([]byte(doc), &v); err != nil {
-		return nil, false
+	if err := d.decodeValue(reflect.ValueOf(&v).Elem(), node); err != nil {
+		return nil, err
 	}
-	return []byte(v), true
+	return []byte(v), nil
 }
 
 var astNodeType = reflect.TypeFor[ast.Node]()
@@ -1856,20 +1863,25 @@ func (d *Decoder) decodeByUnmarshaler(dst reflect.Value, src ast.Node) error {
 		return d.decodeDuration(dst, src)
 	}
 
+	// textErr is why the node gave no text, returned when no other interface
+	// reads it: "!!timestamp nope" into a TextUnmarshaler is refused for the
+	// timestamp it fails to be.
+	var textErr error
 	if unmarshaler, isText := iface.(encoding.TextUnmarshaler); isText {
-		b, ok := d.unmarshalableText(src)
-		if ok {
-			if err := unmarshaler.UnmarshalText(b); err != nil {
-				return err
-			}
-			return nil
+		b, err := d.unmarshalableText(src)
+		if err == nil {
+			return unmarshaler.UnmarshalText(b)
 		}
+		textErr = err
 	}
 
 	if d.useJSONUnmarshaler {
 		if unmarshaler, ok := iface.(jsonUnmarshaler); ok {
 			return d.unmarshalJSON(unmarshaler, src)
 		}
+	}
+	if textErr != nil {
+		return textErr
 	}
 
 	return errors.New("does not implemented GoYAMLUnmarshaler")

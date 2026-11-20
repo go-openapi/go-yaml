@@ -509,14 +509,19 @@ func TestTimestampTagDoesNotFollowTheVersion(t *testing.T) {
 // A timestamp key into a map keyed by string has that name, and ToJSON writes
 // that text. A string field used to refuse the time.Time, so "name: 2001-12-14"
 // failed under YAML 1.1 and "name: !!timestamp 2001-12-14" under every version.
+// An encoding.TextUnmarshaler is handed the same text as a string field: it
+// used to read the scalar again as a YAML 1.2 document of its own, so it got
+// the source text under 1.1 and a "!!timestamp" it could not read came back as
+// a message about GoYAMLUnmarshaler.
 func TestATimestampIntoAStringIsWrittenInRFC3339(t *testing.T) {
 	type day string
 	type fields struct {
-		S string            `yaml:"s"`
-		D day               `yaml:"d"`
-		P *string           `yaml:"p"`
-		M map[string]string `yaml:"m"`
-		L []string          `yaml:"l"`
+		S  string            `yaml:"s"`
+		D  day               `yaml:"d"`
+		P  *string           `yaml:"p"`
+		M  map[string]string `yaml:"m"`
+		L  []string          `yaml:"l"`
+		TU textOnly          `yaml:"tu"`
 	}
 	const (
 		midnight = "2001-12-14T00:00:00Z"
@@ -525,7 +530,7 @@ func TestATimestampIntoAStringIsWrittenInRFC3339(t *testing.T) {
 	read := func(t *testing.T, version parser.YAMLVersion, value string) fields {
 		t.Helper()
 		src := "s: " + value + "\nd: " + value + "\np: " + value + "\nm: {k: " + value +
-			"}\nl: [" + value + "]\n"
+			"}\nl: [" + value + "]\ntu: " + value + "\n"
 		var v fields
 		require.NoError(t, codec.UnmarshalWithOptions([]byte(src), &v,
 			codec.WithParserOptions(parser.WithYAMLVersion(version))))
@@ -535,6 +540,7 @@ func TestATimestampIntoAStringIsWrittenInRFC3339(t *testing.T) {
 	written := func(text string) fields {
 		return fields{
 			S: text, D: day(text), P: &text, M: map[string]string{"k": text}, L: []string{text},
+			TU: textOnly{text: text},
 		}
 	}
 
@@ -561,13 +567,22 @@ func TestATimestampIntoAStringIsWrittenInRFC3339(t *testing.T) {
 	}
 
 	t.Run("a tag that is no timestamp is refused", func(t *testing.T) {
-		for field, at := range map[string]string{"s": "[1:16]", "p": "[1:16]"} {
+		for field, at := range map[string]string{"s": "[1:16]", "p": "[1:16]", "tu": "[1:17]"} {
 			var v fields
 			err := codec.Unmarshal([]byte(field+": !!timestamp nope\n"), &v)
 			require.Error(t, err, field)
 			assert.Contains(t, err.Error(), at+` cannot read "nope" as !!timestamp`, field)
 		}
 	})
+}
+
+// textOnly reads itself through encoding.TextUnmarshaler and nothing else.
+type textOnly struct{ text string }
+
+func (x *textOnly) UnmarshalText(b []byte) error {
+	x.text = string(b)
+
+	return nil
 }
 
 // TestATagThatCannotConvertIsRefused records that a scalar no format reads is

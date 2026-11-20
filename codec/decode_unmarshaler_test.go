@@ -1185,3 +1185,26 @@ func TestARegisteredUnmarshalerReadsItsTypeOnEveryPath(t *testing.T) {
 		})
 	}
 }
+
+// TestATextUnmarshalerReadsWhatAStringFieldReads requires the text handed to
+// UnmarshalText to be the value a string field takes from the same scalar,
+// under either YAML version.
+func TestATextUnmarshalerReadsWhatAStringFieldReads(t *testing.T) {
+	type both struct {
+		S  string   `yaml:"s"`
+		TU textOnly `yaml:"tu"`
+	}
+	for _, version := range []parser.YAMLVersion{parser.YAML11, parser.YAML12} {
+		for _, value := range []string{
+			"yes", "017", "0o17", "1_000", "0x10", "2001-12-14", "!!timestamp 2001-12-14", "~", "'quoted'",
+		} {
+			t.Run(string(version)+"/"+value, func(t *testing.T) {
+				var v both
+				src := "s: &a " + value + "\ntu: *a\n"
+				require.NoError(t, codec.UnmarshalWithOptions([]byte(src), &v,
+					codec.WithParserOptions(parser.WithYAMLVersion(version))))
+				assert.Equal(t, v.S, v.TU.text)
+			})
+		}
+	}
+}
