@@ -452,3 +452,25 @@ func TestAFlowMappingEntryIsAKeyWhateverFollowsIt(t *testing.T) {
 		assert.IsType(t, &ast.AliasNode{}, mapping.Values[1].Value)
 	})
 }
+
+// TestAPairKeyInAFlowSequenceStartsAtItsProperties holds the one-line rule of a pair inside a flow sequence against a
+// key that carries a property. The rule measured the key from its scalar and skipped a key whose first token was an
+// anchor or a tag, so "[&a x" over ": v]" was read as the pair. The reference parser refuses every document below.
+func TestAPairKeyInAFlowSequenceStartsAtItsProperties(t *testing.T) {
+	for name, source := range map[string]string{
+		"an anchored key over its ':'":     "[&a x\n: v]\n",
+		"a tagged key over its ':'":        "[!!str x\n: v]\n",
+		"an anchored and tagged key":       "[&a !!str x\n: v]\n",
+		"an anchored key in a nested pair": "{k: [&a x\n: v]}\n",
+	} {
+		t.Run(name, func(t *testing.T) {
+			_, err := parser.ParseBytes([]byte(source))
+			require.Error(t, err)
+		})
+	}
+
+	t.Run("a property on the key's own line", func(t *testing.T) {
+		_, err := parser.ParseBytes([]byte("[&a x: v, !!str y: w]\n"))
+		require.NoError(t, err)
+	})
+}
