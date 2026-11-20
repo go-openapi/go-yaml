@@ -8,6 +8,7 @@ import (
 	"reflect"
 
 	"github.com/go-openapi/go-yaml/ast"
+	yamlerrors "github.com/go-openapi/go-yaml/errors"
 	"github.com/go-openapi/go-yaml/internal/yamlpath"
 	"github.com/go-openapi/go-yaml/parser"
 )
@@ -600,7 +601,7 @@ func WithComment(cm CommentMap) EncodeOption {
 func CommentToMap(cm CommentMap) DecodeOption {
 	return func(d *Decoder) error {
 		if cm == nil {
-			return ErrInvalidCommentMapValue
+			return yamlerrors.ErrInvalidCommentMapValue
 		}
 		d.toCommentMap = cm
 		return nil

@@ -180,7 +180,7 @@ func (e *Encoder) setCommentByCommentMap(node ast.Node) error {
 					return err
 				}
 			default:
-				return ErrUnknownCommentPositionType
+				return yamlerrors.ErrUnknownCommentPositionType
 			}
 		}
 	}

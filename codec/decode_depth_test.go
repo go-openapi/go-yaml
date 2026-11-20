@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/go-openapi/go-yaml/codec"
+	yamlerrors "github.com/go-openapi/go-yaml/errors"
 	"github.com/go-openapi/testify/v2/assert"
 	"github.com/go-openapi/testify/v2/require"
 )
@@ -57,7 +58,7 @@ func TestEveryReaderStopsPast10000Levels(t *testing.T) {
 
 				err := read([]byte(build(deepNestingLimit + 1)))
 				require.Error(t, err)
-				assert.ErrorIs(t, err, codec.ErrExceededMaxDepth)
+				assert.ErrorIs(t, err, yamlerrors.ErrExceededMaxDepth)
 			})
 		}
 	}
@@ -70,7 +71,7 @@ func TestEveryReaderStopsPast10000Levels(t *testing.T) {
 
 		err := codec.Unmarshal([]byte(chain(deepNestingLimit+1)), &v)
 		require.Error(t, err)
-		assert.ErrorIs(t, err, codec.ErrExceededMaxDepth)
+		assert.ErrorIs(t, err, yamlerrors.ErrExceededMaxDepth)
 	})
 }
 
@@ -90,6 +91,6 @@ func TestADocumentNestedTooDeepStopsTheStream(t *testing.T) {
 		var v any
 		err := dec.Decode(&v)
 		require.Error(t, err)
-		assert.ErrorIs(t, err, codec.ErrExceededMaxDepth)
+		assert.ErrorIs(t, err, yamlerrors.ErrExceededMaxDepth)
 	}
 }

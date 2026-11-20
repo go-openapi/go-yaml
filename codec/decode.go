@@ -204,7 +204,7 @@ func (c *nodeCount) Visit(node ast.Node) ast.Visitor {
 func (d *Decoder) Decode(v any) error {
 	rv := reflect.ValueOf(v)
 	if !isPointer(rv) {
-		return ErrDecodeRequiredPointerType
+		return yamlerrors.ErrDecodeRequiredPointerType
 	}
 	if d.streamErr != nil {
 		return yamlerrors.WithSource(d.streamErr, d.source)
@@ -231,7 +231,7 @@ func (d *Decoder) Decode(v any) error {
 func (d *Decoder) DecodeFromNode(node ast.Node, v any) error {
 	rv := reflect.ValueOf(v)
 	if !isPointer(rv) {
-		return ErrDecodeRequiredPointerType
+		return yamlerrors.ErrDecodeRequiredPointerType
 	}
 	if !d.isInitialized() {
 		// A node in hand is a tree, so this never takes the walking path.
@@ -832,7 +832,7 @@ func (d *Decoder) setToMapValue(node ast.Node, m *keyedMap, merged bool) error {
 	d.stepIn()
 	defer d.stepOut()
 	if d.isExceededMaxDepth() {
-		return ErrExceededMaxDepth
+		return yamlerrors.ErrExceededMaxDepth
 	}
 
 	d.setPathToCommentMap(node)
@@ -895,7 +895,7 @@ func (d *Decoder) setToOrderedMapValue(node ast.Node, m *MapSlice, merged bool) 
 	d.stepIn()
 	defer d.stepOut()
 	if d.isExceededMaxDepth() {
-		return ErrExceededMaxDepth
+		return yamlerrors.ErrExceededMaxDepth
 	}
 
 	d.setPathToCommentMap(node)
@@ -1122,7 +1122,7 @@ func (d *Decoder) nodeToValue(node ast.Node) (any, error) {
 	d.stepIn()
 	defer d.stepOut()
 	if d.isExceededMaxDepth() {
-		return nil, ErrExceededMaxDepth
+		return nil, yamlerrors.ErrExceededMaxDepth
 	}
 	if d.isOverBudget() {
 		return nil, d.refuseOverBudget(node)
@@ -1483,7 +1483,7 @@ func (d *Decoder) getMapNode(node ast.Node, isMerge bool) (ast.MapNode, error) {
 	d.stepIn()
 	defer d.stepOut()
 	if d.isExceededMaxDepth() {
-		return nil, ErrExceededMaxDepth
+		return nil, yamlerrors.ErrExceededMaxDepth
 	}
 
 	if err := refuseDuplicateKeys(node); err != nil {
@@ -1546,7 +1546,7 @@ func (d *Decoder) getArrayNode(node ast.Node) (ast.ArrayNode, error) {
 	d.stepIn()
 	defer d.stepOut()
 	if d.isExceededMaxDepth() {
-		return nil, ErrExceededMaxDepth
+		return nil, yamlerrors.ErrExceededMaxDepth
 	}
 
 	if _, ok := node.(*ast.NullNode); ok {
@@ -1876,7 +1876,7 @@ func (d *Decoder) decodeByUnmarshaler(dst reflect.Value, src ast.Node) error {
 		if err := unmarshaler.UnmarshalYAML(func(v any) error {
 			rv := reflect.ValueOf(v)
 			if !isPointer(rv) {
-				return ErrDecodeRequiredPointerType
+				return yamlerrors.ErrDecodeRequiredPointerType
 			}
 			if err := d.decodeValue(rv.Elem(), src); err != nil {
 				return err
@@ -1947,7 +1947,7 @@ func (d *Decoder) decodeValue(dst reflect.Value, src ast.Node) error {
 	d.stepIn()
 	defer d.stepOut()
 	if d.isExceededMaxDepth() {
-		return ErrExceededMaxDepth
+		return yamlerrors.ErrExceededMaxDepth
 	}
 	if d.isOverBudget() {
 		return d.refuseOverBudget(src)
@@ -2279,7 +2279,7 @@ func (d *Decoder) keyToNodeMap(node ast.Node, ignoreMergeKey bool, getKeyOrValue
 	d.stepIn()
 	defer d.stepOut()
 	if d.isExceededMaxDepth() {
-		return nil, ErrExceededMaxDepth
+		return nil, yamlerrors.ErrExceededMaxDepth
 	}
 
 	mapNode, err := d.getMapNode(node, false)
@@ -2461,7 +2461,7 @@ func (d *Decoder) mergedKeyToNodeMap(
 	d.stepIn()
 	defer d.stepOut()
 	if d.isExceededMaxDepth() {
-		return nil, ErrExceededMaxDepth
+		return nil, yamlerrors.ErrExceededMaxDepth
 	}
 
 	keyToNodeMap := map[string]ast.Node{}
@@ -2816,7 +2816,7 @@ func (d *Decoder) rangeMapEntries(src ast.Node, ignoreMergeKey bool, visit mapEn
 	d.stepIn()
 	defer d.stepOut()
 	if d.isExceededMaxDepth() {
-		return ErrExceededMaxDepth
+		return yamlerrors.ErrExceededMaxDepth
 	}
 
 	mapNode, err := d.getMapNode(src, false)
@@ -2871,7 +2871,7 @@ func (d *Decoder) rangeMergedEntries(src ast.Node, ignoreMergeKey bool, visit ma
 	d.stepIn()
 	defer d.stepOut()
 	if d.isExceededMaxDepth() {
-		return ErrExceededMaxDepth
+		return yamlerrors.ErrExceededMaxDepth
 	}
 
 	return d.eachMergeSource(src, func(mapNode ast.MapNode) error {
@@ -3087,7 +3087,7 @@ func stopsTheDocument(err error) bool {
 	}
 
 	return errors.Is(err, yamlerrors.ErrDuplicateKey) ||
-		errors.Is(err, ErrExceededMaxDepth) ||
+		errors.Is(err, yamlerrors.ErrExceededMaxDepth) ||
 		errors.Is(err, yamlerrors.ErrExcessiveAliasing) ||
 		errors.Is(err, yamlerrors.ErrRecursiveAlias) ||
 		errors.Is(err, yamlerrors.ErrUnknownAnchor) ||
@@ -3165,7 +3165,7 @@ func (d *Decoder) decodeStruct(dst reflect.Value, src ast.Node) error {
 	d.stepIn()
 	defer d.stepOut()
 	if d.isExceededMaxDepth() {
-		return ErrExceededMaxDepth
+		return yamlerrors.ErrExceededMaxDepth
 	}
 
 	structType := dst.Type()
@@ -3352,7 +3352,7 @@ func (d *Decoder) decodeArray(dst reflect.Value, src ast.Node) error {
 	d.stepIn()
 	defer d.stepOut()
 	if d.isExceededMaxDepth() {
-		return ErrExceededMaxDepth
+		return yamlerrors.ErrExceededMaxDepth
 	}
 
 	if b, ok := d.binaryBytes(src); ok && byteArray(dst.Type()) {
@@ -3406,7 +3406,7 @@ func (d *Decoder) decodeSlice(dst reflect.Value, src ast.Node) error {
 	d.stepIn()
 	defer d.stepOut()
 	if d.isExceededMaxDepth() {
-		return ErrExceededMaxDepth
+		return yamlerrors.ErrExceededMaxDepth
 	}
 
 	if b, ok := d.binaryBytes(src); ok && byteSlice(dst.Type()) {
@@ -3466,7 +3466,7 @@ func (d *Decoder) decodeMapItem(dst *MapItem, src ast.Node) error {
 	d.stepIn()
 	defer d.stepOut()
 	if d.isExceededMaxDepth() {
-		return ErrExceededMaxDepth
+		return yamlerrors.ErrExceededMaxDepth
 	}
 
 	mapNode, err := d.getMapNode(src, d.merging)
@@ -3574,7 +3574,7 @@ func (d *Decoder) decodeMapSlice(dst *MapSlice, src ast.Node) error {
 	d.stepIn()
 	defer d.stepOut()
 	if d.isExceededMaxDepth() {
-		return ErrExceededMaxDepth
+		return yamlerrors.ErrExceededMaxDepth
 	}
 
 	if seq, ordered := taggedOrderedMap(src); ordered {
@@ -3651,7 +3651,7 @@ func (d *Decoder) decodeMap(dst reflect.Value, src ast.Node) error {
 	d.stepIn()
 	defer d.stepOut()
 	if d.isExceededMaxDepth() {
-		return ErrExceededMaxDepth
+		return yamlerrors.ErrExceededMaxDepth
 	}
 
 	mapNode, err := d.getMapNode(src, d.merging)

@@ -1997,7 +1997,7 @@ map: &map
 		var buf bytes.Buffer
 		var v bool
 		err := codec.NewDecoder(&buf).DecodeFromNode(nil, v)
-		if !errors.Is(err, codec.ErrDecodeRequiredPointerType) {
+		if !errors.Is(err, yamlerrors.ErrDecodeRequiredPointerType) {
 			t.Fatalf("unexpected error: %s", err)
 		}
 	})
@@ -2236,15 +2236,15 @@ func TestANilDecodeTargetIsNotAPointer(t *testing.T) {
 	require.NoError(t, err)
 
 	t.Run("Unmarshal", func(t *testing.T) {
-		require.ErrorIs(t, codec.Unmarshal([]byte("a: 1\n"), nil), codec.ErrDecodeRequiredPointerType)
+		require.ErrorIs(t, codec.Unmarshal([]byte("a: 1\n"), nil), yamlerrors.ErrDecodeRequiredPointerType)
 	})
 
 	t.Run("NodeToValue", func(t *testing.T) {
-		require.ErrorIs(t, codec.NodeToValue(file.Docs[0].Body, nil), codec.ErrDecodeRequiredPointerType)
+		require.ErrorIs(t, codec.NodeToValue(file.Docs[0].Body, nil), yamlerrors.ErrDecodeRequiredPointerType)
 	})
 
 	t.Run("the callback of an UnmarshalYAML", func(t *testing.T) {
 		var v callsBackWithNil
-		require.ErrorIs(t, codec.Unmarshal([]byte("a: 1\n"), &v), codec.ErrDecodeRequiredPointerType)
+		require.ErrorIs(t, codec.Unmarshal([]byte("a: 1\n"), &v), yamlerrors.ErrDecodeRequiredPointerType)
 	})
 }

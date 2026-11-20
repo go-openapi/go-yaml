@@ -4,7 +4,8 @@
 // Package errors reports what went wrong reading or writing a YAML document,
 // with the position it happened at and the lines of source around it.
 //
-// Every failure raised by the scanner, the parser and the codec is an [Error].
+// Every failure raised by the scanner, the parser and the codec is an [Error],
+// except the few the codec returns without a position, listed apart below.
 // Match one against the kind it carries:
 //
 //	import (
@@ -63,7 +64,9 @@ var (
 	// sequence or a mapping, decoded into a map whose key type admits one,
 	// such as a map[any]any. A map key must be comparable, and setting one
 	// that is not panicked with "hash of unhashable type" until it was
-	// reported here.
+	// reported here. A Go slice, map or function handed to a
+	// [github.com/go-openapi/go-yaml/codec.MapSlice] as a key is refused with
+	// it too, without a position.
 	ErrUnhashableKey = stderrors.New("unhashable map key")
 	// ErrNotJSON reports a well-formed YAML document that JSON has no spelling
 	// for, found with
@@ -90,6 +93,25 @@ var (
 	// ErrExceededMaxDepth reports a document holding more collections, anchors,
 	// tags and "?" keys inside one another than the parser reads: 10,000.
 	ErrExceededMaxDepth = stderrors.New("exceeded max depth")
+)
+
+// The errors the codec returns as they are, with no position. Most report a
+// call the codec cannot serve, whatever the document.
+var (
+	// ErrDecodeRequiredPointerType reports a decode into a value the decoder
+	// cannot write through.
+	ErrDecodeRequiredPointerType = stderrors.New("decode target is not a pointer")
+	// ErrNotAJSONObject reports JSON that is not an object handed to a type
+	// that holds one, such as a
+	// [github.com/go-openapi/go-yaml/codec.MapSlice].
+	ErrNotAJSONObject = stderrors.New("not a JSON object")
+	// ErrUnknownCommentPositionType reports a comment whose position is none
+	// of head, line or foot.
+	ErrUnknownCommentPositionType = stderrors.New("unknown comment position type")
+	// ErrInvalidCommentMapValue reports a nil comment map handed to
+	// [github.com/go-openapi/go-yaml/codec.CommentToMap], which has nowhere to
+	// put what it collects.
+	ErrInvalidCommentMapValue = stderrors.New("nil comment map")
 )
 
 const (

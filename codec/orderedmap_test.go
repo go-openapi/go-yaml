@@ -54,7 +54,7 @@ func TestAMapSliceHoldsOneEntryPerKey(t *testing.T) {
 		var m codec.MapSlice
 		err := m.Set([]any{"x"}, 1)
 
-		require.ErrorIs(t, err, codec.ErrKeyNotComparable)
+		require.ErrorIs(t, err, yamlerrors.ErrUnhashableKey)
 		assert.Equal(t, 0, m.Len())
 	})
 

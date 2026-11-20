@@ -6,7 +6,6 @@ package codec
 import (
 	"bytes"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"iter"
 	"strconv"
@@ -93,7 +92,7 @@ func NewMapSliceSeq(items ...MapItem) (MapSliceSeq, error) {
 
 // unusableKey reports a key that cannot address an entry.
 func unusableKey(key any) error {
-	return fmt.Errorf("cannot use %T as a key: %w", key, ErrKeyNotComparable)
+	return fmt.Errorf("cannot use %T as a key: %w", key, yamlerrors.ErrUnhashableKey)
 }
 
 // Len returns the number of entries.
@@ -270,7 +269,7 @@ func (s *MapSlice) UnmarshalJSON(b []byte) error {
 	}
 	m, isMap := v.(MapSlice)
 	if !isMap {
-		return fmt.Errorf("cannot read %s into a MapSlice: %w", jsonKindOf(v), ErrNotAJSONObject)
+		return fmt.Errorf("cannot read %s into a MapSlice: %w", jsonKindOf(v), yamlerrors.ErrNotAJSONObject)
 	}
 	*s = m
 
@@ -299,10 +298,6 @@ func (s MapSliceSeq) MarshalJSON() ([]byte, error) { return MapSlice(s).MarshalJ
 // UnmarshalJSON reads a JSON object, as [MapSlice.UnmarshalJSON] does.
 func (s *MapSliceSeq) UnmarshalJSON(b []byte) error { return (*MapSlice)(s).UnmarshalJSON(b) }
 
-// ErrNotAJSONObject reports JSON that is not an object handed to a type that
-// holds one.
-var ErrNotAJSONObject = errors.New("not a JSON object")
-
 // jsonOrdered reads one JSON value, building a MapSlice for every object.
 func jsonOrdered(dec *json.Decoder) (any, error) {
 	tk, err := dec.Token()
@@ -329,7 +324,7 @@ func jsonOrdered(dec *json.Decoder) (any, error) {
 			}
 			name, isString := key.(string)
 			if !isString {
-				return nil, fmt.Errorf("a JSON member name is a string: %w", ErrNotAJSONObject)
+				return nil, fmt.Errorf("a JSON member name is a string: %w", yamlerrors.ErrNotAJSONObject)
 			}
 			// A member written twice keeps the last value, where the first
 			// stands, as Set does everywhere else.
@@ -353,7 +348,7 @@ func jsonOrdered(dec *json.Decoder) (any, error) {
 
 		return list, err
 	default:
-		return nil, fmt.Errorf("unexpected %q: %w", delim, ErrNotAJSONObject)
+		return nil, fmt.Errorf("unexpected %q: %w", delim, yamlerrors.ErrNotAJSONObject)
 	}
 }
 
