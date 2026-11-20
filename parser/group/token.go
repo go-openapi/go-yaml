@@ -59,14 +59,18 @@ func flowCollectionStart(ret []*TapeToken) int {
 }
 
 // withKeyProperties widens a key that starts at start to take in the anchors
-// and tags written before it on the same line.
+// and tags written before it on the same line, or on any line where inFlow.
 //
 // They are the key's, not the mapping's: the anchor of "&k [a, b]: v" names the
 // sequence used as the key. Left outside, it was read as naming the mapping the
 // entry belongs to -- silently, and as a second anchor on that mapping when the
 // mapping already had one of its own.
-func withKeyProperties(ret []*TapeToken, start int) int {
-	for start > 0 && ret[start-1].Line() == ret[start].Line() {
+//
+// In block context "&k" over "[a, b]: v" anchors the mapping, so the line
+// decides. Inside a flow collection a property belongs to the next node
+// whatever line it stands on.
+func withKeyProperties(ret []*TapeToken, start int, inFlow bool) int {
+	for start > 0 && (inFlow || ret[start-1].Line() == ret[start].Line()) {
 		prev := ret[start-1]
 		if prev.GroupType() != TokenGroupAnchorName && prev.Type() != token.TagType {
 			break

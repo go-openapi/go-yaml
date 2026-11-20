@@ -90,6 +90,16 @@ func stageProperties(g *Grouper, at int, tk *TapeToken, out []*TapeToken) []*Tap
 	}
 }
 
+// joins reports whether the property prop can belong to next.
+//
+// In block context a property joins only a node on its own line: "&a" over "k: v" anchors the mapping, not k. Inside
+// a flow collection s-separate lets a line break stand between a node's properties and its content, so "{&a" over
+// " k: v}" anchors k. A flow sequence's pair still keeps its key on one line: once the anchor is part of the key,
+// validateMapKey refuses "[&a" over " k: v]", and the key window refuses "[&a" over " [k]: v]".
+func (g *Grouper) joins(prop, next *TapeToken) bool {
+	return prop.Line() == next.Line() || g.propFlowDepth > 0
+}
+
 // property takes one step, and says whether tk has still to be read.
 func (g *Grouper) property(at int, tk *TapeToken, out []*TapeToken) ([]*TapeToken, bool) {
 	switch g.prop {
@@ -171,10 +181,10 @@ func (g *Grouper) tagOrLetGo(at int, tk *TapeToken, out []*TapeToken) ([]*TapeTo
 
 		return out, false
 	}
-	if tk.Type() == token.AnchorType && g.tag.Line() == tk.Line() {
+	if tk.Type() == token.AnchorType && g.joins(g.tag, tk) {
 		// "!!str &a1 foo" tags what the anchor names, so the tag waits while
-		// the anchor is read. A tag alone on its line tags nothing, whatever
-		// stands on the next one.
+		// the anchor is read. Outside a flow collection a tag alone on its
+		// line tags nothing, whatever stands on the next one.
 		g.anchor, g.prop = tk, propTagSawAnchor
 
 		return out, false
@@ -214,12 +224,12 @@ func (g *Grouper) anchorNames(at int, tk *TapeToken, out []*TapeToken) ([]*TapeT
 
 		return out, false
 
-	case sameLine && tk.Type() == token.TagType:
+	case g.joins(g.name, tk) && tk.Type() == token.TagType:
 		g.tag, g.prop = tk, propAnchorAndTag
 
 		return out, false
 
-	case sameLine && isScalarType(tk):
+	case g.joins(g.name, tk) && isScalarType(tk):
 		grouped := g.group2(TokenGroupAnchor, g.name, tk)
 		g.name, g.prop = nil, propNone
 
@@ -282,7 +292,7 @@ func (g *Grouper) taggedAnchorNames(at int, tk *TapeToken, out []*TapeToken) ([]
 		return out, false
 	}
 
-	if g.name.Line() == tk.Line() && isScalarType(tk) {
+	if g.joins(g.name, tk) && isScalarType(tk) {
 		named := g.group2(TokenGroupAnchor, g.name, tk)
 		g.name = nil
 

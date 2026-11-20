@@ -80,6 +80,19 @@ func init() {
 // Walking the chain to learn as much costs a call and a type test at every
 // stage; the table answers it once.
 func (g *Grouper) Feed(tk *TapeToken, out []*TapeToken) []*TapeToken {
+	// Brackets take the short way below, past stageProperties, so they are
+	// counted here, once each, for joins.
+	switch tk.Type() {
+	case token.MappingStartType, token.SequenceStartType:
+		g.propFlowDepth++
+	case token.MappingEndType, token.SequenceEndType:
+		if g.propFlowDepth > 0 {
+			g.propFlowDepth--
+		}
+	default:
+		// nothing to count
+	}
+
 	if g.settled() && !readsByAStage(tk.Type()) {
 		// stageLineComments notes every token it hands on, a comment closing a
 		// line attaching to whatever stood before it. Taking the short way

@@ -246,6 +246,10 @@ type Grouper struct {
 
 	tag *TapeToken // a tag, waiting to see what it tags
 
+	// propFlowDepth counts the flow collections open around the token Feed
+	// reads, so joins can let a property reach a node on a later line.
+	propFlowDepth int
+
 	// explicit is what groupExplicitKeys holds while it reads the body naming
 	// a '?' key, and keys what groupMapKeysByValue holds while it waits to see
 	// whether a ':' follows.
@@ -477,10 +481,11 @@ func (g *Grouper) group2(typ TokenGroupType, a, b *TapeToken) *TapeToken {
 // taggedScalar returns the group joining tag with next, or nil where the tag
 // stands on its own. It reports false where the document is refused.
 //
-// A tag never reaches past its own line, and never takes an anchor name: the
-// anchor is what holds the tag, and groupAnchorsWithScalarTags joins those.
+// A tag reaches past its own line only inside a flow collection (see joins),
+// and never takes an anchor name: the anchor is what holds the tag, and
+// groupAnchorsWithScalarTags joins those.
 func (g *Grouper) taggedScalar(tag, next *TapeToken) (*TapeToken, bool) {
-	if tag.Line() != next.Line() || next.GroupType() == TokenGroupAnchorName {
+	if !g.joins(tag, next) || next.GroupType() == TokenGroupAnchorName {
 		return nil, true
 	}
 
@@ -786,7 +791,8 @@ func (w *keyWindow) keepFrom() int {
 	// reaches past it to whatever is still undecided within.
 	for i, at := range w.openers {
 		if w.canKey[i] {
-			return withKeyProperties(w.held, at-w.base)
+			// An opener with another before it stands inside a flow collection.
+			return withKeyProperties(w.held, at-w.base, i > 0)
 		}
 	}
 
@@ -800,7 +806,7 @@ func (w *keyWindow) keepFrom() int {
 			return last
 		}
 
-		return withKeyProperties(w.held, start)
+		return withKeyProperties(w.held, start, len(w.openers) > 0)
 	}
 
 	return last
@@ -973,7 +979,7 @@ func (g *Grouper) keyBefore(w *keyWindow, tk *TapeToken) bool {
 
 			return false
 		}
-		start = withKeyProperties(w.held, start)
+		start = withKeyProperties(w.held, start, inFlow)
 		if !w.insideAFlowMapping() && w.held[start].Line() != key.Line() {
 			// An implicit key has to be a single-line node, so a collection
 			// spanning lines cannot be one. An entry of a flow mapping is a key

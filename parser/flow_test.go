@@ -453,6 +453,61 @@ func TestAFlowMappingEntryIsAKeyWhateverFollowsIt(t *testing.T) {
 	})
 }
 
+// TestAPropertyInAFlowCollectionBelongsToTheNextNode holds the properties written at the end of a line inside a flow
+// collection. In block context "&a" over "k: v" anchors the mapping, so a property joins only a node on its own line.
+// A flow collection has no such reading: s-separate lets a line break stand between a node's properties and its
+// content, and the reference parser reads every accepted document below with the property on the key.
+//
+// A pair inside a flow sequence is the exception, because its implicit key stays on one line and the property is part
+// of the key.
+func TestAPropertyInAFlowCollectionBelongsToTheNextNode(t *testing.T) {
+	for name, source := range map[string]string{
+		"an anchor over a key":                   "{&a\n x: v}\n",
+		"an anchor over a key with no value":     "{&a\n x}\n",
+		"an anchor over a collection key":        "{&a\n {x: 1}: v}\n",
+		"a tag over a key":                       "{!!str\n x: v}\n",
+		"a tag over a key with no value":         "{!!str\n x}\n",
+		"an anchor and a tag over a key":         "{&a !!str\n x}\n",
+		"a tag and an anchor over a key":         "{!!str &a\n x}\n",
+		"a tag over an anchored key":             "{!!str\n &a x: v}\n",
+		"an anchor over a key, with a comment":   "{&a # c\n x: v}\n",
+		"an anchor over a later key":             "{y: 1, &a\n x: v}\n",
+		"an anchor over a nested collection key": "{x: [1, {&a\n [2]: v}]}\n",
+		"a flow mapping in a block mapping":      "k: {&a\n x: v}\n",
+	} {
+		t.Run(name, func(t *testing.T) {
+			_, err := parser.ParseBytes([]byte(source))
+			require.NoError(t, err)
+		})
+	}
+
+	t.Run("the anchor names the key", func(t *testing.T) {
+		file, err := parser.ParseBytes([]byte("{&a\n x: v, y: *a}\n"))
+		require.NoError(t, err)
+
+		mapping, ok := file.Docs[0].Body.(*ast.MappingNode)
+		require.True(t, ok)
+		require.Len(t, mapping.Values, 2)
+
+		anchor, ok := mapping.Values[0].Key.(*ast.AnchorNode)
+		require.True(t, ok, "the key is the anchor")
+		assert.Equal(t, "a", anchor.Name.GetToken().Value)
+		assert.Equal(t, "x", anchor.Value.GetToken().Value)
+	})
+
+	for name, source := range map[string]string{
+		"an anchor over a pair's key":            "[&a\n x: v]\n",
+		"a tag over a pair's key":                "[!!str\n x: v]\n",
+		"a tag and an anchor over a pair's key":  "[!!str &a\n x: v]\n",
+		"an anchor over a pair's collection key": "[&a\n [1]: v]\n",
+	} {
+		t.Run("refuses "+name, func(t *testing.T) {
+			_, err := parser.ParseBytes([]byte(source))
+			require.Error(t, err)
+		})
+	}
+}
+
 // TestAPairKeyInAFlowSequenceStartsAtItsProperties holds the one-line rule of a pair inside a flow sequence against a
 // key that carries a property. The rule measured the key from its scalar and skipped a key whose first token was an
 // anchor or a tag, so "[&a x" over ": v]" was read as the pair. The reference parser refuses every document below.
