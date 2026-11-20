@@ -1063,7 +1063,7 @@ func valueNode(v any, opts ...codec.EncodeOption) func(*testing.T) ast.Node {
 func literalNode(s string) func(*testing.T) ast.Node {
 	return func(t *testing.T) ast.Node {
 		t.Helper()
-		b, err := codec.MarshalWithOptions(s, codec.UseLiteralStyleIfMultiline(true))
+		b, err := codec.Marshal(s, codec.UseLiteralStyleIfMultiline(true))
 		if err != nil {
 			t.Fatalf("%+v", err)
 		}

@@ -91,7 +91,7 @@ func TestAWideNumberIsAJSONNumber(t *testing.T) {
 	var v map[string]any
 	require.NoError(t, codec.Unmarshal([]byte(src), &v))
 
-	out, err := codec.MarshalWithOptions(v, codec.JSON())
+	out, err := codec.Marshal(v, codec.JSON())
 	require.NoError(t, err)
 	require.True(t, json.Valid(out), "%s", out)
 

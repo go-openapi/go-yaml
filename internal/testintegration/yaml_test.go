@@ -273,7 +273,7 @@ collection:
 	// "%YAML 1.1" selects the version and is not part of the body: "<<" is the
 	// merge key there, and the encoder writes no directive, so the round trip
 	// below compares the body alone.
-	if err := codec.UnmarshalWithOptions(
+	if err := codec.Unmarshal(
 		[]byte("%YAML 1.1\n"+yml), &v, codec.ShareAliases()); err != nil {
 		t.Fatal(err)
 	}
@@ -326,7 +326,7 @@ b: *a
 		A *int `yaml:"a,anchor"`
 		B *int `yaml:"b"`
 	}
-	if err := codec.UnmarshalWithOptions([]byte(yml), &v, codec.ShareAliases()); err != nil {
+	if err := codec.Unmarshal([]byte(yml), &v, codec.ShareAliases()); err != nil {
 		t.Fatal(err)
 	}
 	node, err := codec.ValueToNode(v)
@@ -414,7 +414,7 @@ func Test_WithCommentOption(t *testing.T) {
 				X int `yaml:"x"`
 			}{X: 10},
 		}
-		b, err := codec.MarshalWithOptions(v, codec.WithComment(
+		b, err := codec.Marshal(v, codec.WithComment(
 			codec.CommentMap{
 				"$.foo":     []*codec.Comment{codec.LineComment("foo comment")},
 				"$.bar":     []*codec.Comment{codec.LineComment("bar comment")},
@@ -447,7 +447,7 @@ baz:
 				},
 			},
 		}
-		b, err := codec.MarshalWithOptions(v, codec.WithComment(
+		b, err := codec.Marshal(v, codec.WithComment(
 			codec.CommentMap{
 				"$.foo.bar":     []*codec.Comment{codec.HeadComment(" bar head comment"), codec.LineComment(" bar line comment")},
 				"$.foo.bar.baz": []*codec.Comment{codec.LineComment(" baz line comment")},
@@ -482,7 +482,7 @@ foo:
 			}{X: 10},
 		}
 
-		b, err := codec.MarshalWithOptions(v, codec.WithComment(
+		b, err := codec.Marshal(v, codec.WithComment(
 			codec.CommentMap{
 				"$.foo":     []*codec.Comment{codec.HeadComment("foo comment")},
 				"$.bar":     []*codec.Comment{codec.HeadComment("bar comment")},
@@ -525,7 +525,7 @@ baz:
 			}{X: 10},
 		}
 
-		b, err := codec.MarshalWithOptions(v, codec.WithComment(
+		b, err := codec.Marshal(v, codec.WithComment(
 			codec.CommentMap{
 				"$.foo": []*codec.Comment{
 					codec.HeadComment(
@@ -585,7 +585,7 @@ baz:
 			Baz: []int{1, 2},
 		}
 
-		b, err := codec.MarshalWithOptions(v, codec.IndentSequence(true), codec.WithComment(
+		b, err := codec.Marshal(v, codec.IndentSequence(true), codec.WithComment(
 			codec.CommentMap{
 				"$.bar.bbb": []*codec.Comment{codec.FootComment("ccc: ddd")},
 				"$.baz[1]":  []*codec.Comment{codec.FootComment("- 3")},
@@ -645,7 +645,7 @@ baz:
 			},
 		}
 
-		b, err := codec.MarshalWithOptions(v, codec.IndentSequence(true), codec.WithComment(
+		b, err := codec.Marshal(v, codec.IndentSequence(true), codec.WithComment(
 			codec.CommentMap{
 				"$.foo": []*codec.Comment{
 					codec.HeadComment(" foo head comment", " foo head comment2"),
@@ -972,7 +972,7 @@ hoge:
 			opts = append(opts, tc.options...)
 
 			var v any
-			if err := codec.UnmarshalWithOptions([]byte(tc.yml), &v, opts...); err != nil {
+			if err := codec.Unmarshal([]byte(tc.yml), &v, opts...); err != nil {
 				t.Fatal(err)
 			}
 
@@ -1060,10 +1060,10 @@ a: 1 # line
 			var val any
 			cm := codec.CommentMap{}
 			source := strings.TrimSpace(test.source)
-			if err := codec.UnmarshalWithOptions([]byte(source), &val, codec.CommentToMap(cm)); err != nil {
+			if err := codec.Unmarshal([]byte(source), &val, codec.CommentToMap(cm)); err != nil {
 				t.Fatalf("%+v", err)
 			}
-			marshaled, err := codec.MarshalWithOptions(val, append(test.encodeOptions, codec.WithComment(cm))...)
+			marshaled, err := codec.Marshal(val, append(test.encodeOptions, codec.WithComment(cm))...)
 			if err != nil {
 				t.Fatalf("%+v", err)
 			}

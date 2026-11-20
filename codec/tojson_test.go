@@ -31,11 +31,11 @@ import (
 // to.
 func toJSONViaValues(src []byte) ([]byte, error) {
 	var v any
-	if err := codec.UnmarshalWithOptions(src, &v, codec.UseOrderedMap()); err != nil {
+	if err := codec.Unmarshal(src, &v, codec.UseOrderedMap()); err != nil {
 		return nil, err
 	}
 
-	return codec.MarshalWithOptions(v, codec.JSON())
+	return codec.Marshal(v, codec.JSON())
 }
 
 // TestToJSONMatchesTheValueConverter converts every document of the corpus both
@@ -1006,7 +1006,7 @@ func TestAFloatPastTheExponentBoundIsAnInfinityOrZero(t *testing.T) {
 		assert.Equalf(t, want, asMap["a"], "the walk: %q", src)
 
 		var tree codec.MapSlice
-		require.NoErrorf(t, codec.UnmarshalWithOptions([]byte(src), &tree, codec.UseOrderedMap()), "the tree: %q", src)
+		require.NoErrorf(t, codec.Unmarshal([]byte(src), &tree, codec.UseOrderedMap()), "the tree: %q", src)
 		v, _ := tree.Get("a")
 		assert.Equalf(t, want, v, "the tree: %q", src)
 
@@ -1129,9 +1129,9 @@ func throughValues(t *testing.T, src string) string {
 	t.Helper()
 
 	var v any
-	require.NoError(t, codec.UnmarshalWithOptions([]byte(src), &v, codec.UseOrderedMap()))
+	require.NoError(t, codec.Unmarshal([]byte(src), &v, codec.UseOrderedMap()))
 
-	out, err := codec.MarshalWithOptions(v, codec.JSON())
+	out, err := codec.Marshal(v, codec.JSON())
 	require.NoError(t, err)
 
 	return string(out)
@@ -1196,7 +1196,7 @@ func TestAKeyIsNamedByItsType(t *testing.T) {
 			assert.Equal(t, tc.want, decoded, "the decoder")
 
 			var stringKeyed map[string]any
-			require.NoError(t, codec.UnmarshalWithOptions([]byte(tc.src), &stringKeyed, codec.UseStringKeys()))
+			require.NoError(t, codec.Unmarshal([]byte(tc.src), &stringKeyed, codec.UseStringKeys()))
 			assert.Equal(t, tc.want, stringKeyed, "UseStringKeys")
 
 			converted, err := codec.ToJSON([]byte(tc.src))
@@ -1357,7 +1357,7 @@ func TestFixedATypedKeyKeepsItsOwnNamespace(t *testing.T) {
 
 			t.Run("an ordered map keeps both entries, under the keys they resolve to", func(t *testing.T) {
 				var got any
-				require.NoError(t, codec.UnmarshalWithOptions([]byte(tc.src), &got, codec.UseOrderedMap()))
+				require.NoError(t, codec.Unmarshal([]byte(tc.src), &got, codec.UseOrderedMap()))
 				assert.Equal(t, mapSliceOf(
 					item(tc.resolved, "x"),
 					item(tc.merged, "y"),
@@ -1589,8 +1589,8 @@ func TestToJSONWritesATimestampAsTheInstantItNames(t *testing.T) {
 			assert.Equal(t, tc.writes, string(out), "%q", tc.src)
 
 			var v any
-			require.NoErrorf(t, codec.UnmarshalWithOptions([]byte(tc.src), &v, codec.UseOrderedMap()), "%q", tc.src)
-			through, err := codec.MarshalWithOptions(v, codec.JSON())
+			require.NoErrorf(t, codec.Unmarshal([]byte(tc.src), &v, codec.UseOrderedMap()), "%q", tc.src)
+			through, err := codec.Marshal(v, codec.JSON())
 			require.NoErrorf(t, err, "%q", tc.src)
 			assert.Equal(t, strings.ReplaceAll(tc.writes, `":"`, `": "`)+"\n", string(through),
 				"%q: the value converter agrees", tc.src)
@@ -1610,8 +1610,8 @@ func TestToJSONWritesATimestampAsTheInstantItNames(t *testing.T) {
 		// writing the value as JSON writes it too. The two agree, which they
 		// did not while the decoder read the bytes.
 		var v any
-		require.NoError(t, codec.UnmarshalWithOptions([]byte(src), &v, codec.UseOrderedMap()))
-		through, err := codec.MarshalWithOptions(v, codec.JSON())
+		require.NoError(t, codec.Unmarshal([]byte(src), &v, codec.UseOrderedMap()))
+		through, err := codec.Marshal(v, codec.JSON())
 		require.NoError(t, err)
 		assert.Equal(t, `{"a": "aGVsbG8="}`+"\n", string(through))
 	})
@@ -1655,8 +1655,8 @@ func TestToJSONWritesATimestampAsTheInstantItNames(t *testing.T) {
 			assert.Equal(t, tc.folds, string(out), "%q", tc.src)
 
 			var v any
-			require.NoErrorf(t, codec.UnmarshalWithOptions([]byte(tc.src), &v, codec.UseOrderedMap()), "%q", tc.src)
-			through, err := codec.MarshalWithOptions(v, codec.JSON())
+			require.NoErrorf(t, codec.Unmarshal([]byte(tc.src), &v, codec.UseOrderedMap()), "%q", tc.src)
+			through, err := codec.Marshal(v, codec.JSON())
 			require.NoErrorf(t, err, "%q", tc.src)
 			assert.Equal(t, tc.values+"\n", string(through), "%q", tc.src)
 		}

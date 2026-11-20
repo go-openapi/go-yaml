@@ -40,7 +40,7 @@ func TestAMergeTakesOnlyMappingsOnEveryPath(t *testing.T) {
 		var walked any
 		walkErr := Unmarshal(doc, &walked)
 		var tree any
-		treeErr := UnmarshalWithOptions(doc, &tree, UseOrderedMap())
+		treeErr := Unmarshal(doc, &tree, UseOrderedMap())
 		_, jsonErr := ToJSON(doc)
 		_, tokenErr := collectJSONTokens(doc)
 
@@ -67,7 +67,7 @@ func TestAMergeTakesOnlyMappingsOnEveryPath(t *testing.T) {
 			var walked any
 			walkErr := Unmarshal(doc, &walked)
 			var tree any
-			treeErr := UnmarshalWithOptions(doc, &tree, UseOrderedMap())
+			treeErr := Unmarshal(doc, &tree, UseOrderedMap())
 			_, jsonErr := ToJSON(doc)
 			_, tokenErr := collectJSONTokens(doc)
 
@@ -128,8 +128,8 @@ func TestTheMergeKeyWrittenTheLongWayMergesOnEveryPath(t *testing.T) {
 
 		for name, opts := range map[string][]DecodeOption{"walk": nil, "tree": {UseOrderedMap()}} {
 			var v any
-			require.NoErrorf(t, UnmarshalWithOptions(doc, &v, opts...), "%s: %q", name, src)
-			got, err := MarshalWithOptions(v, JSON())
+			require.NoErrorf(t, Unmarshal(doc, &v, opts...), "%s: %q", name, src)
+			got, err := Marshal(v, JSON())
 			require.NoError(t, err)
 			assert.JSONEqf(t, want, string(got), "%s: %q", name, src)
 		}

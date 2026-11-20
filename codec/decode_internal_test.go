@@ -163,7 +163,7 @@ func TestARefusedExpansionNamesAnAlias(t *testing.T) {
 		opt := WithParserOptions(parser.WithAnchors(declared.Docs[0].Anchors))
 		for _, dst := range []any{new(any), new(map[string]any)} {
 			t.Run(fmt.Sprintf("%T", dst), func(t *testing.T) {
-				tk := refusedAt(t, UnmarshalWithOptions([]byte("a: *x\n"), dst, opt))
+				tk := refusedAt(t, Unmarshal([]byte("a: *x\n"), dst, opt))
 				if tk.Position.Line != 1 || tk.Position.Column != 4 {
 					t.Errorf("the refusal names %d:%d, want the alias at 1:4", tk.Position.Line, tk.Position.Column)
 				}
@@ -250,7 +250,7 @@ func TestAliasesAreIndependent(t *testing.T) {
 func TestShareAliasesGivesOneValue(t *testing.T) {
 	t.Run("into an any, walking", func(t *testing.T) {
 		var v any
-		if err := UnmarshalWithOptions([]byte(aliasSrc), &v, ShareAliases()); err != nil {
+		if err := Unmarshal([]byte(aliasSrc), &v, ShareAliases()); err != nil {
 			t.Fatal(err)
 		}
 		m := v.(map[string]any)
@@ -283,7 +283,7 @@ func TestSharingSurvivesTheBudget(t *testing.T) {
 	src := aliasBomb(9, 9)
 
 	var v any
-	if err := UnmarshalWithOptions([]byte(src), &v, ShareAliases()); err != nil {
+	if err := Unmarshal([]byte(src), &v, ShareAliases()); err != nil {
 		t.Fatalf("%d bytes: %v", len(src), err)
 	}
 }

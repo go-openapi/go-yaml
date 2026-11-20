@@ -52,8 +52,8 @@ func TestAnAllowedOrderedMapRepeatKeepsOneEntryOnEveryPath(t *testing.T) {
 				"tree": {AllowDuplicateMapKey(), UseOrderedMap()},
 			} {
 				var v any
-				require.NoErrorf(t, UnmarshalWithOptions([]byte(src), &v, opts...), "%s", name)
-				got, err := MarshalWithOptions(v, JSON())
+				require.NoErrorf(t, Unmarshal([]byte(src), &v, opts...), "%s", name)
+				got, err := Marshal(v, JSON())
 				require.NoError(t, err)
 				assert.JSONEqf(t, want.last, string(got), "the %s keeps the last value", name)
 			}

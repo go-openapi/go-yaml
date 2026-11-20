@@ -2036,7 +2036,7 @@ func TestFixedAMergeKeyIsAnOrdinaryKeyUnderYAML12(t *testing.T) {
 		const src = "%YAML 1.2\n---\nd:\n  <<: {a: 1}\n  c: 2\n"
 
 		var got any
-		require.NoError(t, codec.UnmarshalWithOptions([]byte(src), &got,
+		require.NoError(t, codec.Unmarshal([]byte(src), &got,
 			codec.WithParserOptions(parser.WithYAMLVersion(parser.YAML11))))
 		assert.Equal(t, map[string]any{
 			"d": map[string]any{"<<": map[string]any{"a": uint64(1)}, "c": uint64(2)},
@@ -2112,7 +2112,7 @@ func TestFixedAMergeKeyResolvesUnderYAML11(t *testing.T) {
 
 	t.Run("WithYAMLVersion(YAML11) merges a document that declares nothing", func(t *testing.T) {
 		var got any
-		require.NoError(t, codec.UnmarshalWithOptions([]byte("d:\n  <<: {a: 1}\n  c: 2\n"), &got,
+		require.NoError(t, codec.Unmarshal([]byte("d:\n  <<: {a: 1}\n  c: 2\n"), &got,
 			codec.WithParserOptions(parser.WithYAMLVersion(parser.YAML11))))
 		assert.Equal(t, map[string]any{"d": map[string]any{"a": uint64(1), "c": uint64(2)}}, got)
 	})
@@ -2453,7 +2453,7 @@ func assertBothPathsSay(t *testing.T, src, says string) {
 	assert.Containsf(t, err.Error(), says, "the walk on %q", src)
 
 	var loaded any
-	err = codec.UnmarshalWithOptions([]byte(src), &loaded, codec.UseOrderedMap())
+	err = codec.Unmarshal([]byte(src), &loaded, codec.UseOrderedMap())
 	require.Errorf(t, err, "the tree read %q as %v", src, loaded)
 	assert.Containsf(t, err.Error(), says, "the tree on %q", src)
 }
@@ -2984,7 +2984,7 @@ func commentsOf(t *testing.T, src string) map[string][]string {
 
 	cm := codec.CommentMap{}
 	var v any
-	require.NoErrorf(t, codec.UnmarshalWithOptions([]byte(src), &v, codec.CommentToMap(cm)), "%q", src)
+	require.NoErrorf(t, codec.Unmarshal([]byte(src), &v, codec.CommentToMap(cm)), "%q", src)
 
 	out := make(map[string][]string, len(cm))
 	for path, comments := range cm {
@@ -3218,7 +3218,7 @@ func TestFixedAMergeKeyAloneInFlowIsRefused(t *testing.T) {
 
 	t.Run("and AllowDuplicateMapKey reads it with the last entry winning", func(t *testing.T) {
 		var got any
-		require.NoError(t, codec.UnmarshalWithOptions(
+		require.NoError(t, codec.Unmarshal(
 			[]byte("{<<: {x: 1}, <<}\n"), &got, codec.AllowDuplicateMapKey()))
 		assert.Equal(t, map[string]any{"<<": nil}, got,
 			"the empty entry stands rather than being dropped")

@@ -26,10 +26,10 @@ key: value # line comment
 	}
 	comments := codec.CommentMap{}
 
-	if err := codec.UnmarshalWithOptions([]byte(yml), &v, codec.Strict(), codec.CommentToMap(comments)); err != nil {
+	if err := codec.Unmarshal([]byte(yml), &v, codec.Strict(), codec.CommentToMap(comments)); err != nil {
 		t.Fatal(err)
 	}
-	out, err := codec.MarshalWithOptions(v, codec.WithComment(comments))
+	out, err := codec.Marshal(v, codec.WithComment(comments))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -92,7 +92,7 @@ d: &d [*c,*c]
 	// ShareAliases: every alias of one anchor stands for one Go value, which is
 	// what this checks. Without it each builds its own and the addresses differ.
 	var v map[string]any
-	if err := codec.UnmarshalWithOptions([]byte(data), &v, codec.ShareAliases()); err != nil {
+	if err := codec.Unmarshal([]byte(data), &v, codec.ShareAliases()); err != nil {
 		t.Fatal(err)
 	}
 	a := v["a"]
@@ -125,10 +125,10 @@ i: &i [*h,*h,*h,*h,*h,*h,*h,*h,*h,*h]
 	// decode has to leave them there: ShareAliases is what puts them there.
 	// Without it this document builds 10^9 values and the alias budget stops it.
 	var v any
-	if err := codec.UnmarshalWithOptions([]byte(data), &v, codec.ShareAliases()); err != nil {
+	if err := codec.Unmarshal([]byte(data), &v, codec.ShareAliases()); err != nil {
 		t.Fatal(err)
 	}
-	got, err := codec.MarshalWithOptions(v, codec.WithSmartAnchor())
+	got, err := codec.Marshal(v, codec.WithSmartAnchor())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -433,7 +433,7 @@ dynamicField:
 
 	t.Run("UseJSONUnmarshaler and json.RawMessage", func(t *testing.T) {
 		var wrapper rawJSONWrapper
-		if err := codec.UnmarshalWithOptions(rawData, &wrapper, codec.UseJSONUnmarshaler()); err != nil {
+		if err := codec.Unmarshal(rawData, &wrapper, codec.UseJSONUnmarshaler()); err != nil {
 			t.Fatal(err)
 		}
 		if wrapper.StaticField != "value" {
@@ -450,7 +450,7 @@ dynamicField:
 
 	t.Run("UseJSONUnmarshaler and codec.RawMessage", func(t *testing.T) {
 		var wrapper rawYAMLWrapper
-		if err := codec.UnmarshalWithOptions(rawData, &wrapper, codec.UseJSONUnmarshaler()); err != nil {
+		if err := codec.Unmarshal(rawData, &wrapper, codec.UseJSONUnmarshaler()); err != nil {
 			t.Fatal(err)
 		}
 		if wrapper.StaticField != "value" {
@@ -474,19 +474,19 @@ dynamicField:
 			StaticField:  "value",
 			DynamicField: json.RawMessage(dynamicFieldBytes),
 		}
-		wrapperBytes, err := codec.MarshalWithOptions(&wrapper, codec.UseJSONMarshaler())
+		wrapperBytes, err := codec.Marshal(&wrapper, codec.UseJSONMarshaler())
 		if err != nil {
 			t.Fatal(err)
 		}
 		var unmarshaledWrapper rawJSONWrapper
-		if err := codec.UnmarshalWithOptions(wrapperBytes, &unmarshaledWrapper, codec.UseJSONUnmarshaler()); err != nil {
+		if err := codec.Unmarshal(wrapperBytes, &unmarshaledWrapper, codec.UseJSONUnmarshaler()); err != nil {
 			t.Fatal(err)
 		}
 		if unmarshaledWrapper.StaticField != wrapper.StaticField {
 			t.Fatalf("unexpected unmarshaled static field value: %s", unmarshaledWrapper.StaticField)
 		}
 		var unmarshaledDynamicFieldValue dynamicField
-		if err := codec.UnmarshalWithOptions(unmarshaledWrapper.DynamicField, &unmarshaledDynamicFieldValue, codec.UseJSONUnmarshaler()); err != nil {
+		if err := codec.Unmarshal(unmarshaledWrapper.DynamicField, &unmarshaledDynamicFieldValue, codec.UseJSONUnmarshaler()); err != nil {
 			t.Fatal(err)
 		}
 		if !unmarshaledDynamicFieldValue.Equals(expectedDynamicFieldValue) {
@@ -503,19 +503,19 @@ dynamicField:
 			StaticField:  "value",
 			DynamicField: codec.RawMessage(dynamicFieldBytes),
 		}
-		wrapperBytes, err := codec.MarshalWithOptions(&wrapper, codec.UseJSONMarshaler())
+		wrapperBytes, err := codec.Marshal(&wrapper, codec.UseJSONMarshaler())
 		if err != nil {
 			t.Fatal(err)
 		}
 		var unmarshaledWrapper rawYAMLWrapper
-		if err := codec.UnmarshalWithOptions(wrapperBytes, &unmarshaledWrapper, codec.UseJSONUnmarshaler()); err != nil {
+		if err := codec.Unmarshal(wrapperBytes, &unmarshaledWrapper, codec.UseJSONUnmarshaler()); err != nil {
 			t.Fatal(err)
 		}
 		if unmarshaledWrapper.StaticField != wrapper.StaticField {
 			t.Fatalf("unexpected unmarshaled static field value: %s", unmarshaledWrapper.StaticField)
 		}
 		var unmarshaledDynamicFieldValue dynamicField
-		if err := codec.UnmarshalWithOptions(unmarshaledWrapper.DynamicField, &unmarshaledDynamicFieldValue, codec.UseJSONUnmarshaler()); err != nil {
+		if err := codec.Unmarshal(unmarshaledWrapper.DynamicField, &unmarshaledDynamicFieldValue, codec.UseJSONUnmarshaler()); err != nil {
 			t.Fatal(err)
 		}
 		if !unmarshaledDynamicFieldValue.Equals(expectedDynamicFieldValue) {

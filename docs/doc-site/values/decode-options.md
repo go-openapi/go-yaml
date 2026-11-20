@@ -6,7 +6,7 @@ description: |
   that do nothing on their own.
 ---
 
-Options go to `codec.UnmarshalWithOptions` for one call, or to
+Options go to `codec.Unmarshal` for one call, or to
 `codec.NewDecoder` for a decoder you keep.
 
 ## Strictness

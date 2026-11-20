@@ -14,11 +14,11 @@ Ask the decoder to fill a `CommentMap`, then hand the same map to the encoder:
 cm := codec.CommentMap{}
 
 var v map[string]any
-if err := codec.UnmarshalWithOptions(src, &v, codec.CommentToMap(cm)); err != nil {
+if err := codec.Unmarshal(src, &v, codec.CommentToMap(cm)); err != nil {
 	// ...
 }
 
-out, err := codec.MarshalWithOptions(v, codec.WithComment(cm))
+out, err := codec.Marshal(v, codec.WithComment(cm))
 ```
 
 Given

@@ -13,7 +13,7 @@
 //
 //   - [codec] holds Encoder and Decoder, with options that steer how serialization works:
 //     MapSlice, RawMessage, comments, ...
-//     Use [codec.NewDecoder] to read a stream and [codec.UnmarshalWithOptions] to pass an option.
+//     Use [codec.NewDecoder] to read a stream and [codec.Unmarshal] to pass an option.
 //   - [github.com/go-openapi/go-yaml/ast] holds a document, whole or partial, as a tree of nodes.
 //   - [github.com/go-openapi/go-yaml/parser] builds that tree from a source document.
 //   - [github.com/go-openapi/go-yaml/errors] declares the failure every one of

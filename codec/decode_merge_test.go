@@ -428,7 +428,7 @@ func TestAMergeResolvesTheSameWayOnEveryPath(t *testing.T) {
 
 			var ordered any
 			require.NoErrorf(t,
-				codec.UnmarshalWithOptions([]byte(src), &ordered, codec.UseOrderedMap()), "%q", src)
+				codec.Unmarshal([]byte(src), &ordered, codec.UseOrderedMap()), "%q", src)
 			assert.Equal(t, tc.order, orderedKeysOf(t, ordered, "m"),
 				"UseOrderedMap: the mapping's own keys in document order, then the merged ones")
 
@@ -460,7 +460,7 @@ func TestAMergedKeyIsWrittenOnceIntoAMapSlice(t *testing.T) {
 		src := underEleven(plain)
 
 		var got any
-		require.NoErrorf(t, codec.UnmarshalWithOptions([]byte(src), &got, codec.UseOrderedMap()), "%q", src)
+		require.NoErrorf(t, codec.Unmarshal([]byte(src), &got, codec.UseOrderedMap()), "%q", src)
 
 		m := mapSliceAt(t, got, "m")
 		require.Equalf(t, 1, m.Len(), "%q: the MapSlice holds %v", src, m)
@@ -534,7 +534,7 @@ func TestFixedATypedMapSliceMergesLikeTheOrderedAny(t *testing.T) {
 		assert.Equalf(t, tc.want, typed.M.At(0).Value, "%q", src)
 
 		var walked any
-		require.NoErrorf(t, codec.UnmarshalWithOptions([]byte(src), &walked, codec.UseOrderedMap()), "%q", src)
+		require.NoErrorf(t, codec.Unmarshal([]byte(src), &walked, codec.UseOrderedMap()), "%q", src)
 		assert.Equalf(t, typed.M, mapSliceAt(t, walked, "m"), "%q: the two destinations disagree", src)
 	}
 }

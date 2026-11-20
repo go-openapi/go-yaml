@@ -70,7 +70,7 @@ func TestUseJSONTagsReadsEncodingJSONFields(t *testing.T) {
 
 	t.Run("an untagged embedded struct is promoted", func(t *testing.T) {
 		var v embedsUntagged
-		require.NoError(t, codec.UnmarshalWithOptions([]byte(src), &v, codec.UseJSONTags(true)))
+		require.NoError(t, codec.Unmarshal([]byte(src), &v, codec.UseJSONTags(true)))
 		assert.Equal(t, "2.0", v.Swagger)
 		assert.Equal(t, "example.com", v.Host)
 	})
@@ -83,7 +83,7 @@ func TestUseJSONTagsReadsEncodingJSONFields(t *testing.T) {
 
 	t.Run("promotion recurses through a second embedding", func(t *testing.T) {
 		var v deep
-		require.NoError(t, codec.UnmarshalWithOptions(
+		require.NoError(t, codec.Unmarshal(
 			[]byte(src+"extra: e\n"), &v, codec.UseJSONTags(true)))
 		assert.Equal(t, "2.0", v.Swagger)
 		assert.Equal(t, "e", v.Extra)
@@ -91,13 +91,13 @@ func TestUseJSONTagsReadsEncodingJSONFields(t *testing.T) {
 
 	t.Run("an explicit ,inline still works under the option", func(t *testing.T) {
 		var v embedsInline
-		require.NoError(t, codec.UnmarshalWithOptions([]byte(src), &v, codec.UseJSONTags(true)))
+		require.NoError(t, codec.Unmarshal([]byte(src), &v, codec.UseJSONTags(true)))
 		assert.Equal(t, "2.0", v.Swagger)
 	})
 
 	t.Run("the yaml tag still wins where a field carries both", func(t *testing.T) {
 		var v bothTags
-		require.NoError(t, codec.UnmarshalWithOptions(
+		require.NoError(t, codec.Unmarshal(
 			[]byte("jsonName: j\nyamlName: y\n"), &v, codec.UseJSONTags(true)))
 		assert.Equal(t, "y", v.Name, "the option adds a name and replaces none")
 	})
@@ -110,7 +110,7 @@ func TestUseJSONTagsReadsEncodingJSONFields(t *testing.T) {
 
 	t.Run("a yaml - hides a field the json tag names", func(t *testing.T) {
 		var v hiddenByYAML
-		require.NoError(t, codec.UnmarshalWithOptions(
+		require.NoError(t, codec.Unmarshal(
 			[]byte("visible: v\n"), &v, codec.UseJSONTags(true)))
 		assert.Empty(t, v.Hidden)
 	})
@@ -129,7 +129,7 @@ func TestUseJSONTagsDoesNotPoisonTheFieldCache(t *testing.T) {
 	t.Run("default first", func(t *testing.T) {
 		var a, b jsonNamed
 		require.NoError(t, codec.Unmarshal([]byte(src), &a))
-		require.NoError(t, codec.UnmarshalWithOptions([]byte(src), &b, codec.UseJSONTags(true)))
+		require.NoError(t, codec.Unmarshal([]byte(src), &b, codec.UseJSONTags(true)))
 		assert.Equal(t, "y", a.Field)
 		assert.Equal(t, "j", b.Field)
 	})
@@ -140,7 +140,7 @@ func TestUseJSONTagsDoesNotPoisonTheFieldCache(t *testing.T) {
 			Field string `json:"field_name"`
 		}
 		var a, b alsoNamed
-		require.NoError(t, codec.UnmarshalWithOptions([]byte(src), &a, codec.UseJSONTags(true)))
+		require.NoError(t, codec.Unmarshal([]byte(src), &a, codec.UseJSONTags(true)))
 		require.NoError(t, codec.Unmarshal([]byte(src), &b))
 		assert.Equal(t, "j", a.Field)
 		assert.Equal(t, "y", b.Field)
@@ -184,7 +184,7 @@ func TestTheDefaultModeReadsNoJSONTag(t *testing.T) {
 
 	t.Run("and UseJSONTags brings the tag back", func(t *testing.T) {
 		var v jsonOnly
-		require.NoError(t, codec.UnmarshalWithOptions(
+		require.NoError(t, codec.Unmarshal(
 			[]byte("field_name: x\n"), &v, codec.UseJSONTags(true)))
 		assert.Equal(t, "x", v.Field)
 	})
@@ -198,7 +198,7 @@ func ExampleUseJSONTags() {
 		B string `json:"bar"`
 	}
 
-	if err := codec.UnmarshalWithOptions([]byte(src), &v, codec.UseJSONTags(true)); err != nil {
+	if err := codec.Unmarshal([]byte(src), &v, codec.UseJSONTags(true)); err != nil {
 		log.Fatal(err)
 	}
 
@@ -259,7 +259,7 @@ func TestTheEncoderWritesTheNamesTheDecoderReads(t *testing.T) {
 		},
 	} {
 		t.Run(c.name, func(t *testing.T) {
-			out, err := codec.MarshalWithOptions(c.v,
+			out, err := codec.Marshal(c.v,
 				codec.WriteJSONTags(true), codec.WriteInferredNames(true))
 			require.NoError(t, err)
 
@@ -287,7 +287,7 @@ func TestTheEncoderWritesTheNamesTheDecoderReads(t *testing.T) {
 // TestAShadowedNameIsWrittenOnce holds the value as well as the name: the field
 // the decoder would read is the one the encoder writes.
 func TestAShadowedNameIsWrittenOnce(t *testing.T) {
-	out, err := codec.MarshalWithOptions(
+	out, err := codec.Marshal(
 		JMixedDepth{JMid{JLeaf{Name: "deep"}}, JShallow{Name: "shallow", OnlyS: "s"}},
 		codec.WriteJSONTags(true))
 	require.NoError(t, err)
@@ -295,7 +295,7 @@ func TestAShadowedNameIsWrittenOnce(t *testing.T) {
 
 	// And reading the document back reaches that same field.
 	var back JMixedDepth
-	require.NoError(t, codec.UnmarshalWithOptions(out, &back, codec.UseJSONTags(true)))
+	require.NoError(t, codec.Unmarshal(out, &back, codec.UseJSONTags(true)))
 	assert.Equal(t, "shallow", back.Name)
 	assert.Empty(t, back.JMid.Name)
 }
@@ -362,7 +362,7 @@ type (
 func TestUseInferredNamesTakesTheGoNameVerbatim(t *testing.T) {
 	t.Run("the verbatim name reaches the field", func(t *testing.T) {
 		var v untaggedFields
-		require.NoError(t, codec.UnmarshalWithOptions(
+		require.NoError(t, codec.Unmarshal(
 			[]byte("FieldName: x\nOther: y\n"), &v, codec.UseInferredNames(true)))
 		assert.Equal(t, "x", v.FieldName)
 		assert.Equal(t, "y", v.Other)
@@ -370,7 +370,7 @@ func TestUseInferredNamesTakesTheGoNameVerbatim(t *testing.T) {
 
 	t.Run("and the lowercased one no longer does", func(t *testing.T) {
 		var v untaggedFields
-		require.NoError(t, codec.UnmarshalWithOptions(
+		require.NoError(t, codec.Unmarshal(
 			[]byte("fieldname: x\n"), &v, codec.UseInferredNames(true)))
 		assert.Empty(t, v.FieldName)
 	})
@@ -383,14 +383,14 @@ func TestUseInferredNamesTakesTheGoNameVerbatim(t *testing.T) {
 
 	t.Run("false leaves the default in place", func(t *testing.T) {
 		var v untaggedFields
-		require.NoError(t, codec.UnmarshalWithOptions(
+		require.NoError(t, codec.Unmarshal(
 			[]byte("fieldname: x\n"), &v, codec.UseInferredNames(false)))
 		assert.Equal(t, "x", v.FieldName)
 	})
 
 	t.Run("a tag still names the field it names", func(t *testing.T) {
 		var v taggedAndNot
-		require.NoError(t, codec.UnmarshalWithOptions(
+		require.NoError(t, codec.Unmarshal(
 			[]byte("tagged: t\nUntagged: u\n"), &v, codec.UseInferredNames(true)))
 		assert.Equal(t, "t", v.Tagged)
 		assert.Equal(t, "u", v.Untagged)
@@ -400,7 +400,7 @@ func TestUseInferredNamesTakesTheGoNameVerbatim(t *testing.T) {
 		const src = `{"FieldName":"x","Other":"y"}`
 
 		var ours, theirs untaggedFields
-		require.NoError(t, codec.UnmarshalWithOptions(
+		require.NoError(t, codec.Unmarshal(
 			[]byte("FieldName: x\nOther: y\n"), &ours, codec.UseInferredNames(true)))
 		require.NoError(t, json.Unmarshal([]byte(src), &theirs)) //nolint:musttag // this test checks the behavior when no json is defined
 		assert.Equal(t, theirs, ours)
@@ -455,7 +455,7 @@ func TestTheTwoDecodeOptionsAreIndependent(t *testing.T) {
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			var v jsonAndUntagged
-			require.NoError(t, codec.UnmarshalWithOptions([]byte(c.src), &v,
+			require.NoError(t, codec.Unmarshal([]byte(c.src), &v,
 				codec.UseJSONTags(c.jsonTags), codec.UseInferredNames(c.inferred)))
 			assert.Equal(t, c.wantNamed, v.Named, c.why)
 			assert.Equal(t, c.wantUnnamed, v.Unnamed, c.why)
@@ -476,7 +476,7 @@ func TestUnderJSONTagsBothSpellingsOfAGoNameRead(t *testing.T) {
 		t.Run("inferred names "+map[bool]string{false: "off", true: "on"}[inferred], func(t *testing.T) {
 			for _, spelling := range []string{"unnamed", "Unnamed", "UNNAMED"} {
 				var v jsonAndUntagged
-				require.NoError(t, codec.UnmarshalWithOptions(
+				require.NoError(t, codec.Unmarshal(
 					[]byte(spelling+": V\n"), &v,
 					codec.UseJSONTags(true), codec.UseInferredNames(inferred)))
 				assert.Equal(t, "V", v.Unnamed, "%q reaches the field", spelling)
@@ -504,7 +504,7 @@ func TestEachModeKeepsItsOwnFieldCache(t *testing.T) {
 		t.Helper()
 
 		var v jsonAndUntagged
-		require.NoError(t, codec.UnmarshalWithOptions([]byte(src), &v,
+		require.NoError(t, codec.Unmarshal([]byte(src), &v,
 			codec.UseJSONTags(jsonTags), codec.UseInferredNames(inferred)))
 
 		return v.Named
@@ -926,7 +926,7 @@ func TestConflictsResolveAsEncodingJSONDoes(t *testing.T) {
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			ours := c.mk()
-			require.NoError(t, codec.UnmarshalWithOptions([]byte(c.src), ours,
+			require.NoError(t, codec.Unmarshal([]byte(c.src), ours,
 				codec.UseJSONTags(true), codec.UseInferredNames(true)))
 
 			theirs := c.mk()
@@ -946,7 +946,7 @@ func TestConflictsResolveAsEncodingJSONDoes(t *testing.T) {
 // refusing it says so rather than picking for them.
 func TestAConflictAYAMLTagTakesPartInIsRefused(t *testing.T) {
 	var v JYAMLInTheMix
-	err := codec.UnmarshalWithOptions([]byte("name: N\n"), &v,
+	err := codec.Unmarshal([]byte("name: N\n"), &v,
 		codec.UseJSONTags(true), codec.UseInferredNames(true))
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), `duplicated key "name"`)
@@ -976,7 +976,7 @@ func TestTheModeDecidesWhetherAConflictIsRefused(t *testing.T) {
 
 	t.Run("and UseJSONTags resolves it", func(t *testing.T) {
 		var v inlinedShadow
-		require.NoError(t, codec.UnmarshalWithOptions([]byte("name: N\n"), &v,
+		require.NoError(t, codec.Unmarshal([]byte("name: N\n"), &v,
 			codec.UseJSONTags(true)))
 		assert.Equal(t, "N", v.Name, "the shallower field wins")
 		assert.Empty(t, v.JLeaf.Name)
@@ -1024,21 +1024,21 @@ func TestAJSONTagCarriesEncodingJSONsFlags(t *testing.T) {
 		const src = "nested:\n  b: B\n"
 
 		var v namedInline
-		require.NoError(t, codec.UnmarshalWithOptions(
+		require.NoError(t, codec.Unmarshal(
 			[]byte(src), &v, codec.UseJSONTags(true)))
 		assert.Equal(t, "B", v.Nested.B, "the field keeps its own name")
 	})
 
 	t.Run("so the promoted spelling reaches nothing", func(t *testing.T) {
 		var v namedInline
-		require.NoError(t, codec.UnmarshalWithOptions(
+		require.NoError(t, codec.Unmarshal(
 			[]byte("b: B\n"), &v, codec.UseJSONTags(true)))
 		assert.Empty(t, v.Nested.B)
 	})
 
 	t.Run("which is what encoding/json does with the same type", func(t *testing.T) {
 		var ours, theirs namedInline
-		require.NoError(t, codec.UnmarshalWithOptions(
+		require.NoError(t, codec.Unmarshal(
 			[]byte("nested:\n  b: B\n"), &ours, codec.UseJSONTags(true)))
 		require.NoError(t, json.Unmarshal([]byte(`{"Nested":{"b":"B"}}`), &theirs))
 		assert.Equal(t, theirs, ours)
@@ -1046,7 +1046,7 @@ func TestAJSONTagCarriesEncodingJSONsFlags(t *testing.T) {
 
 	t.Run("inline on a named map is ignored too", func(t *testing.T) {
 		var v mapInline
-		require.NoError(t, codec.UnmarshalWithOptions(
+		require.NoError(t, codec.Unmarshal(
 			[]byte("known: K\nextra: E\n"), &v, codec.UseJSONTags(true)))
 		assert.Equal(t, "K", v.Known)
 		assert.Nil(t, v.Rest, "a json tag collects nothing")
@@ -1056,7 +1056,7 @@ func TestAJSONTagCarriesEncodingJSONsFlags(t *testing.T) {
 		// By the rule in promotesUntaggedEmbedded, which reads the absence of a
 		// name in the tag, not a flag.
 		var v anonymousUnnamed
-		require.NoError(t, codec.UnmarshalWithOptions(
+		require.NoError(t, codec.Unmarshal(
 			[]byte("b: B\n"), &v, codec.UseJSONTags(true)))
 		assert.Equal(t, "B", v.B)
 	})
@@ -1067,7 +1067,7 @@ func TestAJSONTagCarriesEncodingJSONsFlags(t *testing.T) {
 		}
 
 		var v yamlInline
-		require.NoError(t, codec.UnmarshalWithOptions(
+		require.NoError(t, codec.Unmarshal(
 			[]byte("b: B\n"), &v, codec.UseJSONTags(true)))
 		assert.Equal(t, "B", v.Nested.B, "the yaml tag says inline and means it")
 	})
@@ -1193,7 +1193,7 @@ func TestAnUnknownFlagInAJSONTagIsIgnored(t *testing.T) {
 	}
 
 	var v jsonFlagged
-	require.NoError(t, codec.UnmarshalWithOptions(
+	require.NoError(t, codec.Unmarshal(
 		[]byte("a: v\n"), &v, codec.UseJSONTags(true)))
 	assert.Equal(t, "v", v.A)
 }
@@ -1234,7 +1234,7 @@ func TestAKeyMatchesButForCaseUnderJSONTags(t *testing.T) {
 	for _, spelling := range []string{"fieldName", "fieldname", "FIELDNAME", "FieldName", "fIELDnAME"} {
 		t.Run(spelling, func(t *testing.T) {
 			var ours, theirs foldedTarget
-			require.NoError(t, codec.UnmarshalWithOptions(
+			require.NoError(t, codec.Unmarshal(
 				[]byte(spelling+": V\n"), &ours, codec.UseJSONTags(true)))
 			require.NoError(t, json.Unmarshal(
 				[]byte(`{"`+spelling+`":"V"}`), &theirs))
@@ -1255,7 +1255,7 @@ func TestAKeyMatchesButForCaseUnderJSONTags(t *testing.T) {
 // same index path an exact match does.
 func TestAFoldedMatchReachesAPromotedField(t *testing.T) {
 	var ours, theirs foldedPromoted
-	require.NoError(t, codec.UnmarshalWithOptions(
+	require.NoError(t, codec.Unmarshal(
 		[]byte("DEEPFIELD: D\nTAIL: T\n"), &ours, codec.UseJSONTags(true)))
 	require.NoError(t, json.Unmarshal(
 		[]byte(`{"DEEPFIELD":"D","TAIL":"T"}`), &theirs))
@@ -1268,7 +1268,7 @@ func TestAFoldedMatchReachesAPromotedField(t *testing.T) {
 // TestAnExactMatchBeatsAFoldedOne holds the order the two are tried in.
 func TestAnExactMatchBeatsAFoldedOne(t *testing.T) {
 	var ours, theirs foldedExactWins
-	require.NoError(t, codec.UnmarshalWithOptions(
+	require.NoError(t, codec.Unmarshal(
 		[]byte("name: L\nNAME: U\n"), &ours, codec.UseJSONTags(true)))
 	require.NoError(t, json.Unmarshal(
 		[]byte(`{"name":"L","NAME":"U"}`), &theirs))
@@ -1282,7 +1282,7 @@ func TestAnExactMatchBeatsAFoldedOne(t *testing.T) {
 // is a key the struct knows.
 func TestAFoldedKeyIsNotUnknown(t *testing.T) {
 	var v foldedTarget
-	require.NoError(t, codec.UnmarshalWithOptions([]byte("FIELDNAME: V\n"), &v,
+	require.NoError(t, codec.Unmarshal([]byte("FIELDNAME: V\n"), &v,
 		codec.UseJSONTags(true), codec.DisallowUnknownField()))
 	assert.Equal(t, "V", v.Field)
 }
@@ -1316,7 +1316,7 @@ func TestTheFoldMatchesEncodingJSONsOwn(t *testing.T) {
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			var ours, theirs target
-			require.NoError(t, codec.UnmarshalWithOptions(
+			require.NoError(t, codec.Unmarshal(
 				[]byte(c.key+": V\n"), &ours, codec.UseJSONTags(true)))
 			require.NoError(t, json.Unmarshal([]byte(`{"`+c.key+`":"V"}`), &theirs))
 

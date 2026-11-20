@@ -169,7 +169,7 @@ func goYAMLReaches(t *testing.T, mk func() any, name string) (string, bool) {
 	t.Helper()
 
 	v := mk()
-	require.NoError(t, codec.UnmarshalWithOptions(
+	require.NoError(t, codec.Unmarshal(
 		[]byte(name+": marker\n"), v,
 		codec.UseJSONTags(true), codec.UseInferredNames(true)))
 

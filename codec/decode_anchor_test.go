@@ -536,7 +536,7 @@ func treeRead(t *testing.T, src string) any {
 	t.Helper()
 
 	var v any
-	require.NoErrorf(t, codec.UnmarshalWithOptions([]byte(src), &v, codec.UseOrderedMap()), "%q", src)
+	require.NoErrorf(t, codec.Unmarshal([]byte(src), &v, codec.UseOrderedMap()), "%q", src)
 
 	return v
 }

@@ -112,7 +112,7 @@ func TestUnmarshalReadsTheFirstDocumentOfAStream(t *testing.T) {
 	for _, src := range []string{"a: 1\n---\na: 2\n", "a: 1\n---\nb: 2\n"} {
 		var walked, treed streamDoc
 		require.NoError(t, codec.Unmarshal([]byte(src), &walked))
-		require.NoError(t, codec.UnmarshalWithOptions([]byte(src), &treed, treeOnly()))
+		require.NoError(t, codec.Unmarshal([]byte(src), &treed, treeOnly()))
 
 		assert.Equal(t, streamDoc{A: 1}, walked, "%q", src)
 		assert.Equal(t, treed, walked, "%q", src)

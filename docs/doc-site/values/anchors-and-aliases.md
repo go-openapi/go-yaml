@@ -82,7 +82,7 @@ empty.
 way.** It resolves a bare `<<` at any version and changes nothing else:
 
 ```go
-codec.UnmarshalWithOptions(src, &v,
+codec.Unmarshal(src, &v,
 	codec.WithParserOptions(parser.WithMergeKeys()))
 ```
 

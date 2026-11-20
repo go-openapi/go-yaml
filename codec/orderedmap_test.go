@@ -242,7 +242,7 @@ func TestBase64TravelsThroughJSON(t *testing.T) {
 // MapSlice through ToJSON, whose keys are strings.
 func TestOurTypesAreReadBeforeTheJSONInterfaces(t *testing.T) {
 	t.Run("a Base64 keeps its tag under UseJSONMarshaler", func(t *testing.T) {
-		out, err := codec.MarshalWithOptions(
+		out, err := codec.Marshal(
 			map[string]any{"k": codec.Base64("aGVsbG8=")}, codec.UseJSONMarshaler())
 		require.NoError(t, err)
 		assert.Equal(t, "k: !!binary aGVsbG8=\n", string(out))
@@ -250,7 +250,7 @@ func TestOurTypesAreReadBeforeTheJSONInterfaces(t *testing.T) {
 
 	t.Run("a MapSlice is read by the decoder under UseJSONUnmarshaler", func(t *testing.T) {
 		var m codec.MapSlice
-		require.NoError(t, codec.UnmarshalWithOptions(
+		require.NoError(t, codec.Unmarshal(
 			[]byte("1: a\n\"1\": b\n"), &m, codec.UseJSONUnmarshaler()))
 
 		// Through JSON both keys would be the string "1" and the map would come
@@ -281,7 +281,7 @@ func TestAnOrderedMapTagReadsAsTheMapItNames(t *testing.T) {
 		assert.Equal(t, seqOf(item("x", uint64(1)), item("b", uint64(2))), walked)
 
 		var treed any
-		require.NoError(t, codec.UnmarshalWithOptions([]byte(src), &treed, codec.UseOrderedMap()))
+		require.NoError(t, codec.Unmarshal([]byte(src), &treed, codec.UseOrderedMap()))
 		assert.Equal(t, walked, treed)
 	})
 
@@ -316,7 +316,7 @@ func TestAnOrderedMapTagReadsAsTheMapItNames(t *testing.T) {
 			func(b []byte) error {
 				var v any
 
-				return codec.UnmarshalWithOptions(b, &v, codec.UseOrderedMap())
+				return codec.Unmarshal(b, &v, codec.UseOrderedMap())
 			},
 			func(b []byte) error { _, err := codec.ToJSON(b); return err },
 		} {
@@ -366,8 +366,8 @@ func TestOrderedMapWritesAJSONObject(t *testing.T) {
 		assert.Equalf(t, tc.want, string(got), "%q", tc.src)
 
 		var v any
-		require.NoErrorf(t, codec.UnmarshalWithOptions([]byte(tc.src), &v, codec.UseOrderedMap()), "%q", tc.src)
-		viaValues, err := codec.MarshalWithOptions(v, codec.JSON())
+		require.NoErrorf(t, codec.Unmarshal([]byte(tc.src), &v, codec.UseOrderedMap()), "%q", tc.src)
+		viaValues, err := codec.Marshal(v, codec.JSON())
 		require.NoErrorf(t, err, "%q", tc.src)
 		assert.JSONEqf(t, tc.want, string(viaValues), "%q: the value converter disagrees", tc.src)
 	}
@@ -396,7 +396,7 @@ func TestOrderedMapRefusesAShapeTheTagDoesNotName(t *testing.T) {
 
 		var treed any
 		require.Errorf(t,
-			codec.UnmarshalWithOptions([]byte(src), &treed, codec.UseOrderedMap()), "%q", src)
+			codec.Unmarshal([]byte(src), &treed, codec.UseOrderedMap()), "%q", src)
 
 		_, err := codec.ToJSON([]byte(src))
 		require.Errorf(t, err, "%q", src)
@@ -506,7 +506,7 @@ func tokenJSON(t *testing.T, src string) string {
 func TestAMapSliceKeyCarriesTheTypeItResolvesTo(t *testing.T) {
 	t.Run("a typed key and its quoted spelling are two entries", func(t *testing.T) {
 		var got any
-		require.NoError(t, codec.UnmarshalWithOptions(
+		require.NoError(t, codec.Unmarshal(
 			[]byte("1: a\n\"1.0\": b\n1.0: c\nnull: d\ntrue: e\n"), &got, codec.UseOrderedMap()))
 
 		assert.Equal(t, mapSliceOf(
@@ -526,13 +526,13 @@ func TestAMapSliceKeyCarriesTheTypeItResolvesTo(t *testing.T) {
 		// destinations each answered differently. A collection is refused here
 		// as it is everywhere else, so ToMap meets nothing it cannot hash.
 		var got any
-		err := codec.UnmarshalWithOptions([]byte("? [x]\n: f\n1: a\n"), &got, codec.UseOrderedMap())
+		err := codec.Unmarshal([]byte("? [x]\n: f\n1: a\n"), &got, codec.UseOrderedMap())
 		assert.Error(t, err, "read %v", got)
 	})
 
 	t.Run("UseStringKeys asks for text and gets it", func(t *testing.T) {
 		var got any
-		require.NoError(t, codec.UnmarshalWithOptions(
+		require.NoError(t, codec.Unmarshal(
 			[]byte("1: a\n1.0: c\nnull: d\ntrue: e\n"), &got, codec.UseOrderedMap(), codec.UseStringKeys()))
 
 		assert.Equal(t, mapSliceOf(
@@ -562,7 +562,7 @@ func TestAMapSliceKeyCarriesTheTypeItResolvesTo(t *testing.T) {
 		const src = "1: a\n\"1.0\": b\n1.0: c\nnull: d\ntrue: e\n"
 
 		var v any
-		require.NoError(t, codec.UnmarshalWithOptions([]byte(src), &v, codec.UseOrderedMap()))
+		require.NoError(t, codec.Unmarshal([]byte(src), &v, codec.UseOrderedMap()))
 		out, err := codec.Marshal(v)
 		require.NoError(t, err)
 		assert.Equal(t, src, string(out))
@@ -586,7 +586,7 @@ func TestFixedAMergeDoesNotOverrideAcrossATypeBoundary(t *testing.T) {
 	const src = "%YAML 1.1\n---\na: &m\n  \"1.0\": from_merge\n  extra: kept\nb:\n  <<: *m\n  1.0: own\n"
 
 	var got any
-	require.NoError(t, codec.UnmarshalWithOptions([]byte(src), &got, codec.UseOrderedMap()))
+	require.NoError(t, codec.Unmarshal([]byte(src), &got, codec.UseOrderedMap()))
 
 	ordered, isOrdered := got.(codec.MapSlice)
 	require.True(t, isOrdered)
@@ -603,7 +603,7 @@ func TestFixedAMergeDoesNotOverrideAcrossATypeBoundary(t *testing.T) {
 		const same = "%YAML 1.1\n---\na: &m\n  1.0: from_merge\n  extra: kept\nb:\n  <<: *m\n  1.0: own\n"
 
 		var got any
-		require.NoError(t, codec.UnmarshalWithOptions([]byte(same), &got, codec.UseOrderedMap()))
+		require.NoError(t, codec.Unmarshal([]byte(same), &got, codec.UseOrderedMap()))
 
 		b, _ := got.(codec.MapSlice).Get("b")
 
@@ -647,7 +647,7 @@ func TestAnOrderedMapEntryIsCountedAfterItsMerge(t *testing.T) {
 			var walked any
 			check(t, codec.Unmarshal(src, &walked))
 			var treed any
-			check(t, codec.UnmarshalWithOptions(src, &treed, codec.UseOrderedMap()))
+			check(t, codec.Unmarshal(src, &treed, codec.UseOrderedMap()))
 			// A tag sends the field to the tree.
 			var typed field
 			check(t, codec.Unmarshal(src, &typed))
@@ -706,9 +706,9 @@ func TestAnOrderedMapRepeatAMergeBringsInIsAKeyWrittenTwice(t *testing.T) {
 				}
 
 				var walked any
-				check(codec.UnmarshalWithOptions(src, &walked, decodeOpts...), "walk")
+				check(codec.Unmarshal(src, &walked, decodeOpts...), "walk")
 				var treed any
-				check(codec.UnmarshalWithOptions(src, &treed, append(decodeOpts, codec.UseOrderedMap())...), "tree")
+				check(codec.Unmarshal(src, &treed, append(decodeOpts, codec.UseOrderedMap())...), "tree")
 
 				got, err := codec.ToJSON(src, parseOpts...)
 				check(err, "ToJSON")

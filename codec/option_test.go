@@ -36,7 +36,7 @@ func TestWithParserOptionsReachesTheParser(t *testing.T) {
 		} {
 			t.Run(tc.name, func(t *testing.T) {
 				var got map[string]any
-				require.NoError(t, codec.UnmarshalWithOptions([]byte(tc.src), &got,
+				require.NoError(t, codec.Unmarshal([]byte(tc.src), &got,
 					codec.WithParserOptions(parser.WithYAMLVersion(tc.version))))
 				assert.Equal(t, tc.want, got["a"])
 			})
@@ -48,12 +48,12 @@ func TestWithParserOptionsReachesTheParser(t *testing.T) {
 		// the two take their parser options from the same place. A struct is the
 		// third path, held below.
 		var walked any
-		require.NoError(t, codec.UnmarshalWithOptions([]byte("a: yes\n"), &walked,
+		require.NoError(t, codec.Unmarshal([]byte("a: yes\n"), &walked,
 			codec.WithParserOptions(parser.WithYAMLVersion(parser.YAML11))))
 		assert.Equal(t, map[string]any{"a": true}, walked, "the walking path")
 
 		var treed map[string]any
-		require.NoError(t, codec.UnmarshalWithOptions([]byte("a: yes\n"), &treed,
+		require.NoError(t, codec.Unmarshal([]byte("a: yes\n"), &treed,
 			codec.WithParserOptions(parser.WithYAMLVersion(parser.YAML11))))
 		assert.Equal(t, map[string]any{"a": true}, treed, "the gathering path")
 	})
@@ -88,7 +88,7 @@ func TestWithParserOptionsReachesTheParser(t *testing.T) {
 		} {
 			t.Run(tc.name, func(t *testing.T) {
 				var got target
-				require.NoError(t, codec.UnmarshalWithOptions([]byte(tc.src), &got, codec.WithParserOptions(tc.opt)))
+				require.NoError(t, codec.Unmarshal([]byte(tc.src), &got, codec.WithParserOptions(tc.opt)))
 				assert.Equal(t, tc.want, got)
 			})
 		}
@@ -108,7 +108,7 @@ func TestWithParserOptionsReachesTheParser(t *testing.T) {
 
 	t.Run("applied in order, so the last one setting a field wins", func(t *testing.T) {
 		var got map[string]any
-		require.NoError(t, codec.UnmarshalWithOptions([]byte("a: yes\n"), &got,
+		require.NoError(t, codec.Unmarshal([]byte("a: yes\n"), &got,
 			codec.WithParserOptions(parser.WithYAMLVersion(parser.YAML12)),
 			codec.WithParserOptions(parser.WithYAMLVersion(parser.YAML11))))
 		assert.Equal(t, true, got["a"], "the second call wins")
@@ -118,7 +118,7 @@ func TestWithParserOptionsReachesTheParser(t *testing.T) {
 		// AllowDuplicateMapKey turns the parser's duplicate check off, and the
 		// version comes through at the same time.
 		var got map[string]any
-		require.NoError(t, codec.UnmarshalWithOptions([]byte("a: yes\na: no\n"), &got,
+		require.NoError(t, codec.Unmarshal([]byte("a: yes\na: no\n"), &got,
 			codec.AllowDuplicateMapKey(),
 			codec.WithParserOptions(parser.WithYAMLVersion(parser.YAML11))))
 		assert.Equal(t, map[string]any{"a": false}, got, "the repeat is allowed and 1.1 reads both")
@@ -142,7 +142,7 @@ func TestADeclaredAnchorReachesTheWalk(t *testing.T) {
 		t.Helper()
 		var got any
 		opts = append(opts, codec.WithParserOptions(parser.WithAnchors(anchors)))
-		require.NoError(t, codec.UnmarshalWithOptions([]byte(src), &got, opts...))
+		require.NoError(t, codec.Unmarshal([]byte(src), &got, opts...))
 		require.Equal(t, want, got)
 		m, ok := got.(map[string]any)
 		require.True(t, ok)

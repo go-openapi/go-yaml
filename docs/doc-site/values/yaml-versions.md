@@ -48,7 +48,7 @@ a: yes    # true
 Or for the decode, as a fallback where the document declares nothing:
 
 ```go
-codec.UnmarshalWithOptions(src, &v,
+codec.Unmarshal(src, &v,
 	codec.WithParserOptions(parser.WithYAMLVersion(parser.YAML11)))
 ```
 

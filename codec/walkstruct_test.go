@@ -455,7 +455,7 @@ func TestAnInlineMapIsFilledByBothDecodePaths(t *testing.T) {
 
 	t.Run("an entry the map took is not unknown", func(t *testing.T) {
 		var v withRest
-		require.NoError(t, codec.UnmarshalWithOptions(
+		require.NoError(t, codec.Unmarshal(
 			[]byte(src), &v, codec.DisallowUnknownField()))
 		assert.Equal(t, rest, v.Rest)
 	})
@@ -486,7 +486,7 @@ func TestAnInlineMapIsFilledByBothDecodePaths(t *testing.T) {
 		// before clearing anything. What the struct promotes has to have been
 		// struck off already.
 		var v withRestAndAnEmbed
-		require.NoError(t, codec.UnmarshalWithOptions(
+		require.NoError(t, codec.Unmarshal(
 			[]byte("known: K\ndeep: D\n"), &v, codec.DisallowUnknownField()))
 		assert.Equal(t, "D", v.Deep)
 		assert.Nil(t, v.Rest)

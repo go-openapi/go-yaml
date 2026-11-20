@@ -35,7 +35,7 @@ func (t *useJSONUnmarshalerTest) UnmarshalJSON(b []byte) error {
 
 func TestDecoder_UseJSONUnmarshaler(t *testing.T) {
 	var v useJSONUnmarshalerTest
-	if err := codec.UnmarshalWithOptions([]byte(`"a"`), &v, codec.UseJSONUnmarshaler()); err != nil {
+	if err := codec.Unmarshal([]byte(`"a"`), &v, codec.UseJSONUnmarshaler()); err != nil {
 		t.Fatal(err)
 	}
 	if v.s != "a" {
@@ -50,7 +50,7 @@ func TestDecoder_CustomUnmarshaler(t *testing.T) {
 		}
 		src := []byte(`foo: "bar"`)
 		var v T
-		if err := codec.UnmarshalWithOptions(src, &v, codec.CustomUnmarshaler[T](func(dst *T, b []byte) error {
+		if err := codec.Unmarshal(src, &v, codec.CustomUnmarshaler[T](func(dst *T, b []byte) error {
 			if !bytes.Equal(src, b) {
 				t.Fatalf("failed to get decode target buffer. expected %q but got %q", src, b)
 			}
@@ -76,7 +76,7 @@ func TestDecoder_CustomUnmarshaler(t *testing.T) {
 		}
 		src := []byte(`foo: "bar"`)
 		var v T
-		if err := codec.UnmarshalWithOptions(src, &v, codec.CustomUnmarshaler[[]byte](func(dst *[]byte, b []byte) error {
+		if err := codec.Unmarshal(src, &v, codec.CustomUnmarshaler[[]byte](func(dst *[]byte, b []byte) error {
 			if !bytes.Equal(b, []byte(`"bar"`)) {
 				t.Fatalf("failed to get target buffer: %q", b)
 			}
@@ -118,7 +118,7 @@ foo: # comment
 		t.Run(strconv.Itoa(idx), func(t *testing.T) {
 			m := codec.CommentMap{}
 			var v T
-			if err := codec.UnmarshalWithOptions(
+			if err := codec.Unmarshal(
 				[]byte(test),
 				&v,
 				codec.CommentToMap(m),
@@ -599,7 +599,7 @@ a:
 		A unmarshalList
 	}
 	cm := codec.CommentMap{}
-	if err := codec.UnmarshalWithOptions([]byte(yml), &v, codec.CommentToMap(cm)); err != nil {
+	if err := codec.Unmarshal([]byte(yml), &v, codec.CommentToMap(cm)); err != nil {
 		t.Fatal(err)
 	}
 	if len(v.A.v) != 4 {
@@ -786,7 +786,7 @@ baz: *seq
 `
 	m := codec.CommentMap{}
 	var v T
-	if err := codec.UnmarshalWithOptions(
+	if err := codec.Unmarshal(
 		[]byte(yml),
 		&v,
 		codec.CommentToMap(m),
@@ -794,7 +794,7 @@ baz: *seq
 	); err != nil {
 		t.Fatal(err)
 	}
-	if err := codec.UnmarshalWithOptions(
+	if err := codec.Unmarshal(
 		[]byte(yml),
 		&v,
 		codec.CustomUnmarshaler[T](unmarshaler),
@@ -829,7 +829,7 @@ disks:
 `)
 
 	var sample Sample
-	if err := codec.UnmarshalWithOptions(data, &sample, codec.CustomUnmarshaler[Disk](unmarshalDisk)); err != nil {
+	if err := codec.Unmarshal(data, &sample, codec.CustomUnmarshaler[Disk](unmarshalDisk)); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -858,7 +858,7 @@ func TestBytesUnmarshalerWithLiteral(t *testing.T) {
 `)
 
 		var v []map[string]Literal
-		if err := codec.UnmarshalWithOptions(data, &v, codec.CustomUnmarshaler[Literal](unmarshalLit)); err != nil {
+		if err := codec.Unmarshal(data, &v, codec.CustomUnmarshaler[Literal](unmarshalLit)); err != nil {
 			t.Fatal(err)
 		}
 		if !reflect.DeepEqual(v, []map[string]Literal{{"name": "foo\n  bar\n"}, {"name": "foo\nbar\n"}}) {
@@ -888,7 +888,7 @@ func TestBytesUnmarshalerWithLiteral(t *testing.T) {
 `)
 
 		var v []Literal
-		if err := codec.UnmarshalWithOptions(data, &v, codec.CustomUnmarshaler[Literal](unmarshalLit)); err != nil {
+		if err := codec.Unmarshal(data, &v, codec.CustomUnmarshaler[Literal](unmarshalLit)); err != nil {
 			t.Fatal(err)
 		}
 		if !reflect.DeepEqual(v, []Literal{"foo\n  bar\n", "foo\nbar\n"}) {
@@ -1075,7 +1075,7 @@ func TestABytesUnmarshalerReadsItsFragmentUnderTheDocumentsVersion(t *testing.T)
 		var v struct {
 			F fragment `yaml:"f"`
 		}
-		require.NoError(t, codec.UnmarshalWithOptions([]byte(body), &v,
+		require.NoError(t, codec.Unmarshal([]byte(body), &v,
 			codec.WithParserOptions(parser.WithYAMLVersion(parser.YAML11))))
 		assert.Contains(t, v.F.text, "%YAML 1.1\n---\n")
 		assert.Equal(t, merged, v.F.value)
@@ -1176,11 +1176,11 @@ func TestARegisteredUnmarshalerReadsItsTypeOnEveryPath(t *testing.T) {
 	for name, opts := range map[string][]codec.DecodeOption{"walk": nil, "tree": {tree}} {
 		t.Run(name, func(t *testing.T) {
 			var root registeredLeaf
-			require.NoError(t, codec.UnmarshalWithOptions([]byte("foo: bar\n"), &root, opts...))
+			require.NoError(t, codec.Unmarshal([]byte("foo: bar\n"), &root, opts...))
 			assert.Equal(t, "override", root.Foo)
 
 			var field holder
-			require.NoError(t, codec.UnmarshalWithOptions([]byte("leaf: {foo: bar}\n"), &field, opts...))
+			require.NoError(t, codec.Unmarshal([]byte("leaf: {foo: bar}\n"), &field, opts...))
 			assert.Equal(t, "override", field.Leaf.Foo)
 		})
 	}
@@ -1201,7 +1201,7 @@ func TestATextUnmarshalerReadsWhatAStringFieldReads(t *testing.T) {
 			t.Run(string(version)+"/"+value, func(t *testing.T) {
 				var v both
 				src := "s: &a " + value + "\ntu: *a\n"
-				require.NoError(t, codec.UnmarshalWithOptions([]byte(src), &v,
+				require.NoError(t, codec.Unmarshal([]byte(src), &v,
 					codec.WithParserOptions(parser.WithYAMLVersion(version))))
 				assert.Equal(t, v.S, v.TU.text)
 			})

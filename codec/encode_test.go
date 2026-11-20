@@ -1405,7 +1405,7 @@ func TestEncodeWithNestedYAML(t *testing.T) {
 	}
 
 	for _, test := range tests {
-		yamlBytesForced, err := codec.MarshalWithOptions(test.value, codec.UseLiteralStyleIfMultiline(true))
+		yamlBytesForced, err := codec.Marshal(test.value, codec.UseLiteralStyleIfMultiline(true))
 		if err != nil {
 			t.Fatalf("%+v", err)
 		}
@@ -1422,7 +1422,7 @@ func TestEncodeWithNestedYAML(t *testing.T) {
 		}
 
 		if test.expectDifferent {
-			yamlBytesNotForced, err := codec.MarshalWithOptions(test.value)
+			yamlBytesNotForced, err := codec.Marshal(test.value)
 			if err != nil {
 				t.Fatalf("%+v", err)
 			}
@@ -1707,7 +1707,7 @@ func (t useJSONMarshalerTest) MarshalJSON() ([]byte, error) {
 }
 
 func TestEncoder_UseJSONMarshaler(t *testing.T) {
-	got, err := codec.MarshalWithOptions(useJSONMarshalerTest{}, codec.UseJSONMarshaler())
+	got, err := codec.Marshal(useJSONMarshalerTest{}, codec.UseJSONMarshaler())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1727,7 +1727,7 @@ func TestEncoder_CustomMarshaler(t *testing.T) {
 		type T struct {
 			Foo string `yaml:"foo"`
 		}
-		b, err := codec.MarshalWithOptions(&T{Foo: "bar"}, codec.CustomMarshaler[T](func(_ T) ([]byte, error) {
+		b, err := codec.Marshal(&T{Foo: "bar"}, codec.CustomMarshaler[T](func(_ T) ([]byte, error) {
 			return []byte(`"override"`), nil
 		}))
 		if err != nil {
@@ -1741,7 +1741,7 @@ func TestEncoder_CustomMarshaler(t *testing.T) {
 		type T struct {
 			Foo []byte `yaml:"foo"`
 		}
-		b, err := codec.MarshalWithOptions(&T{Foo: []byte("bar")}, codec.CustomMarshaler[[]byte](func(v []byte) ([]byte, error) {
+		b, err := codec.Marshal(&T{Foo: []byte("bar")}, codec.CustomMarshaler[[]byte](func(v []byte) ([]byte, error) {
 			if !bytes.Equal(v, []byte("bar")) {
 				t.Fatalf("failed to get src buffer: %q", v)
 			}
@@ -2204,7 +2204,7 @@ line3`},
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			b, err := codec.MarshalWithOptions(tt.input, tt.indent)
+			b, err := codec.Marshal(tt.input, tt.indent)
 			if err != nil {
 				t.Fatalf("failed to marshal yaml: %v", err)
 			}
@@ -2290,7 +2290,7 @@ type Issue174 struct {
 }
 
 func (v Issue174) MarshalYAML() ([]byte, error) {
-	return codec.MarshalWithOptions(map[string][]int{v.K: v.V}, codec.Flow(true))
+	return codec.Marshal(map[string][]int{v.K: v.V}, codec.Flow(true))
 }
 
 func TestIssue174(t *testing.T) {
@@ -2415,7 +2415,7 @@ func TestTheEncoderRefusesTwoKeysThatAreOneYAMLKey(t *testing.T) {
 			require.ErrorIsf(t, err, yamlerrors.ErrDuplicateKey, "%s", name)
 		}
 
-		_, err := codec.MarshalWithOptions(map[any]any{1: "a", uint64(1): "b"}, codec.JSON())
+		_, err := codec.Marshal(map[any]any{1: "a", uint64(1): "b"}, codec.JSON())
 		require.ErrorIs(t, err, yamlerrors.ErrDuplicateKey)
 	})
 
@@ -2443,7 +2443,7 @@ func TestTheEncoderRefusesTwoKeysThatAreOneYAMLKey(t *testing.T) {
 		// The keys are ordered by their text and then by their Go type, so
 		// int comes before uint64 whatever order the map iterates in.
 		for range 20 {
-			out, err := codec.MarshalWithOptions(map[any]any{1: "a", uint64(1): "b"}, codec.SkipDuplicateMapKey())
+			out, err := codec.Marshal(map[any]any{1: "a", uint64(1): "b"}, codec.SkipDuplicateMapKey())
 			require.NoError(t, err)
 			assert.Equal(t, "1: a\n", string(out))
 		}
@@ -2479,7 +2479,7 @@ type (
 // went under a key of its own.
 func TestWriteJSONTagsWritesTheNamesUseJSONTagsReads(t *testing.T) {
 	t.Run("the json tag names the field", func(t *testing.T) {
-		out, err := codec.MarshalWithOptions(
+		out, err := codec.Marshal(
 			specProps{Swagger: "2.0", Host: "example.com"}, codec.WriteJSONTags(true))
 		require.NoError(t, err)
 		assert.Equal(t, "swagger: \"2.0\"\nhost: example.com\n", string(out))
@@ -2493,7 +2493,7 @@ func TestWriteJSONTagsWritesTheNamesUseJSONTagsReads(t *testing.T) {
 	})
 
 	t.Run("an anonymous struct is written into the mapping around it", func(t *testing.T) {
-		out, err := codec.MarshalWithOptions(
+		out, err := codec.Marshal(
 			specShaped{specProps{Swagger: "2.0", Host: "h"}, "e"}, codec.WriteJSONTags(true))
 		require.NoError(t, err)
 		assert.Equal(t, "swagger: \"2.0\"\nhost: h\nextra: e\n", string(out))
@@ -2506,7 +2506,7 @@ func TestWriteJSONTagsWritesTheNamesUseJSONTagsReads(t *testing.T) {
 	})
 
 	t.Run("the yaml tag still wins", func(t *testing.T) {
-		out, err := codec.MarshalWithOptions(
+		out, err := codec.Marshal(
 			mixedTags{Both: "bb", Neither: "nn"}, codec.WriteJSONTags(true))
 		require.NoError(t, err)
 		assert.Equal(t, "yamlName: bb\nneither: nn\n", string(out))
@@ -2519,7 +2519,7 @@ func TestWriteJSONTagsWritesTheNamesUseJSONTagsReads(t *testing.T) {
 // where a name is written.
 func TestWriteInferredNamesWritesTheGoNameVerbatim(t *testing.T) {
 	t.Run("the verbatim Go name", func(t *testing.T) {
-		out, err := codec.MarshalWithOptions(
+		out, err := codec.Marshal(
 			mixedTags{Both: "bb", Neither: "nn"},
 			codec.WriteJSONTags(true), codec.WriteInferredNames(true))
 		require.NoError(t, err)
@@ -2527,7 +2527,7 @@ func TestWriteInferredNamesWritesTheGoNameVerbatim(t *testing.T) {
 	})
 
 	t.Run("and the lowercased one without it", func(t *testing.T) {
-		out, err := codec.MarshalWithOptions(
+		out, err := codec.Marshal(
 			mixedTags{Both: "bb", Neither: "nn"}, codec.WriteJSONTags(true))
 		require.NoError(t, err)
 		assert.Equal(t, "yamlName: bb\nneither: nn\n", string(out))
@@ -2547,10 +2547,10 @@ func TestAValueReadUnderTheOptionsRoundTrips(t *testing.T) {
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			v := c.mk()
-			require.NoError(t, codec.UnmarshalWithOptions([]byte(c.src), v,
+			require.NoError(t, codec.Unmarshal([]byte(c.src), v,
 				codec.UseJSONTags(true), codec.UseInferredNames(true)))
 
-			out, err := codec.MarshalWithOptions(v,
+			out, err := codec.Marshal(v,
 				codec.WriteJSONTags(true), codec.WriteInferredNames(true))
 			require.NoError(t, err)
 			assert.Equal(t, c.src, string(out))
@@ -2682,7 +2682,7 @@ func TestATimeTimeInAnInterfaceSlotIsWrittenTagged(t *testing.T) {
 	t.Run("JSON has no tag to write", func(t *testing.T) {
 		t.Parallel()
 
-		out, err := codec.MarshalWithOptions(map[string]any{"k": utc}, codec.JSON())
+		out, err := codec.Marshal(map[string]any{"k": utc}, codec.JSON())
 		require.NoError(t, err)
 		assert.NotContains(t, string(out), "!!timestamp")
 		assert.Contains(t, string(out), `"2001-12-14T00:00:00Z"`)
@@ -2732,7 +2732,7 @@ func TestMarshalCarriageReturnUnderLiteralStyle(t *testing.T) {
 	const in = "a\r\nb\r\n"
 
 	var out []byte
-	out, err := codec.MarshalWithOptions(in, codec.UseLiteralStyleIfMultiline(true))
+	out, err := codec.Marshal(in, codec.UseLiteralStyleIfMultiline(true))
 	require.NoError(t, err)
 
 	var back string
@@ -2920,9 +2920,9 @@ func TestFixedJSONStyleQuotesEveryMemberName(t *testing.T) {
 		{"k: !!binary aGVsbG8=\n", `{"k":"aGVsbG8="}`},
 	} {
 		var v any
-		require.NoErrorf(t, codec.UnmarshalWithOptions([]byte(tc.src), &v, codec.UseOrderedMap()), "%q", tc.src)
+		require.NoErrorf(t, codec.Unmarshal([]byte(tc.src), &v, codec.UseOrderedMap()), "%q", tc.src)
 
-		out, err := codec.MarshalWithOptions(v, codec.JSON())
+		out, err := codec.Marshal(v, codec.JSON())
 		require.NoErrorf(t, err, "%q", tc.src)
 		assert.Truef(t, json.Valid(out), "%q wrote %s", tc.src, out)
 		assert.JSONEqf(t, tc.want, string(out), "%q", tc.src)
@@ -2939,7 +2939,7 @@ func TestFixedJSONStyleQuotesEveryMemberName(t *testing.T) {
 // encode still writes an integer key plain.
 func TestJSONStyleLeavesTheYAMLSpellingAlone(t *testing.T) {
 	var v any
-	require.NoError(t, codec.UnmarshalWithOptions([]byte("1: a\n1.5: b\nnull: c\n"), &v, codec.UseOrderedMap()))
+	require.NoError(t, codec.Unmarshal([]byte("1: a\n1.5: b\nnull: c\n"), &v, codec.UseOrderedMap()))
 
 	out, err := codec.Marshal(v)
 	require.NoError(t, err)

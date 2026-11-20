@@ -81,7 +81,7 @@ func TestReadingAnOpenAPISpecification(t *testing.T) {
 
 	t.Run("UseJSONTags reaches the fields and stops at a union type", func(t *testing.T) {
 		var v map[string]spec.Swagger
-		err := codec.UnmarshalWithOptions(src, &v, codec.UseJSONTags(true))
+		err := codec.Unmarshal(src, &v, codec.UseJSONTags(true))
 
 		// It fails deep inside definitions, on spec.StringOrArray: "type:
 		// string" against a []string. Reaching that far is the option working.
@@ -91,7 +91,7 @@ func TestReadingAnOpenAPISpecification(t *testing.T) {
 
 	t.Run("with UseJSONUnmarshaler it reads the document", func(t *testing.T) {
 		var v map[string]spec.Swagger
-		require.NoError(t, codec.UnmarshalWithOptions(src, &v,
+		require.NoError(t, codec.Unmarshal(src, &v,
 			codec.UseJSONTags(true), codec.UseJSONUnmarshaler()))
 
 		specs, paths, defs := countSpecs(v)
@@ -105,7 +105,7 @@ func TestReadingAnOpenAPISpecification(t *testing.T) {
 		// handed over as JSON whole and no tag of it is ever read. UseJSONTags
 		// adds nothing to this type, and would to one without the method.
 		var v map[string]spec.Swagger
-		require.NoError(t, codec.UnmarshalWithOptions(src, &v, codec.UseJSONUnmarshaler()))
+		require.NoError(t, codec.Unmarshal(src, &v, codec.UseJSONUnmarshaler()))
 
 		specs, paths, defs := countSpecs(v)
 		assert.Equal(t, wantSpecs, specs)

@@ -196,7 +196,7 @@ func TestBinaryTagReadsIntoAByteSlice(t *testing.T) {
 
 		var walked, treed box
 		require.NoError(t, codec.Unmarshal([]byte(src), &walked))
-		require.NoError(t, codec.UnmarshalWithOptions([]byte(src), &treed, codec.UseOrderedMap()))
+		require.NoError(t, codec.Unmarshal([]byte(src), &treed, codec.UseOrderedMap()))
 		assert.Equal(t, treed, walked)
 	})
 }
@@ -244,7 +244,7 @@ func TestABinaryTagReadsAsTheTextItCarries(t *testing.T) {
 
 		var got any
 		require.NoError(t, codec.Unmarshal([]byte(src), &got))
-		through, err := codec.MarshalWithOptions(got, codec.JSON())
+		through, err := codec.Marshal(got, codec.JSON())
 		require.NoError(t, err)
 		assert.JSONEq(t, string(folded), string(through))
 
@@ -532,7 +532,7 @@ func TestATimestampIntoAStringIsWrittenInRFC3339(t *testing.T) {
 		src := "s: " + value + "\nd: " + value + "\np: " + value + "\nm: {k: " + value +
 			"}\nl: [" + value + "]\ntu: " + value + "\n"
 		var v fields
-		require.NoError(t, codec.UnmarshalWithOptions([]byte(src), &v,
+		require.NoError(t, codec.Unmarshal([]byte(src), &v,
 			codec.WithParserOptions(parser.WithYAMLVersion(version))))
 
 		return v

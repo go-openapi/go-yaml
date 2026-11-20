@@ -6,7 +6,7 @@ description: |
   and comments.
 ---
 
-Options go to `codec.MarshalWithOptions` for one call, or to `codec.NewEncoder`
+Options go to `codec.Marshal` for one call, or to `codec.NewEncoder`
 for an encoder you keep.
 
 ## Layout

@@ -41,7 +41,7 @@ func TestEveryReaderStopsPast10000Levels(t *testing.T) {
 		"tree into any": func(src []byte) error {
 			var v any
 
-			return codec.UnmarshalWithOptions(src, &v, codec.UseOrderedMap())
+			return codec.Unmarshal(src, &v, codec.UseOrderedMap())
 		},
 		"ToJSON": func(src []byte) error {
 			_, err := codec.ToJSON(src)

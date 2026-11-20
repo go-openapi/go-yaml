@@ -50,7 +50,7 @@ if err := yaml.Unmarshal([]byte(yml), &v); err != nil {
 | call | use it when |
 |---|---|
 | `yaml.Marshal` / `yaml.Unmarshal` | you need no options |
-| `codec.MarshalWithOptions` / `codec.UnmarshalWithOptions` | you need options for one call |
+| `codec.Marshal` / `codec.Unmarshal` | you need options for one call |
 | `codec.NewEncoder` / `codec.NewDecoder` | you are reading or writing a stream, or reusing the options |
 
 The root package re-exports only `Marshal` and `Unmarshal`. Everything that takes

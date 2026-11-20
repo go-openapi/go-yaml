@@ -49,7 +49,7 @@ func TestADuplicateKeyIsReportedAtTheLoad(t *testing.T) {
 			assert.Contains(t, err.Error(), tc.want)
 
 			// And the option takes the last entry written.
-			require.NoError(t, codec.UnmarshalWithOptions([]byte(tc.src), &into, codec.AllowDuplicateMapKey()))
+			require.NoError(t, codec.Unmarshal([]byte(tc.src), &into, codec.AllowDuplicateMapKey()))
 		})
 	}
 }
@@ -114,7 +114,7 @@ func TestADuplicateKeyIsPerTypeAtTheLoad(t *testing.T) {
 			assert.ErrorIs(t, jsonErr, yamlerrors.ErrDuplicateKey)
 
 			// Tolerated, both read the document and the last entry wins.
-			assert.NoError(t, codec.UnmarshalWithOptions([]byte(tc.src), &into, codec.AllowDuplicateMapKey()))
+			assert.NoError(t, codec.Unmarshal([]byte(tc.src), &into, codec.AllowDuplicateMapKey()))
 			_, tolerated := codec.ToJSON([]byte(tc.src), parser.WithAllowDuplicateMapKey())
 			assert.NoError(t, tolerated)
 		})
@@ -171,7 +171,7 @@ func TestATimestampKeyIsItsInstant(t *testing.T) {
 		assert.Equal(t, map[any]any{want: "one"}, asAny)
 
 		var ordered codec.MapSlice
-		require.NoError(t, codec.UnmarshalWithOptions([]byte(src), &ordered, codec.UseOrderedMap()))
+		require.NoError(t, codec.Unmarshal([]byte(src), &ordered, codec.UseOrderedMap()))
 		require.Equal(t, 1, ordered.Len())
 		assert.Equal(t, want, ordered.At(0).Key)
 	})
@@ -225,7 +225,7 @@ func TestATimestampKeyIsItsInstant(t *testing.T) {
 				"into a map[string]any: %q", src)
 
 			var ordered codec.MapSlice
-			require.ErrorIsf(t, codec.UnmarshalWithOptions([]byte(src), &ordered, codec.UseOrderedMap()),
+			require.ErrorIsf(t, codec.Unmarshal([]byte(src), &ordered, codec.UseOrderedMap()),
 				yamlerrors.ErrDuplicateKey, "into a MapSlice: %q", src)
 		}
 	})
@@ -260,7 +260,7 @@ func TestATimestampKeyIsItsInstant(t *testing.T) {
 				}
 
 				var ordered map[string]codec.MapSlice
-				require.NoErrorf(t, codec.UnmarshalWithOptions([]byte(src), &ordered, codec.UseOrderedMap()), "%q", src)
+				require.NoErrorf(t, codec.Unmarshal([]byte(src), &ordered, codec.UseOrderedMap()), "%q", src)
 				require.Equalf(t, 1, ordered["b"].Len(), "into a MapSlice: %q", src)
 				assert.Equalf(t, "own", ordered["b"].At(0).Value, "into a MapSlice: %q", src)
 			}
@@ -390,7 +390,7 @@ func TestANumberKeyIsOneKeyWhateverItsGoType(t *testing.T) {
 			require.ErrorIsf(t, codec.Unmarshal([]byte(src), &asAny), yamlerrors.ErrDuplicateKey, "into an any: %q", src)
 
 			var ordered codec.MapSlice
-			require.ErrorIsf(t, codec.UnmarshalWithOptions([]byte(src), &ordered, codec.UseOrderedMap()),
+			require.ErrorIsf(t, codec.Unmarshal([]byte(src), &ordered, codec.UseOrderedMap()),
 				yamlerrors.ErrDuplicateKey, "into a MapSlice: %q", src)
 
 			_, err := codec.ToJSON([]byte(src))
@@ -436,7 +436,7 @@ func TestANumberKeyIsOneKeyWhateverItsGoType(t *testing.T) {
 				}
 
 				var ordered map[string]codec.MapSlice
-				require.NoErrorf(t, codec.UnmarshalWithOptions([]byte(src), &ordered, codec.UseOrderedMap()), "%q", src)
+				require.NoErrorf(t, codec.Unmarshal([]byte(src), &ordered, codec.UseOrderedMap()), "%q", src)
 				require.Equalf(t, 1, ordered["b"].Len(), "into a MapSlice: %q", src)
 				assert.Equalf(t, "own", ordered["b"].At(0).Value, "into a MapSlice: %q", src)
 			}
@@ -503,7 +503,7 @@ func TestTwoCollectionKeysAreTwoKeys(t *testing.T) {
 			require.NoErrorf(t, err, "%q parses", src)
 
 			var got any
-			assert.Errorf(t, codec.UnmarshalWithOptions([]byte(src), &got, codec.UseOrderedMap()),
+			assert.Errorf(t, codec.Unmarshal([]byte(src), &got, codec.UseOrderedMap()),
 				"%q read %v", src, got)
 		}
 	})
@@ -513,7 +513,7 @@ func TestTwoCollectionKeysAreTwoKeys(t *testing.T) {
 		require.NoError(t, err)
 
 		var got any
-		assert.Error(t, codec.UnmarshalWithOptions([]byte("{[a]: 1}\n"), &got, codec.UseOrderedMap()))
+		assert.Error(t, codec.Unmarshal([]byte("{[a]: 1}\n"), &got, codec.UseOrderedMap()))
 	})
 
 	t.Run("a collection key repeated is refused, in every spelling", func(t *testing.T) {
@@ -534,7 +534,7 @@ func TestTwoCollectionKeysAreTwoKeys(t *testing.T) {
 			"? [a]\n: 1\n[a]: 2\n",
 		} {
 			var got any
-			err := codec.UnmarshalWithOptions([]byte(src), &got, codec.UseOrderedMap())
+			err := codec.Unmarshal([]byte(src), &got, codec.UseOrderedMap())
 			require.Errorf(t, err, "%q read %v", src, got)
 			assert.ErrorIsf(t, err, yamlerrors.ErrDuplicateKey, "%q", src)
 		}
@@ -573,7 +573,7 @@ func TestTwoCollectionKeysAreTwoKeys(t *testing.T) {
 			"? a\n: 1\n? a\n: 2\n",
 		} {
 			var got any
-			err := codec.UnmarshalWithOptions([]byte(src), &got, codec.UseOrderedMap())
+			err := codec.Unmarshal([]byte(src), &got, codec.UseOrderedMap())
 			require.Errorf(t, err, "%q read %v", src, got)
 			assert.ErrorIsf(t, err, yamlerrors.ErrDuplicateKey, "%q", src)
 		}
@@ -608,7 +608,7 @@ func TestTwoCollectionKeysAreTwoKeys(t *testing.T) {
 			{"{a: 1, a: 2}\n", `[1:8] mapping key "a" already defined at [1:2]`},
 		} {
 			var got any
-			err := codec.UnmarshalWithOptions([]byte(tc.src), &got, codec.UseOrderedMap())
+			err := codec.Unmarshal([]byte(tc.src), &got, codec.UseOrderedMap())
 			require.Errorf(t, err, "%q read %v", tc.src, got)
 			assert.Containsf(t, err.Error(), tc.says, "%q", tc.src)
 		}
@@ -618,7 +618,7 @@ func TestTwoCollectionKeysAreTwoKeys(t *testing.T) {
 		for _, src := range []string{"{\"\": 1}\n", ": 1\n"} {
 			var got codec.MapSlice
 			require.NoErrorf(t,
-				codec.UnmarshalWithOptions([]byte(src), &got, codec.UseOrderedMap()), "%q", src)
+				codec.Unmarshal([]byte(src), &got, codec.UseOrderedMap()), "%q", src)
 			assert.Equalf(t, 1, got.Len(), "%q", src)
 		}
 	})

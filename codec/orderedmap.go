@@ -202,11 +202,11 @@ func (s MapSlice) ToMap() map[any]any {
 // same object: "!!omap" is a YAML tag and JSON has no spelling for it.
 //
 // The keys are named by the encoder in its JSON style, which is the same path
-// [MarshalWithOptions] with [JSON] takes, so a MapSlice and the document it was
+// [Marshal] with [JSON] takes, so a MapSlice and the document it was
 // read from write the same JSON. TestToJSONMatchesTheValueConverter holds that
 // path against [ToJSON] over the whole corpus.
 func (s MapSlice) MarshalJSON() ([]byte, error) {
-	out, err := MarshalWithOptions(s, JSON())
+	out, err := Marshal(s, JSON())
 	if err != nil {
 		return nil, err
 	}

@@ -67,12 +67,9 @@ import (
 //	}
 //	yaml.Marshal(&T{B: 2}) // Returns "b: 2\n"
 //	yaml.Marshal(&T{F: 1}) // Returns "a: 1\nb: 0\n"
-func Marshal(v any) ([]byte, error) {
-	return MarshalWithOptions(v)
-}
-
-// MarshalWithOptions serializes the value provided into a YAML document with EncodeOptions.
-func MarshalWithOptions(v any, opts ...EncodeOption) ([]byte, error) {
+//
+// Options apply to this call only. Use [NewEncoder] to encode a stream.
+func Marshal(v any, opts ...EncodeOption) ([]byte, error) {
 	var buf bytes.Buffer
 	if err := NewEncoder(&buf, opts...).Encode(v); err != nil {
 		return nil, err
@@ -118,13 +115,9 @@ func ValueToNode(v any, opts ...EncodeOption) (ast.Node, error) {
 // error, which matches [github.com/go-openapi/go-yaml/errors.ErrTypeMismatch],
 // and out holds everything decoded around it: the fields after it,
 // and the parts of a nested struct, slice or map read before it.
-func Unmarshal(data []byte, v any) error {
-	return UnmarshalWithOptions(data, v)
-}
-
-// UnmarshalWithOptions decodes with DecodeOptions the first document found within the in byte slice
-// and assigns decoded values into the out value.
-func UnmarshalWithOptions(data []byte, v any, opts ...DecodeOption) error {
+//
+// Options apply to this call only. Use [NewDecoder] to read every document of a stream.
+func Unmarshal(data []byte, v any, opts ...DecodeOption) error {
 	dec := NewDecoder(bytes.NewBuffer(data), opts...)
 	dec.firstOnly = true
 	if err := dec.Decode(v); err != nil {
@@ -148,7 +141,7 @@ func NodeToValue(node ast.Node, v any, opts ...DecodeOption) error {
 // FromJSON convert JSON bytes to YAML.
 func FromJSON(bytes []byte) ([]byte, error) {
 	var v any
-	if err := UnmarshalWithOptions(bytes, &v, UseOrderedMap()); err != nil {
+	if err := Unmarshal(bytes, &v, UseOrderedMap()); err != nil {
 		return nil, err
 	}
 	out, err := Marshal(v)

@@ -116,7 +116,7 @@ func AllowDuplicateMapKey() DecodeOption {
 //
 // The one most callers want is the version a document is read under:
 //
-//	codec.UnmarshalWithOptions(src, &v,
+//	codec.Unmarshal(src, &v,
 //		codec.WithParserOptions(parser.WithYAMLVersion(parser.YAML11)))
 //
 // Without it a "%YAML 1.1" directive is the only route into the 1.1 schema, and
