@@ -5,7 +5,6 @@ package scanner
 
 import (
 	"errors"
-	"fmt"
 	"iter"
 	"strings"
 	"unicode/utf8"
@@ -35,11 +34,7 @@ type Scanner struct {
 	// Every further line of that construct must be indented past it.
 	lastDelimColumn int32
 	// indentNum counts the spaces this line opened with.
-	indentNum int32
-	// prevLineIndentNum holds what indentNum held on the line before. updateIndentLevel compares the two.
-	prevLineIndentNum int32
-	// indentLevel counts how deeply the indentation nests. It does not match the column.
-	indentLevel            int32
+	indentNum              int32
 	startedFlowSequenceNum int32
 	startedFlowMapNum      int32
 	// flowIndent holds the indentation of the line that opened the outermost flow collection.
@@ -48,9 +43,6 @@ type Scanner struct {
 	indentState IndentState
 	// savedPos holds the position a token started at. hasSavedPos records whether savedPos holds one.
 	savedPos token.Position
-	// lastIndentLevel holds the indent level given to the last token.
-	// A block scalar's content sits one level below whatever opened it. Nothing else reads this.
-	lastIndentLevel int32
 	// initErr holds the fault Init found in the source, which the first scan then returns.
 	initErr error
 	// lookback fills in each token's BlankLineAbove and CommentBreaksAbove as it is emitted, from the tokens emitted before.
@@ -547,14 +539,6 @@ func (s *Scanner) scan(ctx *Context) error {
 
 // pos returns the position of the cursor.
 func (s *Scanner) pos() token.Position {
-	if probe.Enabled {
-		probe.Check("indent.lastIndentLevel==indentLevel", s.lastIndentLevel == s.indentLevel, func() string {
-			return fmt.Sprintf("lastIndentLevel=%d indentLevel=%d", s.lastIndentLevel, s.indentLevel)
-		})
-	}
-
-	s.lastIndentLevel = s.indentLevel
-
 	return token.At(s.line, s.column, s.ctx.idx, s.indentNum)
 }
 
@@ -576,7 +560,6 @@ func (s *Scanner) bufferedToken(ctx *Context) (token.Token, bool) {
 	line := s.line
 	column := s.column - int32(utf8.RuneCount(ctx.buf))
 	offset := ctx.idx - int32(len(ctx.buf))
-	level := s.indentLevel
 	if ctx.isMultiLine() {
 		line, column = s.multiLinePosition(ctx)
 		if start, ok := ctx.getMultiLineState().spaceOnlyStart(); ok {
@@ -588,12 +571,7 @@ func (s *Scanner) bufferedToken(ctx *Context) (token.Token, bool) {
 			// the comment could not take the line whole.
 			offset = start.Offset()
 		}
-		// Inside a literal, folded or raw folded scalar the indent level comes from the last token.
-		if ctx.lastToken() != nil { // The last token should never be nil here.
-			level = s.lastIndentLevel + 1
-		}
 	}
-	s.lastIndentLevel = level
 
 	// The token is cut where the scanner stands, so its text ends on the line it starts on.
 	// A block scalar is the exception: its value carries its own line breaks, and the origin gives its end.
@@ -729,7 +707,6 @@ func (s *Scanner) progressColumn(ctx *Context, num int32) {
 }
 
 func (s *Scanner) progressLine(ctx *Context) {
-	s.prevLineIndentNum = s.indentNum
 	if s.indentNum >= indentEager {
 		s.deepIndent = true
 	}
@@ -836,9 +813,7 @@ func (s *Scanner) reset(text string) {
 }
 
 func (s *Scanner) clearState() {
-	s.prevLineIndentNum = 0
 	s.lastDelimColumn = 0
-	s.indentLevel = 0
 	s.indentNum = 0
 }
 

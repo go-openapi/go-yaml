@@ -223,7 +223,7 @@ so `if probe.Enabled { ... }` and everything it would have evaluated disappear.
 `Check` records how often an invariant held, `Count` how much work was done. A count is the honest instrument
 for asking whether a parse stayed linear: it does not vary with the machine, where a stopwatch does.
 
-Six checks stand in this package. `probe_test.go` holds each to a ledger of known divergences, so a new one
+Five checks stand in this package. `probe_test.go` holds each to a ledger of known divergences, so a new one
 fails the build:
 
 | probe | asks |
@@ -232,7 +232,6 @@ fails the build:
 | `buf.notSpaceCharPos==trimmed/plain` | outside a block scalar the mark is derivable (section 5) |
 | `buf.notSpaceCharPos==trimmed/block` | inside one it is not, and the ledger says how often |
 | `token.extentMatchesTheOrigin` | the assembled extent equals the measured one (section 6) |
-| `indent.lastIndentLevel==indentLevel` | the two indent levels part company only where a block opens |
 | `indent.indentNum==column-1/spaces` and `/tab` | the indentation count tracks the column |
 
 Run them:

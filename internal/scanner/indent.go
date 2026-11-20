@@ -24,18 +24,6 @@ const (
 	IndentStateKeep
 )
 
-func (s *Scanner) updateIndentLevel() {
-	if s.prevLineIndentNum < s.indentNum {
-		s.indentLevel++
-
-		return
-	}
-
-	if s.prevLineIndentNum > s.indentNum && s.indentLevel > 0 {
-		s.indentLevel--
-	}
-}
-
 func (s *Scanner) updateIndentState() {
 	if s.lastDelimColumn == 0 || s.isFlowMode() {
 		return
@@ -92,7 +80,6 @@ func (s *Scanner) updateIndent(ctx *Context, c rune) {
 		return
 	}
 
-	s.updateIndentLevel()
 	s.updateIndentState()
 	s.isFirstCharAtLine = false
 }

@@ -31,7 +31,7 @@ corpus went from 621 KB to 992 KB and all three live entries drifted, with the s
 
 So before re-baselining:
 
-1. **Read the ratio, not the count.** `lastIndentLevel==indentLevel` went 2,729 -> 4,213 while its ratio went 3.26%
+1. **Read the ratio, not the count.** `lastIndentLevel==indentLevel`, retired 2026-11-20, went 2,729 -> 4,213 while its ratio went 3.26%
    -> 3.25%. The count followed the corpus; nothing about the scanner changed. The test logs `n of N (x%)` for every
    measured invariant, so the ratio is in the output of the failure you are looking at.
 2. **Separate the corpus from the scanner.** Put the corpus back as it was when the number was last written down and
