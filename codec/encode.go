@@ -823,7 +823,7 @@ func (e *Encoder) encodeMapSlice(value MapSlice, column int) (*ast.MappingNode, 
 // every key that is not a string, and is not JSON at all.
 //
 // The text comes from [ast.KeyName], which is the same reading [ToJSON] takes
-// through keyText: one rule for a member name, asked of the node the key
+// through astutils.KeyText: one rule for a member name, asked of the node the key
 // encoded to rather than of the Go value, so an integer writes in decimal and a
 // float with the point that tells it from one.
 func (e *Encoder) jsonKeyNode(key ast.MapKeyNode, column int) ast.MapKeyNode {

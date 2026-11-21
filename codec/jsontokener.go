@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"slices"
 
+	"github.com/go-openapi/go-yaml/codec/internal/astutils"
+
 	"github.com/go-openapi/go-yaml/ast"
 	yamlerrors "github.com/go-openapi/go-yaml/errors"
 	"github.com/go-openapi/go-yaml/parser"
@@ -164,10 +166,10 @@ func (t *jsonTokener) Enter(node ast.Node, at parser.Cursor) error {
 
 	switch n := node.(type) {
 	case *ast.MappingNode:
-		t.open(JSONObjectStart, nodeAt(n))
+		t.open(JSONObjectStart, astutils.NodeAt(n))
 		t.pushMap(n)
 	case *ast.SequenceNode:
-		t.open(JSONArrayStart, nodeAt(n))
+		t.open(JSONArrayStart, astutils.NodeAt(n))
 	case *ast.AnchorNode:
 		// An anchor stands around the node it names, which goes over on its
 		// own. Nothing is recorded: an alias reads ast.AliasNode.Target.
@@ -178,7 +180,7 @@ func (t *jsonTokener) Enter(node ast.Node, at parser.Cursor) error {
 	case *ast.TagNode:
 		t.openTag(n, false)
 	default:
-		t.emitScalarNode(node, nodeAt(node))
+		t.emitScalarNode(node, astutils.NodeAt(node))
 	}
 
 	return t.halted()

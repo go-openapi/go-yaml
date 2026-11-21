@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"slices"
 
+	"github.com/go-openapi/go-yaml/codec/internal/astutils"
+
 	"github.com/go-openapi/go-yaml/ast"
 	yamlerrors "github.com/go-openapi/go-yaml/errors"
 	"github.com/go-openapi/go-yaml/parser"
@@ -41,7 +43,7 @@ func (t *jsonTokener) emitKeyNamed(name string, at token.Position) {
 
 // keyName is the string a mapping key names its entry by.
 //
-// keyText reads the node through [ast.KeyName], which walks a "?", an anchor
+// astutils.KeyText reads the node through [ast.KeyName], which walks a "?", an anchor
 // and a tag down to the scalar underneath; a wrapper standing on nothing has no
 // scalar to reach and reading through it would dereference a nil. A key written
 // as nothing names the entry by the word JSON writes for it, which is what the
@@ -50,11 +52,11 @@ func (t *jsonTokener) keyName(node ast.Node) string {
 	if named := t.throughAlias(node); named != nil {
 		node = named
 	}
-	if standsOnNothing(node) {
+	if astutils.StandsOnNothing(node) {
 		return "null"
 	}
 
-	return keyText(node)
+	return astutils.KeyText(node)
 }
 
 // throughAlias is the node an alias standing as a key names, reached through
@@ -64,7 +66,7 @@ func (t *jsonTokener) keyName(node ast.Node) string {
 // [ast.KeyName] names an alias through [ast.AliasNode.Target] too, but returns
 // no name for a missing target and no node at all. keyName needs the node: it
 // refuses a missing or cyclic target through aliasTarget, writes "null" for a
-// target standing on nothing, and hands the target to jsonScalarOf when
+// target standing on nothing, and hands the target to astutils.JSONScalarOf when
 // KeyName gives no name.
 func (t *jsonTokener) throughAlias(node ast.Node) ast.Node {
 	switch n := node.(type) {
@@ -140,7 +142,7 @@ func (t *jsonTokener) closeTag(n *ast.TagNode, at parser.Cursor) {
 		if ok {
 			name = resolved.name()
 		}
-		t.emitKeyNamed(name, t.keyAt(n.Value, nodeAt(n)))
+		t.emitKeyNamed(name, t.keyAt(n.Value, astutils.NodeAt(n)))
 
 		return
 	}
@@ -149,15 +151,15 @@ func (t *jsonTokener) closeTag(n *ast.TagNode, at parser.Cursor) {
 	case ok:
 		// The tag says what the value is whatever its node wrote, so what was
 		// held back is dropped.
-		resolved.At = nodeAt(n)
+		resolved.At = astutils.NodeAt(n)
 		t.emit(resolved)
 	case mark.heldSet:
 		// The tag names a kind and its node is a scalar, which stands as it is.
 		t.emit(mark.held)
 	case mark.suppressed && t.count == mark.at:
 		// A tag standing on a scalar the walk did not reach.
-		tok := valueToken(jsonScalarOf(n.Value))
-		tok.At = nodeAt(n)
+		tok := valueToken(astutils.JSONScalarOf(n.Value))
+		tok.At = astutils.NodeAt(n)
 		t.emit(tok)
 	}
 }
@@ -183,7 +185,7 @@ func (t *jsonTokener) taggedValue(n *ast.TagNode, key bool) (JSONToken, bool) {
 // another parse: a nil entry leaves Target nil, and a node holding a cycle
 // reaches this alias again while it is being written out.
 func (t *jsonTokener) aliasTarget(n *ast.AliasNode) (ast.Node, error) {
-	name := anchorName(n.Value)
+	name := astutils.AnchorName(n.Value)
 	if n.Target == nil {
 		return nil, yamlerrors.NewSyntax(fmt.Sprintf("could not find alias %q", name), n.GetToken())
 	}
@@ -209,9 +211,9 @@ func (t *jsonTokener) emitAlias(n *ast.AliasNode, at parser.Cursor) {
 		return
 	}
 
-	name := anchorName(n.Value)
+	name := astutils.AnchorName(n.Value)
 	t.expanding = append(t.expanding, name)
-	t.emitTree(target, nodeAt(n))
+	t.emitTree(target, astutils.NodeAt(n))
 	t.expanding = t.expanding[:len(t.expanding)-1]
 }
 
@@ -236,7 +238,7 @@ func (t *jsonTokener) emitTree(node ast.Node, at token.Position) {
 
 			return
 		}
-		name := anchorName(n.Value)
+		name := astutils.AnchorName(n.Value)
 		t.expanding = append(t.expanding, name)
 		t.emitTree(target, at)
 		t.expanding = t.expanding[:len(t.expanding)-1]
@@ -371,12 +373,12 @@ func (t *jsonTokener) enterKey(node ast.Node, at parser.Cursor) error {
 		// An alias names the entry by what its anchor wrote as a value, which
 		// is what ToJSON holds to a string here -- not the canonical spelling
 		// [ast.KeyName] gives.
-		t.emitKeyNamed(t.wrappedKeyName(node), nodeAt(node))
+		t.emitKeyNamed(t.wrappedKeyName(node), astutils.NodeAt(node))
 
 		return t.skipped()
 	}
 
-	t.emitKey(node, nodeAt(node))
+	t.emitKey(node, astutils.NodeAt(node))
 
 	return t.skipped()
 }
@@ -402,7 +404,7 @@ func (t *jsonTokener) closeKey(node ast.Node, at parser.Cursor) bool {
 		// keeps the digits the document wrote.
 		name = t.wrappedKeyName(mark.node)
 	}
-	t.emitKeyNamed(name, t.keyAt(mark.node, nodeAt(node)))
+	t.emitKeyNamed(name, t.keyAt(mark.node, astutils.NodeAt(node)))
 
 	return true
 }
@@ -552,7 +554,7 @@ func (t *jsonTokener) releaseOrderedMap(n *ast.TagNode) {
 func (t *jsonTokener) emitOrderedMapTree(n *ast.TagNode, at token.Position) {
 	seq, isSeq := t.throughWrappers(n.Value).(*ast.SequenceNode)
 	if !isSeq {
-		t.fail(notAnOrderedMap(n.Value))
+		t.fail(astutils.NotAnOrderedMap(n.Value))
 
 		return
 	}
@@ -562,7 +564,7 @@ func (t *jsonTokener) emitOrderedMapTree(n *ast.TagNode, at token.Position) {
 	for i, entry := range seq.Values {
 		one, isOne := t.throughWrappers(entry).(*ast.MappingNode)
 		if !isOne {
-			t.fail(notAnOrderedMap(n.Value))
+			t.fail(astutils.NotAnOrderedMap(n.Value))
 
 			return
 		}
@@ -571,7 +573,7 @@ func (t *jsonTokener) emitOrderedMapTree(n *ast.TagNode, at token.Position) {
 			return
 		}
 		if len(entries) != 1 {
-			t.fail(notAnOrderedMap(n.Value))
+			t.fail(astutils.NotAnOrderedMap(n.Value))
 
 			return
 		}

@@ -11,6 +11,8 @@ import (
 	"slices"
 	"time"
 
+	"github.com/go-openapi/go-yaml/codec/internal/astutils"
+
 	"github.com/go-openapi/go-yaml/ast"
 	yamlerrors "github.com/go-openapi/go-yaml/errors"
 	"github.com/go-openapi/go-yaml/parser"
@@ -202,7 +204,7 @@ func (b *typedBuilder) Enter(node ast.Node, at parser.Cursor) error {
 			return b.fail(errNeedsTheTree)
 		}
 
-		return b.openAnchor(anchorName(n.Name))
+		return b.openAnchor(astutils.AnchorName(n.Name))
 	case *ast.AliasNode:
 		if b.values != nil || at.IsKey() {
 			// Inside an "any" subtree, see the anchor above. An alias as a key
@@ -502,7 +504,7 @@ func (b *typedBuilder) named(name string) (typedAnchored, bool) {
 // Where named finds no anchor -- the alias stands inside its own anchor, or
 // names none -- the decode goes to the tree, which reads or refuses it.
 func (b *typedBuilder) alias(n *ast.AliasNode) error {
-	anchored, known := b.named(anchorName(n.Value))
+	anchored, known := b.named(astutils.AnchorName(n.Value))
 	if !known {
 		return b.fail(errNeedsTheTree)
 	}
@@ -652,7 +654,7 @@ func (b *typedBuilder) mergeValue(top *typedFrame, node ast.Node) error {
 	top.mergeNext = false
 	switch n := node.(type) {
 	case *ast.AliasNode:
-		anchored, known := b.named(anchorName(n.Value))
+		anchored, known := b.named(astutils.AnchorName(n.Value))
 		if !known {
 			return b.fail(errNeedsTheTree)
 		}
@@ -684,7 +686,7 @@ func (b *typedBuilder) keepMerge(top *typedFrame, node ast.Node) error {
 	for _, value := range seq.Values {
 		switch v := value.(type) {
 		case *ast.AliasNode:
-			anchored, known := b.named(anchorName(v.Value))
+			anchored, known := b.named(astutils.AnchorName(v.Value))
 			if !known {
 				return b.fail(errNeedsTheTree)
 			}
@@ -758,7 +760,7 @@ func (b *typedBuilder) mergeFrom(i int, node ast.Node, alias *ast.AliasNode) err
 
 		return nil
 	case *ast.AliasNode:
-		anchored, known := b.named(anchorName(n.Value))
+		anchored, known := b.named(astutils.AnchorName(n.Value))
 		if !known {
 			return b.fail(errNeedsTheTree)
 		}
@@ -1237,7 +1239,7 @@ func (b *typedBuilder) setScalar(dst reflect.Value, node ast.Node) error {
 
 		return nil
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
-		switch v := scalarNumber(node).(type) {
+		switch v := astutils.ScalarNumber(node).(type) {
 		case int64:
 			if dst.OverflowInt(v) {
 				return errNotWritten
@@ -1256,7 +1258,7 @@ func (b *typedBuilder) setScalar(dst reflect.Value, node ast.Node) error {
 
 		return errNotWritten
 	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
-		switch v := scalarNumber(node).(type) {
+		switch v := astutils.ScalarNumber(node).(type) {
 		case uint64:
 			if dst.OverflowUint(v) {
 				return errNotWritten
@@ -1275,7 +1277,7 @@ func (b *typedBuilder) setScalar(dst reflect.Value, node ast.Node) error {
 
 		return errNotWritten
 	case reflect.Float32, reflect.Float64:
-		switch v := scalarNumber(node).(type) {
+		switch v := astutils.ScalarNumber(node).(type) {
 		case float64:
 			dst.SetFloat(v)
 

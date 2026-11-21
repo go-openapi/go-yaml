@@ -6,6 +6,8 @@ package codec
 import (
 	"slices"
 
+	"github.com/go-openapi/go-yaml/codec/internal/astutils"
+
 	"github.com/go-openapi/go-yaml/ast"
 	yamlerrors "github.com/go-openapi/go-yaml/errors"
 	"github.com/go-openapi/go-yaml/parser"
@@ -47,9 +49,9 @@ func (t *jsonTokener) collectMerge(node ast.Node, at parser.Cursor) error {
 			frame.mergeValue = false
 		}
 		t.collectRun(func() {
-			name := anchorName(n.Value)
+			name := astutils.AnchorName(n.Value)
 			t.expanding = append(t.expanding, name)
-			t.emitTree(target, nodeAt(n))
+			t.emitTree(target, astutils.NodeAt(n))
 			t.expanding = t.expanding[:len(t.expanding)-1]
 		})
 
@@ -64,7 +66,7 @@ func (t *jsonTokener) collectMerge(node ast.Node, at parser.Cursor) error {
 		t.buffer = new([]JSONToken)
 		t.bufDepth = at.Depth()
 		t.bufOwner = len(t.maps) - 1
-		t.open(JSONObjectStart, nodeAt(n))
+		t.open(JSONObjectStart, astutils.NodeAt(n))
 		t.pushMap(nil)
 
 		return nil

@@ -10,6 +10,8 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/go-openapi/go-yaml/codec/internal/astutils"
+
 	"github.com/go-openapi/go-yaml/ast"
 	yamlerrors "github.com/go-openapi/go-yaml/errors"
 	"github.com/go-openapi/go-yaml/parser"
@@ -144,7 +146,7 @@ func (b *valueBuilder) Enter(node ast.Node, at parser.Cursor) error {
 		b.stack = append(b.stack,
 			buildFrame{kind: frameSequence, asKey: at.IsKey(), seq: []any{}, mergeSource: b.mergingValue(at.IsKey())})
 	case *ast.AnchorNode:
-		b.open = append(b.open, anchorName(n.Name))
+		b.open = append(b.open, astutils.AnchorName(n.Name))
 		b.stack = append(b.stack, buildFrame{kind: frameProperty, asKey: at.IsKey(), node: node})
 	case *ast.TagNode, *ast.MappingKeyNode:
 		b.stack = append(b.stack, buildFrame{kind: frameProperty, asKey: at.IsKey(), node: node})
@@ -257,7 +259,7 @@ func (b *valueBuilder) closeProperty(frame buildFrame) (any, error) {
 		if n := len(b.open); n > 0 {
 			b.open = b.open[:n-1]
 		}
-		if name := anchorName(n.Name); name != "" {
+		if name := astutils.AnchorName(n.Name); name != "" {
 			if b.named == nil {
 				b.named = map[string]any{}
 			}
@@ -279,7 +281,7 @@ func (b *valueBuilder) closeProperty(frame buildFrame) (any, error) {
 			// A flow key written alone, "{!!null &a1 null, k: *a1}", hands the
 			// tag over without what it stands on, so the anchor never opened
 			// and this is the only place its name is recorded.
-			if name := anchorName(anchor.Name); name != "" {
+			if name := astutils.AnchorName(anchor.Name); name != "" {
 				if b.named == nil {
 					b.named = map[string]any{}
 				}
@@ -320,7 +322,7 @@ func (b *valueBuilder) propertyValue(n ast.Node) (any, error) {
 // recorded as it closed, or else the value of an anchor parser.WithAnchors
 // declared.
 func (b *valueBuilder) aliasValue(n *ast.AliasNode) any {
-	name := anchorName(n.Value)
+	name := astutils.AnchorName(n.Value)
 	if v, named := b.named[name]; named {
 		if b.share {
 			return v
@@ -472,9 +474,9 @@ func (b *valueBuilder) deliver(v any, node ast.Node, key bool) {
 func (b *valueBuilder) deliverToMapping(top *buildFrame, v any, node ast.Node, key bool) {
 	if key {
 		// Named from the node and not from the value, so that the type spells
-		// it: mapKeyString writes an integer in decimal and a float with the
+		// it: astutils.MapKeyString writes an integer in decimal and a float with the
 		// point that tells it from one.
-		name, err := mapKeyString(node, v)
+		name, err := astutils.MapKeyString(node, v)
 		if err != nil {
 			if top.keyErr == nil {
 				top.keyErr = err
@@ -794,11 +796,11 @@ func oneEntryOf(value any) (MapItem, bool) {
 func orderedMapOfWalked(value any, n *ast.TagNode) (any, error) {
 	seq, isSeq := value.([]any)
 	if !isSeq {
-		return nil, notAnOrderedMap(n.Value)
+		return nil, astutils.NotAnOrderedMap(n.Value)
 	}
 	for _, entry := range seq {
 		if _, isMapping := oneEntryOf(entry); !isMapping {
-			return nil, notAnOrderedMap(n.Value)
+			return nil, astutils.NotAnOrderedMap(n.Value)
 		}
 	}
 	if err := refuseOrderedMapDuplicates(orderedMapSequence(n.Value)); err != nil {

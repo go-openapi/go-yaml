@@ -22,6 +22,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/go-openapi/go-yaml/codec/internal/astutils"
+
 	"github.com/go-openapi/go-yaml/ast"
 	yamlerrors "github.com/go-openapi/go-yaml/errors"
 	"github.com/go-openapi/go-yaml/internal/format"
@@ -202,7 +204,7 @@ func (d *Decoder) DecodeFromNode(node ast.Node, v any) error {
 	}
 	// A node has no source of its own, and decodeInit budgeted the reader's,
 	// so each call budgets the node it is given and starts its count afresh.
-	d.built, d.budget = 0, aliasBudget(countNodes(node))
+	d.built, d.budget = 0, aliasBudget(astutils.CountNodes(node))
 	d.expanding, d.expanded = nil, nil
 	// resolve references to the anchor on the same file
 	if _, err := d.nodeToValue(node); err != nil {
@@ -366,7 +368,7 @@ func (d *Decoder) mapKeyNodeToString(node ast.MapKeyNode) (string, error) {
 		return "", err
 	}
 
-	name, err := mapKeyString(node, key)
+	name, err := astutils.MapKeyString(node, key)
 	if err != nil {
 		return "", err
 	}
@@ -383,7 +385,7 @@ func (d *Decoder) mapKeyNodeToString(node ast.MapKeyNode) (string, error) {
 // then let one override the other, which is what defect 69 was.
 //
 // [UseStringKeys] asks for the text instead and gets it for every scalar. A
-// collection reaches mapKeyString either way, which refuses it: a MapSlice key
+// collection reaches astutils.MapKeyString either way, which refuses it: a MapSlice key
 // must be comparable, and Go hashes no slice or map.
 func (d *Decoder) mapKeyNodeToValue(node ast.MapKeyNode) (any, error) {
 	key, err := d.nodeToValue(node)
@@ -391,7 +393,7 @@ func (d *Decoder) mapKeyNodeToValue(node ast.MapKeyNode) (any, error) {
 		return nil, err
 	}
 	if d.useStringKeys || !hashableKey(key) {
-		name, err := mapKeyString(node, key)
+		name, err := astutils.MapKeyString(node, key)
 		if err != nil {
 			return nil, err
 		}
@@ -423,7 +425,7 @@ func (d *Decoder) setToMapValue(node ast.Node, m *keyedMap, merged bool) error {
 	case *ast.MappingValueNode:
 		if n.Key.IsMergeKey() {
 			return d.eachMergeSource(n.Value, func(value ast.MapNode) error {
-				return eachMergedEntry(value, func(v ast.Node) error {
+				return astutils.EachMergedEntry(value, func(v ast.Node) error {
 					return d.setToMapValue(v, m, true)
 				})
 			})
@@ -442,7 +444,7 @@ func (d *Decoder) setToMapValue(node ast.Node, m *keyedMap, merged bool) error {
 		}
 		m.put(key, v)
 	case *ast.MappingNode:
-		return eachEntryOwnFirst(n, func(value ast.Node, isMerge bool) error {
+		return astutils.EachEntryOwnFirst(n, func(value ast.Node, isMerge bool) error {
 			return d.setToMapValue(value, m, merged || isMerge)
 		})
 	case *ast.AnchorNode:
@@ -471,7 +473,7 @@ func (d *Decoder) setToOrderedMapValue(node ast.Node, m *MapSlice, merged bool) 
 	case *ast.MappingValueNode:
 		if n.Key.IsMergeKey() {
 			return d.eachMergeSource(n.Value, func(value ast.MapNode) error {
-				return eachMergedEntry(value, func(v ast.Node) error {
+				return astutils.EachMergedEntry(value, func(v ast.Node) error {
 					return d.setToOrderedMapValue(v, m, true)
 				})
 			})
@@ -490,7 +492,7 @@ func (d *Decoder) setToOrderedMapValue(node ast.Node, m *MapSlice, merged bool) 
 
 		return m.Set(key, value)
 	case *ast.MappingNode:
-		return eachEntryOwnFirst(n, func(value ast.Node, isMerge bool) error {
+		return astutils.EachEntryOwnFirst(n, func(value ast.Node, isMerge bool) error {
 			return d.setToOrderedMapValue(value, m, merged || isMerge)
 		})
 	}
@@ -583,7 +585,7 @@ func (d *Decoder) addOwnHeadCommentToMap(node ast.Node) {
 		return
 	}
 
-	d.addCommentToMap(headCommentPath(node), HeadComment(texts...))
+	d.addCommentToMap(astutils.HeadCommentPath(node), HeadComment(texts...))
 }
 
 // addEntryLineCommentToMap records the comment written on a mapping entry's own
@@ -861,7 +863,7 @@ func (d *Decoder) nodeToValue(node ast.Node) (any, error) {
 			if len(n.Values) > 0 {
 				m.items = make([]MapItem, 0, len(n.Values))
 			}
-			if err := eachEntryOwnFirst(n, func(value ast.Node, isMerge bool) error {
+			if err := astutils.EachEntryOwnFirst(n, func(value ast.Node, isMerge bool) error {
 				return d.setToOrderedMapValue(value, &m, isMerge)
 			}); err != nil {
 				return nil, err
@@ -869,7 +871,7 @@ func (d *Decoder) nodeToValue(node ast.Node) (any, error) {
 			return m, nil
 		}
 		m := newKeyedMap(len(n.Values))
-		if err := eachEntryOwnFirst(n, func(value ast.Node, isMerge bool) error {
+		if err := astutils.EachEntryOwnFirst(n, func(value ast.Node, isMerge bool) error {
 			return d.setToMapValue(value, m, isMerge)
 		}); err != nil {
 			return nil, err
@@ -1086,7 +1088,7 @@ func (d *Decoder) mergeKeyValue(node ast.Node) (any, error) {
 	if d.useOrderedMap {
 		m := MapSlice{}
 		err := d.eachMergeSource(node, func(value ast.MapNode) error {
-			return eachMergedEntry(value, func(v ast.Node) error {
+			return astutils.EachMergedEntry(value, func(v ast.Node) error {
 				return d.setToOrderedMapValue(v, &m, true)
 			})
 		})
@@ -1095,7 +1097,7 @@ func (d *Decoder) mergeKeyValue(node ast.Node) (any, error) {
 	}
 	m := newKeyedMap(0)
 	err := d.eachMergeSource(node, func(value ast.MapNode) error {
-		return eachMergedEntry(value, func(v ast.Node) error {
+		return astutils.EachMergedEntry(value, func(v ast.Node) error {
 			return d.setToMapValue(v, m, true)
 		})
 	})
@@ -1899,7 +1901,7 @@ func (d *Decoder) taggedValue(n *ast.TagNode, res ast.Resolution) (any, error) {
 	case token.OrderedMapTag:
 		seq, entries, ordered := ast.OrderedMapOf(n)
 		if !ordered {
-			return nil, notAnOrderedMap(n.Value)
+			return nil, astutils.NotAnOrderedMap(n.Value)
 		}
 
 		return d.orderedMapOf(seq, entries)
@@ -1938,7 +1940,7 @@ func (d *Decoder) orderedMapOf(seq *ast.SequenceNode, entries []ast.Node) (MapSl
 		}
 		if len(one.items) != 1 {
 			// A "<<" left the count to now. See [ast.OrderedMapOf].
-			return MapSliceSeq{}, notAnOrderedMap(seq)
+			return MapSliceSeq{}, astutils.NotAnOrderedMap(seq)
 		}
 		for _, item := range one.items {
 			if err := m.Set(item.Key, item.Value); err != nil {
@@ -2593,7 +2595,7 @@ func (d *Decoder) validateStruct(dst reflect.Value, src ast.Node, fields *readFi
 		}
 		value, entry := d.findEntry(src, ignoreMergeKey, renderName)
 		if value != nil {
-			return yamlerrors.NewValidation(err, validationErrorToken(value, entry))
+			return yamlerrors.NewValidation(err, astutils.ValidationErrorToken(value, entry))
 		}
 		if t := d.missingFieldToken(src); t != nil {
 			// A missing field has no entry of its own, so the error goes to
@@ -2722,7 +2724,7 @@ func (d *Decoder) decodeSlice(dst reflect.Value, src ast.Node) error {
 			sliceValue = reflect.Append(sliceValue, reflect.Zero(elemType))
 			continue
 		}
-		prevEntry := d.enterEntry(sequenceEntryNode(arrayNode, entryIdx))
+		prevEntry := d.enterEntry(astutils.SequenceEntryNode(arrayNode, entryIdx))
 		dstValue, err := d.createDecodedNewValue(elemType, reflect.Value{}, v)
 		d.entry = prevEntry
 		if stopsTheDocument(err) {
@@ -2949,7 +2951,7 @@ func (d *Decoder) decodeMap(dst reflect.Value, src ast.Node) error {
 	// mapping wins -- and not the repeated key 3.2.1.1 refuses.
 	folded := d.merging
 	var foundErr error
-	for _, entry := range mapEntriesOwnFirst(mapNode) {
+	for _, entry := range astutils.MapEntriesOwnFirst(mapNode) {
 		key := entry.Key
 		value := entry.Value
 		if entry.Merged {
@@ -3104,7 +3106,7 @@ func (d *Decoder) stringMapKey(key ast.Node) (string, error) {
 	}
 	if _, named := ast.KeyName(key); named == token.KeyOther &&
 		keyValue != nil && !reflect.TypeOf(keyValue).Comparable() {
-		// A sequence or a mapping used as a key. mapKeyString would
+		// A sequence or a mapping used as a key. astutils.MapKeyString would
 		// give it the spelling Go prints, "[a b]", which no reader
 		// takes apart again.
 		//
@@ -3112,14 +3114,14 @@ func (d *Decoder) stringMapKey(key ast.Node) (string, error) {
 		// whether the key can be named, not whether the value it
 		// resolves to is comparable. ast.KeyName names every scalar,
 		// and returns token.KeyOther for a collection alone -- which
-		// is where mapKeyString falls back to Go's printing. Asking
+		// is where astutils.MapKeyString falls back to Go's printing. Asking
 		// comparability instead refused "!!binary aGVsbG8=: x", whose
 		// name is the base64 the document wrote: the same document
 		// read into an any gives {"aGVsbG8=": "x"}, and the two
 		// destinations disagreed over a []byte neither had to hash.
 		return "", yamlerrors.NewUnhashableKey(reflect.TypeOf(keyValue), key.GetToken())
 	}
-	name, err := mapKeyString(key, keyValue)
+	name, err := astutils.MapKeyString(key, keyValue)
 	if err != nil {
 		return "", err
 	}

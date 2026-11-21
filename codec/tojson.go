@@ -13,6 +13,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/go-openapi/go-yaml/codec/internal/astutils"
+
 	"github.com/go-openapi/go-yaml/ast"
 	yamlerrors "github.com/go-openapi/go-yaml/errors"
 	"github.com/go-openapi/go-yaml/parser"
@@ -144,7 +146,7 @@ func scalarToken(n ast.Node) JSONToken {
 			}
 		}
 
-		return floatToken(jsonScalarOf(t))
+		return floatToken(astutils.JSONScalarOf(t))
 	case *ast.IntegerNode:
 		if tk := t.GetToken(); tk != nil {
 			if isJSONNumber(tk.Value) {
@@ -163,7 +165,7 @@ func scalarToken(n ast.Node) JSONToken {
 			}
 		}
 
-		return valueToken(jsonScalarOf(t))
+		return valueToken(astutils.JSONScalarOf(t))
 	case *ast.LiteralNode:
 		if t.Value == nil {
 			return JSONToken{Kind: JSONNull}
@@ -171,7 +173,7 @@ func scalarToken(n ast.Node) JSONToken {
 
 		return JSONToken{Kind: JSONString, Value: t.Value.Value}
 	default:
-		return valueToken(jsonScalarOf(n))
+		return valueToken(astutils.JSONScalarOf(n))
 	}
 }
 
