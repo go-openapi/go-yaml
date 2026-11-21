@@ -229,7 +229,9 @@ func (g *Grouper) anchorNames(at int, tk *TapeToken, out []*TapeToken) ([]*TapeT
 
 		return out, false
 
-	case g.joins(g.name, tk) && isScalarType(tk):
+	case g.joins(g.name, tk) && (isScalarType(tk) || tk.Type() == token.MergeKeyType):
+		// A "<<" is a scalar too, typed apart so a reader can tell the merge key: "&a <<: *b" anchors it, as a tag
+		// stands on it in "!!merge <<". Left out, the anchor named the empty node and the "<<" stood alone.
 		grouped := g.group2(TokenGroupAnchor, g.name, tk)
 		g.name, g.prop = nil, propNone
 
