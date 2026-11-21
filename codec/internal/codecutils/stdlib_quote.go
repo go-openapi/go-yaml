@@ -1,6 +1,6 @@
 // Copied and trimmed down from https://github.com/golang/go/blob/e3769299cd3484e018e0e2a6e1b95c2b18ce4f41/src/strconv/quote.go
-// We want to use the standard library's private "quoteWith" function rather than write our own so that we get robust unicode support.
-// Every private function called by quoteWith was copied.
+// We want to use the standard library's private "QuoteWith" function rather than write our own so that we get robust unicode support.
+// Every private function called by QuoteWith was copied.
 // There are 2 modifications to simplify the code:
 // 1. The unicode.IsPrint function was substituted for the custom implementation of IsPrint
 // 2. All code paths reachable only when ASCIIonly or grphicOnly are set to true were removed.
@@ -12,7 +12,7 @@
 // Use of this source code is governed by a BSD-style license, reproduced in
 // the NOTICE file at the root of this repository.
 
-package codec
+package codecutils
 
 import (
 	"unicode"
@@ -26,7 +26,7 @@ const (
 // firstSupplementaryRune is the first rune outside the Basic Multilingual Plane, which a \\u escape cannot write.
 const firstSupplementaryRune = 0x10000
 
-func quoteWith(s string, quote byte) string {
+func QuoteWith(s string, quote byte) string {
 	return string(appendQuotedWith(make([]byte, 0, 3*len(s)/2), s, quote))
 }
 
