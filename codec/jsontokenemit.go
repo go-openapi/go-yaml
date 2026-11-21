@@ -274,20 +274,44 @@ func (t *jsonTokener) emitTree(node ast.Node, at token.Position) {
 }
 
 // emitTreeMapping hands a mapping over from the tree, own entries first and
-// then what its "<<" entries bring in.
+// then what its "<<" entries bring in. See treeEntries.
+func (t *jsonTokener) emitTreeMapping(n *ast.MappingNode, at token.Position) {
+	entries, ok := t.treeEntries(n)
+	if !ok {
+		return
+	}
+
+	t.open(JSONObjectStart, at)
+	for _, e := range entries {
+		t.emit(JSONToken{Kind: JSONKey, Value: e.name, At: at})
+		t.emitTree(e.value, at)
+	}
+	t.close(JSONObjectEnd, at)
+}
+
+// treeEntry is one member of an object written from the tree: its name, and the node its value is written from.
+type treeEntry struct {
+	name  string
+	value ast.Node
+}
+
+// treeEntries returns the members a mapping writes from the tree, own entries first and then what its "<<" entries
+// bring in, and false where a "<<" names something that is not a mapping, which it has reported.
 //
 // [ast.MergeOf] reads what each entry contributes, so which spellings of "<<"
 // merge and which mappings a merge names are settled once, in ast, rather than
 // again here. Precedence belongs to the mapping and not to the entry: an own
 // key beats a merged one and an earlier merge beats a later one, so the own
 // entries are read first and a merged key goes in only where none stands.
-func (t *jsonTokener) emitTreeMapping(n *ast.MappingNode, at token.Position) {
-	t.open(JSONObjectStart, at)
-
+func (t *jsonTokener) treeEntries(n *ast.MappingNode) ([]treeEntry, bool) {
 	var (
-		held    []string
+		entries []treeEntry
 		sources []ast.MapNode
 	)
+	held := func(name string) bool {
+		return slices.ContainsFunc(entries, func(e treeEntry) bool { return e.name == name })
+	}
+
 	for _, entry := range n.Values {
 		switch merge := ast.MergeOf(entry); merge.Verdict {
 		case ast.Folds:
@@ -296,10 +320,10 @@ func (t *jsonTokener) emitTreeMapping(n *ast.MappingNode, at token.Position) {
 			t.fail(yamlerrors.NewUnexpectedNodeType(
 				merge.Offender.Type(), ast.MappingType, merge.Offender.GetToken()))
 
-			return
+			return nil, false
 		default:
 			name := t.keyName(entry.Key)
-			if slices.Contains(held, name) {
+			if held(name) {
 				// A repeat the parse allowed: the first entry to name a member
 				// stands. A repeat it did not allow was refused where the
 				// mapping was first walked. The tokens parse under
@@ -307,25 +331,21 @@ func (t *jsonTokener) emitTreeMapping(n *ast.MappingNode, at token.Position) {
 				// write one member, so the names match the record.
 				continue
 			}
-			held = append(held, name)
-			t.emit(JSONToken{Kind: JSONKey, Value: name, At: at})
-			t.emitTree(entry.Value, at)
+			entries = append(entries, treeEntry{name: name, value: entry.Value})
 		}
 	}
 
 	for _, src := range sources {
 		for it := src.MapRange(); it.Next(); {
 			name := t.keyName(it.Key())
-			if slices.Contains(held, name) {
+			if held(name) {
 				continue
 			}
-			held = append(held, name)
-			t.emit(JSONToken{Kind: JSONKey, Value: name, At: at})
-			t.emitTree(it.Value(), at)
+			entries = append(entries, treeEntry{name: name, value: it.Value()})
 		}
 	}
 
-	t.close(JSONObjectEnd, at)
+	return entries, true
 }
 
 // enterKey hands a mapping key over, or opens the wrapper standing around one.
@@ -536,12 +556,26 @@ func (t *jsonTokener) emitOrderedMapTree(n *ast.TagNode, at token.Position) {
 
 		return
 	}
-	for _, entry := range seq.Values {
-		if one, isOne := t.throughWrappers(entry).(*ast.MappingNode); !isOne || distinctKeys(one) != 1 {
+	// Each element holds one member once its "<<" is read, as Decoder.orderedMapOf counts it: "{<<: *b}" is one
+	// entry where b holds one key. Written as the element stood, the "<<" went over as a member name.
+	members := make([]treeEntry, len(seq.Values))
+	for i, entry := range seq.Values {
+		one, isOne := t.throughWrappers(entry).(*ast.MappingNode)
+		if !isOne {
 			t.fail(notAnOrderedMap(n.Value))
 
 			return
 		}
+		entries, ok := t.treeEntries(one)
+		if !ok {
+			return
+		}
+		if len(entries) != 1 {
+			t.fail(notAnOrderedMap(n.Value))
+
+			return
+		}
+		members[i] = entries[0]
 	}
 	if err := refuseOrderedMapDuplicates(seq); err != nil {
 		t.fail(err)
@@ -551,14 +585,12 @@ func (t *jsonTokener) emitOrderedMapTree(n *ast.TagNode, at token.Position) {
 
 	drop := allowedRepeatEntries(seq)
 	t.open(JSONObjectStart, at)
-	for i, entry := range seq.Values {
+	for i, m := range members {
 		if slices.Contains(drop, i) {
 			continue
 		}
-		one, _ := t.throughWrappers(entry).(*ast.MappingNode)
-		name := t.keyName(one.Values[0].Key)
-		t.emit(JSONToken{Kind: JSONKey, Value: name, At: at})
-		t.emitTree(one.Values[0].Value, at)
+		t.emit(JSONToken{Kind: JSONKey, Value: m.name, At: at})
+		t.emitTree(m.value, at)
 	}
 	t.close(JSONObjectEnd, at)
 }

@@ -752,3 +752,20 @@ func TestAnOrderedMapTagOverAnAliasReadsTheSequenceItNames(t *testing.T) {
 	require.NoError(t, err)
 	assert.JSONEq(t, `{"x":[{"a":1},{"b":2}],"y":{"a":1,"b":2}}`, string(j))
 }
+
+// TestAnAliasToAnOrderedMapWritesItsMergedEntries converts an "!!omap" whose element holds a "<<", read directly
+// and through an alias. ToJSON writes the merged member both times, as the walk and the tree read it, and refuses an
+// element that holds two keys once merged on both paths. Through the alias, the element went over as written, with
+// "<<" as a member name.
+func TestAnAliasToAnOrderedMapWritesItsMergedEntries(t *testing.T) {
+	src := []byte("%YAML 1.1\n---\nb: &b {k: 0}\ny: &y !!omap [{<<: *b}, {c: 2}]\nz: *y\n")
+	out, err := codec.ToJSON(src)
+	require.NoError(t, err)
+	assert.JSONEq(t, `{"b":{"k":0},"true":{"k":0,"c":2},"z":{"k":0,"c":2}}`, string(out))
+
+	two := []byte("%YAML 1.1\n---\nb: &b {k: 0, j: 1}\ny: &y !!omap [{<<: *b}]\nz: *y\n")
+	_, err = codec.ToJSON(two)
+	require.Error(t, err)
+	var tree map[string]any
+	require.Error(t, codec.Unmarshal(two, &tree))
+}
