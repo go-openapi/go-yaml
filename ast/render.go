@@ -6,6 +6,7 @@ package ast
 import (
 	"io"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/go-openapi/go-yaml/token"
 )
@@ -493,8 +494,32 @@ func (r *Renderer) mappingValue(n *MappingValueNode) rendered {
 		trailing = leaf(" " + comment)
 	}
 
-	return join(sepNone, head, key, leaf(r.colonAfter(n.Key)), inline, value, trailing,
+	colon := r.colonAfter(n.Key)
+	if implicitKeyTooLong(key.text, colon) {
+		// Written as an explicit key, "? k" over ": v", which has no length limit. In a flow collection the line
+		// break becomes a space: "{? k : v}".
+		return join(sepNone, head, leaf("? "), key, leaf("\n:"), inline, value, trailing,
+			r.footComment(n.FootComment))
+	}
+
+	return join(sepNone, head, key, leaf(colon), inline, value, trailing,
 		r.footComment(n.FootComment))
+}
+
+// maxImplicitKey is the most characters YAML 1.2 lets an implicit key take, the key as written and the space before
+// its ':' together (productions 154 and 155). libyaml and the readers built on it, go.yaml.in/yaml/v3 among them,
+// reject a longer one, in a block mapping and in a flow mapping alike.
+const maxImplicitKey = 1024
+
+// implicitKeyTooLong reports whether a key written as key, followed by colon, takes more than maxImplicitKey
+// characters before its ':'.
+func implicitKeyTooLong(key, colon string) bool {
+	if len(key)+len(colon)-1 <= maxImplicitKey {
+		// A character takes at least one byte, so a key this short in bytes is short enough.
+		return false
+	}
+
+	return utf8.RuneCountInString(key)+len(colon)-1 > maxImplicitKey
 }
 
 // colonAfter returns the ':' that closes a key, with the separating space the
