@@ -48,11 +48,13 @@ func RecursiveDir(isRecursive bool) DecodeOption {
 	}
 }
 
-// Validator calls validate with each struct the decoder fills, once it is filled, and returns the error validate
-// returns.
+// Validator calls validate with each struct the decoder fills, once it is filled, passing the struct by value.
+// An error validate returns comes back as [github.com/go-openapi/go-yaml/errors.ErrValidation],
+// with a position and validate's message, and [errors.Is] and [errors.As] reach validate's own error through it.
 //
 // An error that is a slice, and whose elements have a StructField() string method, is placed at the entry of the
-// first field it names, or at the mapping when the document leaves that field out.
+// first field it names, or at the mapping when the document leaves that field out. Any other error is placed at the
+// struct's mapping.
 // github.com/go-playground/validator/v10 returns such errors: pass its Struct method.
 //
 //	validate := validator.New()

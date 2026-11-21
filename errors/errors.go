@@ -98,6 +98,10 @@ var (
 	// ErrExceededMaxDepth reports a document holding more collections, anchors,
 	// tags and "?" keys inside one another than the parser reads: 10,000.
 	ErrExceededMaxDepth = stderrors.New("exceeded max depth")
+	// ErrValidation reports a struct that the validator passed to
+	// [github.com/go-openapi/go-yaml/codec.Validator] returned an error for.
+	// The validator's own error stays reachable with [errors.Is] and [errors.As].
+	ErrValidation = stderrors.New("validation failed")
 )
 
 // The errors the codec returns as they are, with no position. Most report a
@@ -150,6 +154,9 @@ type Error struct {
 	field    string       // the struct field path, for a type mismatch
 	actual   string       // the YAML names of the node types, for an unexpected node type
 	expected string
+
+	// cause is the error this one wraps, for a validation error: the validator's.
+	cause error
 
 	token  *token.Token
 	source Source
@@ -262,6 +269,12 @@ func NewUnknownField(msg string, tk *token.Token) *Error {
 	return &Error{kind: ErrUnknownField, msg: msg, token: tk}
 }
 
+// NewValidation reports err, a validator's error, at tk. The message is err's, and
+// [errors.As] reaches err through the [Error].
+func NewValidation(err error, tk *token.Token) *Error {
+	return &Error{kind: ErrValidation, msg: err.Error(), cause: err, token: tk}
+}
+
 // NewUnexpectedNodeType reports a node of type actual where expected was
 // required, at tk.
 func NewUnexpectedNodeType(actual, expected ast.NodeType, tk *token.Token) *Error {
@@ -276,6 +289,19 @@ func NewUnexpectedNodeType(actual, expected ast.NodeType, tk *token.Token) *Erro
 // Unwrap returns the kind of failure, so that [errors.Is] matches an Error
 // against [ErrSyntax] and its siblings.
 func (e *Error) Unwrap() error { return e.kind }
+
+// Is lets [errors.Is] match the error a validation error wraps, as well as its
+// kind. [Error.Unwrap] returns the kind, so this is the way to the validator's
+// own error.
+func (e *Error) Is(target error) bool {
+	return e.cause != nil && stderrors.Is(e.cause, target)
+}
+
+// As lets [errors.As] reach the error a validation error wraps, such as
+// github.com/go-playground/validator/v10's ValidationErrors.
+func (e *Error) As(target any) bool {
+	return e.cause != nil && stderrors.As(e.cause, target)
+}
 
 // GetToken returns the token the failure was found at, nil if the failure
 // carries no position.

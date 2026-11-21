@@ -4,12 +4,14 @@
 package testintegration_test
 
 import (
+	"errors"
 	"strings"
 	"testing"
 
 	"github.com/go-playground/validator/v10"
 
 	"github.com/go-openapi/go-yaml/codec"
+	yamlerrors "github.com/go-openapi/go-yaml/errors"
 )
 
 func TestStructValidator(t *testing.T) {
@@ -239,5 +241,23 @@ map:
 				t.Fatalf("expected `%s` but actual `%s`", tc.ExpectedErr, err.Error())
 			}
 		})
+	}
+}
+
+// TestAValidationErrorWrapsTheValidatorsOwn decodes a struct go-playground/validator refuses. The error carries
+// yamlerrors.ErrValidation, and errors.As reaches the validator's ValidationErrors through it.
+func TestAValidationErrorWrapsTheValidatorsOwn(t *testing.T) {
+	type person struct {
+		Age int `validate:"gte=0" yaml:"age"`
+	}
+
+	var p person
+	err := codec.Unmarshal([]byte("age: -1\n"), &p, codec.Validator(validator.New().Struct))
+	if !errors.Is(err, yamlerrors.ErrValidation) {
+		t.Fatalf("want ErrValidation, got %v", err)
+	}
+	var fields validator.ValidationErrors
+	if !errors.As(err, &fields) || len(fields) != 1 || fields[0].StructField() != "Age" {
+		t.Fatalf("want the validator's ValidationErrors naming Age, got %v", err)
 	}
 }

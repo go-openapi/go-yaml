@@ -3308,7 +3308,8 @@ func (d *Decoder) validateStruct(dst reflect.Value, src ast.Node, fields *readFi
 	}
 	ev := reflect.ValueOf(err)
 	if ev.Kind() != reflect.Slice {
-		return err
+		// The error names no field, so it goes to the struct's own mapping.
+		return yamlerrors.NewValidation(err, src.GetToken())
 	}
 	for i := range ev.Len() {
 		fieldErr, ok := reflect.TypeAssert[fieldError](ev.Index(i))
@@ -3321,17 +3322,17 @@ func (d *Decoder) validateStruct(dst reflect.Value, src ast.Node, fields *readFi
 		}
 		value, entry := d.findEntry(src, ignoreMergeKey, renderName)
 		if value != nil {
-			// TODO: to make FieldError message cutomizable
-			return yamlerrors.NewSyntax(err.Error(), validationErrorToken(value, entry))
+			return yamlerrors.NewValidation(err, validationErrorToken(value, entry))
 		}
 		if t := d.missingFieldToken(src); t != nil {
 			// A missing field has no entry of its own, so the error goes to
 			// the mapping that should have held it.
-			return yamlerrors.NewSyntax(err.Error(), t)
+			return yamlerrors.NewValidation(err, t)
 		}
 	}
 
-	return err
+	// No element names a field the document wrote or the struct holds.
+	return yamlerrors.NewValidation(err, src.GetToken())
 }
 
 // missingFieldToken returns where to report a field the document left out.

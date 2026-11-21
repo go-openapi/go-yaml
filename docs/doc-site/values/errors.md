@@ -44,7 +44,8 @@ the token and therefore the position.
 
 The conditions the library distinguishes: syntax, type mismatch, overflow,
 duplicate key, unknown field, unknown anchor, recursive alias, excessive
-aliasing, unhashable key, not-JSON, and unexpected node type.
+aliasing, exceeded depth, unhashable key, not-JSON, not-JSON syntax, unexpected
+node type, and validation.
 
 ## A value that does not fit its field
 
@@ -64,6 +65,19 @@ err := yaml.Unmarshal([]byte("port: eighty\nname: web\n"), &v)
 The destination is decoded in place. A nested struct keeps the fields it read
 before the error and the defaults you set, a slice keeps a zero value where
 the element failed, and a map keeps your own entries.
+
+## A struct your validator refuses
+
+`codec.Validator` runs your function on each struct the decoder fills. Its error
+comes back as `ErrValidation`, placed at the field it names, and wraps your
+validator's own error:
+
+```go
+validate := validator.New()
+err := codec.Unmarshal(src, &v, codec.Validator(validate.Struct))
+// errors.Is(err, yamlerrors.ErrValidation) is true, and
+// errors.As(err, &validator.ValidationErrors{}) reaches go-playground's errors.
+```
 
 ## Pointing at a value your own code rejected
 
