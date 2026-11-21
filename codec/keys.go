@@ -131,18 +131,12 @@ func distinctKeys(m *ast.MappingNode) int {
 }
 
 // orderedMapSequence returns the sequence an "!!omap" tag stands on, looking
-// through an anchor, and nil where the tag stands on something else.
+// through an anchor and an alias, and nil where the tag stands on something else.
+// "!!omap *x" reads the sequence x names, as the walk and ToJSON read it.
 func orderedMapSequence(n ast.Node) *ast.SequenceNode {
-	for {
-		switch nn := n.(type) {
-		case *ast.AnchorNode:
-			n = nn.Value
-		case *ast.SequenceNode:
-			return nn
-		default:
-			return nil
-		}
-	}
+	seq, _ := ast.Unwrap(n).(*ast.SequenceNode)
+
+	return seq
 }
 
 // duplicateKeyError is the error a load returns for the repeat d, pointing at

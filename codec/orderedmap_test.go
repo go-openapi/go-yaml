@@ -732,3 +732,23 @@ func TestAnOrderedMapRepeatAMergeBringsInIsAKeyWrittenTwice(t *testing.T) {
 		})
 	}
 }
+
+// TestAnOrderedMapTagOverAnAliasReadsTheSequenceItNames reads "!!omap *x" on the walk, the tree and ToJSON. The
+// tag stands on what the alias names, a sequence of one-entry mappings, and each reader builds the ordered map. The
+// tree read through an anchor and not an alias, and refused the shape.
+func TestAnOrderedMapTagOverAnAliasReadsTheSequenceItNames(t *testing.T) {
+	src := []byte("x: &x [{a: 1}, {b: 2}]\ny: !!omap *x\n")
+
+	var walked any // the walk fills an any
+	require.NoError(t, codec.Unmarshal(src, &walked))
+	var tree map[string]any // and the tree a map
+	require.NoError(t, codec.Unmarshal(src, &tree))
+
+	walkedY := walked.(map[string]any)["y"]
+	require.IsType(t, codec.MapSliceSeq{}, walkedY)
+	assert.Equal(t, walkedY, tree["y"])
+
+	j, err := codec.ToJSON(src)
+	require.NoError(t, err)
+	assert.JSONEq(t, `{"x":[{"a":1},{"b":2}],"y":{"a":1,"b":2}}`, string(j))
+}
