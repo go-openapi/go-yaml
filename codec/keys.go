@@ -14,6 +14,12 @@ import (
 	"github.com/go-openapi/go-yaml/token"
 )
 
+// canonicalKey is a decoded key named by its canonical spelling, whatever it was written as: a Base64 is its
+// canonical base64 text, so the same bytes written across lines are one key.
+type canonicalKey interface {
+	Canonical() string
+}
+
 // sameMapKey reports whether two decoded keys are one key.
 //
 // It compares the resolved values, so the string "1.0" and the float 1.0 are
@@ -52,8 +58,9 @@ func sameMapKey(a, b any) bool {
 // It is the value side of the identity [ast.ComparedKeyName] gives a key node,
 // and gives the same answer for the value a key node decodes to:
 // TestAKeyNodeAndItsValueHaveOneIdentity holds the two together over the
-// corpus. A string is its text, a Base64 its canonical base64 text, a
-// time.Time its instant in UTC, and a number [codecutils.NumberKey]'s name.
+// corpus. A string is its text, a key with a canonical spelling -- a Base64 --
+// that spelling, a time.Time its instant in UTC, and a number
+// [codecutils.NumberKey]'s name.
 func keyIDOf(v any) (token.KeyKind, string, bool) {
 	switch k := v.(type) {
 	case nil:
@@ -62,7 +69,7 @@ func keyIDOf(v any) (token.KeyKind, string, bool) {
 		return token.KeyString, k, true
 	case bool:
 		return token.KeyBool, strconv.FormatBool(k), true
-	case Base64:
+	case canonicalKey:
 		return token.KeyBinary, k.Canonical(), true
 	case time.Time:
 		return token.KeyTimestamp, k.UTC().Format(time.RFC3339Nano), true
@@ -73,11 +80,11 @@ func keyIDOf(v any) (token.KeyKind, string, bool) {
 
 // comparesByValue reports whether a decoded key can be one YAML key with a key
 // a Go map lookup does not find it under: a time.Time in another zone, a
-// *big.Int or *big.Float, which == compares by address, or a Base64 written
-// across lines.
+// *big.Int or *big.Float, which == compares by address, or a key with a
+// canonical spelling, such as a Base64 written across lines.
 func comparesByValue(key any) bool {
 	switch key.(type) {
-	case time.Time, *big.Int, *big.Float, Base64:
+	case time.Time, *big.Int, *big.Float, canonicalKey:
 		return true
 	default:
 		return false
