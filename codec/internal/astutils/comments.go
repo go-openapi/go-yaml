@@ -4,6 +4,7 @@
 package astutils
 
 import (
+	"fmt"
 	"math"
 
 	"github.com/go-openapi/go-yaml/ast"
@@ -15,7 +16,7 @@ import (
 func PlaceHeadComment(root, filtered ast.Node, comment *ast.CommentGroupNode) error {
 	parent := ast.Parent(root, filtered)
 	if parent == nil {
-		return ast.ErrUnsupportedHeadPositionType(root)
+		return errUnsupportedHeadPosition(root)
 	}
 	switch p := parent.(type) {
 	case *ast.MappingValueNode:
@@ -39,7 +40,7 @@ func PlaceHeadComment(root, filtered ast.Node, comment *ast.CommentGroupNode) er
 		}
 		p.ValueHeadComments[foundIdx] = comment
 	default:
-		return ast.ErrUnsupportedHeadPositionType(root)
+		return errUnsupportedHeadPosition(root)
 	}
 	return nil
 }
@@ -66,7 +67,7 @@ func PlaceLineComment(root, filtered ast.Node, comment *ast.CommentGroupNode) er
 func placeLineCommentOnParent(root, filtered ast.Node, comment *ast.CommentGroupNode) error {
 	parent := ast.Parent(root, filtered)
 	if parent == nil {
-		return ast.ErrUnsupportedLinePositionType(root)
+		return errUnsupportedLinePosition(root)
 	}
 
 	switch p := parent.(type) {
@@ -75,7 +76,7 @@ func placeLineCommentOnParent(root, filtered ast.Node, comment *ast.CommentGroup
 	case *ast.MappingNode:
 		return p.SetComment(comment)
 	default:
-		return ast.ErrUnsupportedLinePositionType(parent)
+		return errUnsupportedLinePosition(parent)
 	}
 }
 
@@ -84,7 +85,7 @@ func placeLineCommentOnParent(root, filtered ast.Node, comment *ast.CommentGroup
 func PlaceFootComment(root, filtered ast.Node, comment *ast.CommentGroupNode) error {
 	parent := ast.Parent(root, filtered)
 	if parent == nil {
-		return ast.ErrUnsupportedFootPositionType(root)
+		return errUnsupportedFootPosition(root)
 	}
 
 	switch n := parent.(type) {
@@ -95,10 +96,38 @@ func PlaceFootComment(root, filtered ast.Node, comment *ast.CommentGroupNode) er
 	case *ast.SequenceNode:
 		n.FootComment = comment
 	default:
-		return ast.ErrUnsupportedFootPositionType(n)
+		return errUnsupportedFootPosition(n)
 	}
 
 	return nil
+}
+
+// The three errors below report a comment that cannot be placed where it was
+// asked to go.
+//
+// A node holds one comment group and no placement, so a writer places a comment
+// by choosing which node to hang the group on: above goes to the entry, beside
+// goes to the entry's key, below goes to a field of its own. Where the node has
+// no such node around it -- it is the whole document, or it sits somewhere the
+// choice does not apply -- there is nowhere to put the comment and one of these
+// is returned.
+
+// errUnsupportedHeadPosition reports a comment that cannot be written above
+// node.
+func errUnsupportedHeadPosition(node ast.Node) error {
+	return fmt.Errorf("unsupported comment head position for %s", node.Type())
+}
+
+// errUnsupportedLinePosition reports a comment that cannot be written
+// beside node.
+func errUnsupportedLinePosition(node ast.Node) error {
+	return fmt.Errorf("unsupported comment line position for %s", node.Type())
+}
+
+// errUnsupportedFootPosition reports a comment that cannot be written below
+// node.
+func errUnsupportedFootPosition(node ast.Node) error {
+	return fmt.Errorf("unsupported comment foot position for %s", node.Type())
 }
 
 // CommentPlace says where a comment stands relative to the node a CommentMap records it against.
