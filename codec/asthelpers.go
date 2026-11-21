@@ -11,18 +11,16 @@ import (
 	"github.com/go-openapi/go-yaml/token"
 )
 
-// nodeBudget bounds what a decode may build from node, as aliasBudget does
-// from a document's bytes.
+// countNodes counts the nodes [ast.Walk] visits under node, comment groups included.
 //
-// A node handed to [Decoder.DecodeFromNode] has no source to measure, so this
-// counts the nodes the tree holds written out, comment groups included.
-// [ast.Walk] visits an alias once and does not follow its target, so an alias
-// adds one to the count however much it names.
-func nodeBudget(node ast.Node) int {
+// A node handed to [Decoder.DecodeFromNode] has no source to measure, so its alias budget is taken from this.
+// [ast.Walk] visits an alias once and does not follow its target, so an alias adds one to the count however much it
+// names.
+func countNodes(node ast.Node) int {
 	var n nodeCount
 	ast.Walk(&n, node)
 
-	return aliasBudget(int(n))
+	return int(n)
 }
 
 // mapKeyString is the text a decoded mapping key is addressed by.
@@ -107,9 +105,9 @@ func mapEntriesOwnFirst(n ast.MapNode) []mapEntry {
 
 	iter := n.MapRange()
 	for iter.Next() {
-		entry := mapEntry{key: iter.Key(), value: iter.Value(), keyValue: iter.KeyValue()}
-		if key, isKey := entry.key.(ast.MapKeyNode); isKey && key.IsMergeKey() {
-			entry.merged = true
+		entry := mapEntry{Key: iter.Key(), Value: iter.Value(), KeyValue: iter.KeyValue()}
+		if key, isKey := entry.Key.(ast.MapKeyNode); isKey && key.IsMergeKey() {
+			entry.Merged = true
 			merged = append(merged, entry)
 
 			continue
@@ -268,13 +266,6 @@ func jsonScalarOf(n ast.Node) any {
 	return nil
 }
 
-func shapeOf(node ast.Node) keptShape {
-	var k keptShape
-	ast.Walk(&k, node)
-
-	return k
-}
-
 func scalarNumber(node ast.Node) any {
 	switch n := node.(type) {
 	case *ast.IntegerNode:
@@ -284,4 +275,22 @@ func scalarNumber(node ast.Node) any {
 	default:
 		return nil
 	}
+}
+
+// nodeCount counts the nodes [ast.Walk] visits.
+type nodeCount int
+
+func (c *nodeCount) Visit(node ast.Node) ast.Visitor {
+	if node != nil {
+		*c++
+	}
+
+	return c
+}
+
+// mapEntry is one entry of a mapping: its key, its value, the node the walk
+// hands over for the pair, and whether the key is a "<<".
+type mapEntry struct {
+	Key, Value, KeyValue ast.Node
+	Merged               bool
 }

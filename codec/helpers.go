@@ -12,12 +12,14 @@ import (
 	"reflect"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/go-openapi/go-yaml/ast"
 	yamlerrors "github.com/go-openapi/go-yaml/errors"
 	"github.com/go-openapi/go-yaml/token"
 )
+
+// aliasBudgetFloor is the budget of an empty document, which aliasBudget adds 32 a byte to.
+const aliasBudgetFloor = 1024
 
 // aliasBudget bounds what a decode may build from a document of n bytes.
 //
@@ -151,63 +153,6 @@ func hashableKey(key any) bool {
 	return reflect.TypeOf(key).Comparable()
 }
 
-// sameMapKey reports whether two decoded keys are one key.
-//
-// It compares the resolved values, so the string "1.0" and the float 1.0 are
-// two keys and a merge cannot override one with the other. Comparing the text
-// made them one, which is the half of defect 69 a MapSlice can represent; a
-// map[string]any has lost one of them before this runs.
-//
-// Only a key mapKeyNodeToValue judged hashable reaches this as a value, so ==
-// on the interfaces cannot panic -- the guard is there for a MapSlice a caller
-// built by hand.
-//
-// Two Go values that == tells apart can still be one YAML key, and keyIDOf
-// says which: YAML has one integer type, one float type and one timestamp
-// type, so int(1) and uint64(1) are one key, float32(0.5) and 0.5 are one,
-// and so are one instant in two zones. The parser refuses a mapping that
-// writes one such key twice, and a merge or MapSlice.Set has to agree with it.
-func sameMapKey(a, b any) bool {
-	if !hashableKey(a) || !hashableKey(b) {
-		return reflect.DeepEqual(a, b)
-	}
-	if a == b {
-		return true
-	}
-	aKind, aName, aNamed := keyIDOf(a)
-	if !aNamed {
-		return false
-	}
-	bKind, bName, bNamed := keyIDOf(b)
-
-	return bNamed && aKind == bKind && aName == bName
-}
-
-// keyIDOf returns the kind and the name a Go key is compared by in YAML, and
-// whether it is a scalar YAML has a kind for.
-//
-// It is the value side of the identity [ast.ComparedKeyName] gives a key node,
-// and gives the same answer for the value a key node decodes to:
-// TestAKeyNodeAndItsValueHaveOneIdentity holds the two together over the
-// corpus. A string is its text, a Base64 its canonical base64 text, a
-// time.Time its instant in UTC, and a number [numberKey]'s name.
-func keyIDOf(v any) (token.KeyKind, string, bool) {
-	switch k := v.(type) {
-	case nil:
-		return token.KeyNull, "null", true
-	case string:
-		return token.KeyString, k, true
-	case bool:
-		return token.KeyBool, strconv.FormatBool(k), true
-	case Base64:
-		return token.KeyBinary, k.Canonical(), true
-	case time.Time:
-		return token.KeyTimestamp, k.UTC().Format(time.RFC3339Nano), true
-	}
-
-	return numberKey(v)
-}
-
 // numberKey returns the kind and the canonical name a Go number is keyed by in
 // YAML, and whether v is a number at all. The names are the ones the parser
 // gives the same number written in a document: [token.KeyNameOfFloat] and
@@ -241,38 +186,6 @@ func numberKey(v any) (token.KeyKind, string, bool) {
 	default:
 		return token.KeyOther, "", false
 	}
-}
-
-// comparesByValue reports whether a decoded key can be one YAML key with a key
-// a Go map lookup does not find it under: a time.Time in another zone, a
-// *big.Int or *big.Float, which == compares by address, or a Base64 written
-// across lines.
-func comparesByValue(key any) bool {
-	switch key.(type) {
-	case time.Time, *big.Int, *big.Float, Base64:
-		return true
-	default:
-		return false
-	}
-}
-
-// sameKeyIn returns the key of m that is one YAML key with key where a Go map
-// lookup cannot find it, and whether m holds one.
-//
-// A scan, and only on a merge: the decoder builds uint64, int64 and float64
-// keys that == compares by value, and scans only for the keys comparesByValue
-// names.
-func sameKeyIn(m map[any]any, key any) (any, bool) {
-	if !comparesByValue(key) {
-		return nil, false
-	}
-	for held := range m {
-		if sameMapKey(held, key) {
-			return held, true
-		}
-	}
-
-	return nil, false
 }
 
 // byteArray reports whether t is an array of bytes, which a "!!binary" fills as
@@ -554,26 +467,28 @@ func pointedKind(t reflect.Type) reflect.Kind {
 // between as it goes. reflect.Value.FieldByIndex panics on a nil one and
 // FieldByIndexErr refuses rather than filling it, and a document writing through
 // an embedded pointer expects it filled.
-func fieldAt(v reflect.Value, at []int) (reflect.Value, error) {
+//
+// It returns false where a pointer on the way cannot be set, or does not point to a struct.
+func fieldAt(v reflect.Value, at []int) (reflect.Value, bool) {
 	for i, step := range at {
 		if i > 0 {
 			for v.Kind() == reflect.Pointer {
 				if v.IsNil() {
 					if !v.CanSet() {
-						return reflect.Value{}, errNeedsTheTree
+						return reflect.Value{}, false
 					}
 					v.Set(reflect.New(v.Type().Elem()))
 				}
 				v = v.Elem()
 			}
 			if v.Kind() != reflect.Struct {
-				return reflect.Value{}, errNeedsTheTree
+				return reflect.Value{}, false
 			}
 		}
 		v = v.Field(step)
 	}
 
-	return v, nil
+	return v, true
 }
 
 // isMapValue reports whether v is a mapping the walk built.

@@ -821,8 +821,9 @@ func (b *typedBuilder) mergeEntry(i int, keyNode, value ast.Node, alias *ast.Ali
 		top.field = ff
 		field := top.dst.Field(ff.sf.Index)
 		if ff.at != nil {
-			if field, err = fieldAt(top.dst, ff.at); err != nil {
-				return b.fail(err)
+			var ok bool
+			if field, ok = fieldAt(top.dst, ff.at); !ok {
+				return b.fail(errNeedsTheTree)
 			}
 		}
 		top.skip, top.target = false, field
@@ -1177,9 +1178,9 @@ func (b *typedBuilder) openEntry(top *typedFrame, keyNode ast.Node) error {
 		top.field = ff
 		if ff.at != nil {
 			// The type embeds another, and the name reaches a field of it.
-			field, err := fieldAt(top.dst, ff.at)
-			if err != nil {
-				return b.fail(err)
+			field, ok := fieldAt(top.dst, ff.at)
+			if !ok {
+				return b.fail(errNeedsTheTree)
 			}
 			top.skip, top.target = false, field
 
@@ -1442,3 +1443,10 @@ func (b *typedBuilder) reset(root reflect.Value) {
 
 // typedWalkEnabled turns the spike on. SPIKE.
 const typedWalkEnabled = true
+
+func shapeOf(node ast.Node) keptShape {
+	var k keptShape
+	ast.Walk(&k, node)
+
+	return k
+}

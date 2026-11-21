@@ -149,21 +149,7 @@ const (
 	// a document the parser read. It stands for a tree built by hand and handed
 	// to NodeToValue, which no parse has bounded.
 	maxDecodeDepth = 50000
-
-	// aliasBudgetFloor is the budget of an empty document, which aliasBudget adds 32 a byte to.
-	aliasBudgetFloor = 1024
 )
-
-// nodeCount counts the nodes [ast.Walk] visits.
-type nodeCount int
-
-func (c *nodeCount) Visit(node ast.Node) ast.Visitor {
-	if node != nil {
-		*c++
-	}
-
-	return c
-}
 
 // Decode reads the next YAML-encoded value from its input
 // and stores it in the value pointed to by v.
@@ -216,7 +202,7 @@ func (d *Decoder) DecodeFromNode(node ast.Node, v any) error {
 	}
 	// A node has no source of its own, and decodeInit budgeted the reader's,
 	// so each call budgets the node it is given and starts its count afresh.
-	d.built, d.budget = 0, nodeBudget(node)
+	d.built, d.budget = 0, aliasBudget(countNodes(node))
 	d.expanding, d.expanded = nil, nil
 	// resolve references to the anchor on the same file
 	if _, err := d.nodeToValue(node); err != nil {
@@ -372,13 +358,6 @@ func (d *Decoder) refuseOverBudget(at ast.Node) error {
 
 func (d *Decoder) castToFloat(v any) any {
 	return castToFloatValue(v)
-}
-
-// mapEntry is one entry of a mapping: its key, its value, the node the walk
-// hands over for the pair, and whether the key is a "<<".
-type mapEntry struct {
-	key, value, keyValue ast.Node
-	merged               bool
 }
 
 func (d *Decoder) mapKeyNodeToString(node ast.MapKeyNode) (string, error) {
@@ -2130,8 +2109,8 @@ func fieldFor(dst reflect.Value, fields *readFields, name string) (located, erro
 		return located{value: dst.Field(ff.sf.Index), sf: ff.sf, ord: ff.ord}, nil
 	}
 
-	field, err := fieldAt(dst, ff.at)
-	if err != nil {
+	field, ok := fieldAt(dst, ff.at)
+	if !ok {
 		// fieldAt could not make a pointer standing between, which happens
 		// where an embedded pointer is unexported. encoding/json refuses the
 		// same shape.
@@ -2971,9 +2950,9 @@ func (d *Decoder) decodeMap(dst reflect.Value, src ast.Node) error {
 	folded := d.merging
 	var foundErr error
 	for _, entry := range mapEntriesOwnFirst(mapNode) {
-		key := entry.key
-		value := entry.value
-		if entry.merged {
+		key := entry.Key
+		value := entry.Value
+		if entry.Merged {
 			// The merge type gives a mapping's own keys precedence over the
 			// ones a "<<" brings in, and an earlier "<<" precedence over a
 			// later one. Both fall out of writing only where nothing stands:
@@ -3006,7 +2985,7 @@ func (d *Decoder) decodeMap(dst reflect.Value, src ast.Node) error {
 			mapValue.SetMapIndex(k, reflect.Zero(valueType))
 			continue
 		}
-		prevEntry := d.enterEntry(entry.keyValue)
+		prevEntry := d.enterEntry(entry.KeyValue)
 		dstValue, err := d.createDecodedNewValue(valueType, reflect.Value{}, value)
 		d.entry = prevEntry
 		if stopsTheDocument(err) {
