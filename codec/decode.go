@@ -431,171 +431,20 @@ func (d *Decoder) setPathToCommentMap(node ast.Node) {
 	if d.toCommentMap == nil {
 		return
 	}
-	d.addHeadOrLineCommentToMap(node)
-	d.addFootCommentToMap(node)
-}
-
-func (d *Decoder) addHeadOrLineCommentToMap(node ast.Node) {
-	d.addOwnHeadCommentToMap(node)
-
-	sequence, ok := node.(*ast.SequenceNode)
-	if ok {
-		d.addSequenceNodeCommentToMap(sequence)
-		return
-	}
-	d.addEntryLineCommentToMap(node)
-
-	commentGroup := node.GetComment()
-	if commentGroup == nil {
-		return
-	}
-	texts := []string{}
-	targetLine := int(node.GetToken().Position.Line)
-	minCommentLine := math.MaxInt
-	for _, comment := range commentGroup.Comments {
-		if line := int(comment.Token.Position.Line); minCommentLine > line {
-			minCommentLine = line
-		}
-		texts = append(texts, comment.Token.Value)
-	}
-	if len(texts) == 0 {
-		return
-	}
-	commentPath := node.GetPath()
-	if minCommentLine < targetLine {
-		switch n := node.(type) {
-		case *ast.MappingNode:
-			if len(n.Values) != 0 {
-				commentPath = n.Values[0].Key.GetPath()
-			}
-		case *ast.MappingValueNode:
-			commentPath = n.Key.GetPath()
-		}
-		d.addCommentToMap(commentPath, HeadComment(texts...))
-	} else {
-		d.addCommentToMap(commentPath, LineComment(texts[0]))
-	}
-}
-
-// addOwnHeadCommentToMap records what [ast.BaseNode.HeadComment] holds.
-//
-// The walk below reads GetComment, which does not mean the same thing for every
-// node -- head on a collection, beside the property on an anchor or a tag --
-// and tells the two apart by comparing line numbers. HeadComment means "above
-// this node" whatever the node is, so it needs no such test, and a comment that
-// moved there would otherwise vanish from the map: a sequence's head comment
-// did.
-func (d *Decoder) addOwnHeadCommentToMap(node ast.Node) {
-	if _, sequence := node.(*ast.SequenceNode); sequence {
-		// addSequenceNodeCommentToMap reads it, and against the first element
-		// rather than against the sequence.
-		return
-	}
-	carrier, ok := node.(interface {
-		GetHeadComment() *ast.CommentGroupNode
+	astutils.EachComment(node, func(path string, place astutils.CommentPlace, texts []string) {
+		d.addCommentToMap(path, &Comment{Texts: texts, Position: commentPositionOf(place)})
 	})
-	if !ok {
-		return
-	}
-	group := carrier.GetHeadComment()
-	if group == nil {
-		return
-	}
-
-	texts := make([]string, 0, len(group.Comments))
-	for _, comment := range group.Comments {
-		texts = append(texts, comment.Token.Value)
-	}
-	if len(texts) == 0 {
-		return
-	}
-
-	d.addCommentToMap(astutils.HeadCommentPath(node), HeadComment(texts...))
 }
 
-// addEntryLineCommentToMap records the comment written on a mapping entry's own
-// ":" line.
-//
-// An entry written the long way keeps it in a slot of its own, since neither
-// the key nor the value can hold it: [ast.MappingValueNode.LineComment]. An
-// entry written the short way puts it on the value, where the walk below finds
-// it.
-func (d *Decoder) addEntryLineCommentToMap(node ast.Node) {
-	entry, ok := node.(*ast.MappingValueNode)
-	if !ok || entry.LineComment == nil || len(entry.LineComment.Comments) == 0 {
-		return
-	}
-
-	d.addCommentToMap(entry.GetPath(), LineComment(entry.LineComment.Comments[0].Token.Value))
-}
-
-func (d *Decoder) addSequenceNodeCommentToMap(node *ast.SequenceNode) {
-	if len(node.ValueHeadComments) != 0 {
-		for idx, headComment := range node.ValueHeadComments {
-			if headComment == nil {
-				continue
-			}
-			texts := make([]string, 0, len(headComment.Comments))
-			for _, comment := range headComment.Comments {
-				texts = append(texts, comment.Token.Value)
-			}
-			if len(texts) != 0 {
-				d.addCommentToMap(node.Values[idx].GetPath(), HeadComment(texts...))
-			}
-		}
-	}
-	// A sequence's own comment is the first element's head comment, recorded
-	// against that element. It reaches HeadComment now, Comment having meant
-	// different things on different nodes, and the older field is still read
-	// for a tree built by hand.
-	firstElemHeadComment := node.GetComment()
-	if firstElemHeadComment == nil {
-		firstElemHeadComment = node.GetHeadComment()
-	}
-	if firstElemHeadComment != nil {
-		texts := make([]string, 0, len(firstElemHeadComment.Comments))
-		for _, comment := range firstElemHeadComment.Comments {
-			texts = append(texts, comment.Token.Value)
-		}
-		if len(texts) != 0 {
-			if len(node.Values) != 0 {
-				d.addCommentToMap(node.Values[0].GetPath(), HeadComment(texts...))
-			}
-		}
-	}
-}
-
-func (d *Decoder) addFootCommentToMap(node ast.Node) {
-	var (
-		footComment     *ast.CommentGroupNode
-		footCommentPath = node.GetPath()
-	)
-	switch n := node.(type) {
-	case *ast.SequenceNode:
-		footComment = n.FootComment
-		if n.FootComment != nil {
-			footCommentPath = n.FootComment.GetPath()
-		}
-	case *ast.MappingNode:
-		footComment = n.FootComment
-		if n.FootComment != nil {
-			footCommentPath = n.FootComment.GetPath()
-		}
-	case *ast.MappingValueNode:
-		footComment = n.FootComment
-		if n.FootComment != nil {
-			footCommentPath = n.FootComment.GetPath()
-		}
-	}
-	if footComment == nil {
-		return
-	}
-	var texts []string
-	for _, comment := range footComment.Comments {
-		texts = append(texts, comment.Token.Value)
-	}
-	if len(texts) != 0 {
-		d.addCommentToMap(footCommentPath, FootComment(texts...))
+// commentPositionOf is the CommentMap position of a comment astutils.EachComment found at place.
+func commentPositionOf(place astutils.CommentPlace) CommentPosition {
+	switch place {
+	case astutils.LinePlace:
+		return CommentLinePosition
+	case astutils.FootPlace:
+		return CommentFootPosition
+	default:
+		return CommentHeadPosition
 	}
 }
 
