@@ -819,8 +819,17 @@ func (r *Renderer) entry(n Node) rendered {
 	// left off and only the lines under it take the indentation. That is what
 	// hangingIndent did by cutting the first line off; the writer does it by
 	// putting the padding in at each line break instead.
-	return piece.hangingBy(r.indent)
+	//
+	// The lines under it hang by the marker's width, not by the indent: the
+	// first line starts after "- ", and a mapping or a sequence written there
+	// has its later lines in that same column. Hung by an indent of 4, "- a: 1"
+	// over "    b: 2" put b deeper than a, and the document did not read back.
+	return piece.hangingBy(markerWidth)
 }
+
+// markerWidth is the width of the "- " and "? " markers, after which an entry
+// starts on the marker's line.
+const markerWidth = 2
 
 func (r *Renderer) sequence(n *SequenceNode) rendered {
 	if len(n.Values) == 0 {

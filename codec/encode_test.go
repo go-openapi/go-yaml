@@ -2200,6 +2200,32 @@ line3`},
     line3
 `,
 		},
+		{
+			// The later lines of an entry stand under its first one, after "- ", whatever the indent.
+			name: "a mapping and a sequence inside entries",
+			input: map[string]any{
+				"key": []any{map[string]any{"a": 1, "b": 2}, []any{1, 2}},
+			},
+			indent: codec.Indent(4),
+			want: `key:
+- a: 1
+  b: 2
+- - 1
+  - 2
+`,
+		},
+		{
+			name: "a mapping nested under a key inside an entry",
+			input: map[string]any{
+				"key": []any{map[string]any{"a": 1, "b": map[string]any{"c": 2}}},
+			},
+			indent: codec.Indent(3),
+			want: `key:
+- a: 1
+  b:
+     c: 2
+`,
+		},
 	}
 
 	for _, tt := range tests {
