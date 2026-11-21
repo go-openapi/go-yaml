@@ -99,29 +99,6 @@ func appendJSONToken(out []byte, tok JSONToken, comma bool) ([]byte, bool) {
 	}
 }
 
-// isMergeKey reports whether a mapping key is a "<<".
-//
-// A document may write the tag out -- "!!merge <<: *base" -- and the key then
-// arrives wrapped in a tag. The tag's own Value is nil until it closes, so the
-// wrapper is read by its text rather than by what it stands on.
-func isMergeKey(n ast.Node) bool {
-	switch t := n.(type) {
-	case *ast.MergeKeyNode:
-		return true
-	case *ast.TagNode:
-		tag, ok := token.ReservedTagOf(t.URI)
-
-		return ok && tag == token.MergeTag
-	case *ast.MappingKeyNode:
-		// "? <<" is the merge key written the long way. The walk hands the "?"
-		// over first, and a reader that took it for an ordinary key wrote the
-		// merged mapping under the name "<<" -- or, in ToJSON, under no name.
-		return t.IsMergeKey()
-	default:
-		return false
-	}
-}
-
 // tagReader reads what a tag stands over, and holds the refusal where it names
 // a kind its node is not.
 //
@@ -214,25 +191,6 @@ func (tok JSONToken) name() string {
 		return strconv.FormatBool(tok.Bool)
 	default:
 		return "null"
-	}
-}
-
-// keyText is a scalar key as the string a mapping holds it under. JSON keys are
-// strings, so 4.0 and 4 address the same entry and are both "4".
-func keyText(node ast.Node) string {
-	if name, kind := ast.KeyName(node); kind != token.KeyOther {
-		return name
-	}
-
-	switch t := jsonScalarOf(node).(type) {
-	case nil:
-		// A key left empty addresses the entry by the word JSON writes for it,
-		// which is what the value converter held it under.
-		return "null"
-	case string:
-		return t
-	default:
-		return fmt.Sprint(t)
 	}
 }
 
@@ -356,15 +314,6 @@ func tagZeroToken(tag token.ReservedTagKeyword) JSONToken {
 	}
 }
 
-// anchorName reads the name off an anchor or an alias.
-func anchorName(n ast.Node) string {
-	if n == nil || n.GetToken() == nil {
-		return ""
-	}
-
-	return n.GetToken().Value
-}
-
 func (w *tagReader) fail(err error) {
 	if w.err == nil {
 		w.err = err
@@ -454,24 +403,6 @@ func integerAsFloat(text string, base token.Type) any {
 	}
 
 	return float64(0)
-}
-
-// jsonScalarOf is the Go value a scalar node holds.
-func jsonScalarOf(n ast.Node) any {
-	// A literal holds its folded and chomped text in the string node inside it;
-	// its own GetValue answers the block as it was written, header and all.
-	if l, ok := n.(*ast.LiteralNode); ok {
-		if l.Value == nil {
-			return nil
-		}
-
-		return l.Value.GetValue()
-	}
-	if s, ok := n.(ast.ScalarNode); ok {
-		return s.GetValue()
-	}
-
-	return nil
 }
 
 // valueToken is the JSON one Go value is worth.

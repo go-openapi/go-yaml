@@ -14,7 +14,6 @@ import (
 	"github.com/go-openapi/go-yaml/ast"
 	yamlerrors "github.com/go-openapi/go-yaml/errors"
 	"github.com/go-openapi/go-yaml/parser"
-	"github.com/go-openapi/go-yaml/token"
 )
 
 // errNeedsTheTree reports a document or a destination the walk cannot fill.
@@ -181,11 +180,6 @@ type typedBuilder struct {
 	// naming says the walk holds a key whole, an explicit "?" or a tagged
 	// one, for Leave to name the entry by. See keepKey.
 	naming bool
-}
-
-// holdsAnything reports a destination that takes whatever the document writes.
-func holdsAnything(v reflect.Value) bool {
-	return v.Kind() == reflect.Interface && v.Type().NumMethod() == 0
 }
 
 func (b *typedBuilder) Enter(node ast.Node, at parser.Cursor) error {
@@ -939,15 +933,6 @@ func (b *typedBuilder) openSequence(dst reflect.Value, wanted bool) error {
 	return nil
 }
 
-// pointedKind returns the kind of t past its pointers.
-func pointedKind(t reflect.Type) reflect.Kind {
-	for t.Kind() == reflect.Pointer {
-		t = t.Elem()
-	}
-
-	return t.Kind()
-}
-
 // indirect follows and allocates the pointers between a destination and the
 // value a document writes into it.
 func (b *typedBuilder) indirect(v reflect.Value) reflect.Value {
@@ -1152,50 +1137,6 @@ func (k *keptShape) Visit(node ast.Node) ast.Visitor {
 	return k
 }
 
-func shapeOf(node ast.Node) keptShape {
-	var k keptShape
-	ast.Walk(&k, node)
-
-	return k
-}
-
-// fieldAt walks the index path an embedded field stands at, making the pointers
-// between as it goes. reflect.Value.FieldByIndex panics on a nil one and
-// FieldByIndexErr refuses rather than filling it, and a document writing through
-// an embedded pointer expects it filled.
-func fieldAt(v reflect.Value, at []int) (reflect.Value, error) {
-	for i, step := range at {
-		if i > 0 {
-			for v.Kind() == reflect.Pointer {
-				if v.IsNil() {
-					if !v.CanSet() {
-						return reflect.Value{}, errNeedsTheTree
-					}
-					v.Set(reflect.New(v.Type().Elem()))
-				}
-				v = v.Elem()
-			}
-			if v.Kind() != reflect.Struct {
-				return reflect.Value{}, errNeedsTheTree
-			}
-		}
-		v = v.Field(step)
-	}
-
-	return v, nil
-}
-
-// entryText reads the name a mapping key addresses its entry by, in the type's
-// own canonical spelling: "true: x" addresses a field tagged "true" and
-// "1.0: x" one tagged "1.0", which is how the same document reads into a
-// map[string]any. keyName holds the rule, so the walk, the tree decoder and
-// ToJSON name an entry the same way.
-func entryText(n ast.Node) (string, bool) {
-	name, kind := ast.KeyName(n)
-
-	return name, kind != token.KeyOther
-}
-
 // openEntry names the entry a key opens, and says where its value goes.
 func (b *typedBuilder) openEntry(top *typedFrame, keyNode ast.Node) error {
 	if top.dropped {
@@ -1259,17 +1200,6 @@ func (b *typedBuilder) openEntry(top *typedFrame, keyNode ast.Node) error {
 
 	// A key names the entry and holds nothing the walk descends into.
 	return parser.ErrSkipNode
-}
-
-func scalarNumber(node ast.Node) any {
-	switch n := node.(type) {
-	case *ast.IntegerNode:
-		return n.GetValue()
-	case *ast.FloatNode:
-		return n.GetValue()
-	default:
-		return nil
-	}
 }
 
 func (b *typedBuilder) setScalar(dst reflect.Value, node ast.Node) error {

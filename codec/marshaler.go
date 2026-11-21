@@ -141,14 +141,6 @@ var (
 	globalCustomUnmarshalerMap = map[reflect.Type]func(any, []byte) error{}
 )
 
-// customArg returns v as the T a custom (un)marshaler was registered for.
-//
-// The custom (un)marshaler maps are keyed by the reflect.Type of T and looked
-// up by the type of the value at hand, so v is always a T.
-func customArg[T any](v any) T {
-	return v.(T) //nolint:forcetypeassert // the maps are keyed by T's type and looked up by v's
-}
-
 // RegisterCustomMarshaler overrides any encoding process for the type specified in generics.
 // If you want to switch the behavior for each encoder, use `CustomMarshaler` defined as EncodeOption.
 //

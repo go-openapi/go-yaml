@@ -90,11 +90,6 @@ func NewMapSliceSeq(items ...MapItem) (MapSliceSeq, error) {
 	return MapSliceSeq(m), err
 }
 
-// unusableKey reports a key that cannot address an entry.
-func unusableKey(key any) error {
-	return fmt.Errorf("cannot use %T as a key: %w", key, yamlerrors.ErrUnhashableKey)
-}
-
 // Len returns the number of entries.
 func (s MapSlice) Len() int { return len(s.items) }
 

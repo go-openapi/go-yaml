@@ -288,9 +288,3 @@ func (st *walkState) walk(src []byte) {
 		st.err = err
 	}
 }
-
-func setZero(dst reflect.Value) {
-	if dst.IsValid() && dst.CanSet() {
-		dst.Set(reflect.Zero(dst.Type()))
-	}
-}

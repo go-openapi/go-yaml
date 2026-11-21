@@ -6,7 +6,6 @@ package codec
 import (
 	"iter"
 	"strconv"
-	"strings"
 
 	"github.com/go-openapi/go-yaml/parser"
 	"github.com/go-openapi/go-yaml/token"
@@ -236,26 +235,6 @@ func (s *JSONTokens) AppendPath(dst []byte) []byte {
 			continue
 		}
 		dst = appendPointerToken(dst, f.key)
-	}
-
-	return dst
-}
-
-// appendPointerToken writes one segment of a JSON pointer, escaping the two
-// characters RFC 6901 §3 gives a meaning to.
-func appendPointerToken(dst []byte, s string) []byte {
-	if !strings.ContainsAny(s, "~/") {
-		return append(dst, s...)
-	}
-	for i := range len(s) {
-		switch s[i] {
-		case '~':
-			dst = append(dst, '~', '0')
-		case '/':
-			dst = append(dst, '~', '1')
-		default:
-			dst = append(dst, s[i])
-		}
 	}
 
 	return dst

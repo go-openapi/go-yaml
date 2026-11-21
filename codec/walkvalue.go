@@ -631,16 +631,6 @@ func (b *valueBuilder) mergingValue(key bool) bool {
 	return n > 0 && b.stack[n-1].kind == frameMapping && b.stack[n-1].merging && !key
 }
 
-// isMapValue reports whether v is a mapping the walk built.
-func isMapValue(v any) bool {
-	switch v.(type) {
-	case map[string]any, map[any]any:
-		return true
-	default:
-		return false
-	}
-}
-
 // fail keeps the first error and returns it, so a caller can return it to the walk in one line.
 func (b *valueBuilder) fail(err error) error {
 	if b.err == nil {

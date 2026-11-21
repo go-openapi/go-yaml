@@ -89,21 +89,6 @@ func (t *jsonTokener) throughAlias(node ast.Node) ast.Node {
 	}
 }
 
-// standsOnNothing reports whether a chain of key wrappers bottoms out with no
-// node under it.
-func standsOnNothing(node ast.Node) bool {
-	switch n := node.(type) {
-	case *ast.MappingKeyNode:
-		return n.Value == nil || standsOnNothing(n.Value)
-	case *ast.AnchorNode:
-		return n.Value == nil || standsOnNothing(n.Value)
-	case *ast.TagNode:
-		return n.Value == nil
-	default:
-		return node == nil
-	}
-}
-
 // emitScalarNode hands a scalar over as the one token it is worth.
 //
 // scalarToken reads what a scalar is worth in JSON and appendJSONToken spells
@@ -573,29 +558,4 @@ func (t *jsonTokener) emitOrderedMapTree(n *ast.TagNode, at token.Position) {
 		t.emitTree(one.Values[0].Value, at)
 	}
 	t.close(JSONObjectEnd, at)
-}
-
-// namesOrderedMap reports the "!!omap" tag, whatever handle the document spells
-// it with.
-func namesOrderedMap(uri string) bool {
-	keyword, ok := token.ReservedTagOf(uri)
-
-	return ok && keyword == token.OrderedMapTag
-}
-
-// namesScalarType reports whether the tag says what a scalar is worth, rather
-// than naming a kind and leaving the node to say.
-func namesScalarType(uri string) bool {
-	keyword, ok := token.ReservedTagOf(uri)
-	if !ok {
-		return false
-	}
-
-	switch keyword {
-	case token.StringTag, token.IntegerTag, token.FloatTag, token.BooleanTag,
-		token.NullTag, token.BinaryTag, token.TimestampTag:
-		return true
-	default:
-		return false
-	}
 }

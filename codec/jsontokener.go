@@ -304,22 +304,6 @@ func (t *jsonTokener) settleEntry(frame *tokenMapFrame) bool {
 	return false
 }
 
-// nodeAt is where a node stands in the source, and the zero Position where it carries no token.
-//
-// The walk hands over a Cursor and not a position: a node answers this itself, and a block collection
-// answers differently on its Enter and its Leave because the parse moves its token to the ':' it reads.
-func nodeAt(n ast.Node) token.Position {
-	if n == nil {
-		return token.Position{}
-	}
-	tk := n.GetToken()
-	if tk == nil {
-		return token.Position{}
-	}
-
-	return tk.Position
-}
-
 // frame is the mapping being handed over, and nil outside one.
 func (t *jsonTokener) frame() *tokenMapFrame {
 	if len(t.maps) == 0 {
