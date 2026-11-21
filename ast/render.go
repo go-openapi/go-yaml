@@ -5,6 +5,7 @@ package ast
 
 import (
 	"io"
+	"strconv"
 	"strings"
 	"unicode/utf8"
 
@@ -408,7 +409,7 @@ func (r *Renderer) mapping(n *MappingNode) rendered {
 }
 
 func (r *Renderer) mappingValue(n *MappingValueNode) rendered {
-	key := leaf(r.bare().inline(n.Key))
+	key := leaf(r.implicitKey(n.Key))
 	// The key may stand in column 0; nothing after it does.
 	r = r.withMargin(false)
 
@@ -504,6 +505,19 @@ func (r *Renderer) mappingValue(n *MappingValueNode) rendered {
 
 	return join(sepNone, head, key, leaf(colon), inline, value, trailing,
 		r.footComment(n.FootComment))
+}
+
+// implicitKey renders a key written before its ':' on one line.
+//
+// An implicit key cannot span lines, so a string that would render as a "|" block is written double-quoted, where a
+// line break is an escape. Flattened onto the key's line, "a\nb" came out as "|-   a   b: 1", which does not parse.
+// An explicit "? " key may still be a block: it takes the MappingKeyNode path.
+func (r *Renderer) implicitKey(key Node) string {
+	if s, ok := key.(*StringNode); ok && blockScalarHeader(s) != "" {
+		return strconv.Quote(s.Value)
+	}
+
+	return r.bare().inline(key)
 }
 
 // maxImplicitKey is the most characters YAML 1.2 lets an implicit key take, the key as written and the space before

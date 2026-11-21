@@ -58,3 +58,16 @@ func TestMarshalQuotesAStringThatStartsOrEndsWithATab(t *testing.T) {
 		assert.Equal(t, "key", back[s], "%q", out)
 	}
 }
+
+// TestMarshalWritesAKeyHoldingALineBreak marshals map keys holding line breaks. An implicit key cannot span lines, so
+// the key is double-quoted; written as a "|" block, it did not parse.
+func TestMarshalWritesAKeyHoldingALineBreak(t *testing.T) {
+	for _, k := range []string{"a\nb", "a\n", "\n"} {
+		out, err := codec.Marshal(map[string]any{k: 1, "nested": map[string]int{k: 2}, "seq": []map[string]int{{k: 3}}})
+		require.NoError(t, err)
+
+		var back map[string]any
+		require.NoError(t, codec.Unmarshal(out, &back), "%q", out)
+		assert.Equal(t, uint64(1), back[k], "%q", out)
+	}
+}

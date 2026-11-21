@@ -12,6 +12,7 @@ import (
 
 	"github.com/go-openapi/go-yaml/ast"
 	"github.com/go-openapi/go-yaml/parser"
+	"github.com/go-openapi/go-yaml/token"
 )
 
 // TestRenderAKeyPast1024CharactersAsAnExplicitKey renders keys at YAML's 1,024-character limit on an implicit key
@@ -84,4 +85,22 @@ func (f visitFunc) Visit(n ast.Node) ast.Visitor {
 	}
 
 	return nil
+}
+
+// TestRenderAKeyHoldingALineBreakDoubleQuoted renders a plain string key holding a line break, as an encoder builds
+// one. An implicit key cannot span lines, so it is written double-quoted, and reads back as the same key.
+func TestRenderAKeyHoldingALineBreakDoubleQuoted(t *testing.T) {
+	for _, value := range []string{"a\nb", "a\n", "\n", "a\n\nb\n\n"} {
+		key := ast.String(token.New(value, value, token.Position{}))
+		mapping := ast.Mapping(nil, false, ast.MappingValue(nil, key, ast.String(token.New("v", "v", token.Position{}))))
+
+		out := mapping.String()
+		file, err := parser.ParseBytes([]byte(out))
+		require.NoError(t, err, "%q", out)
+		read, ok := file.Docs[0].Body.(*ast.MappingNode)
+		require.True(t, ok, "%q", out)
+		readKey, ok := read.Values[0].Key.(*ast.StringNode)
+		require.True(t, ok, "%q", out)
+		assert.Equal(t, value, readKey.Value, "%q", out)
+	}
 }
