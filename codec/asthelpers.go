@@ -5,7 +5,6 @@ package codec
 
 import (
 	"fmt"
-	"slices"
 
 	"github.com/go-openapi/go-yaml/ast"
 	yamlerrors "github.com/go-openapi/go-yaml/errors"
@@ -165,85 +164,10 @@ func headCommentPath(node ast.Node) string {
 	return node.GetPath()
 }
 
-// orderedMapShape reports the sequence of one-entry mappings an "!!omap" names,
-// where the node the tag stands on is one.
-//
-// A tag naming a kind its node is not is refused, as every other malformed tag
-// is: the document parses -- the shape is a question about what it means, not
-// about how it is written -- and the loader declines to build a value. So
-// "!!omap [1, 2]" is a document the parser reports and nodeToValue refuses.
-//
-// No implementation here votes on the shape. Measured 2026-09-10:
-// go.yaml.in/yaml/v3 v3.0.5 and libfyaml 1.0.0b1 both pass "!!omap" through
-// whatever stands under it -- a conforming sequence included -- so neither
-// builds an ordered map at all and neither reports a key written twice. What
-// they read says nothing about the shape a reader that builds the type should
-// require.
-func orderedMapShape(node ast.Node) (*ast.SequenceNode, bool) {
-	// The anchor may follow the tag, as in "!!omap &o [{x: 1}]".
-	seq := orderedMapSequence(node)
-	if seq == nil {
-		return nil, false
-	}
-	for _, entry := range seq.Values {
-		if entryMapping(entry) == nil {
-			return nil, false
-		}
-	}
-
-	return seq, true
-}
-
 // notAnOrderedMap reports a node "!!omap" stands on that is not the shape the
 // tag names.
 func notAnOrderedMap(node ast.Node) error {
 	return yamlerrors.NewSyntax("!!omap names a sequence of one-entry mappings", node.GetToken())
-}
-
-// entryMapping is the one entry an "!!omap" element holds, or nil where the
-// element is not a mapping holding exactly one key.
-//
-// A mapping that writes its one key twice, "{a: 1, a: 2}", comes back whole:
-// it is one key and a repeat, which orderedMapOf refuses as a mapping's repeat
-// is refused and reads under AllowDuplicateMapKey with the last value standing,
-// as the walk does. Counting the entries instead refused it as the wrong shape,
-// where every other reader reported the repeat.
-//
-// A mapping holding a "<<" comes back whole too, and orderedMapOf counts its
-// keys once the merge is read: "{<<: {a: 0}, a: 1}" is one entry, and
-// "{<<: {a: 0, b: 1}}" is two. The walk and ToJSON count them the same way.
-func entryMapping(entry ast.Node) ast.Node {
-	switch n := entry.(type) {
-	case *ast.MappingNode:
-		if slices.ContainsFunc(n.Values, func(v *ast.MappingValueNode) bool { return mergeEntry(v) }) {
-			return n
-		}
-		if distinctKeys(n) != 1 {
-			return nil
-		}
-		if len(n.Values) != 1 {
-			return n
-		}
-
-		return n.Values[0]
-	case *ast.MappingValueNode:
-		return n
-	case *ast.AnchorNode:
-		return entryMapping(n.Value)
-	case *ast.TagNode:
-		return entryMapping(n.Value)
-	case *ast.AliasNode:
-		// "!!omap [{x: 1}, *m]" is an ordered map where m names a one-entry
-		// mapping. The tree keeps the node an alias names, so it is read
-		// through; without this the element was refused as no entry at all.
-		if n.Target == nil {
-			return nil
-		}
-
-		return entryMapping(n.Target)
-	default:
-		return nil
-	}
 }
 
 // getParentMapTokenIfExists if the NodeType is a container type such as MappingType or SequenceType,
@@ -274,21 +198,6 @@ func sequenceEntryNode(node ast.ArrayNode, idx int) ast.Node {
 	}
 
 	return seq.Entries[idx]
-}
-
-// taggedOrderedMap reports the sequence an "!!omap" standing on node names,
-// through an anchor.
-func taggedOrderedMap(node ast.Node) (*ast.SequenceNode, bool) {
-	switch n := node.(type) {
-	case *ast.TagNode:
-		if res := n.Resolve(); res.Verdict == ast.TagResolved && res.Tag == token.OrderedMapTag && !res.Empty {
-			return orderedMapShape(n.Value)
-		}
-	case *ast.AnchorNode:
-		return taggedOrderedMap(n.Value)
-	}
-
-	return nil, false
 }
 
 // standsOnNothing reports whether a chain of key wrappers bottoms out with no

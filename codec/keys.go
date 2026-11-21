@@ -113,23 +113,6 @@ func allowedRepeatEntries(seq *ast.SequenceNode) []int {
 	return drop
 }
 
-// distinctKeys returns how many keys m holds, a repeat the parse recorded
-// counting once: "{a: 1, a: 2}" holds one key written twice, which is a repeat
-// and not a second entry.
-//
-// A repeat by name alone, "{1: a, \"1\": b}", is two keys: the "!!omap" readers
-// key their entries by value. See [ast.DuplicateKey.Repeats].
-func distinctKeys(m *ast.MappingNode) int {
-	n := len(m.Values)
-	for _, d := range m.Duplicates {
-		if d.Repeats(false) {
-			n--
-		}
-	}
-
-	return n
-}
-
 // orderedMapSequence returns the sequence an "!!omap" tag stands on, looking
 // through an anchor and an alias, and nil where the tag stands on something else.
 // "!!omap *x" reads the sequence x names, as the walk and ToJSON read it.

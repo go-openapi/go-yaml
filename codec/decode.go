@@ -1918,12 +1918,12 @@ func (d *Decoder) taggedValue(n *ast.TagNode, res ast.Resolution) (any, error) {
 
 		return text, nil
 	case token.OrderedMapTag:
-		seq, ordered := orderedMapShape(n.Value)
+		seq, entries, ordered := ast.OrderedMapOf(n)
 		if !ordered {
 			return nil, notAnOrderedMap(n.Value)
 		}
 
-		return d.orderedMapOf(seq)
+		return d.orderedMapOf(seq, entries)
 	default:
 		// A tag naming a kind -- !!seq, !!map, !!set, !!merge. The node is read
 		// as it stands.
@@ -1933,17 +1933,17 @@ func (d *Decoder) taggedValue(n *ast.TagNode, res ast.Resolution) (any, error) {
 
 // orderedMapOf reads a sequence an "!!omap" names into a [MapSliceSeq].
 //
-// The shape is orderedMapShape's, so every element holds one entry and the
+// The shape is [ast.OrderedMapOf]'s, so every element holds one entry and the
 // ordered map is the sequence's order. The parser records a key repeated across
 // entries on the sequence, and refuseOrderedMapDuplicates reads that record as
 // every other load does. Where the parse allowed the repeat, the later entry's
 // value replaces the earlier one's, as it does in a mapping.
-func (d *Decoder) orderedMapOf(seq *ast.SequenceNode) (MapSliceSeq, error) {
+func (d *Decoder) orderedMapOf(seq *ast.SequenceNode, entries []ast.Node) (MapSliceSeq, error) {
 	// An entry's own repeat first, then a repeat across entries: the walk and
 	// the converters meet the first as the entry's mapping closes, and the
 	// second only as the "!!omap" closes.
-	for _, entry := range seq.Values {
-		if err := refuseDuplicateKeys(entryMapping(entry)); err != nil {
+	for _, entry := range entries {
+		if err := refuseDuplicateKeys(entry); err != nil {
 			return MapSliceSeq{}, err
 		}
 	}
@@ -1952,13 +1952,13 @@ func (d *Decoder) orderedMapOf(seq *ast.SequenceNode) (MapSliceSeq, error) {
 	}
 
 	var m MapSlice
-	for _, entry := range seq.Values {
+	for _, entry := range entries {
 		var one MapSlice
-		if err := d.setToOrderedMapValue(entryMapping(entry), &one, false); err != nil {
+		if err := d.setToOrderedMapValue(entry, &one, false); err != nil {
 			return MapSliceSeq{}, err
 		}
 		if len(one.items) != 1 {
-			// A "<<" left the count to now. See entryMapping.
+			// A "<<" left the count to now. See [ast.OrderedMapOf].
 			return MapSliceSeq{}, notAnOrderedMap(seq)
 		}
 		for _, item := range one.items {
@@ -2865,8 +2865,8 @@ func (d *Decoder) decodeMapSlice(dst *MapSlice, src ast.Node) error {
 		return yamlerrors.ErrExceededMaxDepth
 	}
 
-	if seq, ordered := taggedOrderedMap(src); ordered {
-		one, err := d.orderedMapOf(seq)
+	if seq, entries, ordered := ast.OrderedMapOf(src); ordered {
+		one, err := d.orderedMapOf(seq, entries)
 		if err != nil {
 			return err
 		}
@@ -2916,8 +2916,8 @@ func (d *Decoder) decodeOrderedMapSeq(dst *MapSliceSeq, src ast.Node) error {
 
 // orderedEntriesOf reads the entries of a mapping or of an "!!omap".
 func (d *Decoder) orderedEntriesOf(src ast.Node) (MapSlice, error) {
-	if seq, ordered := taggedOrderedMap(src); ordered {
-		one, err := d.orderedMapOf(seq)
+	if seq, entries, ordered := ast.OrderedMapOf(src); ordered {
+		one, err := d.orderedMapOf(seq, entries)
 
 		return MapSlice(one), err
 	}
