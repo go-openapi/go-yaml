@@ -1,7 +1,10 @@
 // SPDX-FileCopyrightText: Copyright 2025 go-swagger maintainers
 // SPDX-License-Identifier: Apache-2.0
 
-package codec
+// Package structfields reads the fields a Go struct type shows to the codec: the name each is written under, its
+// `yaml` flags, and the fields an embedded or `,inline` struct promotes, under the tag [Mode] a decode or an encode
+// asks for. [Of] reads a type once per mode and caches what it read.
+package structfields
 
 import (
 	"fmt"
@@ -14,7 +17,7 @@ import (
 const (
 	// structTagName is the struct tag key Marshal and Unmarshal read: `yaml:"name,flags"`.
 	structTagName = "yaml"
-	// jsonTagName is the tag encoding/json reads, which [UseJSONTags] adds where
+	// jsonTagName is the tag encoding/json reads, which [github.com/go-openapi/go-yaml/codec.UseJSONTags] adds where
 	// a field carries no `yaml` tag.
 	jsonTagName = "json"
 )
@@ -37,10 +40,10 @@ const (
 	// neither bit set.
 	YAMLTags Mode = 0
 	// JSONTags reads `json` where a field carries no `yaml` tag, and promotes an
-	// untagged embedded struct, as encoding/json does. [UseJSONTags] sets it.
+	// untagged embedded struct, as encoding/json does. [github.com/go-openapi/go-yaml/codec.UseJSONTags] sets it.
 	JSONTags Mode = 1 << 0
 	// InferredNames names a field that no tag names after its Go name,
-	// verbatim, where every other mode lowercases it. [UseInferredNames] sets
+	// verbatim, where every other mode lowercases it. [github.com/go-openapi/go-yaml/codec.UseInferredNames] sets
 	// it.
 	InferredNames Mode = 1 << 1
 	// ModeCount sizes the per-mode caches, one for each pair of bits.
@@ -67,7 +70,7 @@ const (
 	nameFromGo tagSource = iota
 	// nameFromYAML is a field the `yaml` tag names.
 	nameFromYAML
-	// nameFromJSON is a field the `json` tag names, under [UseJSONTags].
+	// nameFromJSON is a field the `json` tag names, under [github.com/go-openapi/go-yaml/codec.UseJSONTags].
 	nameFromJSON
 )
 
@@ -95,7 +98,7 @@ type Info struct {
 //
 // The `yaml` tag always wins. The default mode reads it and nothing else, as
 // go.yaml.in/yaml/v3 does, so a type tagged for encoding/json alone takes the
-// lowercased Go name for every field. [UseJSONTags] adds `json` where a field
+// lowercased Go name for every field. [github.com/go-openapi/go-yaml/codec.UseJSONTags] adds `json` where a field
 // carries no `yaml` tag, and takes nothing away from one that does.
 //
 // Callers need to know which tag they got, because the two vocabularies part
@@ -212,7 +215,7 @@ const (
 // this library adds, and refuses anything else; a `json` tag takes the two
 // encoding/json defines, and ignores anything else. So `json:",inline"` names
 // no field inline, because encoding/json has no such option -- an anonymous
-// struct is promoted there by [UseJSONTags] and the rule in
+// struct is promoted there by [github.com/go-openapi/go-yaml/codec.UseJSONTags] and the rule in
 // promotesUntaggedEmbedded, not by a flag.
 func structField(field reflect.StructField, index int, mode Mode) (*Info, error) {
 	tag, fromYAML := getTag(field, mode)
@@ -358,7 +361,7 @@ type Fields struct {
 	// the same field. Nil where the type embeds nothing.
 	flat map[string]Flat
 	// folded finds the field a key names but for case, which encoding/json
-	// accepts once an exact match has failed. Nil outside [UseJSONTags], where
+	// accepts once an exact match has failed. Nil outside [github.com/go-openapi/go-yaml/codec.UseJSONTags], where
 	// a key names a field exactly or names none.
 	folded map[string]Flat
 	// dropped holds the names the conflict rule left reaching no field at all,
@@ -402,7 +405,7 @@ func Of(structType reflect.Type, mode Mode) (*Fields, error) {
 
 // Lookup finds the field a mapping key names.
 //
-// An exact match first, and under [UseJSONTags] one differing only in case
+// An exact match first, and under [github.com/go-openapi/go-yaml/codec.UseJSONTags] one differing only in case
 // after that, which is the order encoding/json tries them in. The result's at
 // is nil where the field stands in the type itself and there is no index path
 // to walk.

@@ -299,7 +299,7 @@ type (
 // decodeInlineFields handed each embedded struct the whole mapping, which meant
 // setting the embedded field itself -- and reflect refuses that where the field
 // is unexported, because its name is. The walk decoder never had the problem:
-// it writes through the index path Fields.flat holds, and the fields inside
+// it writes through the index path structfields.Fields.flat holds, and the fields inside
 // an unexported embedded struct are settable even though the struct is not.
 //
 // Both paths take the index path now, so both fill the same fields.
@@ -427,7 +427,7 @@ type (
 //
 // The two decode paths disagreed. The tree decoder filled the map; the walk
 // left it empty and reported success, because a walk meets an entry once and
-// has to place it then, and Fields.flat holds only the names an index path
+// has to place it then, and structfields.Fields.flat holds only the names an index path
 // reaches. A map has no such name.
 //
 // walkableType now refuses a struct that inlines a map, so the tree reads it.

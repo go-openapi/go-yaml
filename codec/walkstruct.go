@@ -11,6 +11,8 @@ import (
 	"slices"
 	"time"
 
+	"github.com/go-openapi/go-yaml/codec/internal/structfields"
+
 	"github.com/go-openapi/go-yaml/codec/internal/astutils"
 
 	"github.com/go-openapi/go-yaml/codec/internal/codecutils"
@@ -124,7 +126,7 @@ type typedFrame struct {
 	merges    []ast.Node
 	// field is the struct field the entry being read writes, for fieldError to
 	// name.
-	field Flat
+	field structfields.Flat
 	// wrote records the keys a mapping writes into a map that held the
 	// caller's entries when it opened, so a merge tells the two apart. It is
 	// nil for a map that opened empty, where every key it holds was written
@@ -139,7 +141,7 @@ type typedFrame struct {
 // keep the Decoder alive. See walkStream.
 type typedBuilder struct {
 	// mode is the Decoder's Mode, which names the fields of a struct.
-	mode  Mode
+	mode  structfields.Mode
 	root  reflect.Value
 	stack []typedFrame
 	strs  *arena
@@ -626,11 +628,11 @@ func (b *typedBuilder) replayNode(node ast.Node, key bool, at *ast.AliasNode) er
 // field at the anchor the "<<" names, so the encoder writes the alias back.
 func (b *typedBuilder) openMerge(top *typedFrame) error {
 	if top.kind == typedStruct {
-		fields, err := Of(top.dst.Type(), b.mode)
+		fields, err := structfields.Of(top.dst.Type(), b.mode)
 		if err != nil {
 			return b.fail(err)
 		}
-		if slices.ContainsFunc(fields.Inline, func(sf *Info) bool { return sf.IsAutoAlias }) {
+		if slices.ContainsFunc(fields.Inline, func(sf *structfields.Info) bool { return sf.IsAutoAlias }) {
 			return b.fail(errNeedsTheTree)
 		}
 	}
@@ -813,7 +815,7 @@ func (b *typedBuilder) mergeEntry(i int, keyNode, value ast.Node, alias *ast.Ali
 
 	switch top.kind {
 	case typedStruct:
-		fields, err := Of(top.dst.Type(), b.mode)
+		fields, err := structfields.Of(top.dst.Type(), b.mode)
 		if err != nil {
 			return b.fail(err)
 		}
@@ -1168,7 +1170,7 @@ func (b *typedBuilder) openEntry(top *typedFrame, keyNode ast.Node) error {
 
 	switch top.kind {
 	case typedStruct:
-		fields, err := Of(top.dst.Type(), b.mode)
+		fields, err := structfields.Of(top.dst.Type(), b.mode)
 		if err != nil {
 			return b.fail(err)
 		}
@@ -1324,7 +1326,7 @@ func (b *typedBuilder) handled(dst reflect.Value) bool {
 // walkableTypes caches which destination types the typed walk can fill, keyed
 // by reflect.Type, one map per Mode: the fields a type shows depend on the
 // mode, and so does whether the walk can fill it.
-var walkableTypes [ModeCount]Cache[bool]
+var walkableTypes [structfields.ModeCount]structfields.Cache[bool]
 
 // walkableType reports whether a destination of type t can be filled by the
 // walk, looking at the Go type alone.
@@ -1334,7 +1336,7 @@ var walkableTypes [ModeCount]Cache[bool]
 // destination the walk was never going to fill costs two parses instead of one.
 // Every reason it could give up on the type rather than on the document is
 // therefore settled here, once per type.
-func walkableType(t reflect.Type, mode Mode) bool {
+func walkableType(t reflect.Type, mode structfields.Mode) bool {
 	cache := &walkableTypes[mode]
 	if cached, known := cache.Load(t); known {
 		return cached
@@ -1364,9 +1366,9 @@ var (
 )
 
 // The struct model reads a `,inline` field whose type implements one of these as reading the mapping itself.
-func init() { SelfDecoding(unmarshalerTypes...) }
+func init() { structfields.SelfDecoding(unmarshalerTypes...) }
 
-func readWalkable(t reflect.Type, seen map[reflect.Type]bool, mode Mode) bool {
+func readWalkable(t reflect.Type, seen map[reflect.Type]bool, mode structfields.Mode) bool {
 	if seen[t] {
 		// A type that holds itself. The cycle says nothing either way, and the
 		// document's depth is capped elsewhere.
@@ -1393,15 +1395,15 @@ func readWalkable(t reflect.Type, seen map[reflect.Type]bool, mode Mode) bool {
 	case reflect.Pointer:
 		return readWalkable(t.Elem(), seen, mode)
 	case reflect.Struct:
-		fields, err := Of(t, mode)
+		fields, err := structfields.Of(t, mode)
 		if err != nil {
 			return false
 		}
 		for _, sf := range fields.ByGoName {
 			ft := t.Field(sf.Index).Type
-			if sf.IsInline && InlineTakesUnclaimedEntries(ft) {
+			if sf.IsInline && structfields.InlineTakesUnclaimedEntries(ft) {
 				// The walk meets an entry once and has to place it then,
-				// through an index path Fields.flat names. A map has no
+				// through an index path structfields.Fields.flat names. A map has no
 				// such name, so the tree decoder reads this struct.
 				return false
 			}

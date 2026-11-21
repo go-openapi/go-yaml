@@ -22,6 +22,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/go-openapi/go-yaml/codec/internal/structfields"
+
 	"github.com/go-openapi/go-yaml/codec/internal/codecutils"
 
 	"github.com/go-openapi/go-yaml/codec/internal/astutils"
@@ -1161,13 +1163,13 @@ type jsonUnmarshaler interface {
 
 // tagMode says which of encoding/json's rules this decoder adds to the `yaml`
 // tag. Neither option set is go.yaml.in/yaml/v3 exactly.
-func (d *Decoder) tagMode() Mode {
-	mode := YAMLTags
+func (d *Decoder) tagMode() structfields.Mode {
+	mode := structfields.YAMLTags
 	if d.useJSONTags {
-		mode |= JSONTags
+		mode |= structfields.JSONTags
 	}
 	if d.useInferredNames {
-		mode |= InferredNames
+		mode |= structfields.InferredNames
 	}
 
 	return mode
@@ -1188,13 +1190,13 @@ func (d *Decoder) deleteStructKeys(structType reflect.Type, unknownFields map[st
 		return nil
 	}
 
-	structFieldMap, err := MapOf(structType, d.tagMode())
+	structFieldMap, err := structfields.MapOf(structType, d.tagMode())
 	if err != nil {
 		return err
 	}
 
 	for field := range structType.Fields() {
-		if Ignored(field, d.tagMode()) {
+		if structfields.Ignored(field, d.tagMode()) {
 			continue
 		}
 
@@ -2070,7 +2072,7 @@ func (d *Decoder) decodeDuration(dst reflect.Value, src ast.Node) error {
 // stands in the type itself.
 type located struct {
 	value reflect.Value
-	sf    *Info
+	sf    *structfields.Info
 	ord   int
 	at    []int
 }
@@ -2100,11 +2102,11 @@ func (l located) name(structType reflect.Type) string {
 
 // fieldFor finds the field a mapping key names.
 //
-// A type that embeds another is read through Fields.flat, which names every
+// A type that embeds another is read through structfields.Fields.flat, which names every
 // field the embedding promotes and holds the index path to reach it; codecutils.FieldAt
 // fills the pointers along the way. A type that embeds nothing takes the direct
 // lookup and no index path at all, which is the common case and the fast one.
-func fieldFor(dst reflect.Value, fields *Fields, name string) (located, error) {
+func fieldFor(dst reflect.Value, fields *structfields.Fields, name string) (located, error) {
 	ff, known := fields.Lookup(name)
 	if !known {
 		return located{}, nil
@@ -2249,7 +2251,7 @@ func (d *Decoder) entryName(keyNode ast.Node) (string, bool, error) { //nolint:u
 // decodeInlineFields reads the three kinds of `,inline` field an index path
 // cannot place, each from the whole mapping rather than from an entry of it.
 //
-// An ordinary embedded struct is not one of them: Fields.flat names every
+// An ordinary embedded struct is not one of them: structfields.Fields.flat names every
 // field it promotes and setField writes each entry straight into the field it
 // reaches, so the two decode paths place an entry the same way. What is left
 // here is a map, which takes the entries no field claims and so cannot be known
@@ -2257,11 +2259,11 @@ func (d *Decoder) entryName(keyNode ast.Node) (string, bool, error) { //nolint:u
 // document's "<<" names; and a field whose type reads its own node, which
 // go.yaml.in/yaml/v3 also hands the whole mapping.
 //
-// A `,inline` map is handed the entries Fields.flat does not name -- the
+// A `,inline` map is handed the entries structfields.Fields.flat does not name -- the
 // struct's own fields and everything its embedded structs promote. With nothing
 // left over the map stays nil, as v3 leaves it.
 func (d *Decoder) decodeInlineFields(
-	dst reflect.Value, src ast.Node, fields *Fields,
+	dst reflect.Value, src ast.Node, fields *structfields.Fields,
 	ignoreMergeKey bool, unknownFields map[string]ast.Node, foundErr *error,
 ) error {
 	structType := dst.Type()
@@ -2280,8 +2282,8 @@ func (d *Decoder) decodeInlineFields(
 		}
 
 		fieldType := fieldValue.Type()
-		takesUnclaimed := InlineTakesUnclaimedEntries(fieldType)
-		if !takesUnclaimed && !InlineReadsItsOwnNode(fieldType) {
+		takesUnclaimed := structfields.InlineTakesUnclaimedEntries(fieldType)
+		if !takesUnclaimed && !structfields.InlineReadsItsOwnNode(fieldType) {
 			// An embedded struct, whose fields setField has already filled.
 			continue
 		}
@@ -2357,7 +2359,7 @@ func (d *Decoder) setAliasedField(fieldValue reflect.Value, aliasName string) er
 
 // inlineMapNode builds the mapping an inline field decodes: every entry, or with takesUnclaimed only the entries
 // no field of fields claims.
-func inlineMapNode(entries map[string]ast.Node, fields *Fields, takesUnclaimed bool) *ast.MappingNode {
+func inlineMapNode(entries map[string]ast.Node, fields *structfields.Fields, takesUnclaimed bool) *ast.MappingNode {
 	mapNode := ast.Mapping(nil, false)
 	for k, v := range entries {
 		if takesUnclaimed && fields.Claims(k) {
@@ -2465,7 +2467,7 @@ func (d *Decoder) decodeStruct(dst reflect.Value, src ast.Node) error {
 		dst.Set(srcValue)
 		return nil
 	}
-	fields, err := Of(structType, d.tagMode())
+	fields, err := structfields.Of(structType, d.tagMode())
 	if err != nil {
 		return err
 	}
@@ -2573,7 +2575,7 @@ func (d *Decoder) refuseUnknownFields(unknownFields map[string]ast.Node) error {
 // A validation error is reported at the entry that writes the field, which is
 // the ":" rather than anything inside the value. The entries are read here
 // rather than during the decode: a document that validates never needs them.
-func (d *Decoder) validateStruct(dst reflect.Value, src ast.Node, fields *Fields, ignoreMergeKey bool) error {
+func (d *Decoder) validateStruct(dst reflect.Value, src ast.Node, fields *structfields.Fields, ignoreMergeKey bool) error {
 	if d.validator == nil {
 		return nil
 	}

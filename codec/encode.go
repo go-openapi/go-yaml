@@ -16,6 +16,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/go-openapi/go-yaml/codec/internal/structfields"
+
 	"github.com/go-openapi/go-yaml/codec/internal/codecutils"
 
 	"github.com/go-openapi/go-yaml/ast"
@@ -1147,13 +1149,13 @@ func (e *Encoder) encodeAnchor(anchorName string, value ast.Node, fieldValue ref
 // tagMode says which of encoding/json's rules this encoder adds to the `yaml`
 // tag. Neither option set is go.yaml.in/yaml/v3 exactly, and the pair mirrors
 // [UseJSONTags] and [UseInferredNames] on the decoder.
-func (e *Encoder) tagMode() Mode {
-	mode := YAMLTags
+func (e *Encoder) tagMode() structfields.Mode {
+	mode := structfields.YAMLTags
 	if e.writeJSONTags {
-		mode |= JSONTags
+		mode |= structfields.JSONTags
 	}
 	if e.writeInferredNames {
-		mode |= InferredNames
+		mode |= structfields.InferredNames
 	}
 
 	return mode
@@ -1164,7 +1166,7 @@ func (e *Encoder) encodeStruct(value reflect.Value, column int) (ast.Node, error
 	node := ast.Mapping(token.New("", "", e.pos(column)), e.isFlowStyle)
 	structType := value.Type()
 	mode := e.tagMode()
-	fields, err := Of(structType, mode)
+	fields, err := structfields.Of(structType, mode)
 	if err != nil {
 		return nil, err
 	}
@@ -1173,7 +1175,7 @@ func (e *Encoder) encodeStruct(value reflect.Value, column int) (ast.Node, error
 	var inlineAnchorValue reflect.Value
 	for i := range value.NumField() {
 		field := structType.Field(i)
-		if Ignored(field, mode) {
+		if structfields.Ignored(field, mode) {
 			continue
 		}
 		fieldValue := value.FieldByName(field.Name)
@@ -1242,7 +1244,7 @@ func (e *Encoder) encodeStruct(value reflect.Value, column int) (ast.Node, error
 			// A map holds the document's own keys, so the only question is
 			// whether a field writes the name already. A struct holds fields,
 			// and flat says which one each name reaches.
-			fromMap := InlineTakesUnclaimedEntries(fieldValue.Type())
+			fromMap := structfields.InlineTakesUnclaimedEntries(fieldValue.Type())
 			mapIter := mapNode.MapRange()
 			for mapIter.Next() {
 				mapKey := mapIter.Key()

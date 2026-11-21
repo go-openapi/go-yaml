@@ -10,6 +10,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-openapi/go-yaml/codec/internal/structfields"
+
 	"github.com/go-openapi/go-yaml/ast"
 	"github.com/go-openapi/go-yaml/parser"
 )
@@ -157,7 +159,7 @@ func TestWalkableTypeRefusesWhatTheTreeReads(t *testing.T) {
 		"a complex number":      reflect.TypeFor[struct{ A complex128 }](),
 	}
 	for name, typ := range refused {
-		if walkableType(typ, YAMLTags) {
+		if walkableType(typ, structfields.YAMLTags) {
 			t.Errorf("%s: the gate let %s through", name, typ)
 		}
 	}
@@ -174,7 +176,7 @@ func TestWalkableTypeRefusesWhatTheTreeReads(t *testing.T) {
 		"a self-embedding":   reflect.TypeFor[selfEmbedding](),
 	}
 	for name, typ := range accepted {
-		if !walkableType(typ, YAMLTags) {
+		if !walkableType(typ, structfields.YAMLTags) {
 			t.Errorf("%s: the gate refused %s", name, typ)
 		}
 	}
