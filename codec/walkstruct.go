@@ -11,9 +11,9 @@ import (
 	"slices"
 	"time"
 
-	"github.com/go-openapi/go-yaml/codec/internal/codecutils"
-
 	"github.com/go-openapi/go-yaml/codec/internal/astutils"
+
+	"github.com/go-openapi/go-yaml/codec/internal/codecutils"
 
 	"github.com/go-openapi/go-yaml/ast"
 	yamlerrors "github.com/go-openapi/go-yaml/errors"
@@ -301,7 +301,7 @@ func (b *typedBuilder) Leave(node ast.Node, at parser.Closing) error {
 		// The parser hangs the repeats on the mapping as it closes, so they are
 		// read here rather than as it opened. A struct and a string-keyed map
 		// key their entries by name; a mapping no field claims holds nothing.
-		if err := refuseRepeats(node, !b.stack[len(b.stack)-1].dropped); err != nil {
+		if err := astutils.RefuseRepeats(node, !b.stack[len(b.stack)-1].dropped); err != nil {
 			return b.fail(err)
 		}
 		if err := b.applyMerges(&b.stack[len(b.stack)-1]); err != nil {
@@ -678,7 +678,7 @@ func (b *typedBuilder) mergeValue(top *typedFrame, node ast.Node) error {
 func (b *typedBuilder) keepMerge(top *typedFrame, node ast.Node) error {
 	seq, isSeq := node.(*ast.SequenceNode)
 	if !isSeq {
-		if err := refuseDuplicateKeys(node); err != nil {
+		if err := astutils.RefuseDuplicateKeys(node); err != nil {
 			return b.fail(err)
 		}
 		b.holdMerge(top, ast.Clone(node))
@@ -694,7 +694,7 @@ func (b *typedBuilder) keepMerge(top *typedFrame, node ast.Node) error {
 			}
 			b.holdMerge(top, anchored.node)
 		case *ast.MappingNode:
-			if err := refuseDuplicateKeys(v); err != nil {
+			if err := astutils.RefuseDuplicateKeys(v); err != nil {
 				return b.fail(err)
 			}
 			b.holdMerge(top, ast.Clone(v))

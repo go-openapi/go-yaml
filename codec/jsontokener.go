@@ -223,7 +223,7 @@ func (t *jsonTokener) Leave(node ast.Node, at parser.Closing) error {
 
 	switch n := node.(type) {
 	case *ast.MappingNode:
-		if err := refuseDuplicateKeys(n); err != nil {
+		if err := astutils.RefuseDuplicateKeys(n); err != nil {
 			t.fail(err)
 
 			return t.halted()
@@ -300,7 +300,7 @@ func (t *jsonTokener) pushMap(n *ast.MappingNode) {
 // writes a map under SkipDuplicateMapKey. The held key is let go and the value
 // is not entered at all.
 func (t *jsonTokener) settleEntry(frame *tokenMapFrame) bool {
-	repeat := newAllowedRepeat(frame.node, &frame.dups)
+	repeat := astutils.NewAllowedRepeat(frame.node, &frame.dups)
 	if !frame.hasPending {
 		return false
 	}

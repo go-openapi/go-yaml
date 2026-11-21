@@ -81,7 +81,7 @@ func (t *jsonTokener) collectMerge(node ast.Node, at parser.Cursor) error {
 // repeats one.
 func (t *jsonTokener) failMerge(frame *tokenMapFrame, err error) {
 	if frame.node != nil {
-		if repeat := refuseDuplicateKeys(frame.node); repeat != nil {
+		if repeat := astutils.RefuseDuplicateKeys(frame.node); repeat != nil {
 			err = repeat
 		}
 	}

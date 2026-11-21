@@ -7,9 +7,9 @@ import (
 	"fmt"
 	"slices"
 
-	"github.com/go-openapi/go-yaml/codec/internal/codecutils"
-
 	"github.com/go-openapi/go-yaml/codec/internal/astutils"
+
+	"github.com/go-openapi/go-yaml/codec/internal/codecutils"
 
 	"github.com/go-openapi/go-yaml/ast"
 	yamlerrors "github.com/go-openapi/go-yaml/errors"
@@ -525,8 +525,8 @@ func (t *jsonTokener) releaseOrderedMap(n *ast.TagNode) {
 	mark := t.omaps[len(t.omaps)-1]
 	t.omaps = t.omaps[:len(t.omaps)-1]
 
-	seq := orderedMapSequence(n.Value)
-	folded, ordered := foldOrderedMapTokens(mark.toks, allowedRepeatEntries(seq))
+	seq, _ := ast.Unwrap(n.Value).(*ast.SequenceNode)
+	folded, ordered := foldOrderedMapTokens(mark.toks, astutils.AllowedRepeatEntries(seq))
 	if !ordered {
 		at := n.GetToken()
 		if n.Value != nil {
@@ -536,7 +536,7 @@ func (t *jsonTokener) releaseOrderedMap(n *ast.TagNode) {
 
 		return
 	}
-	if err := refuseOrderedMapDuplicates(seq); err != nil {
+	if err := astutils.RefuseOrderedMapDuplicates(seq); err != nil {
 		t.fail(err)
 
 		return
@@ -581,13 +581,13 @@ func (t *jsonTokener) emitOrderedMapTree(n *ast.TagNode, at token.Position) {
 		}
 		members[i] = entries[0]
 	}
-	if err := refuseOrderedMapDuplicates(seq); err != nil {
+	if err := astutils.RefuseOrderedMapDuplicates(seq); err != nil {
 		t.fail(err)
 
 		return
 	}
 
-	drop := allowedRepeatEntries(seq)
+	drop := astutils.AllowedRepeatEntries(seq)
 	t.open(JSONObjectStart, at)
 	for i, m := range members {
 		if slices.Contains(drop, i) {

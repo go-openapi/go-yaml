@@ -22,9 +22,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/go-openapi/go-yaml/codec/internal/codecutils"
-
 	"github.com/go-openapi/go-yaml/codec/internal/astutils"
+
+	"github.com/go-openapi/go-yaml/codec/internal/codecutils"
 
 	"github.com/go-openapi/go-yaml/ast"
 	yamlerrors "github.com/go-openapi/go-yaml/errors"
@@ -857,7 +857,7 @@ func (d *Decoder) nodeToValue(node ast.Node) (any, error) {
 		return map[string]any{key: v}, nil
 	case *ast.MappingNode:
 		// Under UseStringKeys an any keys its entries by name.
-		if err := refuseRepeats(n, d.useStringKeys); err != nil {
+		if err := astutils.RefuseRepeats(n, d.useStringKeys); err != nil {
 			return nil, err
 		}
 		if d.useOrderedMap {
@@ -961,7 +961,7 @@ func (d *Decoder) getMapNode(node ast.Node, isMerge bool) (ast.MapNode, error) {
 		return nil, yamlerrors.ErrExceededMaxDepth
 	}
 
-	if err := refuseDuplicateKeys(node); err != nil {
+	if err := astutils.RefuseDuplicateKeys(node); err != nil {
 		return nil, err
 	}
 
@@ -1692,7 +1692,7 @@ func (d *Decoder) keyToNodeMap(node ast.Node, ignoreMergeKey bool, getKeyOrValue
 	}
 	// The map is keyed by name.
 	if m, isMapping := mapNode.(*ast.MappingNode); isMapping {
-		if err := refuseRepeats(m, true); err != nil {
+		if err := astutils.RefuseRepeats(m, true); err != nil {
 			return nil, err
 		}
 	}
@@ -1726,7 +1726,7 @@ func (d *Decoder) keyToNodeMap(node ast.Node, ignoreMergeKey bool, getKeyOrValue
 			// A collection key names no field and no string-keyed entry.
 			continue
 		}
-		// refuseRepeats refused a repeat the parse did not allow; one it
+		// astutils.RefuseRepeats refused a repeat the parse did not allow; one it
 		// allowed leaves the last value standing.
 		keyToNodeMap[key] = getKeyOrValueNode(mapIter)
 	}
@@ -1918,7 +1918,7 @@ func (d *Decoder) taggedValue(n *ast.TagNode, res ast.Resolution) (any, error) {
 //
 // The shape is [ast.OrderedMapOf]'s, so every element holds one entry and the
 // ordered map is the sequence's order. The parser records a key repeated across
-// entries on the sequence, and refuseOrderedMapDuplicates reads that record as
+// entries on the sequence, and astutils.RefuseOrderedMapDuplicates reads that record as
 // every other load does. Where the parse allowed the repeat, the later entry's
 // value replaces the earlier one's, as it does in a mapping.
 func (d *Decoder) orderedMapOf(seq *ast.SequenceNode, entries []ast.Node) (MapSliceSeq, error) {
@@ -1926,11 +1926,11 @@ func (d *Decoder) orderedMapOf(seq *ast.SequenceNode, entries []ast.Node) (MapSl
 	// the converters meet the first as the entry's mapping closes, and the
 	// second only as the "!!omap" closes.
 	for _, entry := range entries {
-		if err := refuseDuplicateKeys(entry); err != nil {
+		if err := astutils.RefuseDuplicateKeys(entry); err != nil {
 			return MapSliceSeq{}, err
 		}
 	}
-	if err := refuseOrderedMapDuplicates(seq); err != nil {
+	if err := astutils.RefuseOrderedMapDuplicates(seq); err != nil {
 		return MapSliceSeq{}, err
 	}
 
@@ -2148,7 +2148,7 @@ func (d *Decoder) rangeMapEntries(src ast.Node, ignoreMergeKey bool, visit mapEn
 	}
 	// A struct names its fields, so two keys of one name are one field.
 	if m, isMapping := mapNode.(*ast.MappingNode); isMapping {
-		if err := refuseRepeats(m, true); err != nil {
+		if err := astutils.RefuseRepeats(m, true); err != nil {
 			return err
 		}
 	}
@@ -2934,7 +2934,7 @@ func (d *Decoder) decodeMap(dst reflect.Value, src ast.Node) error {
 		// A string-keyed map holds one entry for two keys of one name. A key
 		// of another type answers through admitMapKey, on the value it
 		// decodes to: 1 and 1.0 are two names and one float64.
-		if err := refuseRepeats(m, true); err != nil {
+		if err := astutils.RefuseRepeats(m, true); err != nil {
 			return err
 		}
 	}

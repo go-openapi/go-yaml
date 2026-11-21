@@ -10,9 +10,9 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/go-openapi/go-yaml/codec/internal/codecutils"
-
 	"github.com/go-openapi/go-yaml/codec/internal/astutils"
+
+	"github.com/go-openapi/go-yaml/codec/internal/codecutils"
 
 	"github.com/go-openapi/go-yaml/ast"
 	yamlerrors "github.com/go-openapi/go-yaml/errors"
@@ -189,7 +189,7 @@ func (b *valueBuilder) Leave(node ast.Node, _ parser.Closing) error {
 	case frameMapping:
 		// The parser hangs the repeats on the mapping as it closes, so they are
 		// read here rather than as it opened.
-		if err := refuseDuplicateKeys(node); err != nil {
+		if err := astutils.RefuseDuplicateKeys(node); err != nil {
 			return b.fail(err)
 		}
 		if frame.keyErr != nil {
@@ -805,7 +805,8 @@ func orderedMapOfWalked(value any, n *ast.TagNode) (any, error) {
 			return nil, astutils.NotAnOrderedMap(n.Value)
 		}
 	}
-	if err := refuseOrderedMapDuplicates(orderedMapSequence(n.Value)); err != nil {
+	node, _ := ast.Unwrap(n.Value).(*ast.SequenceNode)
+	if err := astutils.RefuseOrderedMapDuplicates(node); err != nil {
 		return nil, err
 	}
 

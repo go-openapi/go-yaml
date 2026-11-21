@@ -264,6 +264,32 @@ func NewDuplicateKey(msg string, tk *token.Token) *Error {
 	return &Error{kind: ErrDuplicateKey, msg: msg, token: tk}
 }
 
+// NewDuplicateKeyOf reports the repeat d the parse recorded, at tk: [ErrNotJSON] for two keys that write one JSON
+// member, which a parse under [github.com/go-openapi/go-yaml/parser.WithJSONCompatible] records, and
+// [ErrDuplicateKey] for a repeated key or two keys that name one entry. Readers return it for the repeat
+// [ast.FirstRefused] picks.
+func NewDuplicateKeyOf(d ast.DuplicateKey, tk *token.Token) *Error {
+	if d.JSONNameOnly {
+		return NewNotJSON(
+			fmt.Sprintf("two keys write the JSON member %q, first defined at [%d:%d]",
+				d.Name, d.FirstAt.Line, d.FirstAt.Column),
+			tk,
+		)
+	}
+
+	if d.NameOnly {
+		return NewDuplicateKey(
+			fmt.Sprintf("two keys name the entry %q, first defined at [%d:%d]", d.Name, d.FirstAt.Line, d.FirstAt.Column),
+			tk,
+		)
+	}
+
+	return NewDuplicateKey(
+		fmt.Sprintf("mapping key %q already defined at [%d:%d]", d.Name, d.FirstAt.Line, d.FirstAt.Column),
+		tk,
+	)
+}
+
 // NewUnknownField reports msg as a mapping key with no struct field at tk.
 func NewUnknownField(msg string, tk *token.Token) *Error {
 	return &Error{kind: ErrUnknownField, msg: msg, token: tk}
