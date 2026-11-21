@@ -17,7 +17,7 @@ import (
 // ParseBytes reads the YAML stream src with a new [Parser] configured with opts.
 //
 // src is not copied. The returned [ast.File] keeps slices of it, so do not write to src while the file is in use.
-// On error the file is nil.
+// On error the file holds the documents read before the one that failed, as [Parser.Parse] returns them.
 func ParseBytes(src []byte, opts ...Option) (*ast.File, error) {
 	return New(opts...).Parse(src)
 }
@@ -140,7 +140,11 @@ func (p *Parser) Reset(opts ...Option) {
 // Parse reads the YAML stream src and returns its documents as an [ast.File].
 //
 // src is not copied. The file keeps slices of it, so do not write to src while the file is in use.
-// On error the file is nil, and the error carries the source around the failure.
+//
+// On error the file holds the documents read before the one that failed, each complete, and the error carries
+// the source around the failure. A stream is a run of independent documents, so a reader can use the ones before
+// the failure: [github.com/go-openapi/go-yaml/codec.Decoder] decodes them, and returns the error from the
+// document that failed on. The file is nil only when no document was read, as for [ErrParserReused].
 //
 // Parse returns [ErrParserReused] when p has already read a stream since [New] or the last [Parser.Reset].
 func (p *Parser) Parse(src []byte) (*ast.File, error) {
@@ -152,7 +156,7 @@ func (p *Parser) Parse(src []byte) (*ast.File, error) {
 
 	file, err := p.parse(p.newContext())
 	if err != nil {
-		return nil, p.drawUnder(src, err)
+		return file, p.drawUnder(src, err)
 	}
 
 	return file, nil

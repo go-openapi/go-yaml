@@ -116,7 +116,8 @@ func (p *Parser) parse(ctx context) (*ast.File, error) {
 		p.openWalkDocument(len(file.Docs))
 		doc, ok, err := p.parseDocument(ctx)
 		if err != nil {
-			return nil, err
+			// The documents read before this one are complete, and Parse hands them back with the error.
+			return file, err
 		}
 		if !ok {
 			break

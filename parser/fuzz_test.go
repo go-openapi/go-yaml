@@ -28,8 +28,15 @@ func FuzzParserParseBytes(f *testing.F) {
 		for name, opts := range parseModes {
 			file, err := parser.ParseBytes([]byte(src), opts...)
 			if err != nil {
-				// A rejected document must be rejected, not half-built.
-				assert.Nilf(t, file, "%s: both a file and an error for %q", name, src)
+				// A rejected stream comes back with the documents before the one that failed, each complete:
+				// rendering them must not panic, and a second parse must return the same ones and the same error.
+				require.NotNilf(t, file, "%s: no file with the error for %q", name, src)
+				rendered := file.String()
+
+				again, againErr := parser.ParseBytes([]byte(src), opts...)
+				require.Errorf(t, againErr, "%s: parse is not stable for %q", name, src)
+				assert.Equalf(t, err.Error(), againErr.Error(), "%s: the error is not stable for %q", name, src)
+				assert.Equalf(t, rendered, again.String(), "%s: the documents before the error are not stable for %q", name, src)
 
 				continue
 			}

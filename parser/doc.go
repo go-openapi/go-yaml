@@ -30,7 +30,9 @@
 //
 // # Errors
 //
-// A document that can't parse returns a nil [ast.File] and an error that carries the source around the failure.
+// A document that can't parse returns an error that carries the source around the failure.
+// [Parser.Parse] returns with it an [ast.File] holding the documents read before the one that failed;
+// [Parser.Walk] returns none.
 // Match it with [errors.Is]:
 //
 //   - [github.com/go-openapi/go-yaml/errors.ErrSyntax] for a document the scanner or the parser cannot read;
