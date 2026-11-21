@@ -371,6 +371,9 @@ func (t *jsonTokener) closeKey(node ast.Node, at parser.Cursor) bool {
 	mark := t.keys[n-1]
 	t.keys = t.keys[:n-1]
 	t.suppress--
+	if mark.merge {
+		return true
+	}
 
 	name := t.keyName(mark.node)
 	if _, anchored := mark.node.(*ast.AnchorNode); anchored {

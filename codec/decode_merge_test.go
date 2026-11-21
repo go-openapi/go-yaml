@@ -652,3 +652,55 @@ func TestAMergeSequenceReadsEachMappingWhole(t *testing.T) {
 		})
 	}
 }
+
+// TestAnAnchoredMergeKeyMergesOnEveryReader reads "<<" under an anchor written as its key, plain and tagged, in block
+// and flow, on the walk, the tree, the typed walk and ToJSON. Each merges. The walk hands the anchor over before the
+// "<<" under it: the value walk wrote "<<" as a key, and ToJSON named the entry after a tagged "!!merge <<" and
+// refused the tag.
+func TestAnAnchoredMergeKeyMergesOnEveryReader(t *testing.T) {
+	type inner struct {
+		K   int `yaml:"k"`
+		Own int `yaml:"own"`
+		Z   int `yaml:"z"`
+	}
+	type doc struct {
+		C inner `yaml:"c"`
+	}
+
+	for name, tc := range map[string]struct {
+		src  string
+		want map[string]any
+	}{
+		"anchored":                 {"%YAML 1.1\n---\nx: &x {k: 1}\nc:\n  &a <<: *x\n  own: 2\n", map[string]any{"k": uint64(1), "own": uint64(2)}},
+		"anchored and tagged":      {"x: &x {k: 1}\nc:\n  &a !!merge <<: *x\n  own: 2\n", map[string]any{"k": uint64(1), "own": uint64(2)}},
+		"anchored in flow":         {"%YAML 1.1\n---\nx: &x {k: 1}\nc: {&a <<: *x, own: 2}\n", map[string]any{"k": uint64(1), "own": uint64(2)}},
+		"anchored over a sequence": {"%YAML 1.1\n---\nx: &x {k: 1}\nc:\n  &a <<: [*x, {z: 3}]\n  own: 2\n", map[string]any{"k": uint64(1), "own": uint64(2), "z": uint64(3)}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			// Into an any, which the walk fills. A map destination takes the tree.
+			var walked any
+			require.NoError(t, codec.Unmarshal([]byte(tc.src), &walked))
+			root, ok := walked.(map[string]any)
+			require.True(t, ok)
+			assert.Equal(t, tc.want, root["c"], "walk")
+
+			var tree map[string]map[string]any
+			require.NoError(t, codec.Unmarshal([]byte(tc.src), &tree))
+			assert.Equal(t, tc.want, tree["c"], "tree")
+
+			var typed doc
+			require.NoError(t, codec.Unmarshal([]byte(tc.src), &typed))
+			assert.Equal(t, 1, typed.C.K, "typed walk")
+			assert.Equal(t, 2, typed.C.Own, "typed walk")
+
+			out, err := codec.ToJSON([]byte(tc.src))
+			require.NoError(t, err)
+			var fromJSON struct {
+				C map[string]any `json:"c"`
+			}
+			require.NoError(t, json.Unmarshal(out, &fromJSON))
+			assert.Len(t, fromJSON.C, len(tc.want), "ToJSON: %s", out)
+			assert.NotContains(t, string(out), "<<", "ToJSON: %s", out)
+		})
+	}
+}

@@ -133,6 +133,12 @@ func (t *jsonTokener) Enter(node ast.Node, at parser.Cursor) error {
 	if key, isKey := node.(ast.MapKeyNode); isKey && key.IsMergeKey() {
 		// "<<" names no key of its own: what it brings in goes over at the end
 		// of the mapping, where the keys the mapping writes itself are known.
+		//
+		// An anchor written as the key, "&a <<: *b", is handed over before the "<<" under it and left after it.
+		// Its mark is kept from naming an entry when it closes.
+		if n := len(t.keys); n > 0 && t.keys[n-1].depth == at.Depth()-1 {
+			t.keys[n-1].merge = true
+		}
 		if frame := t.frame(); frame != nil {
 			frame.mergeValue = true
 			frame.mergeSeq = -1
@@ -246,6 +252,8 @@ func (t *jsonTokener) Leave(node ast.Node, at parser.Closing) error {
 type tokenKeyMark struct {
 	node  ast.Node
 	depth int
+	// merge says the wrapper stands on a "<<", which names no entry: "&a <<: *b".
+	merge bool
 }
 
 // tokenTagMark is one tag open: how many tokens had gone over when it opened,

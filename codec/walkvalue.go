@@ -111,6 +111,8 @@ type buildFrame struct {
 	// property
 	node     ast.Node
 	received any
+	// mergeKey says the property stands as a key on a "<<": it names no entry. See markMerge.
+	mergeKey bool
 	got      bool
 }
 
@@ -127,9 +129,7 @@ func (b *valueBuilder) Enter(node ast.Node, at parser.Cursor) error {
 	if key, isKey := node.(ast.MapKeyNode); isKey && key.IsMergeKey() {
 		// "<<" names no key of its own: what it brings in is folded into the
 		// mapping when the value below it arrives.
-		if n := len(b.stack); n > 0 && b.stack[n-1].kind == frameMapping {
-			b.stack[n-1].merging = true
-		}
+		b.markMerge()
 
 		return parser.ErrSkipNode
 	}
@@ -195,6 +195,15 @@ func (b *valueBuilder) Leave(node ast.Node, _ parser.Closing) error {
 	case frameSequence:
 		b.deliver(frame.seq, node, frame.asKey)
 	case frameProperty:
+		if frame.mergeKey {
+			// The property stood on a "<<", which names no entry: nothing goes to the mapping, and its anchor
+			// names no value.
+			if _, anchored := frame.node.(*ast.AnchorNode); anchored && len(b.open) > 0 {
+				b.open = b.open[:len(b.open)-1]
+			}
+
+			return b.err
+		}
 		v, err := b.closeProperty(frame)
 		if err != nil {
 			return b.fail(err)
@@ -205,6 +214,25 @@ func (b *valueBuilder) Leave(node ast.Node, _ parser.Closing) error {
 	}
 
 	return b.err
+}
+
+// markMerge records that a "<<" opens the next entry of the mapping being built.
+//
+// The "<<" may stand under an anchor written as the key, "&a <<: *b": the walk hands the anchor over before the node
+// it names, so the anchor's frame is on top when the "<<" arrives. The mapping is the frame below the key's
+// properties, and those properties are marked so they hand no key over as they close.
+func (b *valueBuilder) markMerge() {
+	i := len(b.stack) - 1
+	for i >= 0 && b.stack[i].kind == frameProperty && b.stack[i].asKey {
+		i--
+	}
+	if i < 0 || b.stack[i].kind != frameMapping {
+		return
+	}
+	b.stack[i].merging = true
+	for j := i + 1; j < len(b.stack); j++ {
+		b.stack[j].mergeKey = true
+	}
 }
 
 // closeProperty turns what a property's node built into what the property makes
