@@ -9,6 +9,8 @@ import (
 	"reflect"
 	"runtime"
 
+	"github.com/go-openapi/go-yaml/codec/internal/codecutils"
+
 	"github.com/go-openapi/go-yaml/ast"
 	"github.com/go-openapi/go-yaml/parser"
 )
@@ -46,7 +48,7 @@ type walkState struct {
 	values  *valueBuilder
 	anyInto reflect.Value
 	// declared are the anchors parser.WithAnchors passed, and budget bounds the
-	// values copied for an alias over the whole stream. See aliasBudget.
+	// values copied for an alias over the whole stream. See codecutils.AliasBudget.
 	declared map[string]ast.Node
 	share    bool
 	budget   int
@@ -91,7 +93,7 @@ func newWalkStream(d *Decoder, src []byte) *walkStream {
 
 func newWalkState(d *Decoder, src []byte) *walkState {
 	p := parser.New(append(d.parserOptions(), parser.WithOmitNodePaths())...)
-	budget := aliasBudget(len(src))
+	budget := codecutils.AliasBudget(len(src))
 	st := &walkState{
 		p:        p,
 		declared: p.DeclaredAnchors(),
@@ -124,7 +126,7 @@ func unmarshalWalking(d *Decoder, src []byte, v reflect.Value) (*walkState, erro
 		return st, st.err
 	}
 	if st.delivered == 0 {
-		setZero(v.Elem())
+		codecutils.SetZero(v.Elem())
 	}
 
 	return st, st.docErr
@@ -152,7 +154,7 @@ func (w *walkStream) decode(v reflect.Value) error {
 	case st.delivered == 0:
 		// An empty stream holds no document, and the destination takes its
 		// zero, as on the tree.
-		setZero(v.Elem())
+		codecutils.SetZero(v.Elem())
 	}
 
 	return errEndOfStream
@@ -228,7 +230,7 @@ func (st *walkState) reset(v reflect.Value) {
 	st.broken = nil
 
 	dst := v.Elem()
-	if holdsAnything(dst) {
+	if codecutils.HoldsAnything(dst) {
 		st.anyInto = dst
 		st.values = &valueBuilder{share: st.share, budget: st.budget, declared: st.declared}
 
@@ -243,7 +245,7 @@ func (st *walkState) reset(v reflect.Value) {
 func (st *walkState) settle(empty bool) {
 	if st.values == nil {
 		if empty {
-			setZero(st.b.root)
+			codecutils.SetZero(st.b.root)
 		}
 
 		return
@@ -251,7 +253,7 @@ func (st *walkState) settle(empty bool) {
 
 	dst := st.anyInto
 	if empty || len(st.values.docs) == 0 || !dst.CanSet() {
-		setZero(dst)
+		codecutils.SetZero(dst)
 
 		return
 	}
@@ -260,7 +262,7 @@ func (st *walkState) settle(empty bool) {
 	if built := st.values.docs[len(st.values.docs)-1]; built != nil {
 		dst.Set(reflect.ValueOf(built))
 	} else {
-		setZero(dst)
+		codecutils.SetZero(dst)
 	}
 }
 

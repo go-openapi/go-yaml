@@ -22,6 +22,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/go-openapi/go-yaml/codec/internal/codecutils"
+
 	"github.com/go-openapi/go-yaml/codec/internal/astutils"
 
 	"github.com/go-openapi/go-yaml/ast"
@@ -106,7 +108,7 @@ type Decoder struct {
 	// the document so that the values outlive it.
 	strs arena
 	// built counts what this decode has made, and budget bounds it. See
-	// aliasBudget. expanding is the outermost alias being read through, and
+	// codecutils.AliasBudget. expanding is the outermost alias being read through, and
 	// expanded the last one, which a refusal names.
 	built       int
 	budget      int
@@ -160,7 +162,7 @@ const (
 // conversion of YAML into a Go value.
 func (d *Decoder) Decode(v any) error {
 	rv := reflect.ValueOf(v)
-	if !isPointer(rv) {
+	if !codecutils.IsPointer(rv) {
 		return yamlerrors.ErrDecodeRequiredPointerType
 	}
 	if d.streamErr != nil {
@@ -193,7 +195,7 @@ func (d *Decoder) Decode(v any) error {
 // DecodeFromNode decodes node into the value pointed to by v.
 func (d *Decoder) DecodeFromNode(node ast.Node, v any) error {
 	rv := reflect.ValueOf(v)
-	if !isPointer(rv) {
+	if !codecutils.IsPointer(rv) {
 		return yamlerrors.ErrDecodeRequiredPointerType
 	}
 	if !d.isInitialized() {
@@ -204,7 +206,7 @@ func (d *Decoder) DecodeFromNode(node ast.Node, v any) error {
 	}
 	// A node has no source of its own, and decodeInit budgeted the reader's,
 	// so each call budgets the node it is given and starts its count afresh.
-	d.built, d.budget = 0, aliasBudget(astutils.CountNodes(node))
+	d.built, d.budget = 0, codecutils.AliasBudget(astutils.CountNodes(node))
 	d.expanding, d.expanded = nil, nil
 	// resolve references to the anchor on the same file
 	if _, err := d.nodeToValue(node); err != nil {
@@ -359,7 +361,7 @@ func (d *Decoder) refuseOverBudget(at ast.Node) error {
 }
 
 func (d *Decoder) castToFloat(v any) any {
-	return castToFloatValue(v)
+	return codecutils.CastToFloatValue(v)
 }
 
 func (d *Decoder) mapKeyNodeToString(node ast.MapKeyNode) (string, error) {
@@ -392,7 +394,7 @@ func (d *Decoder) mapKeyNodeToValue(node ast.MapKeyNode) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	if d.useStringKeys || !hashableKey(key) {
+	if d.useStringKeys || !codecutils.HashableKey(key) {
 		name, err := astutils.MapKeyString(node, key)
 		if err != nil {
 			return nil, err
@@ -803,7 +805,7 @@ func (d *Decoder) nodeToValue(node ast.Node) (any, error) {
 			// value and every alias got it; without one, nothing recorded it
 			// and each alias decoded the node afresh.
 			//
-			// aliasBudget bounds what this costs.
+			// codecutils.AliasBudget bounds what this costs.
 			if d.expanding == nil {
 				d.expanding, d.expanded = n, n
 				defer func() { d.expanding = nil }()
@@ -1109,14 +1111,14 @@ func (d *Decoder) mergeKeyValue(node ast.Node) (any, error) {
 }
 
 func (d *Decoder) convertValue(v reflect.Value, typ reflect.Type, src ast.Node) (reflect.Value, error) {
-	if converted, ok := convertBigNumber(v, typ); ok {
+	if converted, ok := codecutils.ConvertBigNumber(v, typ); ok {
 		return converted, nil
 	}
-	if isBigNumber(v) && isFloatKind(typ.Kind()) {
+	if codecutils.IsBigNumber(v) && codecutils.IsFloatKind(typ.Kind()) {
 		return reflect.Value{}, yamlerrors.NewOverflow(typ, fmt.Sprint(v.Interface()), src.GetToken())
 	}
 	if typ.Kind() != reflect.String {
-		return convertToKind(v, typ, src)
+		return codecutils.ConvertToKind(v, typ, src)
 	}
 	// cast value to string
 	var strVal string
@@ -1330,7 +1332,7 @@ func (d *Decoder) decodeByUnmarshaler(dst reflect.Value, src ast.Node) error {
 	if unmarshaler, ok := iface.(GoYAMLUnmarshaler); ok {
 		if err := unmarshaler.UnmarshalYAML(func(v any) error {
 			rv := reflect.ValueOf(v)
-			if !isPointer(rv) {
+			if !codecutils.IsPointer(rv) {
 				return yamlerrors.ErrDecodeRequiredPointerType
 			}
 			if err := d.decodeValue(rv.Elem(), src); err != nil {
@@ -1442,7 +1444,7 @@ func (d *Decoder) decodeValue(dst reflect.Value, src ast.Node) error {
 		}
 		v := d.createDecodableValue(dst.Type())
 		decodeErr := d.decodeValue(v, src)
-		castedValue, err := castToAssignableValue(v, dst.Type(), src)
+		castedValue, err := codecutils.CastToAssignableValue(v, dst.Type(), src)
 		if err != nil {
 			return errors.Join(decodeErr, err)
 		}
@@ -1622,7 +1624,7 @@ func (d *Decoder) keyToKeyNodeMap(node ast.Node, ignoreMergeKey bool) (map[strin
 func (d *Decoder) aliasedValue(alias *ast.AliasNode, typ reflect.Type) (reflect.Value, ast.Node, bool) {
 	target, name := d.aliasTarget(alias)
 	if value := d.anchorValueMap[name]; value.IsValid() && (d.shareAliases || target == nil) {
-		if v, err := castToAssignableValue(value, typ, alias); err == nil {
+		if v, err := codecutils.CastToAssignableValue(value, typ, alias); err == nil {
 			return v, nil, true
 		}
 	}
@@ -1667,14 +1669,14 @@ func (d *Decoder) createDecodedNewValue(
 			// writes it. Handing back nothing threw away a nested struct's other
 			// fields, and a map's caller lost the entry, which SetMapIndex
 			// deletes for an invalid value.
-			if v, castErr := castToAssignableValue(newValue, typ, node); castErr == nil {
+			if v, castErr := codecutils.CastToAssignableValue(newValue, typ, node); castErr == nil {
 				return v, err
 			}
 
 			return reflect.Value{}, err
 		}
 	}
-	return castToAssignableValue(newValue, typ, node)
+	return codecutils.CastToAssignableValue(newValue, typ, node)
 }
 
 func (d *Decoder) keyToNodeMap(node ast.Node, ignoreMergeKey bool, getKeyOrValueNode func(*ast.MapNodeIter) ast.Node) (map[string]ast.Node, error) {
@@ -2099,7 +2101,7 @@ func (l located) name(structType reflect.Type) string {
 // fieldFor finds the field a mapping key names.
 //
 // A type that embeds another is read through readFields.flat, which names every
-// field the embedding promotes and holds the index path to reach it; fieldAt
+// field the embedding promotes and holds the index path to reach it; codecutils.FieldAt
 // fills the pointers along the way. A type that embeds nothing takes the direct
 // lookup and no index path at all, which is the common case and the fast one.
 func fieldFor(dst reflect.Value, fields *readFields, name string) (located, error) {
@@ -2111,9 +2113,9 @@ func fieldFor(dst reflect.Value, fields *readFields, name string) (located, erro
 		return located{value: dst.Field(ff.sf.Index), sf: ff.sf, ord: ff.ord}, nil
 	}
 
-	field, ok := fieldAt(dst, ff.at)
+	field, ok := codecutils.FieldAt(dst, ff.at)
 	if !ok {
-		// fieldAt could not make a pointer standing between, which happens
+		// codecutils.FieldAt could not make a pointer standing between, which happens
 		// where an embedded pointer is unexported. encoding/json refuses the
 		// same shape.
 		return located{}, fmt.Errorf(
@@ -2315,7 +2317,7 @@ func (d *Decoder) decodeInlineFields(
 				return err
 			}
 		}
-		setDecoded(fieldValue, newFieldValue)
+		codecutils.SetDecoded(fieldValue, newFieldValue)
 		if stopsTheDocument(err) {
 			return err
 		}
@@ -2344,7 +2346,7 @@ func (d *Decoder) setAliasedField(fieldValue reflect.Value, aliasName string) er
 	if !anchored.IsValid() {
 		return nil
 	}
-	value, err := castToAssignableValue(anchored, fieldValue.Type(), d.anchorNodeMap[aliasName])
+	value, err := codecutils.CastToAssignableValue(anchored, fieldValue.Type(), d.anchorNodeMap[aliasName])
 	if err != nil {
 		return err
 	}
@@ -2514,7 +2516,7 @@ func (d *Decoder) decodeStruct(dst reflect.Value, src ast.Node) error {
 		prevEntry := d.enterEntry(entryNode)
 		newFieldValue, err := d.createDecodedNewValue(fieldValue.Type(), fieldValue, valueNode)
 		d.entry = prevEntry
-		setDecoded(fieldValue, newFieldValue)
+		codecutils.SetDecoded(fieldValue, newFieldValue)
 		if stopsTheDocument(err) {
 			return err
 		}
@@ -2639,11 +2641,11 @@ func (d *Decoder) decodeArray(dst reflect.Value, src ast.Node) error {
 		return yamlerrors.ErrExceededMaxDepth
 	}
 
-	if b, ok := d.binaryBytes(src); ok && byteArray(dst.Type()) {
+	if b, ok := d.binaryBytes(src); ok && codecutils.ByteArray(dst.Type()) {
 		// "!!binary" into a byte array, as decodeSlice reads one into a byte
 		// slice. The text is a scalar, so the array reader below refused it
 		// with "string was used where sequence is expected".
-		return copyIntoByteArray(dst, b, src)
+		return codecutils.CopyIntoByteArray(dst, b, src)
 	}
 
 	arrayNode, err := d.getArrayNode(src)
@@ -2693,7 +2695,7 @@ func (d *Decoder) decodeSlice(dst reflect.Value, src ast.Node) error {
 		return yamlerrors.ErrExceededMaxDepth
 	}
 
-	if b, ok := d.binaryBytes(src); ok && byteSlice(dst.Type()) {
+	if b, ok := d.binaryBytes(src); ok && codecutils.ByteSlice(dst.Type()) {
 		dst.Set(reflect.ValueOf(b).Convert(dst.Type()))
 
 		return nil
@@ -2806,7 +2808,7 @@ func (d *Decoder) admitMapKey(mapValue reflect.Value, keyMap map[any]struct{}, k
 		return false, nil
 	}
 	if !k.Comparable() {
-		return false, yamlerrors.NewUnhashableKey(dynamicTypeOf(k), key.GetToken())
+		return false, yamlerrors.NewUnhashableKey(codecutils.DynamicTypeOf(k), key.GetToken())
 	}
 	if folded {
 		return mapValue.MapIndex(k).IsValid(), nil
@@ -3353,7 +3355,7 @@ func (d *Decoder) canWalk(v reflect.Value) bool {
 	}
 
 	dst := v.Elem()
-	if holdsAnything(dst) {
+	if codecutils.HoldsAnything(dst) {
 		// UseStringKeys names every key by its text, which mapKeyNodeToValue
 		// does on the tree. valueBuilder keys a mapping by what each key
 		// resolves to, so it would give "1: a" the key uint64(1) whatever the
@@ -3383,7 +3385,7 @@ func (d *Decoder) decodeInit(v reflect.Value) error {
 			return err
 		}
 	}
-	src, err := readAll(d.reader)
+	src, err := codecutils.ReadAll(d.reader)
 	if err != nil {
 		return err
 	}
@@ -3392,7 +3394,7 @@ func (d *Decoder) decodeInit(v reflect.Value) error {
 	// the tree was built from rather than copying them again.
 	d.source = yamlerrors.Source{Text: nocopy.String(src), FirstLine: 1}
 	d.src = src
-	d.built, d.budget = 0, aliasBudget(len(src))
+	d.built, d.budget = 0, codecutils.AliasBudget(len(src))
 	d.expanding, d.expanded = nil, nil
 
 	if d.canWalk(v) {

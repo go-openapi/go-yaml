@@ -7,6 +7,8 @@ import (
 	"io"
 	"reflect"
 
+	"github.com/go-openapi/go-yaml/codec/internal/codecutils"
+
 	"github.com/go-openapi/go-yaml/ast"
 	yamlerrors "github.com/go-openapi/go-yaml/errors"
 	"github.com/go-openapi/go-yaml/internal/yamlpath"
@@ -295,7 +297,7 @@ func CustomUnmarshaler[T any](unmarshaler func(*T, []byte) error) DecodeOption {
 	return func(d *Decoder) error {
 		var typ *T
 		d.customUnmarshalerMap[reflect.TypeOf(typ)] = func(v any, b []byte) error {
-			return unmarshaler(customArg[*T](v), b)
+			return unmarshaler(codecutils.CustomArg[*T](v), b)
 		}
 		return nil
 	}
@@ -437,7 +439,7 @@ func CustomMarshaler[T any](marshaler func(T) ([]byte, error)) EncodeOption {
 	return func(e *Encoder) error {
 		var typ T
 		e.customMarshalerMap[reflect.TypeOf(typ)] = func(v any) ([]byte, error) {
-			return marshaler(customArg[T](v))
+			return marshaler(codecutils.CustomArg[T](v))
 		}
 		return nil
 	}

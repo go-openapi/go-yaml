@@ -304,7 +304,7 @@ func TestADirectiveKeepsTheWalk(t *testing.T) {
 //
 // Without the option an alias decodes its anchor's node again, so two aliases
 // give two values. With it an alias takes the anchor's own value wherever
-// castToAssignableValue accepts it, as the tree does, and decodes the node again
+// codecutils.CastToAssignableValue accepts it, as the tree does, and decodes the node again
 // where it does not: an anchor written into a map[string]string has nothing to
 // hand to a map[string]any.
 func TestAnAliasKeepsTheWalk(t *testing.T) {

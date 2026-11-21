@@ -10,6 +10,8 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/go-openapi/go-yaml/codec/internal/codecutils"
+
 	"github.com/go-openapi/go-yaml/ast"
 	yamlerrors "github.com/go-openapi/go-yaml/errors"
 	"github.com/go-openapi/go-yaml/token"
@@ -193,7 +195,7 @@ func keyTokenAt(m *ast.MappingNode, d ast.DuplicateKey) *token.Token {
 // and so are one instant in two zones. The parser refuses a mapping that
 // writes one such key twice, and a merge or MapSlice.Set has to agree with it.
 func sameMapKey(a, b any) bool {
-	if !hashableKey(a) || !hashableKey(b) {
+	if !codecutils.HashableKey(a) || !codecutils.HashableKey(b) {
 		return reflect.DeepEqual(a, b)
 	}
 	if a == b {
@@ -215,7 +217,7 @@ func sameMapKey(a, b any) bool {
 // and gives the same answer for the value a key node decodes to:
 // TestAKeyNodeAndItsValueHaveOneIdentity holds the two together over the
 // corpus. A string is its text, a Base64 its canonical base64 text, a
-// time.Time its instant in UTC, and a number [numberKey]'s name.
+// time.Time its instant in UTC, and a number [codecutils.NumberKey]'s name.
 func keyIDOf(v any) (token.KeyKind, string, bool) {
 	switch k := v.(type) {
 	case nil:
@@ -230,7 +232,7 @@ func keyIDOf(v any) (token.KeyKind, string, bool) {
 		return token.KeyTimestamp, k.UTC().Format(time.RFC3339Nano), true
 	}
 
-	return numberKey(v)
+	return codecutils.NumberKey(v)
 }
 
 // comparesByValue reports whether a decoded key can be one YAML key with a key

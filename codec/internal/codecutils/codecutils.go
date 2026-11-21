@@ -1,7 +1,11 @@
 // SPDX-FileCopyrightText: Copyright 2025 go-swagger maintainers
 // SPDX-License-Identifier: Apache-2.0
 
-package codec
+// Package codecutils holds the codec's helpers that read and convert Go values: reflection on destinations,
+// numbers that do not fit a machine word, the identity of a map key, the alias budget, reading a source whole.
+//
+// They know nothing of the codec's own types. The helpers that name a key by its Base64 text stay in the codec.
+package codecutils
 
 import (
 	"bytes"
@@ -18,10 +22,10 @@ import (
 	"github.com/go-openapi/go-yaml/token"
 )
 
-// aliasBudgetFloor is the budget of an empty document, which aliasBudget adds 32 a byte to.
+// aliasBudgetFloor is the budget of an empty document, which AliasBudget adds 32 a byte to.
 const aliasBudgetFloor = 1024
 
-// aliasBudget bounds what a decode may build from a document of n bytes.
+// AliasBudget bounds what a decode may build from a document of n bytes.
 //
 // An alias names a node and the value it stands for is built again wherever the
 // alias appears, so a chain of them multiplies rather than adds: 259 bytes of
@@ -38,12 +42,12 @@ const aliasBudgetFloor = 1024
 // interface hands the same value to every alias of one anchor and so builds
 // nothing extra, which is why that path does not reach this and why it reads a
 // 423-byte document naming 387 million values in no time at all.
-func aliasBudget(n int) int {
+func AliasBudget(n int) int {
 	return aliasBudgetFloor + 32*n
 }
 
-// castToFloatValue is castToFloat without a decoder, for the walking builder.
-func castToFloatValue(v any) any {
+// CastToFloatValue is castToFloat without a decoder, for the walking builder.
+func CastToFloatValue(v any) any {
 	switch vv := v.(type) {
 	case int:
 		return float64(vv)
@@ -132,20 +136,20 @@ func floatOf(v *big.Float) (float64, bool) {
 	return f, true
 }
 
-// isPointer reports whether rv holds a pointer a decode can write through.
+// IsPointer reports whether rv holds a pointer a decode can write through.
 // A nil target holds nothing, and reflect panics on asking its type.
-func isPointer(rv reflect.Value) bool {
+func IsPointer(rv reflect.Value) bool {
 	return rv.IsValid() && rv.Kind() == reflect.Pointer
 }
 
-// hashableKey reports whether a decoded key can stand as a Go map key.
+// HashableKey reports whether a decoded key can stand as a Go map key.
 //
 // reflect.Type.Comparable and not a switch on the kind: a slice, a map and a
 // func are the kinds Go cannot hash, but a struct or an array holding one of
 // them cannot be hashed either, and the kind alone reads "struct". A MapSlice
 // is such a struct, so a mapping keyed on a mapping read under UseOrderedMap
 // passed the switch and panicked comparing two of them.
-func hashableKey(key any) bool {
+func HashableKey(key any) bool {
 	if key == nil {
 		return true
 	}
@@ -153,11 +157,11 @@ func hashableKey(key any) bool {
 	return reflect.TypeOf(key).Comparable()
 }
 
-// numberKey returns the kind and the canonical name a Go number is keyed by in
+// NumberKey returns the kind and the canonical name a Go number is keyed by in
 // YAML, and whether v is a number at all. The names are the ones the parser
 // gives the same number written in a document: [token.KeyNameOfFloat] and
 // [token.KeyNameOfBigFloat] for a float, the decimal digits for an integer.
-func numberKey(v any) (token.KeyKind, string, bool) {
+func NumberKey(v any) (token.KeyKind, string, bool) {
 	switch n := v.(type) {
 	case *big.Int:
 		if n == nil {
@@ -188,15 +192,15 @@ func numberKey(v any) (token.KeyKind, string, bool) {
 	}
 }
 
-// byteArray reports whether t is an array of bytes, which a "!!binary" fills as
+// ByteArray reports whether t is an array of bytes, which a "!!binary" fills as
 // it fills a byte slice.
-func byteArray(t reflect.Type) bool {
+func ByteArray(t reflect.Type) bool {
 	return t.Kind() == reflect.Array && t.Elem().Kind() == reflect.Uint8
 }
 
-// copyIntoByteArray fills a byte array from b, and reports a length the array
+// CopyIntoByteArray fills a byte array from b, and reports a length the array
 // cannot hold rather than writing part of it.
-func copyIntoByteArray(dst reflect.Value, b []byte, src ast.Node) error {
+func CopyIntoByteArray(dst reflect.Value, b []byte, src ast.Node) error {
 	if len(b) != dst.Len() {
 		return yamlerrors.NewSyntax(
 			fmt.Sprintf("a %d byte array cannot hold the %d bytes this !!binary carries", dst.Len(), len(b)),
@@ -208,15 +212,15 @@ func copyIntoByteArray(dst reflect.Value, b []byte, src ast.Node) error {
 	return nil
 }
 
-// byteSlice reports whether t is a slice of bytes a []byte converts to. A
+// ByteSlice reports whether t is a slice of bytes a []byte converts to. A
 // []MyByte is not one: Go converts between slice types only where the element
 // types are identical.
-func byteSlice(t reflect.Type) bool {
+func ByteSlice(t reflect.Type) bool {
 	return t.Kind() == reflect.Slice && reflect.TypeFor[[]byte]().ConvertibleTo(t)
 }
 
-// isBigNumber reports whether v holds a number wider than a native type.
-func isBigNumber(v reflect.Value) bool {
+// IsBigNumber reports whether v holds a number wider than a native type.
+func IsBigNumber(v reflect.Value) bool {
 	switch v.Interface().(type) {
 	case *big.Int, *big.Float:
 		return true
@@ -225,9 +229,9 @@ func isBigNumber(v reflect.Value) bool {
 	}
 }
 
-func isFloatKind(k reflect.Kind) bool { return k == reflect.Float32 || k == reflect.Float64 }
+func IsFloatKind(k reflect.Kind) bool { return k == reflect.Float32 || k == reflect.Float64 }
 
-// convertBigNumber converts a number the AST read into a [big.Int] or a
+// ConvertBigNumber converts a number the AST read into a [big.Int] or a
 // [big.Float], which it does for one no native type holds.
 //
 // A float destination takes the nearest float64, and is refused where the
@@ -243,7 +247,7 @@ func isFloatKind(k reflect.Kind) bool { return k == reflect.Float32 || k == refl
 //
 // A string destination takes the digits. Anything else is left to convertValue's
 // own rules, which end in a type mismatch.
-func convertBigNumber(v reflect.Value, typ reflect.Type) (reflect.Value, bool) {
+func ConvertBigNumber(v reflect.Value, typ reflect.Type) (reflect.Value, bool) {
 	var (
 		f    float64
 		text string
@@ -285,16 +289,16 @@ func outOfFloatRange(f float64, text string) bool {
 	})
 }
 
-// convertToKind converts v to typ, a type that is not a string kind.
+// ConvertToKind converts v to typ, a type that is not a string kind.
 //
 // A string converts to a float kind when strconv.ParseFloat reads it, which
 // is how a quoted "1e3" fills a float field. The result has typ itself, so a
 // named float type such as `type Ratio float64` is filled as well.
-func convertToKind(v reflect.Value, typ reflect.Type, src ast.Node) (reflect.Value, error) {
+func ConvertToKind(v reflect.Value, typ reflect.Type, src ast.Node) (reflect.Value, error) {
 	if v.Type().ConvertibleTo(typ) {
 		return v.Convert(typ), nil
 	}
-	if isFloatKind(typ.Kind()) && v.Kind() == reflect.String {
+	if IsFloatKind(typ.Kind()) && v.Kind() == reflect.String {
 		if f, err := strconv.ParseFloat(v.String(), 64); err == nil {
 			return reflect.ValueOf(f).Convert(typ), nil
 		}
@@ -303,11 +307,11 @@ func convertToKind(v reflect.Value, typ reflect.Type, src ast.Node) (reflect.Val
 	return reflect.Zero(typ), yamlerrors.NewTypeMismatch(typ, v.Type(), src.GetToken())
 }
 
-// castToAssignableValue returns value in a form a target of type target can hold:
+// CastToAssignableValue returns value in a form a target of type target can hold:
 // value itself where it is assignable, or, for a pointer target, its address,
 // taken up to five times. It reports a type mismatch at src otherwise. This is
 // how an alias reuses its anchor's value under ShareAliases.
-func castToAssignableValue(value reflect.Value, target reflect.Type, src ast.Node) (reflect.Value, error) {
+func CastToAssignableValue(value reflect.Value, target reflect.Type, src ast.Node) (reflect.Value, error) {
 	if target.Kind() != reflect.Pointer {
 		if !value.Type().AssignableTo(target) {
 			return reflect.Value{}, yamlerrors.NewTypeMismatch(target, value.Type(), src.GetToken())
@@ -332,15 +336,15 @@ func castToAssignableValue(value reflect.Value, target reflect.Type, src ast.Nod
 	return value, nil
 }
 
-// setDecoded writes v, what createDecodedNewValue decoded, into dst. v is
+// SetDecoded writes v, what createDecodedNewValue decoded, into dst. v is
 // invalid only where nothing decoded at all, and dst then keeps what it held.
-func setDecoded(dst, v reflect.Value) {
+func SetDecoded(dst, v reflect.Value) {
 	if v.IsValid() {
 		dst.Set(v)
 	}
 }
 
-// readAll returns everything r holds, without copying it where r already has
+// ReadAll returns everything r holds, without copying it where r already has
 // it in one piece.
 //
 // Unmarshal wraps the caller's slice in a bytes.Buffer, so copying it into
@@ -353,7 +357,7 @@ func setDecoded(dst, v reflect.Value) {
 // buffer grows by doubling, so what it hands back may have spare capacity, and
 // the tree pins the whole block; the alternative is a copy the size of the
 // document, which is what this exists to avoid.
-func readAll(r io.Reader) ([]byte, error) {
+func ReadAll(r io.Reader) ([]byte, error) {
 	switch b := r.(type) {
 	case *bytes.Buffer:
 		return b.Bytes(), nil
@@ -374,10 +378,10 @@ func readAll(r io.Reader) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-// dynamicTypeOf returns the type inside an interface value, or v's own type
+// DynamicTypeOf returns the type inside an interface value, or v's own type
 // where v is not one. It names what a key actually holds in an error about a
 // map[any]any.
-func dynamicTypeOf(v reflect.Value) reflect.Type {
+func DynamicTypeOf(v reflect.Value) reflect.Type {
 	if v.Kind() == reflect.Interface && !v.IsNil() {
 		return v.Elem().Type()
 	}
@@ -385,9 +389,9 @@ func dynamicTypeOf(v reflect.Value) reflect.Type {
 	return v.Type()
 }
 
-// appendPointerToken writes one segment of a JSON pointer, escaping the two
+// AppendPointerToken writes one segment of a JSON pointer, escaping the two
 // characters RFC 6901 §3 gives a meaning to.
-func appendPointerToken(dst []byte, s string) []byte {
+func AppendPointerToken(dst []byte, s string) []byte {
 	if !strings.ContainsAny(s, "~/") {
 		return append(dst, s...)
 	}
@@ -405,17 +409,17 @@ func appendPointerToken(dst []byte, s string) []byte {
 	return dst
 }
 
-// namesOrderedMap reports the "!!omap" tag, whatever handle the document spells
+// NamesOrderedMap reports the "!!omap" tag, whatever handle the document spells
 // it with.
-func namesOrderedMap(uri string) bool {
+func NamesOrderedMap(uri string) bool {
 	keyword, ok := token.ReservedTagOf(uri)
 
 	return ok && keyword == token.OrderedMapTag
 }
 
-// namesScalarType reports whether the tag says what a scalar is worth, rather
+// NamesScalarType reports whether the tag says what a scalar is worth, rather
 // than naming a kind and leaving the node to say.
-func namesScalarType(uri string) bool {
+func NamesScalarType(uri string) bool {
 	keyword, ok := token.ReservedTagOf(uri)
 	if !ok {
 		return false
@@ -430,32 +434,32 @@ func namesScalarType(uri string) bool {
 	}
 }
 
-// customArg returns v as the T a custom (un)marshaler was registered for.
+// CustomArg returns v as the T a custom (un)marshaler was registered for.
 //
 // The custom (un)marshaler maps are keyed by the reflect.Type of T and looked
 // up by the type of the value at hand, so v is always a T.
-func customArg[T any](v any) T {
+func CustomArg[T any](v any) T {
 	return v.(T) //nolint:forcetypeassert // the maps are keyed by T's type and looked up by v's
 }
 
-// unusableKey reports a key that cannot address an entry.
-func unusableKey(key any) error {
+// UnusableKey reports a key that cannot address an entry.
+func UnusableKey(key any) error {
 	return fmt.Errorf("cannot use %T as a key: %w", key, yamlerrors.ErrUnhashableKey)
 }
 
-func setZero(dst reflect.Value) {
+func SetZero(dst reflect.Value) {
 	if dst.IsValid() && dst.CanSet() {
 		dst.Set(reflect.Zero(dst.Type()))
 	}
 }
 
-// holdsAnything reports a destination that takes whatever the document writes.
-func holdsAnything(v reflect.Value) bool {
+// HoldsAnything reports a destination that takes whatever the document writes.
+func HoldsAnything(v reflect.Value) bool {
 	return v.Kind() == reflect.Interface && v.Type().NumMethod() == 0
 }
 
-// pointedKind returns the kind of t past its pointers.
-func pointedKind(t reflect.Type) reflect.Kind {
+// PointedKind returns the kind of t past its pointers.
+func PointedKind(t reflect.Type) reflect.Kind {
 	for t.Kind() == reflect.Pointer {
 		t = t.Elem()
 	}
@@ -463,13 +467,13 @@ func pointedKind(t reflect.Type) reflect.Kind {
 	return t.Kind()
 }
 
-// fieldAt walks the index path an embedded field stands at, making the pointers
+// FieldAt walks the index path an embedded field stands at, making the pointers
 // between as it goes. reflect.Value.FieldByIndex panics on a nil one and
 // FieldByIndexErr refuses rather than filling it, and a document writing through
 // an embedded pointer expects it filled.
 //
 // It returns false where a pointer on the way cannot be set, or does not point to a struct.
-func fieldAt(v reflect.Value, at []int) (reflect.Value, bool) {
+func FieldAt(v reflect.Value, at []int) (reflect.Value, bool) {
 	for i, step := range at {
 		if i > 0 {
 			for v.Kind() == reflect.Pointer {
@@ -491,8 +495,8 @@ func fieldAt(v reflect.Value, at []int) (reflect.Value, bool) {
 	return v, true
 }
 
-// isMapValue reports whether v is a mapping the walk built.
-func isMapValue(v any) bool {
+// IsMapValue reports whether v is a mapping the walk built.
+func IsMapValue(v any) bool {
 	switch v.(type) {
 	case map[string]any, map[any]any:
 		return true

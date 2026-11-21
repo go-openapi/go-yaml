@@ -7,6 +7,8 @@ import (
 	"iter"
 	"strconv"
 
+	"github.com/go-openapi/go-yaml/codec/internal/codecutils"
+
 	"github.com/go-openapi/go-yaml/parser"
 	"github.com/go-openapi/go-yaml/token"
 )
@@ -234,7 +236,7 @@ func (s *JSONTokens) AppendPath(dst []byte) []byte {
 
 			continue
 		}
-		dst = appendPointerToken(dst, f.key)
+		dst = codecutils.AppendPointerToken(dst, f.key)
 	}
 
 	return dst

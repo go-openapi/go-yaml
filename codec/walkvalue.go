@@ -10,6 +10,8 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/go-openapi/go-yaml/codec/internal/codecutils"
+
 	"github.com/go-openapi/go-yaml/codec/internal/astutils"
 
 	"github.com/go-openapi/go-yaml/ast"
@@ -454,7 +456,7 @@ func (b *valueBuilder) deliver(v any, node ast.Node, key bool) {
 	case frameMapping:
 		b.deliverToMapping(top, v, node, key)
 	case frameSequence:
-		if top.mergeSource && !isMapValue(v) {
+		if top.mergeSource && !codecutils.IsMapValue(v) {
 			// "<<" takes a mapping or a sequence of them, and nothing else:
 			// not a null, and not a sequence inside the sequence. mergingValue
 			// set the flag only on a sequence the merging mapping holds, so
@@ -628,7 +630,7 @@ func (b *valueBuilder) merge(top *buildFrame, v any, node ast.Node) {
 		}
 	case []any:
 		for _, one := range t {
-			if !isMapValue(one) {
+			if !codecutils.IsMapValue(one) {
 				// Reached through an anchor or an alias, where the element's own
 				// node is not to hand; a sequence written in place was checked
 				// element by element as it was built.
@@ -731,7 +733,7 @@ func (b *valueBuilder) taggedWalkValue(n *ast.TagNode, value any) (any, error) {
 		// keeps the Go type the untagged number decodes to.
 		return taggedInteger(res.Text, res.Schema), nil
 	case token.FloatTag:
-		return castToFloatValue(taggedFloat(res.Text, res.Schema)), nil
+		return codecutils.CastToFloatValue(taggedFloat(res.Text, res.Schema)), nil
 	case token.BooleanTag:
 		// Resolve has agreed there is a boolean to read, in whatever case the
 		// document wrote it.

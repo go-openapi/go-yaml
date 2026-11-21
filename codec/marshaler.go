@@ -10,6 +10,8 @@ import (
 	"reflect"
 	"sync"
 
+	"github.com/go-openapi/go-yaml/codec/internal/codecutils"
+
 	"github.com/go-openapi/go-yaml/ast"
 	"github.com/go-openapi/go-yaml/token"
 )
@@ -153,7 +155,7 @@ func RegisterCustomMarshaler[T any](marshaler func(T) ([]byte, error)) {
 
 	var typ T
 	globalCustomMarshalerMap[reflect.TypeOf(typ)] = func(v any) ([]byte, error) {
-		return marshaler(customArg[T](v))
+		return marshaler(codecutils.CustomArg[T](v))
 	}
 }
 
@@ -168,7 +170,7 @@ func RegisterCustomUnmarshaler[T any](unmarshaler func(*T, []byte) error) {
 
 	var typ *T
 	globalCustomUnmarshalerMap[reflect.TypeOf(typ)] = func(v any, b []byte) error {
-		return unmarshaler(customArg[*T](v), b)
+		return unmarshaler(codecutils.CustomArg[*T](v), b)
 	}
 	// A type walkableType read before the registration may hold T.
 	for mode := range walkableTypes {

@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: Copyright 2025 go-swagger maintainers
 // SPDX-License-Identifier: Apache-2.0
 
-package codec
+package codecutils
 
 import (
 	"bytes"
@@ -15,11 +15,11 @@ import (
 //
 // Unmarshal wraps the caller's slice in a bytes.Buffer, and the parser keeps
 // windows into what it parses, so a copy here would be one the whole tree then
-// holds. This fails the moment readAll starts allocating again.
+// holds. This fails the moment ReadAll starts allocating again.
 func TestReadAllDoesNotCopyWhatItIsGiven(t *testing.T) {
 	data := []byte("a: 1\nb: two\n")
 
-	got, err := readAll(bytes.NewBuffer(data))
+	got, err := ReadAll(bytes.NewBuffer(data))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -36,7 +36,7 @@ func TestReadAllDoesNotCopyWhatItIsGiven(t *testing.T) {
 func TestReadAllReadsWhatIsNotASlice(t *testing.T) {
 	const doc = "a: 1\nb: two\n"
 
-	got, err := readAll(strings.NewReader(doc))
+	got, err := ReadAll(strings.NewReader(doc))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -50,7 +50,7 @@ func TestReadAllReadsWhatIsNotASlice(t *testing.T) {
 func TestReadAllReadsAByteReader(t *testing.T) {
 	data := []byte("a: 1\n")
 
-	got, err := readAll(bytes.NewReader(data))
+	got, err := ReadAll(bytes.NewReader(data))
 	if err != nil {
 		t.Fatal(err)
 	}

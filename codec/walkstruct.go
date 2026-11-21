@@ -11,6 +11,8 @@ import (
 	"slices"
 	"time"
 
+	"github.com/go-openapi/go-yaml/codec/internal/codecutils"
+
 	"github.com/go-openapi/go-yaml/codec/internal/astutils"
 
 	"github.com/go-openapi/go-yaml/ast"
@@ -151,7 +153,7 @@ type typedBuilder struct {
 	anyInto reflect.Value
 	share   bool
 	// budget bounds the nodes decoded again for an alias over the whole
-	// stream, and built counts them. See aliasBudget.
+	// stream, and built counts them. See codecutils.AliasBudget.
 	budget int
 	built  int
 	// anchors holds what each anchor of the document named, and is emptied at
@@ -242,7 +244,7 @@ func (b *typedBuilder) Enter(node ast.Node, at parser.Cursor) error {
 	// Read where this goes once and hand it on: destination makes a sequence's
 	// entry as it is asked for, so asking twice makes two.
 	dst, wanted := b.destination()
-	if wanted && holdsAnything(dst) {
+	if wanted && codecutils.HoldsAnything(dst) {
 		b.anyInto = dst
 		b.values = &valueBuilder{share: b.share, budget: b.budget}
 
@@ -495,7 +497,7 @@ func (b *typedBuilder) named(name string) (typedAnchored, bool) {
 // alias writes what alias n names into the destination it stands at.
 //
 // Under ShareAliases it hands over the value the anchor wrote, wherever
-// castToAssignableValue accepts it for the destination: the value itself, or a
+// codecutils.CastToAssignableValue accepts it for the destination: the value itself, or a
 // pointer to it for a pointer destination, so the caller holds one value under
 // both names. Otherwise, and where the cast is refused, it decodes the anchor's
 // node again into the destination, as the tree does, so two aliases of one
@@ -516,7 +518,7 @@ func (b *typedBuilder) alias(n *ast.AliasNode) error {
 		return nil
 	}
 	if b.share && anchored.value.IsValid() {
-		if v, err := castToAssignableValue(anchored.value, dst.Type(), n); err == nil {
+		if v, err := codecutils.CastToAssignableValue(anchored.value, dst.Type(), n); err == nil {
 			dst.Set(v)
 			b.settle(dst)
 
@@ -549,7 +551,7 @@ func (b *typedBuilder) replay(node ast.Node, dst reflect.Value, at *ast.AliasNod
 }
 
 // replayNode hands node and everything under it to the builder. at is the
-// alias the node is decoded for, and counts against aliasBudget; a merge
+// alias the node is decoded for, and counts against codecutils.AliasBudget; a merge
 // written in place passes nil and counts nothing, as the tree counts nothing.
 func (b *typedBuilder) replayNode(node ast.Node, key bool, at *ast.AliasNode) error {
 	if b.err != nil {
@@ -737,7 +739,7 @@ func (b *typedBuilder) applyMerges(top *typedFrame) error {
 // mergeFrom writes the entries of node, a mapping, into the frame at index i:
 // its own entries first, then what its own "<<" merge, as rangeMergedEntries
 // orders them on the tree. alias is the alias node was reached through, for
-// aliasBudget to count, and nil for a mapping written in place.
+// codecutils.AliasBudget to count, and nil for a mapping written in place.
 func (b *typedBuilder) mergeFrom(i int, node ast.Node, alias *ast.AliasNode) error {
 	switch n := node.(type) {
 	case *ast.MappingNode:
@@ -824,7 +826,7 @@ func (b *typedBuilder) mergeEntry(i int, keyNode, value ast.Node, alias *ast.Ali
 		field := top.dst.Field(ff.sf.Index)
 		if ff.at != nil {
 			var ok bool
-			if field, ok = fieldAt(top.dst, ff.at); !ok {
+			if field, ok = codecutils.FieldAt(top.dst, ff.at); !ok {
 				return b.fail(errNeedsTheTree)
 			}
 		}
@@ -871,7 +873,7 @@ func (b *typedBuilder) openMapping(dst reflect.Value, wanted bool) error {
 		return nil
 	}
 
-	if kind := pointedKind(dst.Type()); kind != reflect.Struct && kind != reflect.Map {
+	if kind := codecutils.PointedKind(dst.Type()); kind != reflect.Struct && kind != reflect.Map {
 		// The tree decoder converts the mapping or names the error.
 		return b.keepWhole(dst, true)
 	}
@@ -914,7 +916,7 @@ func (b *typedBuilder) openSequence(dst reflect.Value, wanted bool) error {
 		return nil
 	}
 
-	if pointedKind(dst.Type()) != reflect.Slice {
+	if codecutils.PointedKind(dst.Type()) != reflect.Slice {
 		// The tree decoder converts the sequence or names the error.
 		return b.keepWhole(dst, true)
 	}
@@ -1073,7 +1075,7 @@ func (b *typedBuilder) decodeNode(dst reflect.Value, node ast.Node) {
 		return
 	}
 	v, err := d.createDecodedNewValue(dst.Type(), dst, node)
-	setDecoded(dst, v)
+	codecutils.SetDecoded(dst, v)
 	b.fieldError(err)
 }
 
@@ -1180,7 +1182,7 @@ func (b *typedBuilder) openEntry(top *typedFrame, keyNode ast.Node) error {
 		top.field = ff
 		if ff.at != nil {
 			// The type embeds another, and the name reaches a field of it.
-			field, ok := fieldAt(top.dst, ff.at)
+			field, ok := codecutils.FieldAt(top.dst, ff.at)
 			if !ok {
 				return b.fail(errNeedsTheTree)
 			}

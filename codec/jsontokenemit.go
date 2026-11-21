@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"slices"
 
+	"github.com/go-openapi/go-yaml/codec/internal/codecutils"
+
 	"github.com/go-openapi/go-yaml/codec/internal/astutils"
 
 	"github.com/go-openapi/go-yaml/ast"
@@ -249,7 +251,7 @@ func (t *jsonTokener) emitTree(node ast.Node, at token.Position) {
 
 			return
 		}
-		if namesOrderedMap(n.URI) {
+		if codecutils.NamesOrderedMap(n.URI) {
 			// From the tree, where the streaming path folds the tokens as they
 			// arrive. An alias reaches its target through here and never opens
 			// the tag, so "a: &m !!omap [{x: 1}]" over "b: *m" handed the
@@ -502,10 +504,10 @@ func (t *jsonTokener) throughWrappers(node ast.Node) ast.Node {
 // !!set, !!omap, !!merge and any the document defines -- leaves its node to
 // hand itself over, so nothing is held back for a tagged collection.
 func (t *jsonTokener) openTag(n *ast.TagNode, key bool) {
-	scalarType := namesScalarType(n.URI)
+	scalarType := codecutils.NamesScalarType(n.URI)
 	mark := tokenTagMark{at: t.count, key: key, suppressed: true, peeking: !key && !scalarType}
 	t.tags = append(t.tags, mark)
-	if namesOrderedMap(n.URI) && !key {
+	if codecutils.NamesOrderedMap(n.URI) && !key {
 		// What the tagged node hands over is held until the tag closes, and
 		// rewritten there as the object the tag names. See
 		// jsonTokener.releaseOrderedMap.

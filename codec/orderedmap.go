@@ -10,6 +10,8 @@ import (
 	"iter"
 	"strconv"
 
+	"github.com/go-openapi/go-yaml/codec/internal/codecutils"
+
 	yamlerrors "github.com/go-openapi/go-yaml/errors"
 )
 
@@ -70,8 +72,8 @@ func NewMapSlice(items ...MapItem) (MapSlice, error) {
 	}
 	m.items = make([]MapItem, 0, len(items))
 	for _, item := range items {
-		if !hashableKey(item.Key) {
-			return MapSlice{}, unusableKey(item.Key)
+		if !codecutils.HashableKey(item.Key) {
+			return MapSlice{}, codecutils.UnusableKey(item.Key)
 		}
 		if i := m.index(item.Key); i >= 0 {
 			return MapSlice{}, fmt.Errorf("key %v is given twice: %w", item.Key, yamlerrors.ErrDuplicateKey)
@@ -118,8 +120,8 @@ func (s MapSlice) Get(key any) (any, bool) {
 // takes the new value; otherwise the entry goes on the end. It returns an error
 // for a key Go cannot hash, which no map may hold.
 func (s *MapSlice) Set(key, value any) error {
-	if !hashableKey(key) {
-		return unusableKey(key)
+	if !codecutils.HashableKey(key) {
+		return codecutils.UnusableKey(key)
 	}
 	if i := s.index(key); i >= 0 {
 		s.items[i].Value = value

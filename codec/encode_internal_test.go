@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/go-openapi/go-yaml/codec/internal/codecutils"
+
 	"github.com/go-openapi/go-yaml/ast"
 	"github.com/go-openapi/go-yaml/parser"
 )
@@ -68,7 +70,7 @@ func TestAKeyNodeAndItsValueHaveOneIdentity(t *testing.T) {
 
 				d := NewDecoder(bytes.NewReader(nil))
 				value, err := d.mapKeyNodeToValue(entry.Key)
-				if err != nil || !hashableKey(value) {
+				if err != nil || !codecutils.HashableKey(value) {
 					continue
 				}
 				gotKind, gotName, gotNamed := keyIDOf(value)
