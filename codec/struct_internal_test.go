@@ -27,11 +27,11 @@ type twoFieldsOneName struct {
 func TestStructFieldMapIsReadOncePerType(t *testing.T) {
 	typ := reflect.TypeFor[cachedFields]()
 
-	first, err := structFieldMap(typ, yamlTags)
+	first, err := MapOf(typ, YAMLTags)
 	if err != nil {
 		t.Fatal(err)
 	}
-	second, err := structFieldMap(typ, yamlTags)
+	second, err := MapOf(typ, YAMLTags)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -39,7 +39,7 @@ func TestStructFieldMapIsReadOncePerType(t *testing.T) {
 	if len(first) != 3 {
 		t.Fatalf("read %d fields, want 3", len(first))
 	}
-	// The same fieldInfo, not an equal one: a second read would allocate a
+	// The same Info, not an equal one: a second read would allocate a
 	// new one and the cache would be doing nothing.
 	if first["Name"] != second["Name"] {
 		t.Error("the type was read twice")
@@ -53,7 +53,7 @@ func TestDuplicatedFieldNameIsRefusedEveryTime(t *testing.T) {
 	typ := reflect.TypeFor[twoFieldsOneName]()
 
 	for i := range 3 {
-		fields, err := structFieldMap(typ, yamlTags)
+		fields, err := MapOf(typ, YAMLTags)
 		if err == nil {
 			t.Fatalf("read %d: the duplicated name was accepted", i)
 		}

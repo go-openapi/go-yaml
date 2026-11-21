@@ -1147,13 +1147,13 @@ func (e *Encoder) encodeAnchor(anchorName string, value ast.Node, fieldValue ref
 // tagMode says which of encoding/json's rules this encoder adds to the `yaml`
 // tag. Neither option set is go.yaml.in/yaml/v3 exactly, and the pair mirrors
 // [UseJSONTags] and [UseInferredNames] on the decoder.
-func (e *Encoder) tagMode() tagMode {
-	mode := yamlTags
+func (e *Encoder) tagMode() Mode {
+	mode := YAMLTags
 	if e.writeJSONTags {
-		mode |= jsonTags
+		mode |= JSONTags
 	}
 	if e.writeInferredNames {
-		mode |= inferredNames
+		mode |= InferredNames
 	}
 
 	return mode
@@ -1164,16 +1164,16 @@ func (e *Encoder) encodeStruct(value reflect.Value, column int) (ast.Node, error
 	node := ast.Mapping(token.New("", "", e.pos(column)), e.isFlowStyle)
 	structType := value.Type()
 	mode := e.tagMode()
-	fields, err := structFields(structType, mode)
+	fields, err := Of(structType, mode)
 	if err != nil {
 		return nil, err
 	}
-	fieldMap := fields.fields
+	fieldMap := fields.ByGoName
 	hasInlineAnchorField := false
 	var inlineAnchorValue reflect.Value
 	for i := range value.NumField() {
 		field := structType.Field(i)
-		if isIgnoredStructField(field, mode) {
+		if Ignored(field, mode) {
 			continue
 		}
 		fieldValue := value.FieldByName(field.Name)
@@ -1242,17 +1242,17 @@ func (e *Encoder) encodeStruct(value reflect.Value, column int) (ast.Node, error
 			// A map holds the document's own keys, so the only question is
 			// whether a field writes the name already. A struct holds fields,
 			// and flat says which one each name reaches.
-			fromMap := inlineTakesUnclaimedEntries(fieldValue.Type())
+			fromMap := InlineTakesUnclaimedEntries(fieldValue.Type())
 			mapIter := mapNode.MapRange()
 			for mapIter.Next() {
 				mapKey := mapIter.Key()
 				mapValue := mapIter.Value()
 				keyName := mapKey.GetToken().Value
 				if fromMap {
-					if fields.claims(keyName) {
+					if fields.Claims(keyName) {
 						continue
 					}
-				} else if !fields.writesPromoted(keyName, sf.Index) {
+				} else if !fields.WritesPromoted(keyName, sf.Index) {
 					continue
 				}
 				node.Values = append(node.Values, ast.MappingValue(nil, mapKey, mapValue))

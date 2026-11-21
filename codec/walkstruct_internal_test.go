@@ -157,7 +157,7 @@ func TestWalkableTypeRefusesWhatTheTreeReads(t *testing.T) {
 		"a complex number":      reflect.TypeFor[struct{ A complex128 }](),
 	}
 	for name, typ := range refused {
-		if walkableType(typ, yamlTags) {
+		if walkableType(typ, YAMLTags) {
 			t.Errorf("%s: the gate let %s through", name, typ)
 		}
 	}
@@ -174,7 +174,7 @@ func TestWalkableTypeRefusesWhatTheTreeReads(t *testing.T) {
 		"a self-embedding":   reflect.TypeFor[selfEmbedding](),
 	}
 	for name, typ := range accepted {
-		if !walkableType(typ, yamlTags) {
+		if !walkableType(typ, YAMLTags) {
 			t.Errorf("%s: the gate refused %s", name, typ)
 		}
 	}

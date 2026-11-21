@@ -8,14 +8,14 @@ import (
 	"sync"
 )
 
-// typeCache is a [sync.Map] from a reflect.Type to a V, safe for concurrent
+// Cache is a [sync.Map] from a reflect.Type to a V, safe for concurrent
 // use. It holds the one type assertion its callers would otherwise repeat.
-type typeCache[V any] struct {
+type Cache[V any] struct {
 	m sync.Map
 }
 
 // Load returns the value stored for t, and whether there is one.
-func (c *typeCache[V]) Load(t reflect.Type) (V, bool) {
+func (c *Cache[V]) Load(t reflect.Type) (V, bool) {
 	v, ok := c.m.Load(t)
 	if !ok {
 		var zero V
@@ -28,18 +28,18 @@ func (c *typeCache[V]) Load(t reflect.Type) (V, bool) {
 
 // LoadOrStore returns the value already stored for t if there is one, and
 // otherwise stores and returns v.
-func (c *typeCache[V]) LoadOrStore(t reflect.Type, v V) V {
+func (c *Cache[V]) LoadOrStore(t reflect.Type, v V) V {
 	actual, _ := c.m.LoadOrStore(t, v)
 
 	return actual.(V) //nolint:forcetypeassert // Store and LoadOrStore only ever store a V
 }
 
 // Store records v for t.
-func (c *typeCache[V]) Store(t reflect.Type, v V) {
+func (c *Cache[V]) Store(t reflect.Type, v V) {
 	c.m.Store(t, v)
 }
 
 // Clear forgets every value stored.
-func (c *typeCache[V]) Clear() {
+func (c *Cache[V]) Clear() {
 	c.m.Clear()
 }

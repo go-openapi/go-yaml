@@ -124,7 +124,7 @@ type typedFrame struct {
 	merges    []ast.Node
 	// field is the struct field the entry being read writes, for fieldError to
 	// name.
-	field flatField
+	field Flat
 	// wrote records the keys a mapping writes into a map that held the
 	// caller's entries when it opened, so a merge tells the two apart. It is
 	// nil for a map that opened empty, where every key it holds was written
@@ -138,8 +138,8 @@ type typedFrame struct {
 // It holds no Decoder: a walkStream runs it inside a coroutine, which must not
 // keep the Decoder alive. See walkStream.
 type typedBuilder struct {
-	// mode is the Decoder's tagMode, which names the fields of a struct.
-	mode  tagMode
+	// mode is the Decoder's Mode, which names the fields of a struct.
+	mode  Mode
 	root  reflect.Value
 	stack []typedFrame
 	strs  *arena
@@ -626,11 +626,11 @@ func (b *typedBuilder) replayNode(node ast.Node, key bool, at *ast.AliasNode) er
 // field at the anchor the "<<" names, so the encoder writes the alias back.
 func (b *typedBuilder) openMerge(top *typedFrame) error {
 	if top.kind == typedStruct {
-		fields, err := structFields(top.dst.Type(), b.mode)
+		fields, err := Of(top.dst.Type(), b.mode)
 		if err != nil {
 			return b.fail(err)
 		}
-		if slices.ContainsFunc(fields.inline, func(sf *fieldInfo) bool { return sf.IsAutoAlias }) {
+		if slices.ContainsFunc(fields.Inline, func(sf *Info) bool { return sf.IsAutoAlias }) {
 			return b.fail(errNeedsTheTree)
 		}
 	}
@@ -813,20 +813,20 @@ func (b *typedBuilder) mergeEntry(i int, keyNode, value ast.Node, alias *ast.Ali
 
 	switch top.kind {
 	case typedStruct:
-		fields, err := structFields(top.dst.Type(), b.mode)
+		fields, err := Of(top.dst.Type(), b.mode)
 		if err != nil {
 			return b.fail(err)
 		}
-		ff, known := fields.lookup(name)
-		if !known || top.written.has(ff.ord) {
+		ff, known := fields.Lookup(name)
+		if !known || top.written.has(ff.Ord) {
 			return nil
 		}
-		top.written.mark(ff.ord)
+		top.written.mark(ff.Ord)
 		top.field = ff
-		field := top.dst.Field(ff.sf.Index)
-		if ff.at != nil {
+		field := top.dst.Field(ff.SF.Index)
+		if ff.At != nil {
 			var ok bool
-			if field, ok = codecutils.FieldAt(top.dst, ff.at); !ok {
+			if field, ok = codecutils.FieldAt(top.dst, ff.At); !ok {
 				return b.fail(errNeedsTheTree)
 			}
 		}
@@ -1097,8 +1097,8 @@ func (b *typedBuilder) fieldError(err error) {
 	}
 	recordFieldError(&b.docErr, err, func(te *yamlerrors.Error) string {
 		for _, frame := range b.stack {
-			if frame.kind == typedStruct && !frame.dropped && frame.field.sf != nil {
-				return located{sf: frame.field.sf, at: frame.field.at}.name(frame.dst.Type())
+			if frame.kind == typedStruct && !frame.dropped && frame.field.SF != nil {
+				return located{sf: frame.field.SF, at: frame.field.At}.name(frame.dst.Type())
 			}
 		}
 
@@ -1168,21 +1168,21 @@ func (b *typedBuilder) openEntry(top *typedFrame, keyNode ast.Node) error {
 
 	switch top.kind {
 	case typedStruct:
-		fields, err := structFields(top.dst.Type(), b.mode)
+		fields, err := Of(top.dst.Type(), b.mode)
 		if err != nil {
 			return b.fail(err)
 		}
-		ff, known := fields.lookup(name)
+		ff, known := fields.Lookup(name)
 		if !known {
 			top.skip, top.target = true, reflect.Value{}
 
 			return parser.ErrSkipNode
 		}
-		top.written.mark(ff.ord)
+		top.written.mark(ff.Ord)
 		top.field = ff
-		if ff.at != nil {
+		if ff.At != nil {
 			// The type embeds another, and the name reaches a field of it.
-			field, ok := codecutils.FieldAt(top.dst, ff.at)
+			field, ok := codecutils.FieldAt(top.dst, ff.At)
 			if !ok {
 				return b.fail(errNeedsTheTree)
 			}
@@ -1191,7 +1191,7 @@ func (b *typedBuilder) openEntry(top *typedFrame, keyNode ast.Node) error {
 			return parser.ErrSkipNode
 		}
 		top.skip = false
-		top.target = top.dst.Field(ff.sf.Index)
+		top.target = top.dst.Field(ff.SF.Index)
 	case typedMap:
 		top.skip = false
 		name = b.strs.clone(name)
@@ -1322,9 +1322,9 @@ func (b *typedBuilder) handled(dst reflect.Value) bool {
 }
 
 // walkableTypes caches which destination types the typed walk can fill, keyed
-// by reflect.Type, one map per tagMode: the fields a type shows depend on the
+// by reflect.Type, one map per Mode: the fields a type shows depend on the
 // mode, and so does whether the walk can fill it.
-var walkableTypes [modeCount]typeCache[bool]
+var walkableTypes [ModeCount]Cache[bool]
 
 // walkableType reports whether a destination of type t can be filled by the
 // walk, looking at the Go type alone.
@@ -1334,7 +1334,7 @@ var walkableTypes [modeCount]typeCache[bool]
 // destination the walk was never going to fill costs two parses instead of one.
 // Every reason it could give up on the type rather than on the document is
 // therefore settled here, once per type.
-func walkableType(t reflect.Type, mode tagMode) bool {
+func walkableType(t reflect.Type, mode Mode) bool {
 	cache := &walkableTypes[mode]
 	if cached, known := cache.Load(t); known {
 		return cached
@@ -1363,7 +1363,10 @@ var (
 	}
 )
 
-func readWalkable(t reflect.Type, seen map[reflect.Type]bool, mode tagMode) bool {
+// The struct model reads a `,inline` field whose type implements one of these as reading the mapping itself.
+func init() { SelfDecoding(unmarshalerTypes...) }
+
+func readWalkable(t reflect.Type, seen map[reflect.Type]bool, mode Mode) bool {
 	if seen[t] {
 		// A type that holds itself. The cycle says nothing either way, and the
 		// document's depth is capped elsewhere.
@@ -1390,15 +1393,15 @@ func readWalkable(t reflect.Type, seen map[reflect.Type]bool, mode tagMode) bool
 	case reflect.Pointer:
 		return readWalkable(t.Elem(), seen, mode)
 	case reflect.Struct:
-		fields, err := structFields(t, mode)
+		fields, err := Of(t, mode)
 		if err != nil {
 			return false
 		}
-		for _, sf := range fields.fields {
+		for _, sf := range fields.ByGoName {
 			ft := t.Field(sf.Index).Type
-			if sf.IsInline && inlineTakesUnclaimedEntries(ft) {
+			if sf.IsInline && InlineTakesUnclaimedEntries(ft) {
 				// The walk meets an entry once and has to place it then,
-				// through an index path readFields.flat names. A map has no
+				// through an index path Fields.flat names. A map has no
 				// such name, so the tree decoder reads this struct.
 				return false
 			}

@@ -19,7 +19,7 @@ const (
 	jsonTagName = "json"
 )
 
-// tagMode says which of encoding/json's rules a decode adds to the `yaml` tag,
+// Mode says which of encoding/json's rules a decode adds to the `yaml` tag,
 // as a pair of independent bits.
 //
 // The `yaml` tag is read in every mode and always wins. What the two bits add
@@ -29,31 +29,31 @@ const (
 // where go.yaml.in/yaml/v3 lowercases it. A type tagged for JSON alone --
 // go-openapi/spec is one, and every field of it is `json:` -- carries no inline
 // marker anywhere, so reading its tags without its embedding rule fills nothing.
-type tagMode uint8
+type Mode uint8
 
 const (
-	// yamlTags reads `yaml` alone and inlines an embedded struct only where a
+	// YAMLTags reads `yaml` alone and inlines an embedded struct only where a
 	// tag says to, as go.yaml.in/yaml/v3 does. The default, and the mode with
 	// neither bit set.
-	yamlTags tagMode = 0
-	// jsonTags reads `json` where a field carries no `yaml` tag, and promotes an
+	YAMLTags Mode = 0
+	// JSONTags reads `json` where a field carries no `yaml` tag, and promotes an
 	// untagged embedded struct, as encoding/json does. [UseJSONTags] sets it.
-	jsonTags tagMode = 1 << 0
-	// inferredNames names a field that no tag names after its Go name,
+	JSONTags Mode = 1 << 0
+	// InferredNames names a field that no tag names after its Go name,
 	// verbatim, where every other mode lowercases it. [UseInferredNames] sets
 	// it.
-	inferredNames tagMode = 1 << 1
-	// modeCount sizes the per-mode caches, one for each pair of bits.
-	modeCount = (jsonTags | inferredNames) + 1
+	InferredNames Mode = 1 << 1
+	// ModeCount sizes the per-mode caches, one for each pair of bits.
+	ModeCount = (JSONTags | InferredNames) + 1
 )
 
 // readsJSONTags reports whether mode reads the `json` tag and applies
 // encoding/json's field selection to what it names.
-func (m tagMode) readsJSONTags() bool { return m&jsonTags != 0 }
+func (m Mode) readsJSONTags() bool { return m&JSONTags != 0 }
 
 // infersNames reports whether mode names a field no tag names after its Go
 // name rather than after the lowercased one.
-func (m tagMode) infersNames() bool { return m&inferredNames != 0 }
+func (m Mode) infersNames() bool { return m&InferredNames != 0 }
 
 // tagSource says which tag gave a field the name it writes.
 //
@@ -71,8 +71,8 @@ const (
 	nameFromJSON
 )
 
-// fieldInfo holds what the struct tags say about one field of a struct: the name it is written under, and its flags.
-type fieldInfo struct {
+// Info holds what the struct tags say about one field of a struct: the name it is written under, and its flags.
+type Info struct {
 	// Index is where the field stands in the struct, for reflect.Value.Field.
 	// FieldByName walks the type's fields and compares names on every call.
 	Index        int
@@ -101,7 +101,7 @@ type fieldInfo struct {
 // Callers need to know which tag they got, because the two vocabularies part
 // company on a flag neither library defines: v3 refuses the type, encoding/json
 // ignores the flag.
-func getTag(field reflect.StructField, mode tagMode) (string, bool) {
+func getTag(field reflect.StructField, mode Mode) (string, bool) {
 	if tag := field.Tag.Get(structTagName); tag != "" {
 		return tag, true
 	}
@@ -118,7 +118,7 @@ func getTag(field reflect.StructField, mode tagMode) (string, bool) {
 // encoding/json promotes an anonymous field of struct type that its tag does
 // not name. An anonymous field of any other kind is an ordinary field there,
 // and so here.
-func promotesUntaggedEmbedded(field reflect.StructField, name string, mode tagMode) bool {
+func promotesUntaggedEmbedded(field reflect.StructField, name string, mode Mode) bool {
 	if !mode.readsJSONTags() || !field.Anonymous || name != "" {
 		return false
 	}
@@ -160,28 +160,38 @@ func inlineTargetOf(t reflect.Type) inlineTarget {
 	return notInlinable
 }
 
-// inlineTakesUnclaimedEntries reports whether a `,inline` field of type t
+// InlineTakesUnclaimedEntries reports whether a `,inline` field of type t
 // collects the entries no other field of the struct claims. Only a map does.
 //
 // go.yaml.in/yaml/v3 fills such a map with the keys its FieldsMap does not
-// name, and leaves it nil where every key is named. readFields.flat holds the
+// name, and leaves it nil where every key is named. Fields.flat holds the
 // same set here: the struct's own fields, and everything its embedded structs
 // promote.
-func inlineTakesUnclaimedEntries(t reflect.Type) bool {
+func InlineTakesUnclaimedEntries(t reflect.Type) bool {
 	return inlineTargetOf(t) == inlinedMap
 }
 
-// inlineReadsItsOwnNode reports whether a `,inline` field of type t decodes the
+// selfDecoding holds the interfaces through which a type decodes the node it is handed. See [SelfDecoding].
+var selfDecoding []reflect.Type
+
+// SelfDecoding sets the interfaces through which a type decodes the node it is handed, the decoder's unmarshalers.
+// A `,inline` field whose type implements one reads the mapping itself, and its fields are not promoted.
+//
+// The decoder calls it once, at init, before any type is read: the fields read for a type are cached, so a later
+// call would not change them.
+func SelfDecoding(interfaces ...reflect.Type) { selfDecoding = interfaces }
+
+// InlineReadsItsOwnNode reports whether a `,inline` field of type t decodes the
 // mapping itself rather than having its fields filled one at a time.
 //
 // go.yaml.in/yaml/v3 keeps such a field out of the flattened field list and
 // hands it the whole node, filling the rest of the struct besides. Any type
 // implementing one of the unmarshalers this decoder honors is that case, so
-// its fields stay out of readFields.flat and decodeInlineFields gives it the
+// its fields stay out of Fields.flat and decodeInlineFields gives it the
 // mapping.
-func inlineReadsItsOwnNode(t reflect.Type) bool {
+func InlineReadsItsOwnNode(t reflect.Type) bool {
 	pointer := reflect.PointerTo(t)
-	for _, iface := range unmarshalerTypes {
+	for _, iface := range selfDecoding {
 		if t.Implements(iface) || pointer.Implements(iface) {
 			return true
 		}
@@ -204,7 +214,7 @@ const (
 // no field inline, because encoding/json has no such option -- an anonymous
 // struct is promoted there by [UseJSONTags] and the rule in
 // promotesUntaggedEmbedded, not by a flag.
-func structField(field reflect.StructField, index int, mode tagMode) (*fieldInfo, error) {
+func structField(field reflect.StructField, index int, mode Mode) (*Info, error) {
 	tag, fromYAML := getTag(field, mode)
 	fieldName := strings.ToLower(field.Name)
 	if mode.infersNames() {
@@ -214,7 +224,7 @@ func structField(field reflect.StructField, index int, mode tagMode) (*fieldInfo
 	if options[0] != "" {
 		fieldName = options[0]
 	}
-	sf := &fieldInfo{
+	sf := &Info{
 		Index:      index,
 		FieldName:  field.Name,
 		RenderName: fieldName,
@@ -253,7 +263,7 @@ func nameSource(name string, fromYAML bool) tagSource {
 // `alias=name` are this library's, for a YAML feature no v3 tag reaches.
 // Anything else refuses the type, as v3 refuses it -- an empty flag included,
 // so "a," and "a,,flow" are both refused.
-func readYAMLFlags(sf *fieldInfo, tag string, flags []string) error {
+func readYAMLFlags(sf *Info, tag string, flags []string) error {
 	for _, opt := range flags {
 		switch {
 		case opt == "omitempty":
@@ -288,7 +298,7 @@ func readYAMLFlags(sf *fieldInfo, tag string, flags []string) error {
 // encoding/json has three: `omitempty`, `omitzero` and `string`. The first two
 // mean here what they mean there. `string` is not read yet, so a number written
 // as a string reads either way rather than only the one.
-func readJSONFlags(sf *fieldInfo, flags []string) {
+func readJSONFlags(sf *Info, flags []string) {
 	for _, opt := range flags {
 		switch opt {
 		case "omitempty":
@@ -299,7 +309,7 @@ func readJSONFlags(sf *fieldInfo, flags []string) {
 	}
 }
 
-func isIgnoredStructField(field reflect.StructField, mode tagMode) bool {
+func Ignored(field reflect.StructField, mode Mode) bool {
 	if field.PkgPath != "" && !field.Anonymous {
 		// private field
 		return true
@@ -309,10 +319,10 @@ func isIgnoredStructField(field reflect.StructField, mode tagMode) bool {
 	return tag == "-"
 }
 
-// fieldInfoMap holds the fieldInfo of each field of a struct, keyed by Go field name.
-type fieldInfoMap map[string]*fieldInfo
+// InfoMap holds the Info of each field of a struct, keyed by Go field name.
+type InfoMap map[string]*Info
 
-func (m fieldInfoMap) hasMergeProperty() bool {
+func (m InfoMap) HasMergeProperty() bool {
 	for _, v := range m {
 		if v.IsOmitEmpty && v.IsInline && v.IsAutoAlias {
 			return true
@@ -322,35 +332,35 @@ func (m fieldInfoMap) hasMergeProperty() bool {
 }
 
 // structFieldMaps holds the fields of each struct type read so far, one map per
-// tagMode and each keyed by reflect.Type.
+// Mode and each keyed by reflect.Type.
 //
 // A type read for its `yaml` tags and for its `json` tags gives two different
 // field maps, and a decoder using one must not be handed the other's. One map
 // per mode keeps reflect.Type as the key: it is already an interface, where a
 // struct holding the type and the mode would be boxed at every lookup.
-var structFieldMaps [modeCount]typeCache[*readFields]
+var structFieldMaps [ModeCount]Cache[*Fields]
 
-// readFields holds one type's fields, or the error its tags raised. Both are
+// Fields holds one type's fields, or the error its tags raised. Both are
 // kept, so a type with a duplicated field name is refused as fast as one that
 // reads.
-type readFields struct {
-	fields fieldInfoMap
+type Fields struct {
+	ByGoName InfoMap
 	// byRenderName finds the field a mapping key names, which is the lookup a
-	// decode makes. fieldInfoMap is keyed by Go field name, which is the one
+	// decode makes. InfoMap is keyed by Go field name, which is the one
 	// an encode makes. An embedded field is left out: it takes the whole
 	// mapping rather than the entry its own name would match.
-	byRenderName map[string]*fieldInfo
-	// inline lists the embedded fields, which the tree decoder reads after the
+	byRenderName map[string]*Info
+	// Inline lists the embedded fields, which the tree decoder reads after the
 	// rest.
-	inline []*fieldInfo
+	Inline []*Info
 	// flat finds the field a mapping key names through the embedded structs
 	// standing between. Both decode paths read it, so both place an entry in
 	// the same field. Nil where the type embeds nothing.
-	flat map[string]flatField
+	flat map[string]Flat
 	// folded finds the field a key names but for case, which encoding/json
 	// accepts once an exact match has failed. Nil outside [UseJSONTags], where
 	// a key names a field exactly or names none.
-	folded map[string]flatField
+	folded map[string]Flat
 	// dropped holds the names the conflict rule left reaching no field at all,
 	// which flat cannot record by leaving out: a name it does not hold may also
 	// be one no field of this type declares, such as a key an embedded struct's
@@ -359,27 +369,27 @@ type readFields struct {
 	err     error
 }
 
-// structFieldMap returns the fields of structType, keyed by Go field name.
+// MapOf returns the fields of structType, keyed by Go field name.
 //
 // A type's fields never change, so each is read once and handed out again
 // afterwards. Reading them for every value decoded was the largest single cost
 // of decoding into Go types: citm_catalog read into the structs it describes
-// allocated 73,708 times in here per document -- a fieldInfoMap, a
-// renderNameMap and a fieldInfo per value, and 21,627 calls to strings.Split
+// allocated 73,708 times in here per document -- a InfoMap, a
+// renderNameMap and a Info per value, and 21,627 calls to strings.Split
 // on tags already split thousands of times -- against 243,679 allocations for
 // the whole decode.
 //
 // The map and the StructFields in it are shared between every decode and
 // encode of the type, so no caller may write to them.
-func structFieldMap(structType reflect.Type, mode tagMode) (fieldInfoMap, error) {
-	r, err := structFields(structType, mode)
+func MapOf(structType reflect.Type, mode Mode) (InfoMap, error) {
+	r, err := Of(structType, mode)
 
-	return r.fields, err
+	return r.ByGoName, err
 }
 
-// structFields returns everything read from structType: the fields by Go name,
+// Of returns everything read from structType: the fields by Go name,
 // by the name a mapping key writes, and the embedded ones on their own.
-func structFields(structType reflect.Type, mode tagMode) (*readFields, error) {
+func Of(structType reflect.Type, mode Mode) (*Fields, error) {
 	cache := &structFieldMaps[mode]
 	if r, read := cache.Load(structType); read {
 		return r, r.err
@@ -390,37 +400,37 @@ func structFields(structType reflect.Type, mode tagMode) (*readFields, error) {
 	return r, r.err
 }
 
-// lookup finds the field a mapping key names.
+// Lookup finds the field a mapping key names.
 //
 // An exact match first, and under [UseJSONTags] one differing only in case
 // after that, which is the order encoding/json tries them in. The result's at
 // is nil where the field stands in the type itself and there is no index path
 // to walk.
-func (r *readFields) lookup(name string) (flatField, bool) {
+func (r *Fields) Lookup(name string) (Flat, bool) {
 	if r.flat == nil {
 		if own, named := r.byRenderName[name]; named {
-			return flatField{sf: own, ord: own.Index}, true
+			return Flat{SF: own, Ord: own.Index}, true
 		}
 	} else if ff, named := r.flat[name]; named {
 		return ff, true
 	}
 
 	if r.folded == nil {
-		return flatField{}, false
+		return Flat{}, false
 	}
 	ff, named := r.folded[foldName(name)]
 
 	return ff, named
 }
 
-// claims reports whether some field of the type answers to name.
-func (r *readFields) claims(name string) bool {
-	_, ok := r.lookup(name)
+// Claims reports whether some field of the type answers to name.
+func (r *Fields) Claims(name string) bool {
+	_, ok := r.Lookup(name)
 
 	return ok
 }
 
-// writesPromoted reports whether an entry the embedded struct at index encoded
+// WritesPromoted reports whether an entry the embedded struct at index encoded
 // belongs in the mapping around it.
 //
 // flat holds the one field each name reaches, so a name it places under another
@@ -430,9 +440,9 @@ func (r *readFields) claims(name string) bool {
 //
 // A name in neither is a key the type system never saw -- an embedded struct's
 // own `,inline` map carries those -- and it is written.
-func (r *readFields) writesPromoted(name string, index int) bool {
+func (r *Fields) WritesPromoted(name string, index int) bool {
 	if ff, known := r.flat[name]; known {
-		return len(ff.at) > 0 && ff.at[0] == index
+		return len(ff.At) > 0 && ff.At[0] == index
 	}
 	_, gone := r.dropped[name]
 
@@ -444,7 +454,7 @@ func (r *readFields) writesPromoted(name string, index int) bool {
 // Two names folding alike keep the first in sorted order, so a type reads the
 // same way twice. An exact match is tried before this in every case, so it only
 // ever decides between names no document spelled exactly.
-func foldedNames(r *readFields) map[string]flatField {
+func foldedNames(r *Fields) map[string]Flat {
 	names := make([]string, 0, max(len(r.byRenderName), len(r.flat)))
 	if r.flat == nil {
 		for name := range r.byRenderName {
@@ -457,7 +467,7 @@ func foldedNames(r *readFields) map[string]flatField {
 	}
 	slices.Sort(names)
 
-	out := make(map[string]flatField, len(names))
+	out := make(map[string]Flat, len(names))
 	for _, name := range names {
 		folded := foldName(name)
 		if _, taken := out[folded]; taken {
@@ -465,7 +475,7 @@ func foldedNames(r *readFields) map[string]flatField {
 		}
 		if r.flat == nil {
 			sf := r.byRenderName[name]
-			out[folded] = flatField{sf: sf, ord: sf.Index}
+			out[folded] = Flat{SF: sf, Ord: sf.Index}
 
 			continue
 		}
@@ -503,54 +513,54 @@ func foldRune(r rune) rune {
 	return lowest
 }
 
-// renderNameOf returns the name a mapping key writes for the Go field called
+// RenderNameOf returns the name a mapping key writes for the Go field called
 // fieldName, following the embedded structs.
 //
 // A validator names the field it rejected by its Go name, and the entry that
 // wrote it is found by the name the document used. A promoted field is not in
 // fields, which holds the type's own, so flat is read as well.
-func (r *readFields) renderNameOf(fieldName string) (string, bool) {
-	if sf, own := r.fields[fieldName]; own && !sf.IsInline {
+func (r *Fields) RenderNameOf(fieldName string) (string, bool) {
+	if sf, own := r.ByGoName[fieldName]; own && !sf.IsInline {
 		return sf.RenderName, true
 	}
 	for _, ff := range r.flat {
-		if ff.sf.FieldName == fieldName {
-			return ff.sf.RenderName, true
+		if ff.SF.FieldName == fieldName {
+			return ff.SF.RenderName, true
 		}
 	}
 
 	return "", false
 }
 
-func readType(structType reflect.Type, mode tagMode) *readFields {
+func readType(structType reflect.Type, mode Mode) *Fields {
 	fields, err := readStructFields(structType, mode)
 	if err != nil {
-		return &readFields{err: err}
+		return &Fields{err: err}
 	}
 
-	r := &readFields{fields: fields, byRenderName: make(map[string]*fieldInfo, len(fields))}
+	r := &Fields{ByGoName: fields, byRenderName: make(map[string]*Info, len(fields))}
 	for _, sf := range fields {
 		if sf.IsInline {
-			r.inline = append(r.inline, sf)
+			r.Inline = append(r.Inline, sf)
 
 			continue
 		}
 		r.byRenderName[sf.RenderName] = sf
 	}
-	slices.SortFunc(r.inline, func(a, b *fieldInfo) int { return a.Index - b.Index })
-	if len(r.inline) > 0 {
+	slices.SortFunc(r.Inline, func(a, b *Info) int { return a.Index - b.Index })
+	if len(r.Inline) > 0 {
 		f := &flattener{
 			root:       structType,
 			candidates: map[string][]flatCandidate{},
 			onPath:     map[reflect.Type]bool{structType: true},
 			mode:       mode,
 		}
-		if err := f.walk(structType, fields, r.inline, nil); err != nil {
-			return &readFields{err: err}
+		if err := f.walk(structType, fields, r.Inline, nil); err != nil {
+			return &Fields{err: err}
 		}
 		flat, dropped, err := f.resolve()
 		if err != nil {
-			return &readFields{err: err}
+			return &Fields{err: err}
 		}
 		r.flat, r.dropped = flat, dropped
 	}
@@ -561,24 +571,24 @@ func readType(structType reflect.Type, mode tagMode) *readFields {
 	return r
 }
 
-// flatField is the field one mapping key reaches: where it stands, what its
+// Flat is the field one mapping key reaches: where it stands, what its
 // tag said, and a number of its own.
 //
 // ord numbers the names a type answers to, from zero. The tree decoder marks
 // what a mapping has written so it can tell an entry from a later "<<" merge,
 // and an index path is no use as a bit position; a leaf's own Index is no use
 // either, since two embedded structs both have a field at zero.
-type flatField struct {
-	at  []int
-	sf  *fieldInfo
-	ord int
+type Flat struct {
+	At  []int
+	SF  *Info
+	Ord int
 }
 
 // flatCandidate is one field a mapping key could reach, and how it got its
 // name. Its depth is the length of at.
 type flatCandidate struct {
 	at      []int
-	sf      *fieldInfo
+	sf      *Info
 	namedBy tagSource
 }
 
@@ -589,7 +599,7 @@ type flattener struct {
 	root       reflect.Type
 	candidates map[string][]flatCandidate
 	onPath     map[reflect.Type]bool
-	mode       tagMode
+	mode       Mode
 }
 
 // walk records the names t reaches at the index path at, then descends into the
@@ -600,12 +610,12 @@ type flattener struct {
 // verdict by walking such a type once and recording its fields twice over,
 // which is the same arithmetic written differently.
 //
-// It reads each embedded type with readStructFields and not with structFields,
-// because structFields calls this and the type being read is not in the cache
+// It reads each embedded type with readStructFields and not with Of,
+// because Of calls this and the type being read is not in the cache
 // yet. Two types embedding one another would otherwise never finish. onPath
 // guards that cycle: it holds the types between root and here, and clears them
 // on the way back out.
-func (f *flattener) walk(t reflect.Type, fields fieldInfoMap, inline []*fieldInfo, at []int) error {
+func (f *flattener) walk(t reflect.Type, fields InfoMap, inline []*Info, at []int) error {
 	for _, sf := range fields {
 		if sf.IsInline {
 			continue
@@ -625,7 +635,7 @@ func (f *flattener) walk(t reflect.Type, fields fieldInfoMap, inline []*fieldInf
 		if embedded.Kind() != reflect.Struct || f.onPath[embedded] {
 			continue
 		}
-		if inlineReadsItsOwnNode(t.Field(sf.Index).Type) {
+		if InlineReadsItsOwnNode(t.Field(sf.Index).Type) {
 			// Its fields are its own to fill, so no name here reaches them.
 			continue
 		}
@@ -635,13 +645,13 @@ func (f *flattener) walk(t reflect.Type, fields fieldInfoMap, inline []*fieldInf
 		if err != nil {
 			return err
 		}
-		var deeper []*fieldInfo
+		var deeper []*Info
 		for _, sfe := range under {
 			if sfe.IsInline {
 				deeper = append(deeper, sfe)
 			}
 		}
-		slices.SortFunc(deeper, func(a, b *fieldInfo) int { return a.Index - b.Index })
+		slices.SortFunc(deeper, func(a, b *Info) int { return a.Index - b.Index })
 		if err := f.walk(embedded, under, deeper, append(at, sf.Index)); err != nil {
 			return err
 		}
@@ -656,12 +666,12 @@ func (f *flattener) walk(t reflect.Type, fields fieldInfoMap, inline []*fieldInf
 // A name only one field answers to is that field's. The rest go through
 // dominant, and the contested names are settled in order so that a type with
 // two of them always reports the same one.
-func (f *flattener) resolve() (map[string]flatField, map[string]struct{}, error) {
-	out := make(map[string]flatField, len(f.candidates))
+func (f *flattener) resolve() (map[string]Flat, map[string]struct{}, error) {
+	out := make(map[string]Flat, len(f.candidates))
 	contested := make([]string, 0, len(f.candidates))
 	for name, cs := range f.candidates {
 		if len(cs) == 1 {
-			out[name] = flatField{at: cs[0].at, sf: cs[0].sf}
+			out[name] = Flat{At: cs[0].at, SF: cs[0].sf}
 
 			continue
 		}
@@ -683,7 +693,7 @@ func (f *flattener) resolve() (map[string]flatField, map[string]struct{}, error)
 
 			continue
 		}
-		out[name] = flatField{at: won.at, sf: won.sf}
+		out[name] = Flat{At: won.at, SF: won.sf}
 	}
 
 	// The names are numbered in order, so a type reads the same way twice.
@@ -694,7 +704,7 @@ func (f *flattener) resolve() (map[string]flatField, map[string]struct{}, error)
 	slices.Sort(numbered)
 	for i, name := range numbered {
 		ff := out[name]
-		ff.ord = i
+		ff.Ord = i
 		out[name] = ff
 	}
 
@@ -776,13 +786,13 @@ func checkInlineTarget(structType reflect.Type, field reflect.StructField, inlin
 	}
 }
 
-func readStructFields(structType reflect.Type, mode tagMode) (fieldInfoMap, error) {
-	fieldMap := fieldInfoMap{}
+func readStructFields(structType reflect.Type, mode Mode) (InfoMap, error) {
+	fieldMap := InfoMap{}
 	renderNameMap := map[string]struct{}{}
 	inlineMaps := 0
 	for i := range structType.NumField() {
 		field := structType.Field(i)
-		if isIgnoredStructField(field, mode) {
+		if Ignored(field, mode) {
 			continue
 		}
 		sf, err := structField(field, i, mode)
