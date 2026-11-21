@@ -2300,6 +2300,15 @@ func (d *Decoder) decodeStruct(dst reflect.Value, src ast.Node) error {
 		return err
 	}
 
+	return d.finishStruct(dst, src, fields, ignoreMergeKey, unknownFields, foundErr)
+}
+
+// finishStruct completes a struct once its own entries are read: it decodes the `,inline` fields, returns the first
+// field error, refuses an unknown field under DisallowUnknownField, and runs the validator, in that order.
+func (d *Decoder) finishStruct(
+	dst reflect.Value, src ast.Node, fields *structfields.Fields, ignoreMergeKey bool,
+	unknownFields map[string]ast.Node, foundErr error,
+) error {
 	if len(fields.Inline) > 0 {
 		if err := d.decodeInlineFields(dst, src, fields, ignoreMergeKey, unknownFields, &foundErr); err != nil {
 			return err

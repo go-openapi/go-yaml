@@ -80,26 +80,8 @@ func (p *Parser) parseFlowMap(ctx context) (*ast.MappingNode, error) {
 		// so the key's constructor finds nothing. It is taken here and put on the key below.
 		keyComment := ctx.takeLineComment(mapKeyTk)
 		p.markNodes(ctx)
-		switch mapKeyTk.GroupType() {
-		case group.TokenGroupMapKeyValue:
-			value, err := p.parseMapKeyValue(ctx.withGroup(p, mapKeyTk.Group), mapKeyTk.Group, entryTk)
-			if err != nil {
-				return nil, err
-			}
-			p.holdFlowEntry(node, value)
-			ctx.goNext()
-		case group.TokenGroupMapKey:
-			mapValue, err := p.parseFlowMapPair(ctx, mapKeyTk, entryTk)
-			if err != nil {
-				return nil, err
-			}
-			p.holdFlowEntry(node, mapValue)
-		default:
-			entry, err := p.parseFlowMapBareKey(ctx, tk, mapKeyTk, entryTk)
-			if err != nil {
-				return nil, err
-			}
-			p.holdFlowEntry(node, entry)
+		if err := p.parseFlowMapEntryAt(ctx, node, tk, mapKeyTk, entryTk); err != nil {
+			return nil, err
 		}
 		if err := attachEntryComments(node, entered, keyComment, headComment); err != nil {
 			return nil, err
@@ -117,6 +99,34 @@ func (p *Parser) parseFlowMap(ctx context) (*ast.MappingNode, error) {
 	}
 	ctx.goNext() // Skip the '}'.
 	return node, nil
+}
+
+// parseFlowMapEntryAt reads the entry of the flow mapping node that mapKeyTk opens, after the ',' entryTk where there
+// is one, and holds it for the mapping: a key with its value grouped, a key a ':' follows, or a key standing alone.
+func (p *Parser) parseFlowMapEntryAt(ctx context, node *ast.MappingNode, tk, mapKeyTk, entryTk *group.TapeToken) error {
+	switch mapKeyTk.GroupType() {
+	case group.TokenGroupMapKeyValue:
+		value, err := p.parseMapKeyValue(ctx.withGroup(p, mapKeyTk.Group), mapKeyTk.Group, entryTk)
+		if err != nil {
+			return err
+		}
+		p.holdFlowEntry(node, value)
+		ctx.goNext()
+	case group.TokenGroupMapKey:
+		mapValue, err := p.parseFlowMapPair(ctx, mapKeyTk, entryTk)
+		if err != nil {
+			return err
+		}
+		p.holdFlowEntry(node, mapValue)
+	default:
+		entry, err := p.parseFlowMapBareKey(ctx, tk, mapKeyTk, entryTk)
+		if err != nil {
+			return err
+		}
+		p.holdFlowEntry(node, entry)
+	}
+
+	return nil
 }
 
 // parseFlowMapPair reads the entry of a flow mapping whose key a ':' follows, as in "{a: b}" or "{a:}".

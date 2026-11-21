@@ -312,6 +312,41 @@ func (r *reader) judgeNext() error {
 // since the grouping is a state machine and takes a token as soon as it is read.
 // The scanner is therefore never read further than the descent has pulled,
 // which lets a grouping stage query the scanner about the token in hand.
+// finish ends the scan: it checks the JSON text is whole under WithJSONSyntax, and has the grouping emit what it holds.
+func (r *reader) finish() error {
+	if r.json != nil && r.scan.Err() == nil {
+		if err := r.json.end(); err != nil {
+			return err
+		}
+	}
+	r.drained, r.finished, r.g.Ending = true, true, true
+	r.out = r.g.Finish(r.out)
+
+	return nil
+}
+
+// observe hands tk to what reads every token the scanner cuts, before the comment drop: the WithTokens callback, so
+// a consumer tiling the source sees every token the document wrote, and the JSON check, so a comment is rejected too.
+// Both come before the grouping, which is where a token stops standing for itself.
+func (r *reader) observe(tk token.Token) error {
+	if r.onToken != nil {
+		r.onToken(tk)
+	}
+	if r.json != nil {
+		if err := r.json.next(tk); err != nil {
+			return err
+		}
+	}
+	if tk.Type == token.CommentType && probe.Enabled {
+		probe.Count("comment.scanned", 1)
+		if !r.keepComments {
+			probe.Count("comment.droppedBeforeGrouping", 1)
+		}
+	}
+
+	return nil
+}
+
 func (r *reader) fill() error {
 	if r.at == len(r.out) {
 		// Every token emitted has been taken, so the buffer restarts instead of growing with the document.
@@ -324,32 +359,14 @@ func (r *reader) fill() error {
 			if r.finished {
 				break
 			}
-			if r.json != nil && r.scan.Err() == nil {
-				if err := r.json.end(); err != nil {
-					return err
-				}
+			if err := r.finish(); err != nil {
+				return err
 			}
-			r.drained, r.finished, r.g.Ending = true, true, true
-			r.out = r.g.Finish(r.out)
 
 			break
 		}
-		if r.onToken != nil {
-			// Before the comment drop, so a consumer tiling the source sees every token the document wrote,
-			// and before the grouping, which is where a token stops standing for itself.
-			r.onToken(tk)
-		}
-		if r.json != nil {
-			// Before the comment drop, so a comment is rejected too.
-			if err := r.json.next(tk); err != nil {
-				return err
-			}
-		}
-		if tk.Type == token.CommentType && probe.Enabled {
-			probe.Count("comment.scanned", 1)
-			if !r.keepComments {
-				probe.Count("comment.droppedBeforeGrouping", 1)
-			}
+		if err := r.observe(tk); err != nil {
+			return err
 		}
 		if !r.keepComments && tk.Type == token.CommentType {
 			continue

@@ -60,8 +60,8 @@ type walkState struct {
 	// rest is set once a walk that does not pause has read the document it was
 	// asked for: the documents after it are read and sent nowhere.
 	rest bool
-	// delivered counts the documents handed to a Decode, which holdsAValue
-	// keeps, as decode's streamIndex counts them.
+	// delivered counts the documents handed to a Decode, which
+	// ast.DocumentNode.HoldsValue keeps, as decode's streamIndex counts them.
 	delivered int
 	// needsTree records that the document in hand needs a tree. err holds the
 	// first error, from the parse or from a builder.
@@ -165,7 +165,7 @@ var errEndOfStream = errors.New("end of the stream")
 
 func (st *walkState) Enter(node ast.Node, at parser.Cursor) error {
 	switch {
-	case st.rest, st.broken != nil:
+	case st.idle():
 		return parser.ErrSkipNode
 	case st.values != nil:
 		err := st.values.Enter(node, at)
@@ -179,7 +179,7 @@ func (st *walkState) Enter(node ast.Node, at parser.Cursor) error {
 
 func (st *walkState) Leave(node ast.Node, at parser.Closing) error {
 	switch {
-	case st.rest, st.broken != nil:
+	case st.idle():
 		return nil
 	case st.values != nil:
 		err := st.values.Leave(node, at)
@@ -217,6 +217,11 @@ func (st *walkState) LeaveDocument(doc *ast.DocumentNode, _ int) error {
 
 	return nil
 }
+
+// idle reports whether the walk hands nothing to the builders: the documents after the one asked for, once rest is
+// set, and what is left of a document broken stopped. Neither is an error of the node at hand: the walk skips the
+// node, and the Decode that reads the document returns broken.
+func (st *walkState) idle() bool { return st.rest || st.broken != nil }
 
 // reset readies the walk to read the next document into v, with the builder its
 // destination asks for.
