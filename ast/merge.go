@@ -92,13 +92,13 @@ func MergeOf(entry *MappingValueNode) MergeEntry {
 // empty merge where the mapping ends and refuses the same one where the mapping
 // continues.
 func mergeSources(value Node) (sources []MapNode, offender Node) {
-	switch n := unwrapMergeValue(value).(type) {
+	switch n := Unwrap(value).(type) {
 	case MapNode:
 		return []MapNode{n}, nil
 	case *SequenceNode:
 		out := make([]MapNode, 0, len(n.Values))
 		for _, item := range n.Values {
-			m, ok := unwrapMergeValue(item).(MapNode)
+			m, ok := Unwrap(item).(MapNode)
 			if !ok {
 				return nil, item
 			}
@@ -110,32 +110,3 @@ func mergeSources(value Node) (sources []MapNode, offender Node) {
 		return nil, value
 	}
 }
-
-// unwrapMergeValue reads through the wrappers that stand between a "<<" and the
-// mapping it names: an anchor declaring one, an alias naming one, a tag on it.
-//
-// An alias is followed through [AliasNode.Target], which the parser fills as it
-// reads, so this needs no anchor table of its own.
-func unwrapMergeValue(n Node) Node {
-	for range maxMergeDepth {
-		switch nn := n.(type) {
-		case *AnchorNode:
-			n = nn.Value
-		case *TagNode:
-			n = nn.Value
-		case *AliasNode:
-			if nn.Target == nil {
-				return nil
-			}
-			n = nn.Target
-		default:
-			return n
-		}
-	}
-
-	return nil
-}
-
-// maxMergeDepth bounds unwrapMergeValue, which follows aliases and so could
-// otherwise walk a cycle: "&a *a" names itself.
-const maxMergeDepth = 64

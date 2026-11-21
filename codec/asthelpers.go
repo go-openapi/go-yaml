@@ -64,23 +64,11 @@ func mapKeyString(node ast.Node, key any) (string, error) {
 // mapping key was refused as "a sequence" where the reading was taken off the
 // value.
 func kindOfKey(node ast.Node) string {
-	switch n := node.(type) {
+	switch ast.Unwrap(node).(type) {
 	case *ast.MappingNode, *ast.MappingValueNode:
 		return "mapping"
 	case *ast.SequenceNode:
 		return "sequence"
-	case *ast.MappingKeyNode:
-		return kindOfKey(n.Value)
-	case *ast.AnchorNode:
-		return kindOfKey(n.Value)
-	case *ast.TagNode:
-		return kindOfKey(n.Value)
-	case *ast.AliasNode:
-		if n.Target != nil {
-			return kindOfKey(n.Target)
-		}
-
-		return "collection"
 	default:
 		return "collection"
 	}

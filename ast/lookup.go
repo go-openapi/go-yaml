@@ -73,21 +73,11 @@ func lookupMergedIn(mapping MapNode, name string) *MappingValueNode {
 // mappingOf is the mapping node stands on, through the properties a document may write in front of it, and
 // nil where node is not a mapping.
 func mappingOf(node Node) MapNode {
-	switch n := node.(type) {
-	case nil:
-		return nil
+	switch n := Unwrap(node).(type) {
 	case *MappingNode:
 		return n
 	case *MappingValueNode:
 		return n
-	case *AnchorNode:
-		return mappingOf(n.Value)
-	case *TagNode:
-		return mappingOf(n.Value)
-	case *MappingKeyNode:
-		return mappingOf(n.Value)
-	case *AliasNode:
-		return mappingOf(n.Target)
 	default:
 		return nil
 	}
