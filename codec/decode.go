@@ -1668,7 +1668,7 @@ func (d *Decoder) createDecodedNewValue(
 		}
 	}
 	var newValue reflect.Value
-	if isNullNode(node) {
+	if ast.IsNull(node) {
 		newValue = reflect.New(typ).Elem()
 	} else {
 		newValue = d.createDecodableValue(typ)
@@ -1679,7 +1679,7 @@ func (d *Decoder) createDecodedNewValue(
 	if defaultVal.IsValid() && defaultVal.Type().AssignableTo(newValue.Type()) {
 		newValue.Set(defaultVal)
 	}
-	if !isNullNode(node) {
+	if !ast.IsNull(node) {
 		if err := d.decodeValue(newValue, node); err != nil {
 			// The value is decoded in place, as encoding/json decodes it: what
 			// decoded before the error stands, beside the error, and the caller
@@ -2307,7 +2307,7 @@ func (d *Decoder) decodeInlineFields(
 
 			return fmt.Errorf("cannot set embedded type as unexported field %s.%s", field.PkgPath, field.Name)
 		}
-		if fieldValue.Type().Kind() == reflect.Pointer && isNullNode(src) {
+		if fieldValue.Type().Kind() == reflect.Pointer && ast.IsNull(src) {
 			// set nil value to pointer
 			fieldValue.Set(reflect.Zero(fieldValue.Type()))
 
@@ -2458,7 +2458,7 @@ func (d *Decoder) getMergeAliasName(src ast.Node) string {
 }
 
 func (d *Decoder) decodeStruct(dst reflect.Value, src ast.Node) error {
-	if src == nil || isNullNode(src) {
+	if src == nil || ast.IsNull(src) {
 		// A null writes nothing, so the struct keeps what it holds. A field's
 		// null never gets here: createDecodedNewValue reads it first. A
 		// document that is only "~" does.
@@ -2523,7 +2523,7 @@ func (d *Decoder) decodeStruct(dst reflect.Value, src ast.Node) error {
 		written.mark(found.ord)
 
 		fieldValue := found.value
-		if fieldValue.Type().Kind() == reflect.Pointer && isNullNode(src) {
+		if fieldValue.Type().Kind() == reflect.Pointer && ast.IsNull(src) {
 			// set nil value to pointer
 			fieldValue.Set(reflect.Zero(fieldValue.Type()))
 
@@ -2681,7 +2681,7 @@ func (d *Decoder) decodeArray(dst reflect.Value, src ast.Node) error {
 	var foundErr error
 	for iter.Next() {
 		v := iter.Value()
-		if elemType.Kind() == reflect.Pointer && isNullNode(v) {
+		if elemType.Kind() == reflect.Pointer && ast.IsNull(v) {
 			// set nil value to pointer
 			arrayValue.Index(idx).Set(reflect.Zero(elemType))
 		} else {
@@ -2738,7 +2738,7 @@ func (d *Decoder) decodeSlice(dst reflect.Value, src ast.Node) error {
 		v := iter.Value()
 		entryIdx := idx
 		idx++
-		if elemType.Kind() == reflect.Pointer && isNullNode(v) {
+		if elemType.Kind() == reflect.Pointer && ast.IsNull(v) {
 			// set nil value to pointer
 			sliceValue = reflect.Append(sliceValue, reflect.Zero(elemType))
 			continue
@@ -3001,7 +3001,7 @@ func (d *Decoder) decodeMap(dst reflect.Value, src ast.Node) error {
 		} else if seen {
 			continue
 		}
-		if valueType.Kind() == reflect.Pointer && isNullNode(value) {
+		if valueType.Kind() == reflect.Pointer && ast.IsNull(value) {
 			// set nil value to pointer
 			mapValue.SetMapIndex(k, reflect.Zero(valueType))
 			continue
@@ -3292,7 +3292,7 @@ func (d *Decoder) parse(bytes []byte) (*ast.File, error) {
 	}
 	normalizedFile := &ast.File{}
 	for _, doc := range f.Docs {
-		if !holdsAValue(doc) {
+		if !doc.HoldsValue() {
 			continue
 		}
 		normalizedFile.Docs = append(normalizedFile.Docs, doc)
@@ -3521,7 +3521,7 @@ func (d *Decoder) decode(v reflect.Value) error {
 	doc := d.parsedFile.Docs[d.streamIndex]
 	d.docSchema = doc.Schema
 	body := doc.Body
-	if isEmptyDocument(doc) {
+	if doc.IsEmpty() {
 		// A document written with "---" or "..." and holding nothing holds the
 		// empty node, which decodes to null. Leaving the stream index where it
 		// was returned the document before it again and never reached the ones

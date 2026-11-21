@@ -165,30 +165,6 @@ func headCommentPath(node ast.Node) string {
 	return node.GetPath()
 }
 
-// isNullNode reports whether n is the empty node, written as one, under an
-// anchor or under a "!!null" tag: "&a ~", "&a" alone, "!!null ~" and "!!null"
-// alone are null as "~" is. An anchor names a node and does not change it, and
-// the tag names the type the node already has.
-//
-// Without the tag case, "!!null ~" into a struct or a pointer read as a
-// mapping and was refused with "null was used where mapping is expected".
-func isNullNode(n ast.Node) bool {
-	for {
-		switch node := n.(type) {
-		case *ast.AnchorNode:
-			n = node.Value
-
-			continue
-		case *ast.TagNode:
-			res := node.Resolve()
-
-			return res.Verdict == ast.TagResolved && res.Tag == token.NullTag
-		}
-
-		return n == nil || n.Type() == ast.NullType
-	}
-}
-
 // orderedMapShape reports the sequence of one-entry mappings an "!!omap" names,
 // where the node the tag stands on is one.
 //
@@ -313,55 +289,6 @@ func taggedOrderedMap(node ast.Node) (*ast.SequenceNode, bool) {
 	}
 
 	return nil, false
-}
-
-// holdsAValue reports whether the document carries something to decode.
-//
-// A document of directives and nothing else opens their scope and denotes no
-// value, and a source holding only comments is not a document at all. Everything
-// else is one, including a tag or an anchor standing on nothing: "!!null" and
-// "&a" denote null exactly as "~" does.
-//
-// This replaced folding the whole document into a Go value and asking whether it
-// came out nil. That read "!!null" and "&a" as no document at all and dropped
-// them from the stream -- "a: 1" over "---" over "!!null" handed back one
-// document where go.yaml.in/yaml/v3 hands back two -- and it cost a second
-// reading of every document to answer a question about its shape.
-func holdsAValue(doc *ast.DocumentNode) bool {
-	if isEmptyDocument(doc) {
-		return true
-	}
-	if doc.Body == nil {
-		return false
-	}
-
-	switch doc.Body.(type) {
-	case *ast.DirectiveNode, *ast.CommentGroupNode:
-		return false
-	default:
-		return true
-	}
-}
-
-// isEmptyDocument reports whether doc holds no value and is a document all the
-// same.
-//
-// "---" opens a document and "..." closes one, so a document written with
-// either marker exists whatever stands between them: "---\n...\n" holds the
-// empty node and decodes to null. A run of comments carries no marker and is
-// no document at all -- l-yaml-stream puts those in a document prefix -- so
-// "# c\n" decodes to nothing.
-func isEmptyDocument(doc *ast.DocumentNode) bool {
-	if doc.Start == nil && doc.End == nil {
-		return false
-	}
-	if doc.Body == nil {
-		return true
-	}
-
-	_, comments := doc.Body.(*ast.CommentGroupNode)
-
-	return comments
 }
 
 // standsOnNothing reports whether a chain of key wrappers bottoms out with no

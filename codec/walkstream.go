@@ -192,10 +192,10 @@ func (st *walkState) Leave(node ast.Node, at parser.Closing) error {
 // LeaveDocument hands the document just read to the Decode waiting for it, and
 // pauses the walk until the next Decode.
 func (st *walkState) LeaveDocument(doc *ast.DocumentNode, _ int) error {
-	if st.rest || !holdsAValue(doc) {
+	if st.rest || !doc.HoldsValue() {
 		return nil
 	}
-	st.settle(isEmptyDocument(doc))
+	st.settle(doc.IsEmpty())
 	st.delivered++
 	switch {
 	case st.broken != nil:
