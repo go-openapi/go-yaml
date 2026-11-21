@@ -1016,9 +1016,14 @@ func (n *LiteralNode) GetToken() *token.Token {
 	return n.Start
 }
 
-// GetValue returns string value.
+// GetValue returns the block scalar's content, folded and chomped as its header says: "|" over "  x" over "  y" is
+// "x\ny\n". Use [LiteralNode.String] for the block as it is written, header included.
 func (n *LiteralNode) GetValue() any {
-	return n.String()
+	if n.Value == nil {
+		return ""
+	}
+
+	return n.Value.GetValue()
 }
 
 // String literal to text.

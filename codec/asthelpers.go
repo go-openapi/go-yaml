@@ -437,15 +437,6 @@ func anchorName(n ast.Node) string {
 
 // jsonScalarOf is the Go value a scalar node holds.
 func jsonScalarOf(n ast.Node) any {
-	// A literal holds its folded and chomped text in the string node inside it;
-	// its own GetValue answers the block as it was written, header and all.
-	if l, ok := n.(*ast.LiteralNode); ok {
-		if l.Value == nil {
-			return nil
-		}
-
-		return l.Value.GetValue()
-	}
 	if s, ok := n.(ast.ScalarNode); ok {
 		return s.GetValue()
 	}
