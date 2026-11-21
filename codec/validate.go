@@ -3,14 +3,8 @@
 
 package codec
 
-// StructValidator need to implement Struct method only
-// ( see https://pkg.go.dev/github.com/go-playground/validator/v10#Validate.Struct ).
-type StructValidator interface {
-	Struct(value any) error
-}
-
-// FieldError need to implement StructField method only
-// ( see https://pkg.go.dev/github.com/go-playground/validator/v10#FieldError ).
-type FieldError interface {
+// fieldError is an element of a validation error that names the struct field it is about, as each
+// github.com/go-playground/validator/v10 FieldError does. See [Validator].
+type fieldError interface {
 	StructField() string
 }

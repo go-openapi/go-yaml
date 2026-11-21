@@ -226,7 +226,7 @@ map:
 			validate := validator.New()
 			dec := codec.NewDecoder(
 				strings.NewReader(tc.YAMLContent),
-				codec.Validator(validate),
+				codec.Validator(validate.Struct),
 				codec.Strict(),
 			)
 			err := dec.Decode(tc.Instance)

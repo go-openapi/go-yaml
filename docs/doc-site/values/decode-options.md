@@ -16,7 +16,7 @@ Options go to `codec.Unmarshal` for one call, or to
 | `DisallowUnknownField()` | a key matching no exported field is an error |
 | `AllowFieldPrefixes(p...)` | a key beginning with one of `p` escapes that check |
 | `AllowDuplicateMapKey()` | a repeated key is accepted; the last value wins |
-| `Validator(v)` | runs a `StructValidator` over the decoded struct |
+| `Validator(fn)` | calls `fn` with each decoded struct, such as go-playground's `validate.Struct` |
 | `Strict()` | **only** `DisallowUnknownField` |
 
 {{% notice style="warning" title="A repeated key keeps the last value here, and the first in `ToJSON`" %}}

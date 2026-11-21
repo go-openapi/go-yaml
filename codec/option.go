@@ -48,10 +48,20 @@ func RecursiveDir(isRecursive bool) DecodeOption {
 	}
 }
 
-// Validator set StructValidator instance to Decoder.
-func Validator(v StructValidator) DecodeOption {
+// Validator calls validate with each struct the decoder fills, once it is filled, and returns the error validate
+// returns.
+//
+// An error that is a slice, and whose elements have a StructField() string method, is placed at the entry of the
+// first field it names, or at the mapping when the document leaves that field out.
+// github.com/go-playground/validator/v10 returns such errors: pass its Struct method.
+//
+//	validate := validator.New()
+//	dec := codec.NewDecoder(r, codec.Validator(validate.Struct))
+//
+// A struct decoded with a validator is read through the tree, not the walk.
+func Validator(validate func(any) error) DecodeOption {
 	return func(d *Decoder) error {
-		d.validator = v
+		d.validator = validate
 		return nil
 	}
 }

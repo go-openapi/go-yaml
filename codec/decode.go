@@ -69,7 +69,7 @@ type Decoder struct {
 	referenceDirs        []string
 	isRecursiveDir       bool
 	isResolvedReference  bool
-	validator            StructValidator
+	validator            func(any) error
 	disallowUnknownField bool
 	allowedFieldPrefixes []string
 	allowDuplicateMapKey bool
@@ -3302,7 +3302,7 @@ func (d *Decoder) validateStruct(dst reflect.Value, src ast.Node, fields *readFi
 	if d.validator == nil {
 		return nil
 	}
-	err := d.validator.Struct(dst.Interface())
+	err := d.validator(dst.Interface())
 	if err == nil {
 		return nil
 	}
@@ -3311,7 +3311,7 @@ func (d *Decoder) validateStruct(dst reflect.Value, src ast.Node, fields *readFi
 		return err
 	}
 	for i := range ev.Len() {
-		fieldErr, ok := reflect.TypeAssert[FieldError](ev.Index(i))
+		fieldErr, ok := reflect.TypeAssert[fieldError](ev.Index(i))
 		if !ok {
 			continue
 		}
