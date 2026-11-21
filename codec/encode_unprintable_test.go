@@ -43,3 +43,18 @@ func TestMarshalEscapesWhatAStreamCannotHoldRaw(t *testing.T) {
 		}
 	}
 }
+
+// TestMarshalQuotesAStringThatStartsOrEndsWithATab marshals strings whose plain spelling would lose a tab: YAML
+// strips the white space around a plain scalar, tabs included. Each is quoted, as a value and as a key, and reads
+// back as it was.
+func TestMarshalQuotesAStringThatStartsOrEndsWithATab(t *testing.T) {
+	for _, s := range []string{"\ta", "a\t", "\t", "\t a \t"} {
+		out, err := codec.Marshal(map[string]string{"value": s, s: "key"})
+		require.NoError(t, err)
+
+		var back map[string]string
+		require.NoError(t, codec.Unmarshal(out, &back), "%q", out)
+		assert.Equal(t, s, back["value"], "%q", out)
+		assert.Equal(t, "key", back[s], "%q", out)
+	}
+}
