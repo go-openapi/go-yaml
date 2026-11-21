@@ -2757,7 +2757,7 @@ func (d *Decoder) decodeDuration(dst reflect.Value, src ast.Node) error {
 // stands in the type itself.
 type located struct {
 	value reflect.Value
-	sf    *StructField
+	sf    *fieldInfo
 	ord   int
 	at    []int
 }

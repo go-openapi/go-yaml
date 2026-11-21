@@ -12,8 +12,8 @@ import (
 )
 
 const (
-	// StructTagName tag keyword for Marshal/Unmarshal.
-	StructTagName = "yaml"
+	// structTagName is the struct tag key Marshal and Unmarshal read: `yaml:"name,flags"`.
+	structTagName = "yaml"
 	// jsonTagName is the tag encoding/json reads, which [UseJSONTags] adds where
 	// a field carries no `yaml` tag.
 	jsonTagName = "json"
@@ -71,8 +71,8 @@ const (
 	nameFromJSON
 )
 
-// StructField information for each the field in structure.
-type StructField struct {
+// fieldInfo holds what the struct tags say about one field of a struct: the name it is written under, and its flags.
+type fieldInfo struct {
 	// Index is where the field stands in the struct, for reflect.Value.Field.
 	// FieldByName walks the type's fields and compares names on every call.
 	Index        int
@@ -102,7 +102,7 @@ type StructField struct {
 // company on a flag neither library defines: v3 refuses the type, encoding/json
 // ignores the flag.
 func getTag(field reflect.StructField, mode tagMode) (string, bool) {
-	if tag := field.Tag.Get(StructTagName); tag != "" {
+	if tag := field.Tag.Get(structTagName); tag != "" {
 		return tag, true
 	}
 	if mode.readsJSONTags() {
@@ -204,7 +204,7 @@ const (
 // no field inline, because encoding/json has no such option -- an anonymous
 // struct is promoted there by [UseJSONTags] and the rule in
 // promotesUntaggedEmbedded, not by a flag.
-func structField(field reflect.StructField, index int, mode tagMode) (*StructField, error) {
+func structField(field reflect.StructField, index int, mode tagMode) (*fieldInfo, error) {
 	tag, fromYAML := getTag(field, mode)
 	fieldName := strings.ToLower(field.Name)
 	if mode.infersNames() {
@@ -214,7 +214,7 @@ func structField(field reflect.StructField, index int, mode tagMode) (*StructFie
 	if options[0] != "" {
 		fieldName = options[0]
 	}
-	sf := &StructField{
+	sf := &fieldInfo{
 		Index:      index,
 		FieldName:  field.Name,
 		RenderName: fieldName,
@@ -253,7 +253,7 @@ func nameSource(name string, fromYAML bool) tagSource {
 // `alias=name` are this library's, for a YAML feature no v3 tag reaches.
 // Anything else refuses the type, as v3 refuses it -- an empty flag included,
 // so "a," and "a,,flow" are both refused.
-func readYAMLFlags(sf *StructField, tag string, flags []string) error {
+func readYAMLFlags(sf *fieldInfo, tag string, flags []string) error {
 	for _, opt := range flags {
 		switch {
 		case opt == "omitempty":
@@ -288,7 +288,7 @@ func readYAMLFlags(sf *StructField, tag string, flags []string) error {
 // encoding/json has three: `omitempty`, `omitzero` and `string`. The first two
 // mean here what they mean there. `string` is not read yet, so a number written
 // as a string reads either way rather than only the one.
-func readJSONFlags(sf *StructField, flags []string) {
+func readJSONFlags(sf *fieldInfo, flags []string) {
 	for _, opt := range flags {
 		switch opt {
 		case "omitempty":
@@ -309,9 +309,10 @@ func isIgnoredStructField(field reflect.StructField, mode tagMode) bool {
 	return tag == "-"
 }
 
-type StructFieldMap map[string]*StructField
+// fieldInfoMap holds the fieldInfo of each field of a struct, keyed by Go field name.
+type fieldInfoMap map[string]*fieldInfo
 
-func (m StructFieldMap) hasMergeProperty() bool {
+func (m fieldInfoMap) hasMergeProperty() bool {
 	for _, v := range m {
 		if v.IsOmitEmpty && v.IsInline && v.IsAutoAlias {
 			return true
@@ -333,15 +334,15 @@ var structFieldMaps [modeCount]typeCache[*readFields]
 // kept, so a type with a duplicated field name is refused as fast as one that
 // reads.
 type readFields struct {
-	fields StructFieldMap
+	fields fieldInfoMap
 	// byRenderName finds the field a mapping key names, which is the lookup a
-	// decode makes. StructFieldMap is keyed by Go field name, which is the one
+	// decode makes. fieldInfoMap is keyed by Go field name, which is the one
 	// an encode makes. An embedded field is left out: it takes the whole
 	// mapping rather than the entry its own name would match.
-	byRenderName map[string]*StructField
+	byRenderName map[string]*fieldInfo
 	// inline lists the embedded fields, which the tree decoder reads after the
 	// rest.
-	inline []*StructField
+	inline []*fieldInfo
 	// flat finds the field a mapping key names through the embedded structs
 	// standing between. Both decode paths read it, so both place an entry in
 	// the same field. Nil where the type embeds nothing.
@@ -363,14 +364,14 @@ type readFields struct {
 // A type's fields never change, so each is read once and handed out again
 // afterwards. Reading them for every value decoded was the largest single cost
 // of decoding into Go types: citm_catalog read into the structs it describes
-// allocated 73,708 times in here per document -- a StructFieldMap, a
-// renderNameMap and a StructField per value, and 21,627 calls to strings.Split
+// allocated 73,708 times in here per document -- a fieldInfoMap, a
+// renderNameMap and a fieldInfo per value, and 21,627 calls to strings.Split
 // on tags already split thousands of times -- against 243,679 allocations for
 // the whole decode.
 //
 // The map and the StructFields in it are shared between every decode and
 // encode of the type, so no caller may write to them.
-func structFieldMap(structType reflect.Type, mode tagMode) (StructFieldMap, error) {
+func structFieldMap(structType reflect.Type, mode tagMode) (fieldInfoMap, error) {
 	r, err := structFields(structType, mode)
 
 	return r.fields, err
@@ -527,7 +528,7 @@ func readType(structType reflect.Type, mode tagMode) *readFields {
 		return &readFields{err: err}
 	}
 
-	r := &readFields{fields: fields, byRenderName: make(map[string]*StructField, len(fields))}
+	r := &readFields{fields: fields, byRenderName: make(map[string]*fieldInfo, len(fields))}
 	for _, sf := range fields {
 		if sf.IsInline {
 			r.inline = append(r.inline, sf)
@@ -536,7 +537,7 @@ func readType(structType reflect.Type, mode tagMode) *readFields {
 		}
 		r.byRenderName[sf.RenderName] = sf
 	}
-	slices.SortFunc(r.inline, func(a, b *StructField) int { return a.Index - b.Index })
+	slices.SortFunc(r.inline, func(a, b *fieldInfo) int { return a.Index - b.Index })
 	if len(r.inline) > 0 {
 		f := &flattener{
 			root:       structType,
@@ -569,7 +570,7 @@ func readType(structType reflect.Type, mode tagMode) *readFields {
 // either, since two embedded structs both have a field at zero.
 type flatField struct {
 	at  []int
-	sf  *StructField
+	sf  *fieldInfo
 	ord int
 }
 
@@ -577,7 +578,7 @@ type flatField struct {
 // name. Its depth is the length of at.
 type flatCandidate struct {
 	at      []int
-	sf      *StructField
+	sf      *fieldInfo
 	namedBy tagSource
 }
 
@@ -604,7 +605,7 @@ type flattener struct {
 // yet. Two types embedding one another would otherwise never finish. onPath
 // guards that cycle: it holds the types between root and here, and clears them
 // on the way back out.
-func (f *flattener) walk(t reflect.Type, fields StructFieldMap, inline []*StructField, at []int) error {
+func (f *flattener) walk(t reflect.Type, fields fieldInfoMap, inline []*fieldInfo, at []int) error {
 	for _, sf := range fields {
 		if sf.IsInline {
 			continue
@@ -634,13 +635,13 @@ func (f *flattener) walk(t reflect.Type, fields StructFieldMap, inline []*Struct
 		if err != nil {
 			return err
 		}
-		var deeper []*StructField
+		var deeper []*fieldInfo
 		for _, sfe := range under {
 			if sfe.IsInline {
 				deeper = append(deeper, sfe)
 			}
 		}
-		slices.SortFunc(deeper, func(a, b *StructField) int { return a.Index - b.Index })
+		slices.SortFunc(deeper, func(a, b *fieldInfo) int { return a.Index - b.Index })
 		if err := f.walk(embedded, under, deeper, append(at, sf.Index)); err != nil {
 			return err
 		}
@@ -775,8 +776,8 @@ func checkInlineTarget(structType reflect.Type, field reflect.StructField, inlin
 	}
 }
 
-func readStructFields(structType reflect.Type, mode tagMode) (StructFieldMap, error) {
-	fieldMap := StructFieldMap{}
+func readStructFields(structType reflect.Type, mode tagMode) (fieldInfoMap, error) {
+	fieldMap := fieldInfoMap{}
 	renderNameMap := map[string]struct{}{}
 	inlineMaps := 0
 	for i := range structType.NumField() {

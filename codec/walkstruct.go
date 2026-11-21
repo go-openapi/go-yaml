@@ -631,7 +631,7 @@ func (b *typedBuilder) openMerge(top *typedFrame) error {
 		if err != nil {
 			return b.fail(err)
 		}
-		if slices.ContainsFunc(fields.inline, func(sf *StructField) bool { return sf.IsAutoAlias }) {
+		if slices.ContainsFunc(fields.inline, func(sf *fieldInfo) bool { return sf.IsAutoAlias }) {
 			return b.fail(errNeedsTheTree)
 		}
 	}

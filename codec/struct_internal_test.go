@@ -39,7 +39,7 @@ func TestStructFieldMapIsReadOncePerType(t *testing.T) {
 	if len(first) != 3 {
 		t.Fatalf("read %d fields, want 3", len(first))
 	}
-	// The same StructField, not an equal one: a second read would allocate a
+	// The same fieldInfo, not an equal one: a second read would allocate a
 	// new one and the cache would be doing nothing.
 	if first["Name"] != second["Name"] {
 		t.Error("the type was read twice")

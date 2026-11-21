@@ -79,7 +79,7 @@ type T struct {
 | `,anchor` | written with an anchor — see [Anchors and aliases](../anchors-and-aliases/) |
 | `,alias` | written as an alias to a matching anchor |
 
-The tag name is `yaml`, spelled by `codec.StructTagName`.
+The tag name is `yaml`.
 
 ## Related options
 
