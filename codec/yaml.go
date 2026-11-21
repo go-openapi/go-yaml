@@ -7,8 +7,12 @@ import (
 	"bytes"
 	"errors"
 	"io"
+	"strconv"
+	"strings"
 
 	"github.com/go-openapi/go-yaml/ast"
+	"github.com/go-openapi/go-yaml/parser"
+	"github.com/go-openapi/go-yaml/token"
 )
 
 // Marshal serializes the value provided into a YAML document. The structure
@@ -138,17 +142,84 @@ func NodeToValue(node ast.Node, v any, opts ...DecodeOption) error {
 	return nil
 }
 
-// FromJSON convert JSON bytes to YAML.
-func FromJSON(bytes []byte) ([]byte, error) {
-	var v any
-	if err := Unmarshal(bytes, &v, UseOrderedMap()); err != nil {
+// FromJSON converts a JSON document to YAML in block style.
+//
+// It reads src with the parser's walk under [parser.WithJSONSyntax], so a document not written as JSON returns
+// [github.com/go-openapi/go-yaml/errors.ErrNotJSONSyntax], and a repeated member name returns
+// [github.com/go-openapi/go-yaml/errors.ErrDuplicateKey]. It writes each value as the walk reads it, through an
+// [ast.Stream]: the walk keeps nothing behind it and the stream nothing behind its output, so beyond its output
+// FromJSON holds what grows with the document's nesting, not its length.
+//
+// The YAML holds what the JSON wrote. A number keeps its text, "1e3" or "-0" or twenty digits, as a YAML 1.2 number.
+// Member order is kept. A string is written as [Marshal] writes a Go string: plain where the plain text reads back as
+// that string, quoted otherwise, so "yes", "1" and "null" stay quoted, and a string over several lines as a "|"
+// block.
+//
+// opts lay the YAML out: [ast.WithIndent] and [ast.WithIndentSequence].
+func FromJSON(src []byte, opts ...ast.RenderOption) ([]byte, error) {
+	return fromJSON(src, true, opts...)
+}
+
+// fromJSON is [FromJSON], which checks src as JSON text when syntax is set.
+//
+// Without the check it reads any YAML with a JSON form, as [ToJSONTokens] does. The encoder converts what a
+// MarshalJSON method returns that way: json.RawMessage returns its bytes unchecked, and a RawMessage holding YAML has
+// always been written as that YAML.
+func fromJSON(src []byte, syntax bool, opts ...ast.RenderOption) ([]byte, error) {
+	var out bytes.Buffer
+	out.Grow(len(src) + len(src)/4)
+
+	stream := ast.NewRenderer(opts...).Stream(&out)
+	// A zero Encoder styles a string as Marshal does with no options.
+	var enc Encoder
+
+	var parseOpts []parser.Option
+	if syntax {
+		parseOpts = append(parseOpts, parser.WithJSONSyntax())
+	}
+	tokens := ToJSONTokens(src, parseOpts...)
+	for tok := range tokens.Tokens() {
+		if err := streamJSONToken(stream, &enc, tok); err != nil {
+			return nil, err
+		}
+	}
+	if err := tokens.Err(); err != nil {
 		return nil, err
 	}
-	out, err := Marshal(v)
-	if err != nil {
+	if err := stream.Close(); err != nil {
 		return nil, err
 	}
-	return out, nil
+
+	return out.Bytes(), nil
+}
+
+// streamJSONToken hands one JSON token to the stream.
+func streamJSONToken(stream *ast.Stream, enc *Encoder, tok JSONToken) error {
+	switch tok.Kind {
+	case JSONObjectStart:
+		return stream.BeginMapping()
+	case JSONArrayStart:
+		return stream.BeginSequence()
+	case JSONObjectEnd, JSONArrayEnd:
+		return stream.End()
+	case JSONKey:
+		return stream.Key(enc.encodeString(tok.Value, 0))
+	case JSONString:
+		return stream.Value(enc.encodeString(tok.Value, 0))
+	case JSONNumber:
+		tk := token.New(tok.Value, tok.Value, token.Position{})
+		if strings.ContainsAny(tok.Value, ".eE") {
+			return stream.Value(ast.Float(tk))
+		}
+
+		return stream.Value(ast.Integer(tk))
+	case JSONBool:
+		value := strconv.FormatBool(tok.Bool)
+
+		return stream.Value(ast.Bool(token.New(value, value, token.Position{})))
+	default:
+		return stream.Value(ast.Null(token.New("null", "null", token.Position{})))
+	}
 }
 
 // RawMessage is a raw encoded YAML value. It implements [Marshaler] and

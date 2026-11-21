@@ -481,7 +481,7 @@ func (e *Encoder) encodeJSON(marshaler jsonMarshaler) (ast.Node, error) {
 	if err != nil {
 		return nil, err
 	}
-	doc, err := FromJSON(jsonBytes)
+	doc, err := fromJSON(jsonBytes, false)
 	if err != nil {
 		return nil, err
 	}

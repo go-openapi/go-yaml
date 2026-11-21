@@ -27,9 +27,10 @@ func ToJSON(bytes []byte) ([]byte, error) {
 	return codec.ToJSON(bytes)
 }
 
-// FromJSON converts a JSON document to the YAML that holds the same values.
+// FromJSON converts a JSON document to the YAML that holds the same values, and
+// rejects input that is not JSON.
 //
-// See [codec.FromJSON] for advanced usage with options.
+// See [codec.FromJSON] for what is written, and for the options that lay it out.
 func FromJSON(bytes []byte) ([]byte, error) {
 	return codec.FromJSON(bytes)
 }

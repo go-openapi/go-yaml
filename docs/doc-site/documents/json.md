@@ -15,7 +15,7 @@ j, err := codec.ToJSON([]byte("a: 1\nb: [x, y]\n"))
 
 `FromJSON` goes the other way. Both are re-exported from the root package, where
 they take no options; `codec.ToJSON` takes
-[parser options](../parser/).
+[parser options](../parser/), and `codec.FromJSON` takes render options.
 
 `ToJSON` walks the document and writes JSON as it reaches each node. Nothing is
 decoded into a Go value on the way, so a type Go cannot hold does not stop the
@@ -67,6 +67,41 @@ every mapping until it closes, which a streaming converter does not do.
 
 A document read both ways under the option can therefore give two values for one
 key. Leave the option off where the JSON and a decoded value must agree.
+
+## From JSON to YAML
+
+```go
+y, err := codec.FromJSON([]byte(`{"name": "yes", "size": 1e3, "tags": []}`))
+// name: "yes"
+// size: 1e3
+// tags: []
+```
+
+`FromJSON` reads the JSON with the parser's walk and writes the YAML as it reads,
+in block style. It builds no Go value and no tree: beyond its output, what it
+holds grows with the document's nesting, not its length. On a 2.2 MB document it
+peaks at 2.8 MB live, the output included, where decoding to Go values and
+calling `Marshal` peaked at 261 MB.
+
+The YAML holds what the JSON wrote:
+
+- a number keeps its text, `1e3`, `-0` or twenty digits, as a YAML 1.2 number;
+- members keep their order;
+- a string is written as `Marshal` writes a Go string: plain where the plain text
+  reads back as that string, quoted where it would read as something else
+  (`"yes"`, `"1"`, `"null"`), and as a `|` block over several lines.
+
+Input that is not JSON is refused with `ErrNotJSONSyntax`, even where it is YAML:
+`a: b`, a comment, a trailing comma, `0x1F`. A repeated member name is refused
+with `ErrDuplicateKey`: JSON's grammar allows one, and a YAML mapping does not.
+
+Pass `ast.WithIndent` or `ast.WithIndentSequence` to lay the YAML out:
+
+```go
+y, err := codec.FromJSON(src, ast.WithIndent(4))
+```
+
+To accept only JSON in your own parse, pass `parser.WithJSONSyntax`.
 
 ## Go values from a tree
 

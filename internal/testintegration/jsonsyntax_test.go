@@ -4,12 +4,16 @@
 package testintegration_test
 
 import (
+	"bytes"
+	"encoding/json"
 	"errors"
 	"testing"
 
 	jsoncorpus "github.com/go-openapi/conformance-suites/json"
+	"github.com/go-openapi/testify/v2/assert"
 	"github.com/go-openapi/testify/v2/require"
 
+	"github.com/go-openapi/go-yaml/codec"
 	yamlerrors "github.com/go-openapi/go-yaml/errors"
 	"github.com/go-openapi/go-yaml/parser"
 )
@@ -51,4 +55,51 @@ func TestWithJSONSyntaxAgreesWithRFC8259(t *testing.T) {
 	t.Logf("%d of %d documents scored, %d of them JSON", scored, len(cases), accepted)
 	require.NotZero(t, accepted)
 	require.NotZero(t, scored-accepted)
+}
+
+// TestFromJSONRoundTripsTheJSONCorpus converts every JSON document of the smoke corpus to YAML with codec.FromJSON,
+// back with codec.ToJSON, and compares the two JSON texts as values, numbers by their text. A document carrying an
+// implementation-defined property is converted and its outcome counted, not scored.
+func TestFromJSONRoundTripsTheJSONCorpus(t *testing.T) {
+	_, cases, err := jsoncorpus.SmokeSuite()
+	require.NoError(t, err)
+
+	var scored, untagged int
+	for _, c := range cases {
+		if !c.WellFormed || c.Opaque {
+			continue
+		}
+		yml, err := codec.FromJSON(c.Src)
+		if len(c.Tags) > 0 {
+			continue
+		}
+		untagged++
+		if err != nil {
+			t.Errorf("%s: %v\n%q", c.Name, err, c.Src)
+
+			continue
+		}
+		back, err := codec.ToJSON(yml)
+		if err != nil {
+			t.Errorf("%s: the YAML does not convert back: %v\n%s", c.Name, err, yml)
+
+			continue
+		}
+		scored++
+		assert.Equal(t, decodeJSON(t, c.Src), decodeJSON(t, back), "%s via\n%s", c.Name, yml)
+	}
+
+	t.Logf("%d of %d JSON documents round-tripped", scored, untagged)
+	require.NotZero(t, scored)
+}
+
+func decodeJSON(t *testing.T, src []byte) any {
+	t.Helper()
+
+	dec := json.NewDecoder(bytes.NewReader(src))
+	dec.UseNumber()
+	var v any
+	require.NoError(t, dec.Decode(&v), "%q", src)
+
+	return v
 }
