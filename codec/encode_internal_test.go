@@ -32,7 +32,7 @@ var keyIdentityCases = []string{
 // identity together.
 //
 // The parser compares a key by [ast.ComparedKeyName], read off the node. A
-// merge, a MapSlice and the encoder compare a Go value by keyIDOf. Every key
+// merge, a MapSlice and the encoder compare a Go value by codecutils.KeyIDOf. Every key
 // defect of this kind sat between two such rules, so for every scalar key the
 // corpus writes, the value the key decodes to must have the identity the key's
 // node has.
@@ -73,7 +73,7 @@ func TestAKeyNodeAndItsValueHaveOneIdentity(t *testing.T) {
 				if err != nil || !codecutils.HashableKey(value) {
 					continue
 				}
-				gotKind, gotName, gotNamed := keyIDOf(value)
+				gotKind, gotName, gotNamed := codecutils.KeyIDOf(value)
 				if !gotNamed || gotKind != kind || gotName != name {
 					t.Errorf("%s: key %q is %v %q as a node and %v %q (%v) as the value %#v",
 						src.name, entry.Key.String(), kind, name, gotKind, gotName, gotNamed, value)

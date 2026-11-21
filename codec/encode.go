@@ -16,6 +16,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/go-openapi/go-yaml/codec/internal/codecutils"
+
 	"github.com/go-openapi/go-yaml/ast"
 	yamlerrors "github.com/go-openapi/go-yaml/errors"
 	"github.com/go-openapi/go-yaml/parser"
@@ -913,7 +915,7 @@ func (e *Encoder) encodeMap(value reflect.Value, column int) (ast.Node, error) {
 // whose Go keys can be one YAML key.
 type keySet map[keyIdentity]any
 
-// keyIdentity is the kind and compared name keyIDOf gives a key.
+// keyIdentity is the kind and compared name codecutils.KeyIDOf gives a key.
 type keyIdentity struct {
 	kind token.KeyKind
 	name string
@@ -938,9 +940,9 @@ func repeatableKeys(t reflect.Type) keySet {
 }
 
 // add records key, and returns the key already recorded under its identity
-// and whether there was one. A key keyIDOf has no kind for is never a repeat.
+// and whether there was one. A key codecutils.KeyIDOf has no kind for is never a repeat.
 func (s keySet) add(key any) (any, bool) {
-	kind, name, named := keyIDOf(key)
+	kind, name, named := codecutils.KeyIDOf(key)
 	if !named {
 		return nil, false
 	}

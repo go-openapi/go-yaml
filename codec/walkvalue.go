@@ -10,9 +10,9 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/go-openapi/go-yaml/codec/internal/astutils"
-
 	"github.com/go-openapi/go-yaml/codec/internal/codecutils"
+
+	"github.com/go-openapi/go-yaml/codec/internal/astutils"
 
 	"github.com/go-openapi/go-yaml/ast"
 	yamlerrors "github.com/go-openapi/go-yaml/errors"
@@ -528,7 +528,7 @@ func (f *buildFrame) put(value any) {
 	if f.broughtByValue {
 		// The mapping's own key replaces what a "<<" brought in under it: for a
 		// timestamp the same instant in any zone, for a wide number its value.
-		if held, found := sameKeyIn(f.anyKeyed, key); found {
+		if held, found := codecutils.SameKeyIn(f.anyKeyed, key); found {
 			delete(f.anyKeyed, held)
 		}
 	}
@@ -575,7 +575,7 @@ func (f *buildFrame) holds(key any) bool {
 		if _, held := f.anyKeyed[key]; held {
 			return true
 		}
-		_, held := sameKeyIn(f.anyKeyed, key)
+		_, held := codecutils.SameKeyIn(f.anyKeyed, key)
 
 		return held
 	}
@@ -598,7 +598,7 @@ func (f *buildFrame) bring(key any, value any) {
 	if f.anyKeyed == nil {
 		f.widen()
 	}
-	if comparesByValue(key) {
+	if codecutils.ComparesByValue(key) {
 		f.broughtByValue = true
 	}
 	f.anyKeyed[key] = value

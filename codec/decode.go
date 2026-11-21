@@ -22,9 +22,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/go-openapi/go-yaml/codec/internal/astutils"
-
 	"github.com/go-openapi/go-yaml/codec/internal/codecutils"
+
+	"github.com/go-openapi/go-yaml/codec/internal/astutils"
 
 	"github.com/go-openapi/go-yaml/ast"
 	yamlerrors "github.com/go-openapi/go-yaml/errors"
@@ -288,7 +288,7 @@ func (k *keyedMap) holds(key any) bool {
 		if _, stands := k.byKey[key]; stands {
 			return true
 		}
-		_, stands := sameKeyIn(k.byKey, key)
+		_, stands := codecutils.SameKeyIn(k.byKey, key)
 
 		return stands
 	}

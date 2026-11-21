@@ -280,7 +280,7 @@ func (s *MapSlice) UnmarshalJSON(b []byte) error {
 // have to be kept through every Set and Delete.
 func (s MapSlice) index(key any) int {
 	for i := range s.items {
-		if sameMapKey(s.items[i].Key, key) {
+		if codecutils.SameMapKey(s.items[i].Key, key) {
 			return i
 		}
 	}
