@@ -407,29 +407,6 @@ func nodeAt(n ast.Node) token.Position {
 	return tk.Position
 }
 
-// isMergeKey reports whether a mapping key is a "<<".
-//
-// A document may write the tag out -- "!!merge <<: *base" -- and the key then
-// arrives wrapped in a tag. The tag's own Value is nil until it closes, so the
-// wrapper is read by its text rather than by what it stands on.
-func isMergeKey(n ast.Node) bool {
-	switch t := n.(type) {
-	case *ast.MergeKeyNode:
-		return true
-	case *ast.TagNode:
-		tag, ok := token.ReservedTagOf(t.URI)
-
-		return ok && tag == token.MergeTag
-	case *ast.MappingKeyNode:
-		// "? <<" is the merge key written the long way. The walk hands the "?"
-		// over first, and a reader that took it for an ordinary key wrote the
-		// merged mapping under the name "<<" -- or, in ToJSON, under no name.
-		return t.IsMergeKey()
-	default:
-		return false
-	}
-}
-
 // keyText is a scalar key as the string a mapping holds it under. JSON keys are
 // strings, so 4.0 and 4 address the same entry and are both "4".
 func keyText(node ast.Node) string {
@@ -481,17 +458,6 @@ func shapeOf(node ast.Node) keptShape {
 	ast.Walk(&k, node)
 
 	return k
-}
-
-// entryText reads the name a mapping key addresses its entry by, in the type's
-// own canonical spelling: "true: x" addresses a field tagged "true" and
-// "1.0: x" one tagged "1.0", which is how the same document reads into a
-// map[string]any. keyName holds the rule, so the walk, the tree decoder and
-// ToJSON name an entry the same way.
-func entryText(n ast.Node) (string, bool) {
-	name, kind := ast.KeyName(n)
-
-	return name, kind != token.KeyOther
 }
 
 func scalarNumber(node ast.Node) any {

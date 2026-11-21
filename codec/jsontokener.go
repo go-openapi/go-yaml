@@ -130,7 +130,7 @@ func (t *jsonTokener) Enter(node ast.Node, at parser.Cursor) error {
 		return t.collectMerge(node, at)
 	}
 
-	if isMergeKey(node) {
+	if key, isKey := node.(ast.MapKeyNode); isKey && key.IsMergeKey() {
 		// "<<" names no key of its own: what it brings in goes over at the end
 		// of the mapping, where the keys the mapping writes itself are known.
 		if frame := t.frame(); frame != nil {

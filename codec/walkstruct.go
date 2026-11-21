@@ -14,6 +14,7 @@ import (
 	"github.com/go-openapi/go-yaml/ast"
 	yamlerrors "github.com/go-openapi/go-yaml/errors"
 	"github.com/go-openapi/go-yaml/parser"
+	"github.com/go-openapi/go-yaml/token"
 )
 
 // errNeedsTheTree reports a document or a destination the walk cannot fill.
@@ -796,7 +797,8 @@ func (b *typedBuilder) mergeNested(i int, value ast.Node, alias *ast.AliasNode) 
 // opened with the caller's entries, which a merged entry writes over.
 func (b *typedBuilder) mergeEntry(i int, keyNode, value ast.Node, alias *ast.AliasNode) error {
 	top := &b.stack[i]
-	name, named := entryText(keyNode)
+	name, kind := ast.KeyName(keyNode)
+	named := kind != token.KeyOther
 	if !named {
 		if top.kind == typedMap {
 			return b.fail(errNeedsTheTree)
@@ -1147,7 +1149,8 @@ func (b *typedBuilder) openEntry(top *typedFrame, keyNode ast.Node) error {
 		return b.openMerge(top)
 	}
 
-	name, named := entryText(keyNode)
+	name, kind := ast.KeyName(keyNode)
+	named := kind != token.KeyOther
 	if !named {
 		if top.kind == typedMap {
 			return b.fail(errNeedsTheTree)

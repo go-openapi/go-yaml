@@ -124,7 +124,7 @@ func (b *valueBuilder) Enter(node ast.Node, at parser.Cursor) error {
 		b.named = nil
 	}
 
-	if isMergeKey(node) {
+	if key, isKey := node.(ast.MapKeyNode); isKey && key.IsMergeKey() {
 		// "<<" names no key of its own: what it brings in is folded into the
 		// mapping when the value below it arrives.
 		if n := len(b.stack); n > 0 && b.stack[n-1].kind == frameMapping {
