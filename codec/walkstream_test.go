@@ -142,7 +142,8 @@ func TestADecoderReportsABrokenDocumentOnItsOwnDecode(t *testing.T) {
 // TestADecoderKeepsTheErrorThatStoppedItsStream holds every decode path to one
 // answer once the source fails to parse: the same error on every Decode after,
 // as encoding/json.Decoder gives, and never io.EOF, which a Decode loop takes
-// for the stream's clean end.
+// for the stream's clean end. A document before the broken one decodes first,
+// and returns its own error if it has one.
 //
 // The walk kept its own parse error. The tree, and a walk that had handed the
 // document to the tree before the parse failed, read the drained reader again
@@ -177,18 +178,20 @@ func TestADecoderKeepsTheErrorThatStoppedItsStream(t *testing.T) {
 			t.Run(name+"/"+src, func(t *testing.T) {
 				dec := codec.NewDecoder(strings.NewReader(src), route.opts...)
 
-				var first error
+				var stop error
 				for range 4 {
 					err := dec.Decode(route.into())
-					if first == nil {
-						first = err
+					if stop == nil {
+						if errors.Is(err, yamlerrors.ErrSyntax) || errors.Is(err, yamlerrors.ErrUnknownAnchor) {
+							stop = err
+						}
 
 						continue
 					}
-					require.Error(t, first, "the source does not parse")
 					require.NotErrorIs(t, err, io.EOF)
-					require.EqualError(t, err, first.Error())
+					require.EqualError(t, err, stop.Error())
 				}
+				require.Error(t, stop, "the source does not parse")
 			})
 		}
 	}
@@ -272,6 +275,69 @@ func TestATypeErrorFailsOnlyItsOwnDocument(t *testing.T) {
 			require.ErrorIs(t, dec.Decode(new(doc)), io.EOF)
 		})
 	}
+}
+
+// TestAParseErrorStopsTheStreamAtTheBrokenDocument reads a stream whose third document does not parse, on every
+// decode path. The two documents before it decode, and the Decode that reaches it returns the syntax error, and so
+// does every Decode after it. Each path returns the same error.
+//
+// The tree parsed the whole stream before its first Decode, and the parse returned no document with its error, so
+// every Decode failed, the first one included. A stream that started on the walk and switched to the tree failed
+// from the switch on.
+func TestAParseErrorStopsTheStreamAtTheBrokenDocument(t *testing.T) {
+	const src = "a: 1\n---\nb: 2\n---\nc: [1, 2\n---\nd: 4\n"
+	anyTarget := func() any { var v any; return &v }
+	mapTarget := func() any { var v map[string]any; return &v }
+
+	paths := map[string]struct {
+		targets []func() any
+		opts    []codec.DecodeOption
+	}{
+		"walk":                   {targets: []func() any{anyTarget, anyTarget, anyTarget, anyTarget}},
+		"tree, a map":            {targets: []func() any{mapTarget, mapTarget, mapTarget, mapTarget}},
+		"tree, UseOrderedMap":    {targets: []func() any{anyTarget, anyTarget, anyTarget, anyTarget}, opts: []codec.DecodeOption{codec.UseOrderedMap()}},
+		"walk, then to the tree": {targets: []func() any{anyTarget, mapTarget, mapTarget, mapTarget}},
+	}
+
+	var syntaxErrors []string
+	for name, path := range paths {
+		t.Run(name, func(t *testing.T) {
+			dec := codec.NewDecoder(strings.NewReader(src), path.opts...)
+
+			for i, want := range []string{"a", "b"} {
+				v := path.targets[i]()
+				require.NoError(t, dec.Decode(v), "document %d", i+1)
+				got, err := codec.Marshal(v)
+				require.NoError(t, err)
+				assert.Contains(t, string(got), want+": ", "document %d", i+1)
+			}
+
+			err := dec.Decode(path.targets[2]())
+			require.ErrorIs(t, err, yamlerrors.ErrSyntax)
+			syntaxErrors = append(syntaxErrors, err.Error())
+			require.ErrorIs(t, dec.Decode(path.targets[3]()), yamlerrors.ErrSyntax, "the stream stops at the broken document")
+		})
+	}
+	for _, e := range syntaxErrors[1:] {
+		assert.Equal(t, syntaxErrors[0], e)
+	}
+}
+
+// TestUnmarshalFillsTheFirstDocumentOfABrokenStream reads a stream whose second document does not parse with
+// Unmarshal, on the walk and on the tree. Both return the syntax error, and both have filled the first document.
+func TestUnmarshalFillsTheFirstDocumentOfABrokenStream(t *testing.T) {
+	src := []byte("a: 1\n---\nb: [1, 2\n")
+
+	var walked any
+	walkErr := codec.Unmarshal(src, &walked)
+	require.ErrorIs(t, walkErr, yamlerrors.ErrSyntax)
+
+	var tree map[string]any
+	treeErr := codec.Unmarshal(src, &tree)
+	require.ErrorIs(t, treeErr, yamlerrors.ErrSyntax)
+
+	assert.Equal(t, walkErr.Error(), treeErr.Error())
+	assert.Equal(t, walked, any(tree))
 }
 
 // TestADocumentErrorFailsOnlyItsOwnDocument holds both decode paths to one

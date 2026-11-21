@@ -96,6 +96,10 @@ type Decoder struct {
 	// drained reader as an empty source and returned io.EOF, which a Decode
 	// loop takes for the stream's clean end.
 	streamErr error
+	// pendingErr is the parse error of the document after the last one the tree holds. The parse keeps the
+	// documents before a broken one, so those decode, and the Decode that reaches the broken one returns this and
+	// makes it the streamErr. Unmarshal reads one document and returns it after that document.
+	pendingErr error
 	// strs holds the text of every string a decode hands back, copied out of
 	// the document so that the values outlive it.
 	strs arena
@@ -224,6 +228,12 @@ func (d *Decoder) Decode(v any) error {
 	if err := d.decode(rv); err != nil {
 		return yamlerrors.WithSource(err, d.source)
 	}
+	if d.firstOnly && d.pendingErr != nil {
+		// Unmarshal refuses a stream whose later documents do not parse, as the walk does, and has decoded the first
+		// one into v by then, as the walk has.
+		return yamlerrors.WithSource(d.pendingErr, d.source)
+	}
+
 	return nil
 }
 
@@ -4055,10 +4065,14 @@ func (d *Decoder) parserOptions() []parser.Option {
 	return opts
 }
 
+// parse reads bytes into a tree of the documents that hold a value.
+//
+// On a parse error it returns the documents read before the broken one with the error, and returns a nil file only
+// where the parser read none. Each document stands on its own, so a Decoder still decodes those.
 func (d *Decoder) parse(bytes []byte) (*ast.File, error) {
-	f, err := parser.ParseBytes(bytes, d.parserOptions()...)
-	if err != nil {
-		return nil, err
+	f, parseErr := parser.ParseBytes(bytes, d.parserOptions()...)
+	if f == nil {
+		return nil, parseErr
 	}
 	normalizedFile := &ast.File{}
 	for _, doc := range f.Docs {
@@ -4100,7 +4114,7 @@ func (d *Decoder) parse(bytes []byte) (*ast.File, error) {
 		}
 	}
 
-	return normalizedFile, nil
+	return normalizedFile, parseErr
 }
 
 // collectComments fills the map a caller asked for with CommentToMap.
@@ -4223,10 +4237,10 @@ func (d *Decoder) decodeInit(v reflect.Value) error {
 	}
 
 	file, err := d.parse(src)
-	if err != nil {
+	if file == nil {
 		return err
 	}
-	d.parsedFile = file
+	d.parsedFile, d.pendingErr = file, err
 
 	return nil
 }
@@ -4266,12 +4280,12 @@ func (d *Decoder) decodeWalking(v reflect.Value) (bool, error) {
 // stream, and only the first of them decided how the source was read.
 func (d *Decoder) buildTree() error {
 	file, err := d.parse(d.src)
-	if err != nil {
+	if file == nil {
 		d.streamErr = err
 
 		return err
 	}
-	d.parsedFile = file
+	d.parsedFile, d.pendingErr = file, err
 
 	return nil
 }
@@ -4292,6 +4306,13 @@ func (d *Decoder) decode(v reflect.Value) error {
 
 	d.decodeDepth = 0
 	d.anchorValueMap = make(map[string]reflect.Value)
+	if d.streamIndex >= len(d.parsedFile.Docs) && d.pendingErr != nil {
+		// The documents before the broken one have been read: the stream stops here, for this Decode and every
+		// one after it.
+		d.streamErr = d.pendingErr
+
+		return d.pendingErr
+	}
 	if len(d.parsedFile.Docs) == 0 {
 		// empty document.
 		dst := v.Elem()
