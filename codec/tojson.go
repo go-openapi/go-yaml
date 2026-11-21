@@ -13,39 +13,14 @@ import (
 	"strings"
 	"time"
 
-	"github.com/go-openapi/go-yaml/codec/internal/astutils"
-
 	"github.com/go-openapi/go-yaml/ast"
+	"github.com/go-openapi/go-yaml/codec/internal/astutils"
 	yamlerrors "github.com/go-openapi/go-yaml/errors"
 	"github.com/go-openapi/go-yaml/parser"
 	"github.com/go-openapi/go-yaml/token"
 )
 
-// ToJSON converts a YAML document to the JSON that holds the same values.
-//
-// It writes the tokens [ToJSONTokens] hands over into one buffer, putting back
-// the commas and colons the tokens leave out. The two converters are one reading
-// of a document -- the same aliases, merges, tags and refusals -- and differ only
-// in what they hand the caller.
-//
-// A stream of several documents converts its first, which is the one
-// [Unmarshal] reads. The rest are still read, so a stream whose later documents
-// cannot be converted is refused rather than half-answered.
-//
-// opts are passed to the parse. The one that changes what is written is
-// [github.com/go-openapi/go-yaml/parser.WithLaxTags], which reads a tag naming
-// a type its scalar is not as the text rather than refusing it, so
-// "k: !!int abc" converts to {"k":"abc"} instead of failing. Pass it here and
-// to whatever else reads the same document, or the two disagree about it.
-//
-// [github.com/go-openapi/go-yaml/parser.WithJSONCompatible] is always on and
-// cannot be turned off: a document JSON has no spelling for is refused rather
-// than given one this converter invented.
-//
-// Under [github.com/go-openapi/go-yaml/parser.WithAllowDuplicateMapKey] a
-// repeated key keeps its first value, as in [ToJSONTokens], where a decoder
-// keeps the last.
-func ToJSON(src []byte, opts ...parser.Option) ([]byte, error) {
+func toJSON(src []byte, opts ...parser.Option) ([]byte, error) {
 	// The JSON runs from half the source to a little under it on the workload
 	// corpus -- 0.51x on golang_source, 0.93x on twitter_status -- so the
 	// source's length is one allocation that holds all of it. Growing from

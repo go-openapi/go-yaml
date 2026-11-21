@@ -7,12 +7,9 @@ import (
 	"bytes"
 	"errors"
 	"io"
-	"strconv"
-	"strings"
 
 	"github.com/go-openapi/go-yaml/ast"
 	"github.com/go-openapi/go-yaml/parser"
-	"github.com/go-openapi/go-yaml/token"
 )
 
 // Marshal serializes the value provided into a YAML document. The structure
@@ -160,95 +157,57 @@ func FromJSON(src []byte, opts ...ast.RenderOption) ([]byte, error) {
 	return fromJSON(src, true, opts...)
 }
 
-// fromJSON is [FromJSON], which checks src as JSON text when syntax is set.
+// ToJSON converts a YAML document to the JSON that holds the same values.
 //
-// Without the check it reads any YAML with a JSON form, as [ToJSONTokens] does. The encoder converts what a
-// MarshalJSON method returns that way: json.RawMessage returns its bytes unchecked, and a RawMessage holding YAML has
-// always been written as that YAML.
-func fromJSON(src []byte, syntax bool, opts ...ast.RenderOption) ([]byte, error) {
-	var out bytes.Buffer
-	out.Grow(len(src) + len(src)/4)
-
-	stream := ast.NewRenderer(opts...).Stream(&out)
-	// A zero Encoder styles a string as Marshal does with no options.
-	var enc Encoder
-
-	var parseOpts []parser.Option
-	if syntax {
-		parseOpts = append(parseOpts, parser.WithJSONSyntax())
-	}
-	tokens := ToJSONTokens(src, parseOpts...)
-	for tok := range tokens.Tokens() {
-		if err := streamJSONToken(stream, &enc, tok); err != nil {
-			return nil, err
-		}
-	}
-	if err := tokens.Err(); err != nil {
-		return nil, err
-	}
-	if err := stream.Close(); err != nil {
-		return nil, err
-	}
-
-	return out.Bytes(), nil
-}
-
-// streamJSONToken hands one JSON token to the stream.
-func streamJSONToken(stream *ast.Stream, enc *Encoder, tok JSONToken) error {
-	switch tok.Kind {
-	case JSONObjectStart:
-		return stream.BeginMapping()
-	case JSONArrayStart:
-		return stream.BeginSequence()
-	case JSONObjectEnd, JSONArrayEnd:
-		return stream.End()
-	case JSONKey:
-		return stream.Key(enc.encodeString(tok.Value, 0))
-	case JSONString:
-		return stream.Value(enc.encodeString(tok.Value, 0))
-	case JSONNumber:
-		tk := token.New(tok.Value, tok.Value, token.Position{})
-		if strings.ContainsAny(tok.Value, ".eE") {
-			return stream.Value(ast.Float(tk))
-		}
-
-		return stream.Value(ast.Integer(tk))
-	case JSONBool:
-		value := strconv.FormatBool(tok.Bool)
-
-		return stream.Value(ast.Bool(token.New(value, value, token.Position{})))
-	default:
-		return stream.Value(ast.Null(token.New("null", "null", token.Position{})))
-	}
-}
-
-// RawMessage is a raw encoded YAML value. It implements [Marshaler] and
-// [Unmarshaler] and can be used to delay YAML decoding or precompute a YAML
-// encoding.
-// It also implements [json.GoYAMLMarshaler] and [json.GoYAMLUnmarshaler].
+// It writes the tokens [ToJSONTokens] hands over into one buffer, putting back
+// the commas and colons the tokens leave out. The two converters are one reading
+// of a document -- the same aliases, merges, tags and refusals -- and differ only
+// in what they hand the caller.
 //
-// This is similar to [json.RawMessage] in the stdlib.
-type RawMessage []byte
-
-func (m RawMessage) MarshalYAML() ([]byte, error) {
-	if m == nil {
-		return []byte("null"), nil
-	}
-	return m, nil
+// A stream of several documents converts its first, which is the one
+// [Unmarshal] reads. The rest are still read, so a stream whose later documents
+// cannot be converted is refused rather than half-answered.
+//
+// opts are passed to the parse. The one that changes what is written is
+// [github.com/go-openapi/go-yaml/parser.WithLaxTags], which reads a tag naming
+// a type its scalar is not as the text rather than refusing it, so
+// "k: !!int abc" converts to {"k":"abc"} instead of failing. Pass it here and
+// to whatever else reads the same document, or the two disagree about it.
+//
+// [github.com/go-openapi/go-yaml/parser.WithJSONCompatible] is always on and
+// cannot be turned off: a document JSON has no spelling for is refused rather
+// than given one this converter invented.
+//
+// Under [github.com/go-openapi/go-yaml/parser.WithAllowDuplicateMapKey] a
+// repeated key keeps its first value, as in [ToJSONTokens], where a decoder
+// keeps the last.
+func ToJSON(src []byte, opts ...parser.Option) ([]byte, error) {
+	return toJSON(src, opts...)
 }
 
-func (m *RawMessage) UnmarshalYAML(dt []byte) error {
-	if m == nil {
-		return errors.New("yaml.RawMessage: UnmarshalYAML on nil pointer")
-	}
-	*m = append((*m)[0:0], dt...)
-	return nil
-}
-
-func (m *RawMessage) UnmarshalJSON(b []byte) error {
-	return m.UnmarshalYAML(b)
-}
-
-func (m RawMessage) MarshalJSON() ([]byte, error) {
-	return ToJSON(m)
+// ToJSONTokens reads src as the JSON tokens holding the same values, handing
+// each over as the parse reaches it.
+//
+// It converts what [ToJSON] writes, token by token instead of into one buffer,
+// and refuses the same documents: a value JSON has no spelling for -- an
+// infinity, a NaN, a collection as a mapping key -- stops the conversion rather
+// than being given one this package invented.
+//
+// A stream of several documents converts its first, which is the one
+// [Unmarshal] reads. The rest are converted too and none of them is handed
+// over, so a stream whose later documents cannot be converted is refused, as
+// [ToJSON] refuses it.
+//
+// opts are passed to the parse. [github.com/go-openapi/go-yaml/parser.WithJSONCompatible]
+// is always on and cannot be turned off.
+//
+// A document that repeats a mapping key is refused, as [Unmarshal] refuses it.
+// Under [github.com/go-openapi/go-yaml/parser.WithAllowDuplicateMapKey] the conversion keeps the first entry and
+// drops the later one, where a decoder under [AllowDuplicateMapKey] keeps the last value.
+// The first entry's tokens are handed over before the repeat is read, and cannot be taken back.
+//
+// Nothing is read until [JSONTokens.Tokens] is ranged over, and ranging twice
+// converts twice.
+func ToJSONTokens(src []byte, opts ...parser.Option) *JSONTokens {
+	return &JSONTokens{src: src, opts: opts}
 }

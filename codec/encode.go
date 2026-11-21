@@ -16,19 +16,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/go-openapi/go-yaml/codec/internal/structfields"
-
-	"github.com/go-openapi/go-yaml/codec/internal/codecutils"
-
 	"github.com/go-openapi/go-yaml/ast"
+	"github.com/go-openapi/go-yaml/codec/internal/codecutils"
+	"github.com/go-openapi/go-yaml/codec/internal/structfields"
 	yamlerrors "github.com/go-openapi/go-yaml/errors"
 	"github.com/go-openapi/go-yaml/parser"
 	"github.com/go-openapi/go-yaml/token"
-)
-
-const (
-	// DefaultIndentSpaces default number of space for indent.
-	DefaultIndentSpaces = 2
 )
 
 // Encoder writes YAML values to an output stream.
@@ -105,6 +98,7 @@ func (e *Encoder) Encode(v any) error {
 		// write document separator
 		_, _ = e.writer.Write([]byte("---\n"))
 	}
+
 	// Lay the document out from the tree rather than from the positions the
 	// nodes carry: this is where the encoder's indentation options take effect.
 	renderer := ast.NewRenderer(
@@ -137,25 +131,15 @@ func (e *Encoder) EncodeToNode(v any) (ast.Node, error) {
 	if err != nil {
 		return nil, err
 	}
-	return node, nil
-}
 
-// nodeFilter picks one node out of a tree.
-//
-// The encoder writes a comment at the value a [CommentMap] key addresses, and
-// what it needs of that key is this and nothing else: hand it the document,
-// take back the node, or nil where the key addresses nothing here. A YAML path
-// is what the caller writes and [Path] is what resolves one, but the encoder
-// never asks what a path is -- so it does not depend on the query language, and
-// a caller with another way to reach a node can pass that instead.
-type nodeFilter interface {
-	FilterNode(node ast.Node) (ast.Node, error)
+	return node, nil
 }
 
 func (e *Encoder) setCommentByCommentMap(node ast.Node) error {
 	if e.commentMap == nil {
 		return nil
 	}
+
 	for path, comments := range e.commentMap {
 		n, err := path.FilterNode(node)
 		if err != nil {
@@ -188,6 +172,7 @@ func (e *Encoder) setCommentByCommentMap(node ast.Node) error {
 			}
 		}
 	}
+
 	return nil
 }
 
@@ -236,6 +221,7 @@ func (e *Encoder) setLineComment(node ast.Node, filtered ast.Node, comment *ast.
 			return err
 		}
 	}
+
 	return nil
 }
 
@@ -244,19 +230,15 @@ func (e *Encoder) setLineCommentToParentMapNode(node ast.Node, filtered ast.Node
 	if parent == nil {
 		return ast.ErrUnsupportedLinePositionType(node)
 	}
+
 	switch p := parent.(type) {
 	case *ast.MappingValueNode:
-		if err := p.Key.SetComment(comment); err != nil {
-			return err
-		}
+		return p.Key.SetComment(comment)
 	case *ast.MappingNode:
-		if err := p.SetComment(comment); err != nil {
-			return err
-		}
+		return p.SetComment(comment)
 	default:
 		return ast.ErrUnsupportedLinePositionType(parent)
 	}
-	return nil
 }
 
 func (e *Encoder) setFootComment(node ast.Node, filtered ast.Node, comment *ast.CommentGroupNode) error {
@@ -264,6 +246,7 @@ func (e *Encoder) setFootComment(node ast.Node, filtered ast.Node, comment *ast.
 	if parent == nil {
 		return ast.ErrUnsupportedFootPositionType(node)
 	}
+
 	switch n := parent.(type) {
 	case *ast.MappingValueNode:
 		n.FootComment = comment
@@ -274,6 +257,7 @@ func (e *Encoder) setFootComment(node ast.Node, filtered ast.Node, comment *ast.
 	default:
 		return ast.ErrUnsupportedFootPositionType(n)
 	}
+
 	return nil
 }
 
@@ -282,11 +266,13 @@ func (e *Encoder) encodeDocument(doc []byte) (ast.Node, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	for _, docNode := range f.Docs {
 		if docNode.Body != nil {
 			return docNode.Body, nil
 		}
 	}
+
 	return nil, nil
 }
 
@@ -302,10 +288,6 @@ func (e *Encoder) isInvalidValue(v reflect.Value) bool {
 		return true
 	}
 	return false
-}
-
-type jsonMarshaler interface {
-	MarshalJSON() ([]byte, error)
 }
 
 func (e *Encoder) existsTypeInCustomMarshalerMap(t reflect.Type) bool {
@@ -382,11 +364,6 @@ func (e *Encoder) canEncodeByMarshaler(v reflect.Value) bool {
 	}
 	return false
 }
-
-// base64Type is [Base64], compared against a value's type rather than read
-// through reflect.Value.Interface: that panics on an unexported field, and a
-// struct holding one is written like any other.
-var base64Type = reflect.TypeFor[Base64]()
 
 // encodeBinary writes a [Base64] as the "!!binary" scalar it came from.
 //
@@ -513,7 +490,10 @@ func (e *Encoder) encodeValue(v reflect.Value, column int) (ast.Node, error) {
 		}
 		return node, nil
 	}
-	if v.Type() == base64Type {
+	// compare against a value's type rather than read
+	// through reflect.Value.Interface: that panics on an unexported field, and a
+	// struct holding one is written like any other.
+	if v.Type() == reflect.TypeFor[Base64]() {
 		b := Base64(v.String())
 		// The tag goes back on, so a document read and written again keeps its
 		// "!!binary". A plain string could not say so, which is half the reason
@@ -588,6 +568,7 @@ func (e *Encoder) encodePtrAnchor(v reflect.Value, column int) ast.Node {
 	alias := ast.Alias(token.New("*", "*", e.pos(column)))
 	alias.Value = ast.String(token.New(aliasName, aliasName, e.pos(column)))
 	e.setSmartAlias(aliasName, v.Pointer())
+
 	return alias
 }
 
