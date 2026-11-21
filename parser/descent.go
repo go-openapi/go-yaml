@@ -5,6 +5,7 @@ package parser
 
 import (
 	"github.com/go-openapi/go-yaml/ast"
+	yamlerrors "github.com/go-openapi/go-yaml/errors"
 	"github.com/go-openapi/go-yaml/parser/group"
 	"github.com/go-openapi/go-yaml/token"
 )
@@ -53,6 +54,10 @@ type descentState struct {
 	entryCol   int
 	entryInMap bool
 
+	// nesting counts the collections, anchors, tags and "?" keys open around the node being read, as
+	// [Cursor.Depth] counts them on a walk. nest caps it at maxNesting.
+	nesting int
+
 	// inLiteral counts the block scalars whose content is being read.
 	// A literal or folded scalar is a string whatever it spells (section 10.2.1.2 gives it tag:yaml.org,2002:str),
 	// and the scanner cuts its content as a plain String token, so nothing inside one may resolve to another type.
@@ -75,6 +80,28 @@ func (d *descentState) reset() {
 	clear(d.seqEntries[:cap(d.seqEntries)])
 	*d = descentState{entries: d.entries[:0], seqEntries: d.seqEntries[:0]}
 }
+
+// maxNesting bounds how many collections, anchors, tags and "?" keys a document may hold inside one another.
+//
+// The parse itself reads any depth, but the decoder builds a Go value by recursion, one call or more a level,
+// and a document written to exhaust the stack is a few bytes a level: "[" 10,000 times is 10 KB. The parse
+// refuses it here, so every reader of the parse -- the walk, the tree decoder and ToJSON -- stops at the same
+// level of the same document.
+const maxNesting = 10000
+
+// nest opens a level for the node at tk, and refuses the document once maxNesting are open.
+// Each nest that returns nil is matched by an unnest.
+func (d *descentState) nest(tk *token.Token) error {
+	if d.nesting >= maxNesting {
+		return yamlerrors.NewExceededMaxDepth(maxNesting, tk)
+	}
+	d.nesting++
+
+	return nil
+}
+
+// unnest closes the level nest opened.
+func (d *descentState) unnest() { d.nesting-- }
 
 // enterEntry records the entry being read and returns a func that restores the enclosing one.
 func (d *descentState) enterEntry(col int, inMap bool) func() {

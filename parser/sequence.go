@@ -70,6 +70,10 @@ func (p *Parser) parseSequence(ctx context) (*ast.SequenceNode, error) {
 		return nil, err
 	}
 
+	if err := p.descent.nest(seqNode.GetToken()); err != nil {
+		return nil, err
+	}
+	defer p.descent.unnest()
 	p.enter(ctx, seqNode, KindSequence)
 	defer p.leave(ctx, seqNode)
 	orderedMap := p.keys.TakeOrderedMap()

@@ -30,7 +30,9 @@ const shiftedCounter = "grouper.keyWindow.shifted"
 //
 // The test reads a probe counter instead of the clock, so its result does not depend on the machine's load.
 func TestWindowShiftStaysLinear(t *testing.T) {
-	for _, depth := range []int{25_000, 100_000} {
+	// maxNesting caps the depth a parse reads. Quadratic growth at 10,000 brackets is some 10^8 shifts,
+	// far past the bound.
+	for _, depth := range []int{5_000, maxNesting} {
 		src := []byte(strings.Repeat("[", depth) + strings.Repeat("]", depth))
 
 		shifted := shiftedBy(t, src)

@@ -3,7 +3,11 @@
 
 package codec
 
-import "errors"
+import (
+	"errors"
+
+	yamlerrors "github.com/go-openapi/go-yaml/errors"
+)
 
 var (
 	// ErrUnknownCommentPositionType reports a Comment whose Position is none of
@@ -15,9 +19,9 @@ var (
 	// ErrDecodeRequiredPointerType reports a decode into a value the decoder
 	// cannot write through.
 	ErrDecodeRequiredPointerType = errors.New("required pointer type value")
-	// ErrExceededMaxDepth reports a document nested deeper than the decoder
-	// will follow.
-	ErrExceededMaxDepth = errors.New("exceeded max depth")
+	// ErrExceededMaxDepth reports a document nested deeper than the parser
+	// reads. It is [yamlerrors.ErrExceededMaxDepth].
+	ErrExceededMaxDepth = yamlerrors.ErrExceededMaxDepth
 	// ErrKeyNotComparable reports a key no map may hold: Go hashes no slice,
 	// map or function.
 	ErrKeyNotComparable = errors.New("key is not comparable")

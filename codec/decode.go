@@ -138,7 +138,13 @@ func NewDecoder(r io.Reader, opts ...DecodeOption) *Decoder {
 }
 
 const (
-	maxDecodeDepth = 10000
+	// maxDecodeDepth bounds the calls the tree decoder makes inside one
+	// another. The parser refuses a document nested past its own 10,000
+	// levels with ErrExceededMaxDepth, and a level costs the decoder up to
+	// three calls for a struct behind a pointer, so this guard does not fire on
+	// a document the parser read. It stands for a tree built by hand and handed
+	// to NodeToValue, which no parse has bounded.
+	maxDecodeDepth = 50000
 
 	// aliasBudgetFloor is the budget of an empty document, which aliasBudget adds 32 a byte to.
 	aliasBudgetFloor = 1024
@@ -3072,6 +3078,9 @@ func setDecoded(dst, v reflect.Value) {
 // makes the document invalid YAML, the limits, ErrExceededMaxDepth and the alias budget, and an unknown field,
 // which the caller asked to stop on with DisallowUnknownField. Any other error is a field error: the first one is
 // kept and the fields after it decode.
+//
+// The decoder returns ErrExceededMaxDepth only for a tree built by hand.
+// The parser returns it for a document nested past its cap, and like any parse error it stops the stream.
 func stopsTheDocument(err error) bool {
 	if err == nil {
 		return false

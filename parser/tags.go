@@ -47,6 +47,10 @@ func (p *Parser) parseTag(ctx context) (*ast.TagNode, error) {
 	// The tag encloses the node it types, so the visitor gets the tag's Enter before that node and its Leave after,
 	// as readAnchorValue does for an anchor.
 	// A tagged scalar is not handed over on its own, because parseScalarValue builds it without going through parseToken.
+	if err := p.descent.nest(node.GetToken()); err != nil {
+		return nil, err
+	}
+	defer p.descent.unnest()
 	p.enter(ctx, node, KindTag)
 	defer p.leave(ctx, node)
 

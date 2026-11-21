@@ -365,6 +365,10 @@ func (p *Parser) parseAnchorValue(ctx context, anchor *ast.AnchorNode) (ast.Node
 func (p *Parser) readAnchorValue(ctx context, anchor *ast.AnchorNode) (ast.Node, error) {
 	// The anchor encloses the node it names, so the visitor gets the anchor's Enter before that node and its Leave after.
 	// Handed over as a leaf, the anchor would sit beside its own value at the same depth.
+	if err := p.descent.nest(anchor.GetToken()); err != nil {
+		return nil, err
+	}
+	defer p.descent.unnest()
 	p.enter(ctx, anchor, KindAnchor)
 	defer p.leave(ctx, anchor)
 

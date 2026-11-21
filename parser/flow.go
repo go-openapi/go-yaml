@@ -21,6 +21,10 @@ func (p *Parser) parseFlowMap(ctx context) (*ast.MappingNode, error) {
 		return nil, err
 	}
 	defer p.keys.Open(node)()
+	if err := p.descent.nest(node.GetToken()); err != nil {
+		return nil, err
+	}
+	defer p.descent.unnest()
 	p.enter(ctx, node, KindMapping)
 	defer p.leave(ctx, node)
 
@@ -386,6 +390,10 @@ func (p *Parser) parseFlowSequence(ctx context) (*ast.SequenceNode, error) {
 	if err != nil {
 		return nil, err
 	}
+	if err := p.descent.nest(node.GetToken()); err != nil {
+		return nil, err
+	}
+	defer p.descent.unnest()
 	p.enter(ctx, node, KindSequence)
 	defer p.leave(ctx, node)
 	orderedMap := p.keys.TakeOrderedMap()

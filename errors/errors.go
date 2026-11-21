@@ -87,6 +87,9 @@ var (
 	// them multiplies: 259 bytes of YAML can name 100,000 values and 423 bytes
 	// 387 million.
 	ErrExcessiveAliasing = stderrors.New("excessive aliasing")
+	// ErrExceededMaxDepth reports a document holding more collections, anchors,
+	// tags and "?" keys inside one another than the parser reads: 10,000.
+	ErrExceededMaxDepth = stderrors.New("exceeded max depth")
 )
 
 const (
@@ -179,6 +182,16 @@ func NewExcessiveAliasing(built, budget int, tk *token.Token) *Error {
 			"the document's aliases build more than it can account for: %d values against a budget of %d",
 			built, budget,
 		),
+		token: tk,
+	}
+}
+
+// NewExceededMaxDepth reports a document nested past limit levels, at tk, the
+// token of the node that opens one level too many.
+func NewExceededMaxDepth(limit int, tk *token.Token) *Error {
+	return &Error{
+		kind:  ErrExceededMaxDepth,
+		msg:   fmt.Sprintf("the document nests more than %d levels", limit),
 		token: tk,
 	}
 }

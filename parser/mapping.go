@@ -225,6 +225,10 @@ func (p *Parser) parseMap(ctx context) (*ast.MappingNode, error) {
 	mapNode := ctx.arena.Mapping(keyTk.RawToken(), false, nil)
 	mapNode.SetPathNode(ctx.path)
 	defer p.keys.Open(mapNode)()
+	if err := p.descent.nest(mapNode.GetToken()); err != nil {
+		return nil, err
+	}
+	defer p.descent.unnest()
 	p.enter(ctx, mapNode, KindMapping)
 	// Registered here and not past the entries, so a document the parse refuses still leaves the mapping.
 	// Four returns stand between this and the end of the loop below.
@@ -456,6 +460,10 @@ func (p *Parser) parseExplicitMapKey(ctx context, g *group.TokenGroup) (ast.MapK
 	// A "?" encloses the key node, so it goes to the walk before that node and is left after it,
 	// as an anchor and a tag are. Handed over afterwards, as parseMapEntry hands a plain key,
 	// it would follow its own content, and "? a\n: b" would read as the three values a, ? and b.
+	if err := p.descent.nest(key.GetToken()); err != nil {
+		return nil, err
+	}
+	defer p.descent.unnest()
 	p.enterKey(ctx, key, KindKey)
 	defer p.leave(ctx, key)
 
