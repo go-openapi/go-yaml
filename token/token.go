@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 	"unsafe"
 )
 
@@ -1603,18 +1604,53 @@ func isTimestamp(value string) bool {
 }
 
 // NeedsQuotedSpelling reports whether value holds a character that only a
-// double-quoted scalar can carry.
+// double-quoted scalar can carry, as an escape.
 //
-// There are two. A carriage return: YAML normalizes a stream's line breaks on
-// read, so "\r\n" and a lone "\r" both arrive as "\n" and no plain,
-// single-quoted or block scalar keeps one. And U+FEFF, the byte order mark:
-// nb-char excludes it, so it is not a character a plain or block scalar may
-// hold -- a quoted one may, because nb-double-char and nb-single-char are built
-// from nb-json instead.
+// A carriage return is one: YAML normalizes a stream's line breaks on read, so
+// "\r\n" and a lone "\r" both arrive as "\n" and no plain, single-quoted or
+// block scalar keeps one. U+FEFF, the byte order mark, is another: nb-char
+// excludes it, so no plain or block scalar may hold it.
 //
-// Written as "\r" and "\ufeff" inside a double-quoted scalar, both survive.
+// The rest are the characters c-printable leaves out, which a YAML stream may
+// not hold raw at all: the C0 controls but tab and line feed, DEL, the C1
+// controls but NEL, the surrogates, U+FFFE and U+FFFF, and a byte that is part
+// of no character. Written raw, the document they are in does not read back.
+//
+// Written as escapes inside a double-quoted scalar, all of them survive.
 func NeedsQuotedSpelling(value string) bool {
-	return strings.ContainsRune(value, '\r') || strings.ContainsRune(value, '\ufeff')
+	for i := 0; i < len(value); i++ {
+		if c := value[i]; c < utf8.RuneSelf {
+			if c < ' ' && c != '\t' && c != '\n' || c == 0x7F {
+				return true
+			}
+
+			continue
+		}
+
+		r, width := utf8.DecodeRuneInString(value[i:])
+		if r == utf8.RuneError && width <= 1 || r == '\ufeff' || !printableAbove7F(r) {
+			return true
+		}
+		i += width - 1
+	}
+
+	return false
+}
+
+// printableAbove7F is YAML 1.2's c-printable for a character above 0x7F.
+//
+//nolint:mnd // the ranges are the spec's, and naming each bound adds nothing.
+func printableAbove7F(r rune) bool {
+	switch {
+	case r == 0x85:
+		return true
+	case r >= 0xA0 && r <= 0xD7FF:
+		return true
+	case r >= 0xE000 && r <= 0xFFFD:
+		return true
+	default:
+		return r >= 0x10000 && r <= 0x10FFFF
+	}
 }
 
 // isLeadingZeroDecimal reports whether value is a run of decimal digits written

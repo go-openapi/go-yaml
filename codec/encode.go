@@ -692,7 +692,9 @@ func (e *Encoder) isNeedQuoted(v string) bool {
 
 func (e *Encoder) encodeString(v string, column int) *ast.StringNode {
 	if e.isNeedQuoted(v) {
-		if e.singleQuote {
+		// A single-quoted scalar has no escapes, so a character only an escape can carry takes double quotes even
+		// under UseSingleQuote: written single-quoted, "\r" read back as a backslash and an "r".
+		if e.singleQuote && !token.NeedsQuotedSpelling(v) {
 			v = quoteWith(v, '\'')
 		} else {
 			v = strconv.Quote(v)
