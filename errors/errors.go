@@ -74,6 +74,11 @@ var (
 	// syntax error: the document is valid YAML and only the conversion is
 	// impossible.
 	ErrNotJSON = stderrors.New("not convertible to JSON")
+	// ErrNotJSONSyntax reports a document not written as JSON, found with
+	// [github.com/go-openapi/go-yaml/parser.WithJSONSyntax] on. The document
+	// may be valid YAML: "a: b" is, and is not JSON. Under that option every
+	// syntax error carries this kind, not [ErrSyntax].
+	ErrNotJSONSyntax = stderrors.New("not JSON")
 	// ErrUnknownAnchor reports an alias naming an anchor the document does not
 	// declare before it. An anchor belongs to the document it was written in
 	// and an alias names the most recent one of that name, so an anchor
@@ -184,6 +189,11 @@ func NewUnnamedKey(kind string, tk *token.Token) *Error {
 // NewNotJSON reports msg as a document JSON cannot hold, at tk.
 func NewNotJSON(msg string, tk *token.Token) *Error {
 	return &Error{kind: ErrNotJSON, msg: msg, token: tk}
+}
+
+// NewNotJSONSyntax reports msg as a document not written as JSON, at tk.
+func NewNotJSONSyntax(msg string, tk *token.Token) *Error {
+	return &Error{kind: ErrNotJSONSyntax, msg: msg, token: tk}
 }
 
 // NewUnknownAnchor reports the alias name as naming no anchor, at tk.

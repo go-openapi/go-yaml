@@ -21,7 +21,7 @@
 // The parser drops comments as it reads. Use [WithComments] to keep them on the tree.
 //
 // The parser accepts the superset of YAML that is not JSON. To enforce a parsing of only documents that are
-// compatible with JSON, use [WithJSONCompatible].
+// compatible with JSON, use [WithJSONCompatible]. To accept only documents written as JSON, use [WithJSONSyntax].
 //
 // A repeated mapping key does not stop the parse: the parser records it in the Duplicates of the [ast.MappingNode],
 // and the decoder rejects the document with [github.com/go-openapi/go-yaml/errors.ErrDuplicateKey].
@@ -36,6 +36,8 @@
 //   - [github.com/go-openapi/go-yaml/errors.ErrSyntax] for a document the scanner or the parser cannot read;
 //   - [github.com/go-openapi/go-yaml/errors.ErrUnknownAnchor] for an alias that names no anchor;
 //   - [github.com/go-openapi/go-yaml/errors.ErrNotJSON] for a document with no JSON form, under [WithJSONCompatible].
+//   - [github.com/go-openapi/go-yaml/errors.ErrNotJSONSyntax] for a document not written as JSON, under [WithJSONSyntax],
+//     in place of ErrSyntax.
 //
 // # Concurrency
 //

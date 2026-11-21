@@ -334,7 +334,7 @@ func (p *Parser) Walk(src []byte, v Visitor) (*ast.File, error) {
 
 	file, err := p.parseUntilStopped(p.newContext())
 	if err != nil {
-		return nil, drawUnder(src, err)
+		return nil, p.drawUnder(src, err)
 	}
 	if p.walk.err != nil {
 		return nil, p.walk.err

@@ -152,7 +152,7 @@ func (p *Parser) Parse(src []byte) (*ast.File, error) {
 
 	file, err := p.parse(p.newContext())
 	if err != nil {
-		return nil, drawUnder(src, err)
+		return nil, p.drawUnder(src, err)
 	}
 
 	return file, nil

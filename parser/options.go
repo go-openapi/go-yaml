@@ -34,6 +34,7 @@ type options struct {
 	allowDuplicateMapKey bool
 	omitNodePaths        bool
 	jsonCompatible       bool
+	jsonSyntax           bool
 	laxTags              bool
 }
 
@@ -164,6 +165,28 @@ func WithMergeKeys() Option {
 func WithJSONCompatible() Option {
 	return func(p *Parser) {
 		p.opts.jsonCompatible = true
+	}
+}
+
+// WithJSONSyntax rejects a document not written as JSON (RFC 8259), with
+// [github.com/go-openapi/go-yaml/errors.ErrNotJSONSyntax].
+//
+// JSON is almost all YAML, so the parse reads it as it reads any document, and checks each token against JSON's
+// grammar as the scanner cuts it. "a: b" is YAML and is rejected, and so are a comment, an anchor, a tag, a single
+// quote, a trailing ',', a YAML escape such as "\x41", a number such as "0x1F" or ".5", and a second document.
+//
+// The source is checked as JSON text: it may hold DEL and code points such as U+FFFF raw in a string, which a YAML
+// stream may not, and no control character other than tab, line feed and carriage return.
+//
+// Every syntax error the parse returns under this option carries ErrNotJSONSyntax, a document that is not YAML
+// either included. Errors of other kinds keep their kind: a repeated member name is still recorded in the
+// [ast.MappingNode]'s Duplicates, as it is without the option.
+//
+// This option asks whether a document is written as JSON. [WithJSONCompatible] asks whether a YAML document has
+// a JSON form. Use both to read JSON and convert it.
+func WithJSONSyntax() Option {
+	return func(p *Parser) {
+		p.opts.jsonSyntax = true
 	}
 }
 

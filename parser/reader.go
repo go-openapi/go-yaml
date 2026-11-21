@@ -55,6 +55,9 @@ type reader struct {
 	// A directive is a document of its own, so the next directive closes this document.
 	tookDirective bool
 
+	// json checks each token against JSON's grammar under WithJSONSyntax, and is nil otherwise.
+	json *jsonSyntax
+
 	// err holds an error bodyToken cannot return, since the descent's pull returns a token or nothing.
 	err error
 }
@@ -90,7 +93,7 @@ func newReader(
 func (r *reader) reset(arena *tokenarena.TokenArena[group.TapeToken], keepComments bool, onToken func(token.Token)) {
 	r.g.Reset()
 	clear(r.out[:cap(r.out)])
-	*r = reader{scan: r.scan, arena: arena, g: r.g, out: r.out[:0], keepComments: keepComments, onToken: onToken}
+	*r = reader{scan: r.scan, arena: arena, g: r.g, out: r.out[:0], keepComments: keepComments, onToken: onToken, json: r.json}
 
 	switch {
 	case !keepComments:
@@ -98,6 +101,19 @@ func (r *reader) reset(arena *tokenarena.TokenArena[group.TapeToken], keepCommen
 	case r.g.LineComments == nil:
 		r.g.LineComments = make(map[*group.TapeToken]*token.Token)
 	}
+}
+
+// checkJSON turns the JSON check on or off for the stream src, and keeps the room a previous check grew.
+func (r *reader) checkJSON(on bool, src string) {
+	if !on {
+		r.json = nil
+
+		return
+	}
+	if r.json == nil {
+		r.json = &jsonSyntax{}
+	}
+	r.json.reset(src)
 }
 
 // peek returns the next grouped token without taking it, and fills the buffer when it is empty.
@@ -308,6 +324,11 @@ func (r *reader) fill() error {
 			if r.finished {
 				break
 			}
+			if r.json != nil && r.scan.Err() == nil {
+				if err := r.json.end(); err != nil {
+					return err
+				}
+			}
 			r.drained, r.finished, r.g.Ending = true, true, true
 			r.out = r.g.Finish(r.out)
 
@@ -317,6 +338,12 @@ func (r *reader) fill() error {
 			// Before the comment drop, so a consumer tiling the source sees every token the document wrote,
 			// and before the grouping, which is where a token stops standing for itself.
 			r.onToken(tk)
+		}
+		if r.json != nil {
+			// Before the comment drop, so a comment is rejected too.
+			if err := r.json.next(tk); err != nil {
+				return err
+			}
 		}
 		if tk.Type == token.CommentType && probe.Enabled {
 			probe.Count("comment.scanned", 1)

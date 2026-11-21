@@ -40,7 +40,11 @@ func (p *Parser) begin(src []byte) {
 	p.tokens.Pin()
 
 	p.src = nocopy.String(src)
-	p.scan.Init(src)
+	if p.opts.jsonSyntax {
+		p.scan.InitJSON(src)
+	} else {
+		p.scan.Init(src)
+	}
 	p.scan.SetSchema(p.opts.version.Schema())
 
 	// Estimated from the source length, since counting tokens would mean reading the document through first.
@@ -51,6 +55,7 @@ func (p *Parser) begin(src []byte) {
 	} else {
 		p.reader.reset(p.tokens, p.opts.keepComments, p.opts.onToken)
 	}
+	p.reader.checkJSON(p.opts.jsonSyntax, p.src)
 	p.lineComments = p.reader.g.LineComments
 }
 
@@ -78,8 +83,18 @@ func (p *Parser) tapeStats() tokenarena.Stats {
 }
 
 // drawUnder attaches the document to an error read from it, so the message shows the line it came from.
-func drawUnder(src []byte, err error) error {
-	return yamlerrors.WithSource(asSyntaxError(err), yamlerrors.Source{Text: nocopy.String(src), FirstLine: 1})
+//
+// Under [WithJSONSyntax] a syntax error becomes [yamlerrors.ErrNotJSONSyntax]:
+// a document the YAML parse rejects is not JSON either.
+func (p *Parser) drawUnder(src []byte, err error) error {
+	err = asSyntaxError(err)
+	if p.opts.jsonSyntax {
+		if e, ok := errors.AsType[*yamlerrors.Error](err); ok && errors.Is(e, yamlerrors.ErrSyntax) {
+			err = yamlerrors.NewNotJSONSyntax(e.GetMessage(), e.GetToken())
+		}
+	}
+
+	return yamlerrors.WithSource(err, yamlerrors.Source{Text: nocopy.String(src), FirstLine: 1})
 }
 
 // asSyntaxError converts a scanner error into a syntax error,

@@ -34,6 +34,18 @@ func validateSource(text string) error {
 	return validateStream(text)
 }
 
+// validateJSONSource checks a JSON source before the scan reads a byte of it.
+func validateJSONSource(text string) error {
+	if sourceTooLong(len(text)) {
+		return ErrInvalidToken(
+			fmt.Sprintf("a source must be under %d bytes, and this one is %d", maxSourceLen, len(text)),
+			token.Invalid("", token.At(1, 1, 0, 0)),
+		)
+	}
+
+	return validateJSONText(text)
+}
+
 // sourceTooLong reports whether the scanner refuses a source of n bytes.
 //
 // It stands apart from validateSource so that a test can check the bound at its edge.

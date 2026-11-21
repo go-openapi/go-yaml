@@ -111,6 +111,20 @@ func (s *Scanner) Init(src []byte) {
 	s.reset(text)
 }
 
+// InitJSON sets s to read src as [Scanner.Init] does, and checks it as JSON text instead of a YAML stream.
+//
+// JSON admits in a string two kinds of character that c-printable refuses: DEL, and the code points above 0x7f that
+// YAML leaves out, such as U+FFFE and U+FFFF. InitJSON accepts them.
+// It refuses what JSON refuses anywhere in its text: a byte that is part of no character,
+// and a control character below 0x20 other than tab, line feed and carriage return.
+func (s *Scanner) InitJSON(src []byte) {
+	s.Reset()
+
+	text := nocopy.String(src)
+	s.initErr = validateJSONSource(text)
+	s.reset(text)
+}
+
 // SetSchema selects the YAML schema that plain scalars resolve against.
 //
 // A scanner starts on [token.Schema12], and [Scanner.Init] puts it back there. Call SetSchema after Init.

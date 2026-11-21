@@ -50,6 +50,32 @@ func validateStream(text string) error {
 	return nil
 }
 
+// validateJSONText checks that the source is text JSON may hold: UTF-8, with no control character below 0x20 other
+// than tab, line feed and carriage return. RFC 8259 admits no other control character raw, inside a string or out.
+func validateJSONText(text string) error {
+	for i := 0; i < len(text); {
+		c := text[i]
+		if c < utf8.RuneSelf {
+			if c < 0x20 && c != 0x09 && c != 0x0A && c != 0x0D {
+				return ErrInvalidToken(fmt.Sprintf("found character %q that JSON text may not hold raw", rune(c)),
+					token.Invalid(text[i:i+1], streamPosition(text, i)))
+			}
+			i++
+
+			continue
+		}
+
+		r, width := utf8.DecodeRuneInString(text[i:])
+		if r == utf8.RuneError && width <= 1 {
+			return ErrInvalidToken("found a byte that is part of no character",
+				token.Invalid(text[i:i+1], streamPosition(text, i)))
+		}
+		i += width
+	}
+
+	return nil
+}
+
 // firstUnprintable returns the offset of the first byte the stream may not hold, or -1 where every one of them is a
 // character c-printable admits.
 //
