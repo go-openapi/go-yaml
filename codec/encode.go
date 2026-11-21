@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/go-openapi/go-yaml/ast"
+	"github.com/go-openapi/go-yaml/codec/internal/astutils"
 	"github.com/go-openapi/go-yaml/codec/internal/codecutils"
 	"github.com/go-openapi/go-yaml/codec/internal/structfields"
 	yamlerrors "github.com/go-openapi/go-yaml/errors"
@@ -156,106 +157,21 @@ func (e *Encoder) setCommentByCommentMap(node ast.Node) error {
 			commentGroup := ast.CommentGroup(commentTokens)
 			switch comment.Position {
 			case CommentHeadPosition:
-				if err := e.setHeadComment(node, n, commentGroup); err != nil {
+				if err := astutils.PlaceHeadComment(node, n, commentGroup); err != nil {
 					return err
 				}
 			case CommentLinePosition:
-				if err := e.setLineComment(node, n, commentGroup); err != nil {
+				if err := astutils.PlaceLineComment(node, n, commentGroup); err != nil {
 					return err
 				}
 			case CommentFootPosition:
-				if err := e.setFootComment(node, n, commentGroup); err != nil {
+				if err := astutils.PlaceFootComment(node, n, commentGroup); err != nil {
 					return err
 				}
 			default:
 				return yamlerrors.ErrUnknownCommentPositionType
 			}
 		}
-	}
-
-	return nil
-}
-
-func (e *Encoder) setHeadComment(node ast.Node, filtered ast.Node, comment *ast.CommentGroupNode) error {
-	parent := ast.Parent(node, filtered)
-	if parent == nil {
-		return ast.ErrUnsupportedHeadPositionType(node)
-	}
-	switch p := parent.(type) {
-	case *ast.MappingValueNode:
-		if err := p.SetComment(comment); err != nil {
-			return err
-		}
-	case *ast.MappingNode:
-		if err := p.SetComment(comment); err != nil {
-			return err
-		}
-	case *ast.SequenceNode:
-		if len(p.ValueHeadComments) == 0 {
-			p.ValueHeadComments = make([]*ast.CommentGroupNode, len(p.Values))
-		}
-		var foundIdx int
-		for idx, v := range p.Values {
-			if v == filtered {
-				foundIdx = idx
-				break
-			}
-		}
-		p.ValueHeadComments[foundIdx] = comment
-	default:
-		return ast.ErrUnsupportedHeadPositionType(node)
-	}
-	return nil
-}
-
-func (e *Encoder) setLineComment(node ast.Node, filtered ast.Node, comment *ast.CommentGroupNode) error {
-	switch filtered.(type) {
-	case *ast.MappingValueNode, *ast.SequenceNode:
-		// Line comment cannot be set for mapping value node.
-		// It should probably be set for the parent map node
-		if err := e.setLineCommentToParentMapNode(node, filtered, comment); err != nil {
-			return err
-		}
-	default:
-		if err := filtered.SetComment(comment); err != nil {
-			return err
-		}
-	}
-
-	return nil
-}
-
-func (e *Encoder) setLineCommentToParentMapNode(node ast.Node, filtered ast.Node, comment *ast.CommentGroupNode) error {
-	parent := ast.Parent(node, filtered)
-	if parent == nil {
-		return ast.ErrUnsupportedLinePositionType(node)
-	}
-
-	switch p := parent.(type) {
-	case *ast.MappingValueNode:
-		return p.Key.SetComment(comment)
-	case *ast.MappingNode:
-		return p.SetComment(comment)
-	default:
-		return ast.ErrUnsupportedLinePositionType(parent)
-	}
-}
-
-func (e *Encoder) setFootComment(node ast.Node, filtered ast.Node, comment *ast.CommentGroupNode) error {
-	parent := ast.Parent(node, filtered)
-	if parent == nil {
-		return ast.ErrUnsupportedFootPositionType(node)
-	}
-
-	switch n := parent.(type) {
-	case *ast.MappingValueNode:
-		n.FootComment = comment
-	case *ast.MappingNode:
-		n.FootComment = comment
-	case *ast.SequenceNode:
-		n.FootComment = comment
-	default:
-		return ast.ErrUnsupportedFootPositionType(n)
 	}
 
 	return nil
