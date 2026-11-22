@@ -909,10 +909,12 @@ func (e *Encoder) isOmittedByOmitEmptyOption(v reflect.Value) bool {
 
 // isOmittedByOmitEmptyTag reports whether the omitempty tag omits v.
 //
-// The omitempty tag combines encoding/json's omitempty and omitzero tags. It follows gopkg.in/yaml.v2, and that
-// has caused confusion. The plan is to align it with encoding/json, which will take some time.
-// Beyond the omitempty conditions, it calls IsZero when the type implements it.
-// It also omits a non-pointer struct when every field can be omitted. Both rules come from omitzero.
+// The rule is go.yaml.in/yaml/v3's isZero, line for line, and it stays so for compatibility with v3. It differs from
+// both versions of encoding/json:
+//
+//   - Like json v1's omitempty, it omits false and 0, which json/v2's omitempty keeps.
+//   - Like omitzero, it calls IsZero when the type implements it.
+//   - It omits a struct whose exported fields are all omittable by this rule, whatever their own tags say.
 func (e *Encoder) isOmittedByOmitEmptyTag(v reflect.Value) bool {
 	kind := v.Kind()
 	if z, ok := reflect.TypeAssert[IsZeroer](v); ok {
