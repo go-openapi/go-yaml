@@ -1266,6 +1266,9 @@ func (d *Decoder) decodeValue(dst reflect.Value, src ast.Node) error {
 		} else {
 			dst.Set(reflect.Zero(valueType))
 		}
+
+		// The value is written. Falling out of the switch decoded the node again, and set it again.
+		return nil
 	case reflect.Map:
 		if ast.IsNull(src) {
 			// A null leaves the map as it stands, as for a field. Only a root map reaches here with one:
