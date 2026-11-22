@@ -17,8 +17,9 @@ for _, doc := range f.Docs {
 }
 ```
 
-`ParseFile` reads a path. `parser.New` builds a `Parser` you can hold and reuse
-with a fixed set of options.
+There is no `ParseFile`: read the file with `os.ReadFile` and pass the bytes to
+`ParseBytes`. `parser.New` builds a `Parser` you can hold and reuse with a fixed
+set of options.
 
 An `*ast.File` holds every document in the stream, in `Docs`. A stream with one
 document has one entry; `---` starts another.

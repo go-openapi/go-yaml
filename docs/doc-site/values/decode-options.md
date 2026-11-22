@@ -2,7 +2,7 @@
 title: Decode options
 weight: 30
 description: |
-  The nineteen `DecodeOption`s, grouped by what they change, and the four
+  The eighteen `DecodeOption`s, grouped by what they change, and the four
   that do nothing on their own.
 ---
 

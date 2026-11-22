@@ -55,6 +55,18 @@ a:
 Both are the tag applied to everything, so they are the fallback for a type whose
 tags you do not control. Prefer the tag where you do.
 
+## Repeated keys
+
+A Go map can hold two keys that YAML reads as one: `int(1)` and `uint64(1)` in a
+`map[any]any`, two NaN in a `map[float64]T`, or one instant in two zones in a
+`map[time.Time]T`. By default the encoder returns an error wrapping
+`errors.ErrDuplicateKey` for such a map, as the decoder does for a document that
+writes one key twice.
+
+`SkipDuplicateMapKey()` writes the first of those keys and drops the rest. The
+encoder orders a map's keys by their text and then by their Go type, so the same
+key comes first whatever order the map iterates in.
+
 ## Numbers
 
 `AutoInt()` writes a float whose fractional part is zero as an integer.

@@ -54,9 +54,8 @@ read at: those positions say where a node *was*, which stops being true the mome
 anything is edited. So an edit-and-write-back changes the shape of the whole
 document, not just the line you touched.
 
-If you need the rest of the file untouched, use the positions to splice the new
-text into the original bytes yourself. Rendering a document back byte for byte is
-a [target, not a feature](../../about/status/).
+To keep the rest of the file as it was written, render it with
+[`VerbatimFile`](#writing-a-document-back-as-it-was).
 {{% /notice %}}
 
 ## The node types
@@ -108,6 +107,38 @@ if err := r.Render(&buf, f.Docs[0].Body); err != nil {
 The options are `WithComments`, `WithIndent`, `WithIndentSequence` and
 `WithAliasTargets`. The encoder drives this same renderer, which is why encoding
 and rendering a tree agree.
+
+## Writing a document back as it was
+
+Give the renderer the source with `ast.WithSource`, and `Renderer.VerbatimFile`
+copies every byte the tree did not change. `Renderer.Verbatim` does the same for
+one node. On the edit above:
+
+```go
+r := ast.NewRenderer(ast.WithSource(src))
+if err := r.VerbatimFile(os.Stdout, f); err != nil {
+	// ...
+}
+```
+
+```yaml
+# service
+name: pet-store
+version: 2.0.0
+ports:
+  - 80
+  - 443
+```
+
+The `ports:` entries keep their indentation. `# bump me` and the three spaces in
+front of it still go: they belonged to the node the edit replaced. Set the
+comment on the node you put in to keep it.
+
+The copy runs forward once, in the document's order. A tree whose nodes now stand
+in another order returns `ast.ErrMove`, and removing an entry of a flow
+collection returns `ast.ErrRemove`. On an error, part of the document may already
+be written, so render into a buffer where you need all or nothing. The godoc
+marks both methods provisional.
 
 ## Merging
 
