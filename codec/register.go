@@ -44,7 +44,7 @@ func RegisterCustomUnmarshaler[T any](unmarshaler func(*T, []byte) error) {
 	customUnmarshalerMap[reflect.TypeOf(typ)] = func(v any, b []byte) error {
 		return unmarshaler(codecutils.CustomArg[*T](v), b)
 	}
-	// A type walkableType read before the registration may hold T.
+	// A type read by walkableType before the registration may hold T.
 	for mode := range walkableTypes {
 		walkableTypes[mode].Clear()
 	}

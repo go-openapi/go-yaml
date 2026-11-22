@@ -72,7 +72,7 @@ type jsonMarshaler interface {
 	MarshalJSON() ([]byte, error)
 }
 
-// fieldError is an element of a validation error that names the struct field it is about, as each
+// fieldError describes an element of a validation error that names its struct field, as each
 // github.com/go-playground/validator/v10 FieldError does. See [Validator].
 type fieldError interface {
 	StructField() string
@@ -80,12 +80,12 @@ type fieldError interface {
 
 // nodeFilter picks one node out of a tree.
 //
-// The encoder writes a comment at the value a [CommentMap] key addresses, and
-// what it needs of that key is this and nothing else: hand it the document,
-// take back the node, or nil where the key addresses nothing here. A YAML path
-// is what the caller writes and [Path] is what resolves one, but the encoder
-// never asks what a path is -- so it does not depend on the query language, and
-// a caller with another way to reach a node can pass that instead.
+// The encoder writes a comment at the value addressed by a [CommentMap] key, and
+// needs only this of the key: pass it the document, and take back the node, or
+// nil when the key addresses nothing here. The caller writes a YAML path, and
+// [Path] resolves it. The encoder never inspects the path, so it does not depend
+// on the query language. A caller with another way to reach a node can pass that
+// instead.
 type nodeFilter interface {
 	FilterNode(node ast.Node) (ast.Node, error)
 }

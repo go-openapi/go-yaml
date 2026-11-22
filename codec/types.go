@@ -142,8 +142,8 @@ type MapSlice struct {
 func NewMapSlice(items ...MapItem) (MapSlice, error) {
 	var m MapSlice
 	if len(items) == 0 {
-		// The zero value, so an empty MapSlice built here compares equal to one
-		// a decode builds for an empty mapping.
+		// Return the zero value, so that an empty MapSlice built here compares
+		// equal to the one built by a decode for an empty mapping.
 		return m, nil
 	}
 	m.items = make([]MapItem, 0, len(items))
@@ -269,9 +269,9 @@ func (s MapSlice) MarshalJSON() ([]byte, error) {
 		return nil, err
 	}
 
-	// The encoder's JSON style writes a space after every ':' and ',', which
-	// encoding/json does not. Compacted here so a MapSlice inside a struct
-	// writes like everything around it.
+	// The encoder's JSON style writes a space after every ':' and ',', and
+	// encoding/json does not. Compact the output so that a MapSlice inside a
+	// struct writes like everything around it.
 	var compact bytes.Buffer
 	if err := json.Compact(&compact, out); err != nil {
 		return nil, err
@@ -305,11 +305,11 @@ func (s *MapSlice) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
-// index is where key stands, or -1.
+// index returns the position of key, or -1.
 //
-// A scan: a MapSlice carries no lookup table, so a mapping of n entries costs
-// n²/2 comparisons to build. Documents hold small mappings, and the table would
-// have to be kept through every Set and Delete.
+// It scans the entries: a MapSlice carries no lookup table, so building a mapping
+// of n entries costs n²/2 comparisons. Documents hold small mappings, and the
+// table would have to be kept through every Set and Delete.
 func (s MapSlice) index(key any) int {
 	for i := range s.items {
 		if codecutils.SameMapKey(s.items[i].Key, key) {
@@ -399,8 +399,8 @@ func jsonOrdered(dec *json.Decoder) (any, error) {
 			if !isString {
 				return nil, fmt.Errorf("a JSON member name is a string: %w", yamlerrors.ErrNotAJSONObject)
 			}
-			// A member written twice keeps the last value, where the first
-			// stands, as Set does everywhere else.
+			// A member written twice keeps the last value, in the place of the
+			// first, as Set does everywhere else.
 			if err := m.Set(name, value); err != nil {
 				return nil, err
 			}
@@ -425,8 +425,8 @@ func jsonOrdered(dec *json.Decoder) (any, error) {
 	}
 }
 
-// jsonScalar is what a JSON scalar token is worth, reading a number as the YAML
-// decoder reads one.
+// jsonScalar returns the Go value of a JSON scalar token, reading a number as
+// the YAML decoder reads one.
 func jsonScalar(tk json.Token) any {
 	number, isNumber := tk.(json.Number)
 	if !isNumber {
@@ -443,7 +443,7 @@ func jsonScalar(tk json.Token) any {
 	return f
 }
 
-// jsonKindOf names what a JSON document holds, for the error that refuses it.
+// jsonKindOf returns the kind of value held by a JSON document, for the error that rejects it.
 func jsonKindOf(v any) string {
 	switch v.(type) {
 	case []any:

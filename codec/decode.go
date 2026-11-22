@@ -35,15 +35,14 @@ import (
 
 // Decoder reads the documents of a YAML stream into Go values, one document for each call to [Decoder.Decode].
 type Decoder struct {
-	// source is the document being decoded, so an error found in it can draw
-	// the lines around itself.
+	// source holds the document being decoded. An error found in it uses source to print the lines around itself.
 	source yamlerrors.Source
-	// entry is the mapping entry that writes the node being decoded, and nil for a sequence element.
-	// Decoding is depth first, so each step saves it and puts it back, and the field behaves as a stack.
+	// entry holds the mapping entry that writes the node being decoded. It is nil for a sequence element.
+	// Decoding is depth first. Each step saves entry and puts it back, so the field behaves as a stack.
 	//
-	// missingFieldToken reads it to place a validation error about a field the document left out,
+	// missingFieldToken reads entry to place a validation error about a field missing from the document,
 	// because the node holds nothing to point at.
-	// A sequence element has no entry here: the parser keeps the "- " entry node only under WithComments,
+	// A sequence element has no entry here. The parser keeps the "- " entry node only under WithComments,
 	// and the error must not move with that option. missingFieldToken then points at the element's first key.
 	entry            ast.Node
 	reader           io.Reader
@@ -51,18 +50,18 @@ type Decoder struct {
 	anchorNodeMap    map[string]ast.Node
 	anchorNodeMaps   []map[string]ast.Node
 	// referenceAnchorNodeMap holds the anchors published by ReferenceFiles and
-	// ReferenceDirs. Every document of the input starts from these: naming an
-	// anchor across files is what the option is for, where naming one across the
-	// documents of a stream is not.
+	// ReferenceDirs. Every document of the input starts from these.
+	// The options exist to share an anchor across files.
+	// An anchor is not shared across the documents of one stream.
 	referenceAnchorNodeMap map[string]ast.Node
 	anchorValueMap         map[string]reflect.Value
 	// openAnchors counts, by anchor name, the anchored nodes being decoded right
-	// now. An alias to one of them stands inside its own anchor, which a Go
-	// value has no way to hold. A count rather than a set: a document may
-	// define the same anchor again inside the node it names.
+	// now. An alias to one of them stands inside its own anchor, and a Go
+	// value has no way to hold that. openAnchors is a count instead of a set,
+	// because a document may define the same anchor again inside the node it names.
 	openAnchors map[string]int
-	// merging is set while the decoder reads the mapping a "<<" brings in, and
-	// stays set for everything decoded beneath it.
+	// merging is set while the decoder reads the mapping brought in by a "<<".
+	// It stays set for everything decoded beneath that mapping.
 	merging              bool
 	customUnmarshalerMap map[reflect.Type]func(any, []byte) error
 	commentMaps          []CommentMap
@@ -85,30 +84,31 @@ type Decoder struct {
 	useInferredNames     bool
 
 	// stream walks the source into Go values, one document for each Decode,
-	// without building a tree. src is kept so that a later Decode wanting
+	// without building a tree. The decoder keeps src, so a later Decode that needs
 	// something the walk cannot serve can still build the tree. See canWalk.
-	// walkedFirst records that Unmarshal filled its destination that way, and
-	// firstOnly marks a Decoder that Unmarshal made, which reads one document.
+	// walkedFirst records that Unmarshal filled its destination by the walk.
+	// firstOnly marks a Decoder made by Unmarshal, which reads one document.
 	stream      *walkStream
 	walkedFirst bool
 	firstOnly   bool
-	// streamErr is the error that stopped the stream: reading the source,
+	// streamErr holds the error that stopped the stream: reading the source,
 	// resolving its references, or parsing it into a tree. Decode returns it
-	// from then on, as encoding/json.Decoder does, and as the walk does for a
-	// parse it stopped itself. Before it was kept, the next Decode read the
-	// drained reader as an empty source and returned io.EOF, which a Decode
-	// loop takes for the stream's clean end.
+	// from then on, as encoding/json.Decoder does. The walk does the same for a
+	// parse error it found itself. Before streamErr was kept, the next Decode read the
+	// drained reader as an empty source and returned io.EOF.
+	// A Decode loop takes io.EOF for the clean end of the stream.
 	streamErr error
-	// pendingErr is the parse error of the document after the last one the tree holds. The parse keeps the
-	// documents before a broken one, so those decode, and the Decode that reaches the broken one returns this and
-	// makes it the streamErr. Unmarshal reads one document and returns it after that document.
+	// pendingErr holds the parse error of the document after the last one in the tree.
+	// The parse keeps the documents before a broken one, so those decode.
+	// The Decode that reaches the broken document returns pendingErr and makes it the streamErr.
+	// Unmarshal reads one document and returns pendingErr after that document.
 	pendingErr error
-	// strs holds the text of every string a decode hands back, copied out of
-	// the document so that the values outlive it.
+	// strs holds the text of every string returned by a decode. The text is copied out of
+	// the document, so the values outlive it.
 	strs codecutils.Arena
-	// built counts what this decode has made, and budget bounds it. See
-	// codecutils.AliasBudget. expanding is the outermost alias being read through, and
-	// expanded the last one, which a refusal names.
+	// built counts the nodes this decode has made, and budget bounds it. See
+	// codecutils.AliasBudget. expanding holds the outermost alias being read through,
+	// and expanded the last one. The over-budget error names one of them.
 	built       int
 	budget      int
 	expanding   *ast.AliasNode
@@ -117,7 +117,7 @@ type Decoder struct {
 	parsedFile  *ast.File
 	streamIndex int
 	decodeDepth int
-	// docSchema is the resolution the document being decoded was read under.
+	// docSchema records the resolution schema the document being decoded was read under.
 	// See unmarshalableDocument.
 	docSchema token.Schema
 }
@@ -145,11 +145,11 @@ func NewDecoder(r io.Reader, opts ...DecodeOption) *Decoder {
 }
 
 const (
-	// maxDecodeDepth bounds the calls the tree decoder makes inside one
-	// another. The parser refuses a document nested past its own 10,000
-	// levels with ErrExceededMaxDepth, and a level costs the decoder up to
+	// maxDecodeDepth bounds the nested calls made by the tree decoder.
+	// The parser rejects a document nested past its own 10,000
+	// levels with ErrExceededMaxDepth. A level costs the decoder up to
 	// three calls for a struct behind a pointer, so this guard does not fire on
-	// a document the parser read. It stands for a tree built by hand and handed
+	// a document read by the parser. It guards a tree built by hand and passed
 	// to NodeToValue, which no parse has bounded.
 	maxDecodeDepth = 50000
 )
@@ -187,8 +187,8 @@ func (d *Decoder) Decode(v any) error {
 		return yamlerrors.WithSource(err, d.source)
 	}
 	if d.firstOnly && d.pendingErr != nil {
-		// Unmarshal refuses a stream whose later documents do not parse, as the walk does, and has decoded the first
-		// one into v by then, as the walk has.
+		// Unmarshal rejects a stream whose later documents do not parse, as the walk does.
+		// It has decoded the first document into v by then, as the walk has.
 		return yamlerrors.WithSource(d.pendingErr, d.source)
 	}
 
@@ -202,16 +202,16 @@ func (d *Decoder) DecodeFromNode(node ast.Node, v any) error {
 		return yamlerrors.ErrDecodeRequiredPointerType
 	}
 	if !d.isInitialized() {
-		// A node in hand is a tree, so this never takes the walking path.
+		// The caller passes a tree, so this never takes the walking path.
 		if err := d.decodeInit(reflect.Value{}); err != nil {
 			return err
 		}
 	}
-	// A node has no source of its own, and decodeInit budgeted the reader's,
-	// so each call budgets the node it is given and starts its count afresh.
+	// A node has no source of its own, and decodeInit budgeted the source of the reader.
+	// Each call budgets its node and starts its count afresh.
 	d.built, d.budget = 0, codecutils.AliasBudget(astutils.CountNodes(node))
 	d.expanding, d.expanded = nil, nil
-	// resolve references to the anchor on the same file
+	// Resolve references to the anchors of the same file.
 	if _, err := d.nodeToValue(node); err != nil {
 		return err
 	}
@@ -242,8 +242,8 @@ func (d *Decoder) enterAnchor(name string) (leave func()) {
 	}
 }
 
-// enterMerge sets merging for the mapping a "<<" brings in, and returns the
-// call that puts back what it was.
+// enterMerge sets merging for the mapping brought in by a "<<". It returns the
+// call that restores the previous value.
 func (d *Decoder) enterMerge() (leave func()) {
 	was := d.merging
 	d.merging = true
@@ -255,23 +255,23 @@ func (d *Decoder) isExceededMaxDepth() bool {
 	return d.decodeDepth > maxDecodeDepth
 }
 
-// isOverBudget reports a decode building more than the document can account
-// for, which only an alias can do.
+// isOverBudget reports whether the decode has built more than the document can account
+// for. Only an alias can do that.
 func (d *Decoder) isOverBudget() bool {
 	return d.budget > 0 && d.built > d.budget
 }
 
-// refuseOverBudget returns the error to stop a decode that has run away.
+// refuseOverBudget returns the error that stops a decode past its budget.
 //
-// It names an alias, as the walk does: only an alias builds more than the
-// document holds, and the node in hand when the count runs out sits somewhere
-// in an anchored tree, which may belong to another document. That alias is the
+// The error names an alias, as the walk does. Only an alias builds more than the
+// document holds. The current node when the count runs out sits somewhere
+// in an anchored tree, which may belong to another document. The named alias is the
 // outermost one being read through, or else the last one read.
 //
 // The walk counts only what it copies for an alias, so it always runs out
-// inside one. This counts every node, so it can run out on the first node after
-// an alias, and names that alias. Counting only under an alias would miss the
-// aliases getMapNode and getArrayNode follow, which do not set expanding.
+// inside one. refuseOverBudget counts every node, so it can run out on the first node after
+// an alias, and then names that alias. Counting only under an alias would miss the
+// aliases followed by getMapNode and getArrayNode, which do not set expanding.
 func (d *Decoder) refuseOverBudget(at ast.Node) error {
 	switch {
 	case d.expanding != nil:
@@ -305,16 +305,16 @@ func (d *Decoder) mapKeyNodeToString(node ast.MapKeyNode) (string, error) {
 	return d.strs.Clone(name), nil
 }
 
-// mapKeyNodeToValue is the key a [MapSlice] entry is addressed by.
+// mapKeyNodeToValue returns the key that addresses a [MapSlice] entry.
 //
-// A MapItem.Key is an interface{}, so it holds what the key resolves to, as a
+// A MapItem.Key is an interface{}, so it holds the value the key resolves to, as a
 // map[any]any key does: "1:" gives an integer, "1.0:" a float, "null:" nil.
-// Naming it by text instead put `"1.0": a` and `1.0: b` in one MapSlice under
-// one key, where 3.2.1.1 makes a string and a float two keys -- and a merge
-// then let one override the other, which is what defect 69 was.
+// Keying by text put `"1.0": a` and `1.0: b` in one MapSlice under
+// one key, while 3.2.1.1 makes a string and a float two keys.
+// A merge then let one override the other. That was defect 69.
 //
-// [UseStringKeys] asks for the text instead and gets it for every scalar. A
-// collection reaches astutils.MapKeyString either way, which refuses it: a MapSlice key
+// [UseStringKeys] selects the text instead, for every scalar. A
+// collection goes to astutils.MapKeyString either way, which rejects it. A MapSlice key
 // must be comparable, and Go hashes no slice or map.
 func (d *Decoder) mapKeyNodeToValue(node ast.MapKeyNode) (any, error) {
 	key, err := d.nodeToValue(node)
@@ -335,13 +335,13 @@ func (d *Decoder) mapKeyNodeToValue(node ast.MapKeyNode) (any, error) {
 
 // setToMapValue fills m from node.
 //
-// merged says the entries come from a "<<" rather than from the mapping
-// holding it. A mapping's own keys win over the ones it merges in, whichever
-// side of the "<<" they were written, and an earlier "<<" wins over a later one
-// -- so a merged key is written only where none stands already. That is the
-// rule keyToNodeMap applies for a struct, and this path did not: "x: 9" over
-// "<<: *a" took the merged x, and "<<: [*a, *b]" took b's where the merge spec
-// gives it to a.
+// merged marks entries that come from a "<<" instead of from the mapping
+// holding it. The own keys of a mapping win over the merged ones, on whichever
+// side of the "<<" they were written. An earlier "<<" wins over a later one.
+// So setToMapValue writes a merged key only where no key stands already.
+// keyToNodeMap applies the same rule for a struct. Before, this path did not:
+// "x: 9" over "<<: *a" took the merged x, and "<<: [*a, *b]" took the value of b
+// where the merge spec gives it to a.
 func (d *Decoder) setToMapValue(node ast.Node, m *codecutils.KeyedMap, merged bool) error {
 	d.stepIn()
 	defer d.stepOut()
@@ -385,11 +385,11 @@ func (d *Decoder) setToMapValue(node ast.Node, m *codecutils.KeyedMap, merged bo
 
 // setToOrderedMapValue fills m from node, reading merged as [Decoder.setToMapValue] does.
 //
-// A MapSlice keeps what a map cannot: the order the document wrote. So a key
-// already standing is overwritten where it stands rather than appended again --
-// "<<: *a" over "x: 9" is one entry holding 9, at the place the merge brought x
-// in. Appending gave a MapSlice with x twice, which no reader of one expects
-// and which json.Marshal writes as a repeated member.
+// A MapSlice keeps the order of the document, which a map cannot. So setToOrderedMapValue
+// overwrites a key already present in place instead of appending it again.
+// "<<: *a" over "x: 9" gives one entry holding 9, at the place where the merge brought x
+// in. Appending gave a MapSlice with x twice. No reader of a MapSlice expects that,
+// and json.Marshal writes it as a repeated member.
 func (d *Decoder) setToOrderedMapValue(node ast.Node, m *MapSlice, merged bool) error {
 	d.stepIn()
 	defer d.stepOut()
@@ -440,7 +440,7 @@ func (d *Decoder) setPathToCommentMap(node ast.Node) {
 	})
 }
 
-// commentPositionOf is the CommentMap position of a comment astutils.EachComment found at place.
+// commentPositionOf returns the CommentMap position of a comment found by astutils.EachComment at place.
 func commentPositionOf(place astutils.CommentPlace) CommentPosition {
 	switch place {
 	case astutils.LinePlace:
@@ -455,7 +455,7 @@ func commentPositionOf(place astutils.CommentPlace) CommentPosition {
 func (d *Decoder) addCommentToMap(path string, comment *Comment) {
 	for _, c := range d.toCommentMap[path] {
 		if c.Position == comment.Position {
-			// already added same comment
+			// The same comment is already added.
 			return
 		}
 	}
@@ -493,32 +493,32 @@ func (d *Decoder) nodeToValue(node ast.Node) (any, error) {
 	case *ast.NanNode:
 		return n.GetValue(), nil
 	case *ast.TagNode:
-		// What the tag made of the node is ast.TagNode.Resolve's answer and not
-		// this switch's. The converter in codec/tojson.go asks the same
-		// question; before it did, the two disagreed about "!!timestamp
+		// ast.TagNode.Resolve decides what the tag makes of the node, not
+		// this switch. The converter in codec/tojson.go calls Resolve too.
+		// Before it did, the two disagreed about "!!timestamp
 		// not-a-date" and about "!!binary" on an empty node.
 		res := n.Resolve()
 
 		switch res.Verdict {
 		case ast.TagUnresolved:
 			// A local tag such as "!Ref", a foreign one, or a name YAML's type
-			// repository does not define. 6.9.1 hands it to the application, so
-			// the node is read by its kind.
+			// repository does not define. 6.9.1 leaves it to the application, so
+			// the decoder reads the node by its kind.
 			return d.nodeToValue(n.Value)
 		case ast.TagKindMismatch:
 			return nil, yamlerrors.NewSyntax(
 				fmt.Sprintf("%s does not support this kind of node", res.Tag), n.GetToken())
 		case ast.TagValueMismatch:
 			if res.Lax {
-				// parser.WithLaxTags: the characters the scalar was written
-				// with stand in for the value the tag could not make of them.
+				// parser.WithLaxTags: the source text of the scalar
+				// replaces the value the tag could not make of it.
 				return d.strs.Value(res.Text), nil
 			}
 
 			return nil, yamlerrors.NewSyntax(
 				fmt.Sprintf("cannot read %q as %s", res.Text, res.Tag), n.Value.GetToken())
 		default:
-			// nothing to do
+			// Nothing to do.
 		}
 
 		v, err := d.taggedValue(n, res)
@@ -526,12 +526,12 @@ func (d *Decoder) nodeToValue(node ast.Node) (any, error) {
 			return nil, err
 		}
 
-		// The tag and the anchor under it belong to one node, whichever order
-		// the document wrote them in (6.9), so the name stands for the tagged
-		// value. Recorded here rather than by the AnchorNode case below, which
-		// runs first and only ever sees what the tag was put in front of:
-		// "a: !!int &a1 \"5\"" read 5 at a and "5" at "b: *a1", one node read
-		// as a number where it stands and as a string through an alias to it.
+		// The tag and the anchor under it belong to one node, in whichever order
+		// the document wrote them (6.9), so the anchor names the tagged
+		// value. This case records it instead of the AnchorNode case below.
+		// That case runs first and only sees the node under the tag.
+		// Before, "a: !!int &a1 \"5\"" read 5 at a and "5" at "b: *a1": one node read
+		// as a number in place and as a string through an alias to it.
 		if anchor, anchored := n.Value.(*ast.AnchorNode); anchored && v != nil {
 			d.anchorValueMap[anchor.Name.GetToken().Value] = reflect.ValueOf(v)
 		}
@@ -540,7 +540,7 @@ func (d *Decoder) nodeToValue(node ast.Node) (any, error) {
 	case *ast.AnchorNode:
 		anchorName := n.Name.GetToken().Value
 
-		// To handle the case where alias is processed recursively, the result of alias can be set to nil in advance.
+		// An alias may be processed recursively, so the result of the alias is set to nil in advance.
 		d.anchorNodeMap[anchorName] = nil
 		leave := d.enterAnchor(anchorName)
 		anchorValue, err := d.nodeToValue(n.Value)
@@ -555,16 +555,16 @@ func (d *Decoder) nodeToValue(node ast.Node) (any, error) {
 	case *ast.AliasNode:
 		text := n.Value.String()
 		if d.openAnchors[text] > 0 {
-			// The alias stands inside the node its own anchor names, directly
-			// or through another anchor. The parser reads that document and
-			// the tree it builds holds a cycle -- YAML's representation is a
-			// graph -- but a Go value is built by walking and has nowhere to
-			// put one. Returning nil instead reported a mapping with a null in
+			// The alias stands inside the node named by its own anchor, directly
+			// or through another anchor. The parser reads that document, and
+			// the tree it builds holds a cycle, because the YAML representation is a
+			// graph. A Go value is built by walking and has nowhere to
+			// put a cycle. Returning nil instead gave a mapping with a null in
 			// it and no error at all.
 			return nil, yamlerrors.NewRecursiveAlias(text, n.Value.GetToken())
 		}
 		if v, exists := d.anchorValueMap[text]; exists && d.shareAliases {
-			// ShareAliases: one Go value under every name that points at it.
+			// ShareAliases: every alias of the anchor gets the same Go value.
 			if !v.IsValid() {
 				return nil, nil
 			}
@@ -572,13 +572,13 @@ func (d *Decoder) nodeToValue(node ast.Node) (any, error) {
 			return v.Interface(), nil
 		}
 		if target, _ := d.aliasTarget(n); target != nil {
-			// Read the node again rather than hand back what it decoded to
-			// before. Two aliases of one anchor named one Go value, so writing
-			// through either changed the other and a caller who never wrote a
-			// document twice had two names for one map. Whether they shared
-			// even turned on whether the destination happened to declare a
-			// field for the anchor itself: with one, anchorValueMap held the
-			// value and every alias got it; without one, nothing recorded it
+			// Read the node again instead of returning its earlier value.
+			// Before, two aliases of one anchor named one Go value. Writing
+			// through either changed the other, and a caller who never wrote a
+			// document twice had two names for one map. Sharing
+			// even depended on whether the destination declared a
+			// field for the anchor itself. With one, anchorValueMap held the
+			// value and every alias got it. Without one, nothing recorded it,
 			// and each alias decoded the node afresh.
 			//
 			// codecutils.AliasBudget bounds what this costs.
@@ -590,8 +590,8 @@ func (d *Decoder) nodeToValue(node ast.Node) (any, error) {
 			return d.nodeToValue(target)
 		}
 		if v, exists := d.anchorValueMap[text]; exists {
-			// No node to read: an anchor published by ReferenceFiles, which
-			// carries a value and not a tree of this document.
+			// No node to read: the anchor was published by ReferenceFiles.
+			// It carries a value, not a tree of this document.
 			if !v.IsValid() {
 				return nil, nil
 			}
@@ -669,13 +669,13 @@ func (d *Decoder) nodeToValue(node ast.Node) (any, error) {
 	return nil, nil
 }
 
-// eachMergeSource hands fn each mapping a "<<" names, one at a time and in the
+// eachMergeSource calls fn on each mapping named by a "<<", one at a time and in the
 // order written: the mapping itself, or each mapping of a sequence of them.
 //
-// getMapNode folds a sequence into one MapNode, which loses where one of its
-// mappings ends. Each mapping has to be read whole -- its own keys, then what
-// its own "<<" brings -- before the next, since an earlier mapping wins over a
-// later one: "<<: [*a, *b]" takes a key a merges in over the same key b writes.
+// getMapNode folds a sequence into one MapNode, which loses the end of each of its
+// mappings. Each mapping must be read whole, its own keys and then the entries
+// of its own "<<", before the next, because an earlier mapping wins over a
+// later one. "<<: [*a, *b]" takes a key merged in by a over the same key written by b.
 func (d *Decoder) eachMergeSource(node ast.Node, fn func(ast.MapNode) error) error {
 	return d.eachMergeNode(node, func(one ast.Node, inSequence bool) error {
 		value, err := d.getMapNode(one, !inSequence)
@@ -687,9 +687,9 @@ func (d *Decoder) eachMergeSource(node ast.Node, fn func(ast.MapNode) error) err
 	})
 }
 
-// eachMergeNode hands fn the node of each mapping a "<<" names, as
-// eachMergeSource reads them. inSequence says the node is an element of a
-// sequence, which has to be a mapping: a sequence inside it is refused.
+// eachMergeNode calls fn on the node of each mapping named by a "<<", in the
+// order eachMergeSource reads them. inSequence marks a node that is an element of a
+// sequence. Such an element must be a mapping, and a sequence there is rejected.
 func (d *Decoder) eachMergeNode(node ast.Node, fn func(one ast.Node, inSequence bool) error) error {
 	seq := d.mergeSequence(node)
 	if seq == nil {
@@ -704,8 +704,8 @@ func (d *Decoder) eachMergeNode(node ast.Node, fn func(one ast.Node, inSequence 
 	return nil
 }
 
-// mergeSequence returns the sequence a "<<" names, through an anchor, an alias
-// or a tag, and nil where it names anything else. It records an anchor on the
+// mergeSequence returns the sequence named by a "<<", through an anchor, an alias
+// or a tag. It returns nil when the "<<" names anything else. It records an anchor on the
 // way, as getMapNode does.
 func (d *Decoder) mergeSequence(node ast.Node) *ast.SequenceNode {
 	for {
@@ -718,7 +718,7 @@ func (d *Decoder) mergeSequence(node ast.Node) *ast.SequenceNode {
 		case *ast.AliasNode:
 			target, _ := d.aliasTarget(n)
 			if target == nil {
-				// getMapNode reports the unknown anchor.
+				// getMapNode returns the unknown anchor error.
 				return nil
 			}
 			node = target
@@ -773,17 +773,17 @@ func (d *Decoder) getMapNode(node ast.Node, isMerge bool) (ast.MapNode, error) {
 	return nil, yamlerrors.NewUnexpectedNodeType(node.Type(), ast.MappingType, node.GetToken())
 }
 
-// aliasTarget returns the node an alias names, and the name it was written
-// with.
+// aliasTarget returns the node named by an alias, and the name written in the
+// alias.
 //
-// The parser fills [ast.AliasNode.Target] as it reads, so a node handed over on
-// its own -- what DecodeFromNode and expressions.Path.Read are given -- already
-// carries what its aliases name. Before this the decoder looked the name up in
-// anchorNodeMap, which is built from a whole file, and an alias whose anchor
+// The parser fills [ast.AliasNode.Target] as it reads. So a node passed on
+// its own, as DecodeFromNode and expressions.Path.Read receive one, already
+// carries the targets of its aliases. Before this, the decoder looked the name up in
+// anchorNodeMap, which is built from a whole file. An alias whose anchor
 // stood outside the node found nothing.
 //
-// The map is still the answer for a tree built by hand or written by the
-// encoder, neither of which went through a parse.
+// aliasTarget still reads anchorNodeMap for a tree built by hand or written by the
+// encoder. Neither went through a parse.
 func (d *Decoder) aliasTarget(n *ast.AliasNode) (ast.Node, string) {
 	name := n.Value.GetToken().Value
 	if n.Target != nil {
@@ -823,12 +823,12 @@ func (d *Decoder) getArrayNode(node ast.Node) (ast.ArrayNode, error) {
 	return arrayNode, nil
 }
 
-// binaryBytes returns the bytes a "!!binary" node holds, and reports false for
+// binaryBytes returns the bytes held by a "!!binary" node. It returns false for
 // every other node.
 //
-// The tag names a sequence of bytes and the decoder builds a []byte for an
-// `any`, so a []byte destination is the one Go type the tag is for.
-// decodeSlice read the node as a sequence and reported `string was used where
+// The tag names a sequence of bytes, and the decoder builds a []byte for an
+// `any`. So a []byte destination is the Go type that matches the tag.
+// Before, decodeSlice read the node as a sequence and returned `string was used where
 // sequence is expected`, while the same document into a string field gave the
 // decoded bytes.
 func (d *Decoder) binaryBytes(node ast.Node) ([]byte, bool) {
@@ -848,8 +848,8 @@ func (d *Decoder) binaryBytes(node ast.Node) ([]byte, bool) {
 			return nil, false
 		}
 		if res.Empty {
-			// "k: !!binary" with nothing after it takes the tag's own default,
-			// which tagZero writes as an empty []byte.
+			// "k: !!binary" with nothing after it takes the default of the tag.
+			// tagZero writes that default as an empty []byte.
 			return []byte{}, true
 		}
 		b, err := base64.StdEncoding.DecodeString(res.Text)
@@ -860,8 +860,8 @@ func (d *Decoder) binaryBytes(node ast.Node) ([]byte, bool) {
 	}
 }
 
-// mergeKeyValue reads the mapping a "<<" names as a value of its own, an
-// ordered one under UseOrderedMap.
+// mergeKeyValue reads the mapping named by a "<<" as a value of its own.
+// Under UseOrderedMap the value is a MapSlice.
 func (d *Decoder) mergeKeyValue(node ast.Node) (any, error) {
 	if d.useOrderedMap {
 		m := MapSlice{}
@@ -896,7 +896,7 @@ func (d *Decoder) convertValue(v reflect.Value, typ reflect.Type, src ast.Node) 
 	if typ.Kind() != reflect.String {
 		return codecutils.ConvertToKind(v, typ, src)
 	}
-	// cast value to string
+	// Cast the value to a string.
 	var strVal string
 	switch v.Type().Kind() {
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
@@ -908,8 +908,8 @@ func (d *Decoder) convertValue(v reflect.Value, typ reflect.Type, src ast.Node) 
 	case reflect.Bool:
 		strVal = strconv.FormatBool(v.Bool())
 	case reflect.Struct:
-		// A timestamp is written as its instant in RFC 3339, in its own zone,
-		// as ast.KeyName names a timestamp key and ToJSON writes one.
+		// A timestamp is written as its instant in RFC 3339, in its own zone.
+		// ast.KeyName names a timestamp key the same way, and ToJSON writes one the same way.
 		// "2001-12-14" under YAML 1.1 is "2001-12-14T00:00:00Z".
 		t, isTime := reflect.TypeAssert[time.Time](v)
 		if !isTime {
@@ -925,14 +925,14 @@ func (d *Decoder) convertValue(v reflect.Value, typ reflect.Type, src ast.Node) 
 
 	val := reflect.ValueOf(strVal)
 	if val.Type() != typ {
-		// Handle named types, e.g., `type MyString string`
+		// Handle named types, such as `type MyString string`.
 		val = val.Convert(typ)
 	}
 	return val, nil
 }
 
-// tagMode says which of encoding/json's rules this decoder adds to the `yaml`
-// tag. Neither option set is go.yaml.in/yaml/v3 exactly.
+// tagMode returns the encoding/json rules this decoder adds to the `yaml`
+// tag. With neither option set, the mode matches go.yaml.in/yaml/v3 exactly.
 func (d *Decoder) tagMode() structfields.Mode {
 	mode := structfields.YAMLTags
 	if d.useJSONTags {
@@ -950,8 +950,8 @@ func (d *Decoder) deleteStructKeys(structType reflect.Type, unknownFields map[st
 		structType = structType.Elem()
 	}
 	if structType.Kind() == reflect.Map {
-		// A `,inline` map takes every entry no field claims, so a mapping read
-		// into this struct writes nothing unknown.
+		// A `,inline` map takes every entry not claimed by a field, so a mapping read
+		// into this struct leaves no unknown field.
 		clear(unknownFields)
 
 		return nil
@@ -984,10 +984,10 @@ func (d *Decoder) deleteStructKeys(structType reflect.Type, unknownFields map[st
 	return nil
 }
 
-// unmarshalableDocument renders node as the document a bytes unmarshaler reads.
+// unmarshalableDocument renders node as the document read by a bytes unmarshaler.
 //
-// Where the document was read under YAML 1.1, the text opens with "%YAML 1.1",
-// so a nested Unmarshal reads the fragment as the document read it: "<<" merges
+// When the document was read under YAML 1.1, the text opens with "%YAML 1.1".
+// A nested Unmarshal then reads the fragment under the same version: "<<" merges
 // and "yes" is true. Without the line the fragment parsed as 1.2, and a merge
 // inside it came back as an ordinary key named "<<".
 func (d *Decoder) unmarshalableDocument(node ast.Node) ([]byte, error) { //nolint:unparam // signature kept stable: callers already handle the error
@@ -1002,10 +1002,10 @@ func (d *Decoder) unmarshalableDocument(node ast.Node) ([]byte, error) { //nolin
 // encoding.TextUnmarshaler: under the document's YAML version, through its
 // anchors, and with an error at the node's own position.
 //
-// It used to render the node back to text and decode that as a document of
-// its own, under YAML 1.2 and from line 1: under 1.1, "yes" reached
-// UnmarshalText as "yes" where a string field holds "true", and a
-// "!!timestamp" the string field accepts was refused.
+// Before, it rendered the node back to text and decoded that as a document of
+// its own, under YAML 1.2 and from line 1. Under 1.1, "yes" reached
+// UnmarshalText as "yes" where a string field holds "true". A
+// "!!timestamp" accepted by the string field was rejected.
 func (d *Decoder) unmarshalableText(node ast.Node) ([]byte, error) {
 	var v string
 	if err := d.decodeValue(reflect.ValueOf(&v).Elem(), node); err != nil {
@@ -1048,17 +1048,17 @@ func (d *Decoder) canDecodeByUnmarshaler(dst reflect.Value) bool {
 	return decodesItself(ptrValue, d.useJSONUnmarshaler)
 }
 
-// decodesItself reports whether the value ptr points to reads itself from the
-// document, through an interface it implements or a type the decoder reads
-// specially. A json.Unmarshaler counts only with useJSONUnmarshaler.
+// decodesItself reports whether the value pointed to by ptr reads itself from the
+// document. It does through an interface it implements, or when the decoder reads
+// its type specially. A json.Unmarshaler counts only with useJSONUnmarshaler.
 func decodesItself(ptr reflect.Value, useJSONUnmarshaler bool) bool {
 	switch ptr.Interface().(type) {
 	case *MapSlice, *MapSliceSeq, *MapItem, *Base64:
-		// Read by the decoder itself, ahead of any interface they satisfy.
-		// [UseJSONUnmarshaler] is the counterpart of [UseJSONMarshaler] and a
-		// last resort the same way: a document reaching a MapSlice through
-		// ToJSON would arrive with JSON's keys, which are strings, and lose
-		// every key this type exists to keep apart.
+		// The decoder reads these itself, ahead of any interface they satisfy.
+		// [UseJSONUnmarshaler] is the counterpart of [UseJSONMarshaler], and a
+		// last resort the same way. A document passed to a MapSlice through
+		// ToJSON would arrive with JSON keys, which are strings. It would lose
+		// every key that MapSlice keeps apart.
 		return false
 	case Unmarshaler,
 		GoYAMLUnmarshaler,
@@ -1130,9 +1130,9 @@ func (d *Decoder) decodeByUnmarshaler(dst reflect.Value, src ast.Node) error {
 		return d.decodeDuration(dst, src)
 	}
 
-	// textErr is why the node gave no text, returned when no other interface
-	// reads it: "!!timestamp nope" into a TextUnmarshaler is refused for the
-	// timestamp it fails to be.
+	// textErr holds the error that kept the node from giving text. It is returned
+	// when no other interface reads the node. "!!timestamp nope" into a TextUnmarshaler
+	// is rejected because it is not a valid timestamp.
 	var textErr error
 	if unmarshaler, isText := iface.(encoding.TextUnmarshaler); isText {
 		b, err := d.unmarshalableText(src)
@@ -1154,7 +1154,7 @@ func (d *Decoder) decodeByUnmarshaler(dst reflect.Value, src ast.Node) error {
 	return errors.New("does not implemented GoYAMLUnmarshaler")
 }
 
-// unmarshalJSON hands src to unmarshaler as the JSON document it converts to.
+// unmarshalJSON converts src to a JSON document and passes it to unmarshaler.
 func (d *Decoder) unmarshalJSON(unmarshaler jsonUnmarshaler, src ast.Node) error {
 	b, err := d.unmarshalableDocument(src)
 	if err != nil {
@@ -1207,7 +1207,7 @@ func (d *Decoder) decodeValue(dst reflect.Value, src ast.Node) error {
 			return nil
 		}
 		if src.Type() == ast.NullType {
-			// set nil value to pointer
+			// Set the pointer to nil.
 			dst.Set(reflect.Zero(valueType))
 			return nil
 		}
@@ -1217,7 +1217,7 @@ func (d *Decoder) decodeValue(dst reflect.Value, src ast.Node) error {
 		if err != nil {
 			return errors.Join(decodeErr, err)
 		}
-		// What decoded stands, error or not: see createDecodedNewValue.
+		// Keep the decoded value, error or not. See createDecodedNewValue.
 		dst.Set(castedValue)
 		if decodeErr != nil {
 			return decodeErr
@@ -1261,10 +1261,9 @@ func (d *Decoder) decodeValue(dst reflect.Value, src ast.Node) error {
 		}
 		switch vv := v.(type) {
 		case int:
-			// What "!!int" reads a number as: castToInteger hands back an int
-			// where the number fits one, which is what strconv.Atoi gave. The
-			// untagged number arrives as a uint64 or an int64, so without this
-			// case "n: !!int 5" was refused where "n: 5" read.
+			// No reader returns an int today: taggedInteger and an untagged number both give an int64,
+			// a uint64 or a *big.Int. The case dates from castToInteger, which returned an int, and
+			// without it "n: !!int 5" was rejected where "n: 5" read.
 			if !dst.OverflowInt(int64(vv)) {
 				dst.SetInt(int64(vv))
 				return nil
@@ -1285,16 +1284,16 @@ func (d *Decoder) decodeValue(dst reflect.Value, src ast.Node) error {
 				return nil
 			}
 		case *big.Int, *big.Float:
-			// The AST hands one of these over only for a number that outgrew
-			// int64, uint64 or float64, so nothing here has room for it. Fall
+			// The AST returns one of these only for a number too large for
+			// int64, uint64 or float64, so no integer kind here can hold it. Fall
 			// through to the overflow error, which names the number.
-		case string: // handle scientific notation
+		case string: // Handle scientific notation.
 			if i, err := strconv.ParseFloat(vv, 64); err == nil {
 				if 0 <= i && i <= math.MaxUint64 && !dst.OverflowInt(int64(i)) {
 					dst.SetInt(int64(i))
 					return nil
 				}
-			} else { // couldn't be parsed as float
+			} else { // It could not be parsed as a float.
 				return yamlerrors.NewTypeMismatch(valueType, reflect.TypeOf(v), src.GetToken())
 			}
 		default:
@@ -1308,8 +1307,7 @@ func (d *Decoder) decodeValue(dst reflect.Value, src ast.Node) error {
 		}
 		switch vv := v.(type) {
 		case int:
-			// See the signed case above: "!!int" reads a number that fits as an
-			// int.
+			// See the signed case above: no reader returns an int today.
 			if 0 <= vv && !dst.OverflowUint(uint64(vv)) {
 				dst.SetUint(uint64(vv))
 				return nil
@@ -1331,13 +1329,13 @@ func (d *Decoder) decodeValue(dst reflect.Value, src ast.Node) error {
 			}
 		case *big.Int, *big.Float:
 			// See the signed case above.
-		case string: // handle scientific notation
+		case string: // Handle scientific notation.
 			if i, err := strconv.ParseFloat(vv, 64); err == nil {
 				if 0 <= i && i <= math.MaxUint64 && !dst.OverflowUint(uint64(i)) {
 					dst.SetUint(uint64(i))
 					return nil
 				}
-			} else { // couldn't be parsed as float
+			} else { // It could not be parsed as a float.
 				return yamlerrors.NewTypeMismatch(valueType, reflect.TypeOf(v), src.GetToken())
 			}
 
@@ -1346,7 +1344,7 @@ func (d *Decoder) decodeValue(dst reflect.Value, src ast.Node) error {
 		}
 		return yamlerrors.NewOverflow(valueType, fmt.Sprint(v), src.GetToken())
 	default:
-		// nothing to do
+		// Nothing to do.
 	}
 	srcVal, err := d.nodeToValue(src)
 	if err != nil {
@@ -1384,12 +1382,12 @@ func (d *Decoder) keyToKeyNodeMap(node ast.Node, ignoreMergeKey bool) (map[strin
 }
 */
 
-// aliasedValue returns the value the anchor of alias decoded to, cast to typ,
-// when it can be reused; otherwise it returns the node the anchor names, for
-// the caller to read again, which is nil for an anchor without one.
+// aliasedValue returns the decoded value of the anchor of alias, cast to typ,
+// when the value can be reused. Otherwise it returns the node named by the anchor,
+// for the caller to read again. That node is nil for an anchor without one.
 //
-// The decoded value is reused when aliases share it, and when there is no
-// node to read again: an anchor ReferenceFiles published.
+// aliasedValue reuses the decoded value when aliases share it, and when there is no
+// node to read again, as for an anchor published by ReferenceFiles.
 func (d *Decoder) aliasedValue(alias *ast.AliasNode, typ reflect.Type) (reflect.Value, ast.Node, bool) {
 	target, name := d.aliasTarget(alias)
 	if value := d.anchorValueMap[name]; value.IsValid() && (d.shareAliases || target == nil) {
@@ -1433,11 +1431,11 @@ func (d *Decoder) createDecodedNewValue(
 	}
 	if !ast.IsNull(node) {
 		if err := d.decodeValue(newValue, node); err != nil {
-			// The value is decoded in place, as encoding/json decodes it: what
-			// decoded before the error stands, beside the error, and the caller
-			// writes it. Handing back nothing threw away a nested struct's other
-			// fields, and a map's caller lost the entry, which SetMapIndex
-			// deletes for an invalid value.
+			// The value is decoded in place, as encoding/json decodes it. The part
+			// decoded before the error is returned beside the error, and the caller
+			// writes it. Returning nothing threw away the other fields of a nested struct.
+			// The caller of a map lost the entry, because SetMapIndex
+			// deletes it for an invalid value.
 			if v, castErr := codecutils.CastToAssignableValue(newValue, typ, node); castErr == nil {
 				return v, err
 			}
@@ -1483,10 +1481,10 @@ func (d *Decoder) keyToNodeMap(node ast.Node, ignoreMergeKey bool, getKeyOrValue
 			continue
 		}
 
-		// Named as decodeStruct names an entry, so "1: x" reaches an inline
+		// Name the entry as decodeStruct names it, so "1: x" reaches an inline
 		// map as "1", as it reaches a map[string]any. Keeping only the keys
 		// that decoded to a Go string returned an empty map, and no error, on
-		// the first that did not.
+		// the first key that did not.
 		key, named, err := d.entryName(keyNode)
 		if err != nil {
 			return nil, err
@@ -1495,16 +1493,16 @@ func (d *Decoder) keyToNodeMap(node ast.Node, ignoreMergeKey bool, getKeyOrValue
 			// A collection key names no field and no string-keyed entry.
 			continue
 		}
-		// astutils.RefuseRepeats refused a repeat the parse did not allow; one it
-		// allowed leaves the last value standing.
+		// astutils.RefuseRepeats rejected a repeat not allowed by the parse.
+		// An allowed repeat keeps the last value.
 		keyToNodeMap[key] = getKeyOrValueNode(mapIter)
 	}
 
-	// A mapping's own keys win over the ones it merges in, whichever side of the
-	// "<<" they were written, and an earlier "<<" wins over a later one. Merged
-	// keys were validated against the mapping's own until now, so "<<: *base"
-	// beside a key the base also writes -- the whole point of a merge -- was
-	// refused as a duplicate. The key is not written twice: it is written once
+	// The own keys of a mapping win over the merged ones, on whichever side of the
+	// "<<" they were written. An earlier "<<" wins over a later one. Before, merged
+	// keys were validated against the own keys of the mapping. So "<<: *base"
+	// beside a key also written by the base was rejected as a duplicate, though
+	// overriding is the purpose of a merge. The key is not written twice: it is written once
 	// here and once in another mapping.
 	for _, m := range merged {
 		for k, v := range m {
@@ -1518,8 +1516,8 @@ func (d *Decoder) keyToNodeMap(node ast.Node, ignoreMergeKey bool, getKeyOrValue
 	return keyToNodeMap, nil
 }
 
-// tagZero is what a tag standing on no value denotes: the value its type starts
-// at. "k: !!int" is 0 and "k: !!bool" is false, exactly as
+// tagZero returns the value of a tag standing on no value: the zero value of its
+// type. "k: !!int" is 0 and "k: !!bool" is false, exactly as
 // parser.newTagDefaultScalarValueNode writes them into the tree.
 func tagZero(tag token.ReservedTagKeyword) (any, error) {
 	switch tag {
@@ -1540,13 +1538,13 @@ func tagZero(tag token.ReservedTagKeyword) (any, error) {
 	}
 }
 
-// mergedKeyToNodeMap reads what a "<<" names, which is a mapping or a sequence
-// of them: getMapNode folds a sequence into one MapNode.
+// mergedKeyToNodeMap reads the node named by a "<<", which is a mapping or a sequence
+// of them. getMapNode folds a sequence into one MapNode.
 //
-// The keys are not validated against one another and the first written stands.
-// Two mappings of a sequence may write the same key -- "<<: [*one, *two]" where
-// both write "b" -- and YAML 1.1's merge says the mapping named first wins
-// rather than that the document is wrong.
+// The keys are not validated against one another, and the first one written wins.
+// Two mappings of a sequence may write the same key, as in "<<: [*one, *two]" where
+// both write "b". The YAML 1.1 merge spec gives the key to the mapping named first,
+// and does not reject the document.
 func (d *Decoder) mergedKeyToNodeMap(
 	node ast.Node, ignoreMergeKey bool, getKeyOrValueNode func(*ast.MapNodeIter) ast.Node,
 ) (map[string]ast.Node, error) {
@@ -1563,7 +1561,7 @@ func (d *Decoder) mergedKeyToNodeMap(
 		}
 	}
 	err := d.eachMergeSource(node, func(mapNode ast.MapNode) error {
-		// The mapping's own keys first, then what its own "<<" bring in.
+		// Read the own keys of the mapping first, then the entries brought in by its own "<<".
 		var merges []ast.Node
 		mapIter := mapNode.MapRange()
 		for mapIter.Next() {
@@ -1611,12 +1609,12 @@ func (d *Decoder) keyToValueNodeMap(node ast.Node, ignoreMergeKey bool) (map[str
 	return m, nil
 }
 
-// taggedValue is what a tagged node denotes, once ast.TagNode.Resolve has said
-// the tag applies.
+// taggedValue returns the value of a tagged node, once ast.TagNode.Resolve has found
+// that the tag applies.
 func (d *Decoder) taggedValue(n *ast.TagNode, res ast.Resolution) (any, error) {
 	if res.Empty {
-		// A tag with nothing after it takes the tag's own default, which
-		// parser's newTagDefaultScalarValueNode builds and nothing read:
+		// A tag with nothing after it takes the default of the tag.
+		// The parser function newTagDefaultScalarValueNode builds it, and before, nothing read it:
 		// "k: !!int" was 0 while "k: !!bool" and "k: !!binary" were errors.
 		return tagZero(res.Tag)
 	}
@@ -1625,44 +1623,44 @@ func (d *Decoder) taggedValue(n *ast.TagNode, res ast.Resolution) (any, error) {
 	case token.TimestampTag:
 		return d.castToTime(n.Value)
 	case token.IntegerTag:
-		// Read from the text the tag stands over, in the base the document's
-		// own schema gives those digits. Resolving the node instead took a
-		// quoted scalar as the string it is and sent it through
-		// castToInteger's fixed 1.2 reading, so `!!int "017"` was 17 in a
-		// document where `!!int 017` was 15 -- and `!!int "0b101"` under 1.1
+		// Read the text under the tag, in the base that the schema of the document
+		// gives those digits. Resolving the node instead took a
+		// quoted scalar as a string and sent it through
+		// the fixed 1.2 reading of the former castToInteger. So `!!int "017"` was 17 in a
+		// document where `!!int 017` was 15, and `!!int "0b101"` under 1.1
 		// was 0 where the plain spelling was 5. 3.3.2 gives the "!"
 		// non-specific tag only to a node lacking an explicit tag, so the two
 		// spellings are one node.
 		//
-		// And one Go value: uint64, int64 or *big.Int, as the untagged number
-		// decodes. Narrowed to int, "!!int 1" was int(1) where "1" was
-		// uint64(1), two keys to a Go map, so an own "!!int 1" did not beat the
-		// "1" a "<<" brought in and the mapping held both.
+		// The two spellings also give one Go value: uint64, int64 or *big.Int, as the
+		// untagged number decodes. Narrowed to int, "!!int 1" was int(1) where "1" was
+		// uint64(1). Those are two keys in a Go map, so an own "!!int 1" did not beat the
+		// "1" brought in by a "<<", and the mapping held both.
 		return taggedInteger(res.Text, res.Schema), nil
 	case token.FloatTag:
 		return d.castToFloat(taggedFloat(res.Text, res.Schema)), nil
 	case token.NullTag:
 		return nil, nil
 	case token.BinaryTag:
-		// A Base64 and not a []byte: it is comparable, so "? !!binary" keys a
-		// mapping where a byte slice cannot, and it tells an encoder the value
-		// is binary, so a round trip writes "!!binary" again. Resolve has read
+		// Return a Base64, not a []byte. A Base64 is comparable, so "? !!binary" can key a
+		// mapping, which a byte slice cannot. It also marks the value as binary for an
+		// encoder, so a round trip writes "!!binary" again. Resolve has read
 		// the text as base64 already. See [Base64].
 		return Base64(res.Text), nil
 	case token.BooleanTag:
-		// The tag says boolean whatever the text is, so a spelling neither
-		// schema resolves is read in lower case: "!!bool Yes" and
-		// "!!bool YES" are the same request. Resolve has agreed there is
-		// one to read.
+		// The tag sets the type to boolean whatever the text is. So a spelling
+		// resolved by neither schema is read in lower case: "!!bool Yes" and
+		// "!!bool YES" give the same value. Resolve has already checked that
+		// the text holds a boolean.
 		b, _ := token.ParseBool(strings.ToLower(res.Text))
 
 		return b, nil
 	case token.StringTag:
-		// The tag names the type, so the scalar keeps the text it was
-		// written with rather than what the core schema resolved it to:
+		// The tag names the type, so the scalar keeps its source text
+		// instead of the value resolved by the core schema:
 		// "!!str 0x10" is "0x10" and not "16", and "!!str False" keeps its
 		// capital F. An anchor over that scalar names the same string, so
-		// its recorded value is replaced too.
+		// taggedValue replaces its recorded value too.
 		text := d.strs.Clone(res.Text)
 		if anchor, anchored := n.Value.(*ast.AnchorNode); anchored {
 			d.anchorValueMap[anchor.Name.GetToken().Value] = reflect.ValueOf(text)
@@ -1677,23 +1675,23 @@ func (d *Decoder) taggedValue(n *ast.TagNode, res ast.Resolution) (any, error) {
 
 		return d.orderedMapOf(seq, entries)
 	default:
-		// A tag naming a kind -- !!seq, !!map, !!set, !!merge. The node is read
-		// as it stands.
+		// A tag naming a kind: !!seq, !!map, !!set, !!merge. Read the node
+		// as it is.
 		return d.nodeToValue(n.Value)
 	}
 }
 
-// orderedMapOf reads a sequence an "!!omap" names into a [MapSliceSeq].
+// orderedMapOf reads a sequence named by an "!!omap" into a [MapSliceSeq].
 //
-// The shape is [ast.OrderedMapOf]'s, so every element holds one entry and the
-// ordered map is the sequence's order. The parser records a key repeated across
-// entries on the sequence, and astutils.RefuseOrderedMapDuplicates reads that record as
-// every other load does. Where the parse allowed the repeat, the later entry's
-// value replaces the earlier one's, as it does in a mapping.
+// [ast.OrderedMapOf] checks the shape, so every element holds one entry, and the
+// ordered map keeps the order of the sequence. The parser records on the sequence a key
+// repeated across entries. astutils.RefuseOrderedMapDuplicates reads that record, as
+// every other load does. When the parse allowed the repeat, the value of the later entry
+// replaces the earlier one, as it does in a mapping.
 func (d *Decoder) orderedMapOf(seq *ast.SequenceNode, entries []ast.Node) (MapSliceSeq, error) {
-	// An entry's own repeat first, then a repeat across entries: the walk and
-	// the converters meet the first as the entry's mapping closes, and the
-	// second only as the "!!omap" closes.
+	// Check a repeat inside an entry first, then a repeat across entries. The walk and
+	// the converters find the first when the mapping of the entry closes, and the
+	// second only when the "!!omap" closes.
 	for _, entry := range entries {
 		if err := astutils.RefuseDuplicateKeys(entry); err != nil {
 			return MapSliceSeq{}, err
@@ -1710,7 +1708,7 @@ func (d *Decoder) orderedMapOf(seq *ast.SequenceNode, entries []ast.Node) (MapSl
 			return MapSliceSeq{}, err
 		}
 		if len(one.items) != 1 {
-			// A "<<" left the count to now. See [ast.OrderedMapOf].
+			// [ast.OrderedMapOf] could not count the entries behind a "<<", so check here.
 			return MapSliceSeq{}, astutils.NotAnOrderedMap(seq)
 		}
 		for _, item := range one.items {
@@ -1723,9 +1721,8 @@ func (d *Decoder) orderedMapOf(seq *ast.SequenceNode, entries []ast.Node) (MapSl
 	return MapSliceSeq(m), nil
 }
 
-// getMergeAliasName support single alias only
-// mapEntryFunc is handed one entry of a mapping. merged says the entry comes
-// from a "<<" rather than from the mapping itself.
+// mapEntryFunc receives one entry of a mapping. merged marks an entry that comes
+// from a "<<" instead of from the mapping itself.
 type mapEntryFunc func(name string, keyNode, valueNode, entryNode ast.Node, merged bool) error
 
 func (d *Decoder) castToTime(src ast.Node) (time.Time, error) {
@@ -1740,10 +1737,10 @@ func (d *Decoder) castToTime(src ast.Node) (time.Time, error) {
 		return t, nil
 	}
 	if v == nil || v == "" {
-		// A "!!timestamp" on an empty node, or on a null. It takes the tag's
-		// own default -- the zero time. newTagDefaultScalarValueNode builds the
-		// empty string for the node a tag stands on with nothing after it, and
-		// handNull builds a null where the document ends there.
+		// A "!!timestamp" on an empty node, or on a null. It takes the default
+		// of the tag, the zero time. newTagDefaultScalarValueNode builds the
+		// empty string for a tag with nothing after it.
+		// handNull builds a null when the document ends there.
 		return time.Time{}, nil
 	}
 	s, ok := v.(string)
@@ -1754,10 +1751,10 @@ func (d *Decoder) castToTime(src ast.Node) (time.Time, error) {
 		return t, nil
 	}
 
-	// Refused rather than answered with the zero time. A text no format reads
-	// used to come back as 0001-01-01 with no error, so a document holding
-	// "2001-12-14 21:59:43.10 -5" -- which the timestamp expression allows and
-	// the layouts above do not spell -- decoded to a date nobody wrote.
+	// Return an error instead of the zero time. Before, a text read by no format
+	// came back as 0001-01-01 with no error. So a document holding
+	// "2001-12-14 21:59:43.10 -5" decoded to a date nobody wrote.
+	// The timestamp expression allows that text, and the layouts above do not match it.
 	return time.Time{}, yamlerrors.NewSyntax(
 		fmt.Sprintf("cannot read %q as a timestamp", s), src.GetToken())
 }
@@ -1793,8 +1790,8 @@ func (d *Decoder) castToDuration(src ast.Node) (time.Duration, error) {
 	return t, nil
 }
 
-// writtenFields records which fields a mapping has set, so that what a "<<"
-// merges in does not overwrite them. A struct of 64 fields or fewer costs no
+// writtenFields records which fields a mapping has set, so that the entries merged by a "<<"
+// do not overwrite them. A struct of 64 fields or fewer costs no
 // allocation.
 type writtenFields struct {
 	first uint64
@@ -1832,10 +1829,10 @@ func (d *Decoder) decodeDuration(dst reflect.Value, src ast.Node) error {
 	return nil
 }
 
-// located is the field a mapping key names, found in a destination.
+// located describes the field named by a mapping key, found in a destination.
 //
-// sf is nil where no field of the type answers to the name. ord is the bit the
-// merge bookkeeping marks, and at is the index path, empty where the field
+// sf is nil when no field of the type has the name. ord gives the bit marked by
+// writtenFields for merges. at holds the index path, which is empty when the field
 // stands in the type itself.
 type located struct {
 	value reflect.Value
@@ -1844,8 +1841,8 @@ type located struct {
 	at    []int
 }
 
-// name reports the field as a Go path -- "U.T.A" for a field A promoted from an
-// embedded T of U -- which is how encoding/json names one in a type error.
+// name returns the field as a Go path, such as "U.T.A" for a field A promoted from an
+// embedded T of U. encoding/json names a field the same way in a type error.
 func (l located) name(structType reflect.Type) string {
 	if len(l.at) == 0 {
 		return structType.Name() + "." + l.sf.FieldName
@@ -1867,12 +1864,12 @@ func (l located) name(structType reflect.Type) string {
 	return b.String()
 }
 
-// fieldFor finds the field a mapping key names.
+// fieldFor finds the field named by a mapping key.
 //
-// A type that embeds another is read through structfields.Fields.flat, which names every
-// field the embedding promotes and holds the index path to reach it; codecutils.FieldAt
-// fills the pointers along the way. A type that embeds nothing takes the direct
-// lookup and no index path at all, which is the common case and the fast one.
+// fieldFor reads a type that embeds another through structfields.Fields.flat. It names every
+// field promoted by the embedding and holds the index path to reach it.
+// codecutils.FieldAt fills the pointers along the way. A type that embeds nothing takes the direct
+// lookup with no index path. That is the common case and the fast one.
 func fieldFor(dst reflect.Value, fields *structfields.Fields, name string) (located, error) {
 	ff, known := fields.Lookup(name)
 	if !known {
@@ -1884,8 +1881,8 @@ func fieldFor(dst reflect.Value, fields *structfields.Fields, name string) (loca
 
 	field, ok := codecutils.FieldAt(dst, ff.At)
 	if !ok {
-		// codecutils.FieldAt could not make a pointer standing between, which happens
-		// where an embedded pointer is unexported. encoding/json refuses the
+		// codecutils.FieldAt could not make a pointer on the path. That happens
+		// when an embedded pointer is unexported. encoding/json rejects the
 		// same shape.
 		return located{}, fmt.Errorf(
 			"cannot set embedded pointer to unexported struct on the way to %q in %s",
@@ -1896,14 +1893,14 @@ func fieldFor(dst reflect.Value, fields *structfields.Fields, name string) (loca
 	return located{value: field, sf: ff.SF, ord: ff.Ord, at: ff.At}, nil
 }
 
-// rangeMapEntries reads the mapping src names and hands its entries over: the
-// ones it writes itself first, in document order, then the ones each "<<"
-// merges in, the earliest "<<" first.
+// rangeMapEntries reads the mapping named by src and calls visit on its entries.
+// It visits the own entries first, in document order, then the entries merged by each "<<",
+// the earliest "<<" first.
 //
-// Order carries the precedence, so nothing has to be collected to get it right.
-// A field the mapping writes itself is set before any merged entry reaches it,
-// and an earlier "<<" is read before a later one, which is what YAML 1.1's
-// merge asks for. The caller skips a merged entry whose field is already set.
+// The order gives the precedence, so rangeMapEntries collects nothing.
+// A field written by the mapping itself is set before any merged entry reaches it,
+// and an earlier "<<" is read before a later one, as the YAML 1.1
+// merge spec requires. The caller skips a merged entry whose field is already set.
 func (d *Decoder) rangeMapEntries(src ast.Node, ignoreMergeKey bool, visit mapEntryFunc) error {
 	d.stepIn()
 	defer d.stepOut()
@@ -1956,8 +1953,8 @@ func (d *Decoder) rangeMapEntries(src ast.Node, ignoreMergeKey bool, visit mapEn
 	return nil
 }
 
-// rangeMergedEntries hands over the entries of what a "<<" names, which is a
-// mapping or a sequence of them, each mapping whole before the next: see
+// rangeMergedEntries calls visit on the entries of the node named by a "<<". That node is a
+// mapping or a sequence of them, and each mapping is read whole before the next. See
 // eachMergeSource.
 func (d *Decoder) rangeMergedEntries(src ast.Node, ignoreMergeKey bool, visit mapEntryFunc) error {
 	d.stepIn()
@@ -2002,12 +1999,12 @@ func (d *Decoder) rangeMergedEntries(src ast.Node, ignoreMergeKey bool, visit ma
 	})
 }
 
-// entryName reads the text a mapping key addresses its entry by. named is false
-// for a key no field can be named after, such as "[a]:".
+// entryName returns the name of the entry for a mapping key. named is false
+// for a key that cannot name a field, such as "[a]:".
 //
-// keyName writes the type's own canonical spelling, so "true: x" addresses a
-// field tagged "true" and "1.0: x" one tagged "1.0", which is how the same
-// document reads into a map[string]any. Requiring the key to be an ast string
+// [ast.KeyName] writes the canonical spelling of the type, so "true: x" addresses a
+// field tagged "true" and "1.0: x" one tagged "1.0". The same
+// document reads that way into a map[string]any. Requiring the key to be an ast string
 // dropped every one of those instead.
 func (d *Decoder) entryName(keyNode ast.Node) (string, bool, error) { //nolint:unparam // signature kept stable: callers already handle the error
 	name, kind := ast.KeyName(keyNode)
@@ -2015,20 +2012,21 @@ func (d *Decoder) entryName(keyNode ast.Node) (string, bool, error) { //nolint:u
 	return name, kind != token.KeyOther, nil
 }
 
-// decodeInlineFields reads the three kinds of `,inline` field an index path
-// cannot place, each from the whole mapping rather than from an entry of it.
+// decodeInlineFields reads the three kinds of `,inline` field that an index path
+// cannot place. It reads each from the whole mapping instead of from one entry.
 //
-// An ordinary embedded struct is not one of them: structfields.Fields.flat names every
-// field it promotes and setField writes each entry straight into the field it
-// reaches, so the two decode paths place an entry the same way. What is left
-// here is a map, which takes the entries no field claims and so cannot be known
-// until the mapping ends; a field carrying `,alias`, which takes the value the
-// document's "<<" names; and a field whose type reads its own node, which
-// go.yaml.in/yaml/v3 also hands the whole mapping.
+// An ordinary embedded struct is not one of them. structfields.Fields.flat names every
+// field it promotes, and setField writes each entry straight into its field,
+// so the two decode paths place an entry the same way. The three kinds are:
+//   - a map, which takes the entries claimed by no field, and so is only known
+//     when the mapping ends;
+//   - a field carrying `,alias`, which takes the value named by the "<<" of the document;
+//   - a field whose type reads its own node. go.yaml.in/yaml/v3 also passes such a
+//     field the whole mapping.
 //
-// A `,inline` map is handed the entries structfields.Fields.flat does not name -- the
-// struct's own fields and everything its embedded structs promote. With nothing
-// left over the map stays nil, as v3 leaves it.
+// A `,inline` map receives the entries not named by structfields.Fields.flat, which names the
+// own fields of the struct and every field promoted by its embedded structs. With nothing
+// left over, the map stays nil, as v3 leaves it.
 func (d *Decoder) decodeInlineFields(
 	dst reflect.Value, src ast.Node, fields *structfields.Fields,
 	ignoreMergeKey bool, unknownFields map[string]ast.Node, foundErr *error,
@@ -2051,7 +2049,7 @@ func (d *Decoder) decodeInlineFields(
 		fieldType := fieldValue.Type()
 		takesUnclaimed := structfields.InlineTakesUnclaimedEntries(fieldType)
 		if !takesUnclaimed && !structfields.InlineReadsItsOwnNode(fieldType) {
-			// An embedded struct, whose fields setField has already filled.
+			// An embedded struct. setField has already filled its fields.
 			continue
 		}
 		if !fieldValue.CanSet() {
@@ -2060,7 +2058,7 @@ func (d *Decoder) decodeInlineFields(
 			return fmt.Errorf("cannot set embedded type as unexported field %s.%s", field.PkgPath, field.Name)
 		}
 		if fieldValue.Type().Kind() == reflect.Pointer && ast.IsNull(src) {
-			// set nil value to pointer
+			// Set the pointer to nil.
 			fieldValue.Set(reflect.Zero(fieldValue.Type()))
 
 			continue
@@ -2074,7 +2072,7 @@ func (d *Decoder) decodeInlineFields(
 		}
 		mapNode := inlineMapNode(entries, fields, takesUnclaimed)
 		if takesUnclaimed && len(mapNode.Values) == 0 {
-			// Every entry went to a field, so the map stays nil rather than
+			// Every entry went to a field, so the map stays nil instead of
 			// becoming an empty one. A caller can then tell a mapping that
 			// wrote nothing else from one that wrote nothing at all.
 			continue
@@ -2105,8 +2103,8 @@ func (d *Decoder) decodeInlineFields(
 	return nil
 }
 
-// setAliasedField sets a field carrying `,alias` to the value of the anchor the mapping's "<<" names.
-// It leaves the field as it is where the mapping merges no alias, or the anchor holds no value.
+// setAliasedField sets a field carrying `,alias` to the value of the anchor named by the "<<" of the mapping.
+// It leaves the field as it is when the mapping merges no alias, or the anchor holds no value.
 func (d *Decoder) setAliasedField(fieldValue reflect.Value, aliasName string) error {
 	if aliasName == "" {
 		return nil
@@ -2124,8 +2122,8 @@ func (d *Decoder) setAliasedField(fieldValue reflect.Value, aliasName string) er
 	return nil
 }
 
-// inlineMapNode builds the mapping an inline field decodes: every entry, or with takesUnclaimed only the entries
-// no field of fields claims.
+// inlineMapNode builds the mapping decoded by an inline field. It holds every entry, or with takesUnclaimed only
+// the entries claimed by no field of fields.
 func inlineMapNode(entries map[string]ast.Node, fields *structfields.Fields, takesUnclaimed bool) *ast.MappingNode {
 	mapNode := ast.Mapping(nil, false)
 	for k, v := range entries {
@@ -2139,10 +2137,12 @@ func inlineMapNode(entries map[string]ast.Node, fields *structfields.Fields, tak
 	return mapNode
 }
 
-// stopsTheDocument reports whether err ends the decoding of its document, at any depth: a repeated key, which
-// makes the document invalid YAML, the limits, ErrExceededMaxDepth and the alias budget, and an unknown field,
-// which the caller asked to stop on with DisallowUnknownField. Any other error is a field error: the first one is
-// kept and the fields after it decode.
+// stopsTheDocument reports whether err ends the decoding of its document, at any depth. These errors stop it:
+//   - a repeated key, which makes the document invalid YAML;
+//   - the limits, ErrExceededMaxDepth and the alias budget;
+//   - an unknown field, when the caller set DisallowUnknownField.
+//
+// Any other error is a field error. The decoder keeps the first one and decodes the fields after it.
 //
 // The decoder returns ErrExceededMaxDepth only for a tree built by hand.
 // The parser returns it for a document nested past its cap, and like any parse error it stops the stream.
@@ -2159,8 +2159,8 @@ func stopsTheDocument(err error) bool {
 		errors.Is(err, yamlerrors.ErrUnknownField)
 }
 
-// recordFieldError keeps err in foundErr unless an earlier field error is there already. A type mismatch is
-// tagged with the struct field fieldName returns for it.
+// recordFieldError keeps err in foundErr unless an earlier field error is there already. It tags a type mismatch
+// with the struct field returned by fieldName.
 func recordFieldError(foundErr *error, err error, fieldName func(*yamlerrors.Error) string) {
 	if *foundErr != nil {
 		return
@@ -2175,11 +2175,11 @@ func recordFieldError(foundErr *error, err error, fieldName func(*yamlerrors.Err
 	*foundErr = err
 }
 
-// findEntry returns the value a mapping writes under name, and the entry that
-// writes it. Both are nil where the mapping does not write it.
+// findEntry returns the value written by a mapping under name, and the entry that
+// writes it. Both are nil when the mapping does not write name.
 //
-// This walks the mapping rather than reading a map built up front: only a
-// document that fails validation asks, and only for the field that failed.
+// findEntry walks the mapping instead of reading a map built up front. Only a
+// document that fails validation calls it, and only for the field that failed.
 func (d *Decoder) findEntry(src ast.Node, ignoreMergeKey bool, name string) (value, entry ast.Node) {
 	_ = d.rangeMapEntries(src, ignoreMergeKey,
 		func(entryName string, _, valueNode, entryNode ast.Node, _ bool) error {
@@ -2193,6 +2193,8 @@ func (d *Decoder) findEntry(src ast.Node, ignoreMergeKey bool, name string) (val
 	return value, entry
 }
 
+// getMergeAliasName returns the name of the alias under a "<<" of src.
+// It supports a single alias only.
 func (d *Decoder) getMergeAliasName(src ast.Node) string {
 	mapNode, err := d.getMapNode(src, true)
 	if err != nil {
@@ -2211,9 +2213,9 @@ func (d *Decoder) getMergeAliasName(src ast.Node) string {
 
 func (d *Decoder) decodeStruct(dst reflect.Value, src ast.Node) error {
 	if src == nil || ast.IsNull(src) {
-		// A null writes nothing, so the struct keeps what it holds. A field's
-		// null never gets here: createDecodedNewValue reads it first. A
-		// document that is only "~" does.
+		// A null writes nothing, so the struct keeps its values. The null of a
+		// field never gets here, because createDecodedNewValue reads it first. A
+		// document that is only "~" does get here.
 		return nil
 	}
 	d.stepIn()
@@ -2230,7 +2232,7 @@ func (d *Decoder) decodeStruct(dst reflect.Value, src ast.Node) error {
 		srcValue = srcValue.Elem()
 	}
 	if structType == srcType {
-		// dst value implements ast.Node
+		// The dst value implements ast.Node.
 		dst.Set(srcValue)
 		return nil
 	}
@@ -2250,10 +2252,10 @@ func (d *Decoder) decodeStruct(dst reflect.Value, src ast.Node) error {
 		foundErr error
 	)
 
-	// Walk the document and look each entry's field up, rather than walking the
-	// fields and looking each entry up. What has to be held is then the struct's
-	// fields -- read once per type and shared -- and not a map of every entry
-	// the mapping writes.
+	// Walk the document and look up the field of each entry, instead of walking the
+	// fields and looking up each entry. The decoder then holds only the fields of the struct,
+	// read once per type and shared, and no map of every entry
+	// written by the mapping.
 	setField := func(name string, keyNode, valueNode, entryNode ast.Node, merged bool) error {
 		found, err := fieldFor(dst, fields, name)
 		if err != nil {
@@ -2269,14 +2271,14 @@ func (d *Decoder) decodeStruct(dst reflect.Value, src ast.Node) error {
 			return nil
 		}
 		if merged && written.has(found.ord) {
-			// The mapping writes this itself, or an earlier "<<" does.
+			// The mapping writes this field itself, or an earlier "<<" does.
 			return nil
 		}
 		written.mark(found.ord)
 
 		fieldValue := found.value
 		if fieldValue.Type().Kind() == reflect.Pointer && ast.IsNull(src) {
-			// set nil value to pointer
+			// Set the pointer to nil.
 			fieldValue.Set(reflect.Zero(fieldValue.Type()))
 
 			return nil
@@ -2304,8 +2306,8 @@ func (d *Decoder) decodeStruct(dst reflect.Value, src ast.Node) error {
 	return d.finishStruct(dst, src, fields, ignoreMergeKey, unknownFields, foundErr)
 }
 
-// finishStruct completes a struct once its own entries are read: it decodes the `,inline` fields, returns the first
-// field error, refuses an unknown field under DisallowUnknownField, and runs the validator, in that order.
+// finishStruct completes a struct once its own entries are read. In this order, it decodes the `,inline` fields,
+// returns the first field error, rejects an unknown field under DisallowUnknownField, and runs the validator.
 func (d *Decoder) finishStruct(
 	dst reflect.Value, src ast.Node, fields *structfields.Fields, ignoreMergeKey bool,
 	unknownFields map[string]ast.Node, foundErr error,
@@ -2320,8 +2322,8 @@ func (d *Decoder) finishStruct(
 		return foundErr
 	}
 
-	// Ignore unknown fields when parsing an inline struct (recognized by a nil token).
-	// Unknown fields are expected (they could be fields from the parent struct).
+	// Ignore unknown fields when parsing an inline struct, recognized by a nil token.
+	// Unknown fields are expected there, because they may be fields of the parent struct.
 	if d.disallowUnknownField && src.GetToken() != nil {
 		if err := d.refuseUnknownFields(unknownFields); err != nil {
 			return err
@@ -2346,11 +2348,11 @@ func (d *Decoder) refuseUnknownFields(unknownFields map[string]ast.Node) error {
 	return nil
 }
 
-// validateStruct runs the decoder's validator on dst, once src is decoded into it.
+// validateStruct runs the validator of the decoder on dst, once src is decoded into it.
 //
-// A validation error is reported at the entry that writes the field, which is
-// the ":" rather than anything inside the value. The entries are read here
-// rather than during the decode: a document that validates never needs them.
+// validateStruct places a validation error at the entry that writes the field, which is
+// the ":", not a token inside the value. It reads the entries here
+// instead of during the decode, because a document that validates never needs them.
 func (d *Decoder) validateStruct(dst reflect.Value, src ast.Node, fields *structfields.Fields, ignoreMergeKey bool) error {
 	if d.validator == nil {
 		return nil
@@ -2361,7 +2363,7 @@ func (d *Decoder) validateStruct(dst reflect.Value, src ast.Node, fields *struct
 	}
 	ev := reflect.ValueOf(err)
 	if ev.Kind() != reflect.Slice {
-		// The error names no field, so it goes to the struct's own mapping.
+		// The error names no field, so it goes to the mapping of the struct.
 		return yamlerrors.NewValidation(err, src.GetToken())
 	}
 	for i := range ev.Len() {
@@ -2384,14 +2386,14 @@ func (d *Decoder) validateStruct(dst reflect.Value, src ast.Node, fields *struct
 		}
 	}
 
-	// No element names a field the document wrote or the struct holds.
+	// No element names a field written by the document or held by the struct.
 	return yamlerrors.NewValidation(err, src.GetToken())
 }
 
-// missingFieldToken returns where to report a field the document left out.
+// missingFieldToken returns the token at which to place the error for a field missing from the document.
 //
-// There is no entry to point at, so the error goes to the first key of the
-// mapping that should have held one.
+// The field has no entry to point at. missingFieldToken returns d.entry when set,
+// and otherwise the first key of the mapping that should have held the field.
 func (d *Decoder) missingFieldToken(src ast.Node) *token.Token {
 	if d.entry != nil {
 		return d.entry.GetToken()
@@ -2403,8 +2405,8 @@ func (d *Decoder) missingFieldToken(src ast.Node) *token.Token {
 	return src.GetToken()
 }
 
-// enterEntry records the node that writes the one about to be decoded, and
-// returns the one it replaces for the caller to put back.
+// enterEntry records the entry node that writes the node about to be decoded. It
+// returns the entry it replaces, for the caller to put back.
 func (d *Decoder) enterEntry(entry ast.Node) ast.Node {
 	prev := d.entry
 	d.entry = entry
@@ -2420,8 +2422,8 @@ func (d *Decoder) decodeArray(dst reflect.Value, src ast.Node) error {
 	}
 
 	if b, ok := d.binaryBytes(src); ok && codecutils.ByteArray(dst.Type()) {
-		// "!!binary" into a byte array, as decodeSlice reads one into a byte
-		// slice. The text is a scalar, so the array reader below refused it
+		// Read "!!binary" into a byte array, as decodeSlice reads one into a byte
+		// slice. The text is a scalar, so the array reader below rejected it
 		// with "string was used where sequence is expected".
 		return codecutils.CopyIntoByteArray(dst, b, src)
 	}
@@ -2443,7 +2445,7 @@ func (d *Decoder) decodeArray(dst reflect.Value, src ast.Node) error {
 	for iter.Next() {
 		v := iter.Value()
 		if elemType.Kind() == reflect.Pointer && ast.IsNull(v) {
-			// set nil value to pointer
+			// Set the pointer to nil.
 			arrayValue.Index(idx).Set(reflect.Zero(elemType))
 		} else {
 			dstValue, err := d.createDecodedNewValue(elemType, reflect.Value{}, v)
@@ -2495,7 +2497,7 @@ func (d *Decoder) decodeSlice(dst reflect.Value, src ast.Node) error {
 	for iter.Next() {
 		v := iter.Value()
 		if elemType.Kind() == reflect.Pointer && ast.IsNull(v) {
-			// set nil value to pointer
+			// Set the pointer to nil.
 			sliceValue = reflect.Append(sliceValue, reflect.Zero(elemType))
 			continue
 		}
@@ -2509,7 +2511,7 @@ func (d *Decoder) decodeSlice(dst reflect.Value, src ast.Node) error {
 			foundErr = err
 		}
 		if !dstValue.IsValid() {
-			// The element decoded to nothing at all: keep its place.
+			// The element decoded to nothing at all. Keep its place.
 			dstValue = reflect.Zero(elemType)
 		}
 		sliceValue = reflect.Append(sliceValue, dstValue)
@@ -2559,23 +2561,14 @@ func (d *Decoder) decodeMapItem(dst *MapItem, src ast.Node) error {
 	return nil
 }
 
-// validateDuplicateKey refuses two entries that land on one key of the Go
-// destination, which the parse does not see: "1: a" and "\"1\": b" are two YAML
-// keys and one key of a map[string]T, and "1: a" and "1.0: b" are two YAML keys
-// and one key of a map[float64]T.
+// admitMapKey checks k, the decoded key of an entry about to go into mapValue.
+// It reports whether the map already holds k under a folded key. The caller then
+// skips the entry.
 //
-// Every comparable key counts, not only a string: a float-keyed destination
-// kept the last of two keys that resolve to one float and dropped the other
-// with nothing reported. Under AllowDuplicateMapKey the last one stands, as for
-// a repeat the parse records.
-// admitMapKey checks k, the decoded key of an entry about to go into mapValue,
-// and reports whether the map already holds it under a folded key, in which
-// case the entry is skipped.
-//
-// An invalid k, a null key, passes unchecked. Otherwise k must be comparable:
-// a sequence or a mapping used as a key, into a map whose key type admits one,
-// made SetMapIndex panic with "hash of unhashable type" rather than reporting
-// the document.
+// An invalid k, a null key, passes unchecked. Otherwise k must be comparable.
+// Before, a sequence or a mapping used as a key, into a map whose key type admits one,
+// made SetMapIndex panic with "hash of unhashable type" instead of returning an error
+// for the document.
 func (d *Decoder) admitMapKey(mapValue reflect.Value, keyMap map[any]struct{}, k reflect.Value, key ast.Node, folded bool) (bool, error) {
 	if !k.IsValid() {
 		return false, nil
@@ -2590,6 +2583,15 @@ func (d *Decoder) admitMapKey(mapValue reflect.Value, keyMap map[any]struct{}, k
 	return false, d.validateDuplicateKey(keyMap, k.Interface(), key)
 }
 
+// validateDuplicateKey rejects two entries that land on one key of the Go
+// destination. The parse does not see them: "1: a" and "\"1\": b" are two YAML
+// keys and one key of a map[string]T, and "1: a" and "1.0: b" are two YAML keys
+// and one key of a map[float64]T.
+//
+// Every comparable key counts, not only a string. Before, a float-keyed destination
+// kept the last of two keys that resolve to one float, and dropped the other
+// with no error. Under AllowDuplicateMapKey the last one wins, as for
+// a repeat recorded by the parse.
 func (d *Decoder) validateDuplicateKey(keyMap map[any]struct{}, key any, keyNode ast.Node) error {
 	if key != nil && !reflect.TypeOf(key).Comparable() {
 		return nil
@@ -2605,15 +2607,15 @@ func (d *Decoder) validateDuplicateKey(keyMap map[any]struct{}, key any, keyNode
 
 // decodeMapSlice reads a mapping into dst.
 //
-// It reads it the way nodeToValue reads one under [UseOrderedMap], through
-// setToOrderedMapValue, so the two destinations agree about a merge. They did
-// not: this loop walked the entries in document order, appended each one, and
-// asked validateDuplicateKey whether the key had been seen -- which is true of
-// every key a "<<" overrides. So "x: 9" under a "<<: *a" that also writes x was
-// refused as a duplicate key here and read as 9 into an any, and a merge
-// sequence whose mappings share a key was refused on the name of the anchored
-// mapping. That is the fault defect 40 fixed for a Go map, on the fifth place a
-// merge is resolved.
+// It reads the mapping as nodeToValue reads one under [UseOrderedMap], through
+// setToOrderedMapValue, so the two destinations agree about a merge. Before, they did
+// not. This loop walked the entries in document order, appended each one, and
+// asked validateDuplicateKey whether the key had been seen. That is true of
+// every key overridden by a "<<". So "x: 9" under a "<<: *a" that also writes x was
+// rejected here as a duplicate key, and read as 9 into an any. A merge
+// sequence whose mappings share a key was rejected on the name of the anchored
+// mapping. Defect 40 fixed the same fault for a Go map. decodeMapSlice is the fifth place
+// that resolves a merge.
 func (d *Decoder) decodeMapSlice(dst *MapSlice, src ast.Node) error {
 	d.stepIn()
 	defer d.stepOut()
@@ -2657,7 +2659,7 @@ func (d *Decoder) decodeMapSlice(dst *MapSlice, src ast.Node) error {
 
 // decodeOrderedMapSeq reads a mapping or an "!!omap" into dst.
 //
-// The destination names the spelling, so a plain mapping read into a
+// The destination sets the spelling, so a plain mapping read into a
 // MapSliceSeq writes back as an "!!omap" and an "!!omap" read into a MapSlice
 // writes back as a plain mapping.
 func (d *Decoder) decodeOrderedMapSeq(dst *MapSliceSeq, src ast.Node) error {
@@ -2684,13 +2686,13 @@ func (d *Decoder) orderedEntriesOf(src ast.Node) (MapSlice, error) {
 	return m, err
 }
 
-// decodeMap reads the mapping src names into dst.
+// decodeMap reads the mapping named by src into dst.
 //
-// A map dst already holds keeps its entries, and the mapping's entries are
-// written over them, as encoding/json and go.yaml.in/yaml/v3 do and as the
-// walk does. A merged entry is written over a caller's entry too, as it is
-// over a struct field's default; only a key the mapping or an earlier "<<"
-// wrote stops it.
+// A map already held by dst keeps its entries, and decodeMap writes the entries of the mapping
+// over them, as encoding/json, go.yaml.in/yaml/v3 and the
+// walk do. A merged entry is written over an entry of the caller too, as it is
+// over the default of a struct field. Only a key written by the mapping or by an earlier "<<"
+// stops it.
 func (d *Decoder) decodeMap(dst reflect.Value, src ast.Node) error {
 	d.stepIn()
 	defer d.stepOut()
@@ -2704,9 +2706,9 @@ func (d *Decoder) decodeMap(dst reflect.Value, src ast.Node) error {
 	}
 	mapType := dst.Type()
 	if m, isMapping := mapNode.(*ast.MappingNode); isMapping && !d.merging && mapType.Key().Kind() == reflect.String {
-		// A string-keyed map holds one entry for two keys of one name. A key
-		// of another type answers through admitMapKey, on the value it
-		// decodes to: 1 and 1.0 are two names and one float64.
+		// A string-keyed map holds one entry for two keys of one name. admitMapKey
+		// checks a key of another type, on its decoded value:
+		// 1 and 1.0 are two names and one float64.
 		if err := astutils.RefuseRepeats(m, true); err != nil {
 			return err
 		}
@@ -2717,29 +2719,29 @@ func (d *Decoder) decodeMap(dst reflect.Value, src ast.Node) error {
 	}
 	keyType := mapValue.Type().Key()
 	valueType := mapValue.Type().Elem()
-	// keyMap records the keys this mapping writes, its own and the merged
-	// ones, which is what a later merge has to step around. The keys a
-	// caller's map held before are not in it.
+	// keyMap records the keys written by this mapping, its own and the merged
+	// ones. A later merge must skip them. The keys held before in the map of the
+	// caller are not in keyMap.
 	keyMap := map[any]struct{}{}
-	// A mapping read under a merge is the fold getMapNode makes of "<<: [a, b]",
-	// so two entries alike in it are the sequence doing its job -- the earlier
-	// mapping wins -- and not the repeated key 3.2.1.1 refuses.
+	// A mapping read under a merge is the fold made by getMapNode of "<<: [a, b]".
+	// Two equal keys in it come from the sequence, where the earlier
+	// mapping wins. They are not the repeated key rejected by 3.2.1.1.
 	folded := d.merging
 	var foundErr error
 	for _, entry := range astutils.MapEntriesOwnFirst(mapNode) {
 		key := entry.Key
 		value := entry.Value
 		if entry.Merged {
-			// The merge type gives a mapping's own keys precedence over the
-			// ones a "<<" brings in, and an earlier "<<" precedence over a
-			// later one. Both fall out of writing only where nothing stands:
-			// the own entries went in above, and the merges are read in
+			// The merge type gives the own keys of a mapping precedence over the
+			// keys brought in by a "<<", and an earlier "<<" precedence over a
+			// later one. mergeIntoMap gets both by writing only keys not yet written.
+			// The own entries went in first, and the merges are read in
 			// document order.
 			//
-			// Nothing here asks validateDuplicateKey. Two mappings of a merge
-			// sequence that define one key is what the sequence is for, and a
-			// merged key equal to an own key is the override the type
-			// describes -- neither is the repeated key 3.2.1.1 refuses.
+			// This branch does not call validateDuplicateKey. A merge sequence
+			// lets two of its mappings define one key, and a
+			// merged key equal to an own key is the override defined by the type.
+			// Neither is the repeated key rejected by 3.2.1.1.
 			if err := d.mergeIntoMap(mapValue, keyMap, value); err != nil {
 				return err
 			}
@@ -2758,7 +2760,7 @@ func (d *Decoder) decodeMap(dst reflect.Value, src ast.Node) error {
 			continue
 		}
 		if valueType.Kind() == reflect.Pointer && ast.IsNull(value) {
-			// set nil value to pointer
+			// Set the pointer to nil.
 			mapValue.SetMapIndex(k, reflect.Zero(valueType))
 			continue
 		}
@@ -2772,12 +2774,12 @@ func (d *Decoder) decodeMap(dst reflect.Value, src ast.Node) error {
 			foundErr = err
 		}
 		if !dstValue.IsValid() {
-			// SetMapIndex deletes the key for an invalid value, which took the
-			// caller's own entry away with it.
+			// SetMapIndex deletes the key for an invalid value, and that removed the
+			// entry of the caller.
 			continue
 		}
 		if !k.IsValid() {
-			// expect nil key
+			// Expect a nil key.
 			nilKey := d.createDecodableValue(decodeKeyAs)
 			keyMap[nilKey.Interface()] = struct{}{}
 			mapValue.SetMapIndex(nilKey, dstValue)
@@ -2796,20 +2798,20 @@ func (d *Decoder) decodeMap(dst reflect.Value, src ast.Node) error {
 	return foundErr
 }
 
-// mergeIntoMap decodes the mapping a "<<" brings in, value, into a map of its own, and copies into mapValue each of
-// its entries whose key the mapping has not written, recording the key in written.
+// mergeIntoMap decodes value, the mapping brought in by a "<<", into a map of its own. It copies into mapValue
+// each entry whose key is not yet in written, and records the key in written.
 //
-// The merged mapping is decoded apart because mapValue may be the caller's map, which decodeMap writes into: decoding
-// the merge straight into it would write over the mapping's own entries.
+// The merged mapping is decoded apart because mapValue may be the map of the caller, which decodeMap writes into.
+// Decoding the merge straight into it would write over the own entries of the mapping.
 //
 // Each mapping of a merge sequence is decoded whole before the next, so an
-// earlier one wins with what its own "<<" brought: see eachMergeSource.
+// earlier one wins with the entries of its own "<<". See eachMergeSource.
 func (d *Decoder) mergeIntoMap(mapValue reflect.Value, written map[any]struct{}, value ast.Node) error {
 	return d.eachMergeNode(value, func(source ast.Node, inSequence bool) error {
 		merged := reflect.New(mapValue.Type()).Elem()
 		leave := func() {}
 		if !inSequence {
-			// A sequence here is the merge's own, and decodeMap reads it
+			// A sequence here belongs to the merge, and decodeMap reads it
 			// only under a merge.
 			leave = d.enterMerge()
 		}
@@ -2839,7 +2841,7 @@ func (d *Decoder) decodeMapKey(keyType reflect.Type, key ast.Node) (reflect.Valu
 	if d.useStringKeys && keyType.Kind() == reflect.Interface {
 		// The map takes any key, so a scalar would otherwise arrive with
 		// the Go type its text resolves to. Read it as a string instead,
-		// through the same path a map[string]any takes, so the two agree
+		// through the same path as a map[string]any, so the two agree
 		// on the spelling.
 		decodeKeyAs = reflect.TypeFor[string]()
 	}
@@ -2866,13 +2868,13 @@ func (d *Decoder) decodeMapKey(keyType reflect.Type, key ast.Node) (reflect.Valu
 	return k, decodeKeyAs, nil
 }
 
-// stringMapKey returns the name a map keyed by a string kind stores key under.
+// stringMapKey returns the name under which a map keyed by a string kind stores key.
 //
-// It reads the key the way nodeToValue reads it for the map[string]any
+// It reads the key as nodeToValue reads it for the map[string]any
 // it builds, so a document decoded into either gives the same keys.
 // Decoding a null through createDecodedNewValue gave "", the Go
-// zero, which collides with the empty key: "null: a" and "\"\": b"
-// are two entries and were read as one, so the document was refused
+// zero value, which collides with the empty key. "null: a" and "\"\": b"
+// are two entries and were read as one, so the document was rejected
 // as holding a duplicate key.
 func (d *Decoder) stringMapKey(key ast.Node) (string, error) {
 	keyValue, err := d.nodeToValue(key)
@@ -2882,18 +2884,18 @@ func (d *Decoder) stringMapKey(key ast.Node) (string, error) {
 	if _, named := ast.KeyName(key); named == token.KeyOther &&
 		keyValue != nil && !reflect.TypeOf(keyValue).Comparable() {
 		// A sequence or a mapping used as a key. astutils.MapKeyString would
-		// give it the spelling Go prints, "[a b]", which no reader
+		// give it the spelling printed by Go, "[a b]", which no reader
 		// takes apart again.
 		//
-		// The destination is keyed by a string, so what matters is
-		// whether the key can be named, not whether the value it
-		// resolves to is comparable. ast.KeyName names every scalar,
-		// and returns token.KeyOther for a collection alone -- which
-		// is where astutils.MapKeyString falls back to Go's printing. Asking
-		// comparability instead refused "!!binary aGVsbG8=: x", whose
-		// name is the base64 the document wrote: the same document
-		// read into an any gives {"aGVsbG8=": "x"}, and the two
-		// destinations disagreed over a []byte neither had to hash.
+		// The destination is keyed by a string, so the check asks
+		// whether the key can be named, not whether its resolved value
+		// is comparable. ast.KeyName names every scalar,
+		// and returns token.KeyOther for a collection alone.
+		// For a collection, astutils.MapKeyString falls back to Go printing. Checking
+		// comparability instead rejected "!!binary aGVsbG8=: x", whose
+		// name is the base64 written in the document. The same document
+		// read into an any gives {"aGVsbG8=": "x"}, so the two
+		// destinations disagreed over a []byte that neither had to hash.
 		return "", yamlerrors.NewUnhashableKey(reflect.TypeOf(keyValue), key.GetToken())
 	}
 	name, err := astutils.MapKeyString(key, keyValue)
@@ -2994,16 +2996,16 @@ func (d *Decoder) resolveReference() error {
 			return err
 		}
 
-		// assign new anchor definition to anchorMap
+		// Assign the new anchor definitions to anchorMap.
 		if _, err := d.parse(bytes); err != nil {
 			return err
 		}
 
-		// A reference file exists to publish its anchors, so they become the
-		// base every later file and every document of the input starts from.
-		// Its own documents are not the input's, so the bookkeeping the parse
-		// left behind is folded in here rather than indexed by stream position
-		// later.
+		// A reference file exists to publish its anchors. They become the
+		// base for every later file and every document of the input.
+		// The documents of a reference file are not part of the input, so resolveReference
+		// merges the anchor maps left by the parse here, instead of indexing them by stream
+		// position later.
 		for _, m := range d.anchorNodeMaps {
 			maps.Copy(d.referenceAnchorNodeMap, m)
 		}
@@ -3014,7 +3016,7 @@ func (d *Decoder) resolveReference() error {
 	return nil
 }
 
-// parserOptions are the options this decoder's own options ask the parse for.
+// parserOptions returns the parser options set by the options of this decoder.
 func (d *Decoder) parserOptions() []parser.Option {
 	var opts []parser.Option
 	if d.toCommentMap != nil {
@@ -3024,14 +3026,14 @@ func (d *Decoder) parserOptions() []parser.Option {
 		opts = append(opts, parser.WithAllowDuplicateMapKey())
 	}
 	if len(d.referenceAnchorNodeMap) > 0 {
-		// The parser refuses an alias naming no anchor of its own document, and
-		// a reference file exists so that another document may name its
-		// anchors. Publishing them is what lets that alias through.
+		// The parser rejects an alias that names no anchor of its own document.
+		// A reference file exists so that another document may name its
+		// anchors. parser.WithAnchors publishes them, so the parser accepts that alias.
 		opts = append(opts, parser.WithAnchors(d.referenceAnchorNodeMap))
 	}
 
-	// Last, so that a caller who asks for a parser option directly overrides
-	// what a decode option asked for on its behalf.
+	// Append these last, so that a parser option set directly by the caller overrides
+	// one set on its behalf by a decode option.
 	opts = append(opts, d.extraParserOptions...)
 
 	return opts
@@ -3039,8 +3041,8 @@ func (d *Decoder) parserOptions() []parser.Option {
 
 // parse reads bytes into a tree of the documents that hold a value.
 //
-// On a parse error it returns the documents read before the broken one with the error, and returns a nil file only
-// where the parser read none. Each document stands on its own, so a Decoder still decodes those.
+// On a parse error it returns the error with the documents read before the broken one. It returns a nil file only
+// when the parser read none. Each document stands on its own, so a Decoder still decodes those.
 func (d *Decoder) parse(bytes []byte) (*ast.File, error) {
 	f, parseErr := parser.ParseBytes(bytes, d.parserOptions()...)
 	if f == nil {
@@ -3053,15 +3055,15 @@ func (d *Decoder) parse(bytes []byte) (*ast.File, error) {
 		}
 		normalizedFile.Docs = append(normalizedFile.Docs, doc)
 
-		// An anchor belongs to the document it was written in: a stream is a run
-		// of documents, each independent of the rest, so each gets its own books
-		// and an alias naming an anchor from an earlier one has nothing to name.
-		// Kept alongside the documents, as the comment maps are, because this
+		// An anchor belongs to the document it was written in. A stream is a run
+		// of documents, each independent of the rest, so each gets its own anchor map.
+		// An alias naming an anchor of an earlier document finds nothing.
+		// The maps are kept beside the documents, as the comment maps are, because parse
 		// runs over the whole stream and decode reads one document at a time
 		// afterwards.
 		//
-		// The parser fills ast.DocumentNode.Anchors as it reads, so the books
-		// are taken from it rather than collected again here.
+		// The parser fills ast.DocumentNode.Anchors as it reads, so parse copies
+		// the anchors from it instead of collecting them again.
 		anchors := make(map[string]ast.Node, len(doc.Anchors)+len(d.referenceAnchorNodeMap))
 		maps.Copy(anchors, d.referenceAnchorNodeMap)
 		maps.Copy(anchors, doc.Anchors)
@@ -3071,7 +3073,7 @@ func (d *Decoder) parse(bytes []byte) (*ast.File, error) {
 			continue
 		}
 
-		// Only a caller that asked for the comments pays for reading them.
+		// Read the comments only for a caller who asked for them.
 		d.anchorNodeMap = anchors
 		d.anchorValueMap = make(map[string]reflect.Value)
 		if err := d.collectComments(doc.Body); err != nil {
@@ -3089,11 +3091,10 @@ func (d *Decoder) parse(bytes []byte) (*ast.File, error) {
 	return normalizedFile, parseErr
 }
 
-// collectComments fills the map a caller asked for with CommentToMap.
+// collectComments fills the map requested by the caller with CommentToMap.
 //
-// It reads the document the way the decode does, since a comment is recorded
-// against the path of the node carrying it and the paths are what the map is
-// keyed by.
+// It reads the document as the decode does, because a comment is recorded
+// against the path of the node carrying it, and the map is keyed by those paths.
 func (d *Decoder) collectComments(body ast.Node) error {
 	_, err := d.nodeToValue(body)
 
@@ -3107,12 +3108,13 @@ func (d *Decoder) isInitialized() bool {
 // canWalk reports whether this decode can read the source into v by walking it,
 // without building a tree.
 //
-// A bare "any" asks for the value the document denotes, which valueBuilder
-// builds as the parse goes, anchors and aliases included. A struct is filled by
-// typedBuilder, which gives up on what it cannot serve; see errNeedsTheTree.
-// Everything else needs the tree: a CommentMap is keyed by the paths of the
-// nodes carrying the comments, MapSlice keeps the order the tree holds, and
-// ReferenceFiles publishes anchors from documents this one never sees.
+// A bare "any" takes the value of the document. valueBuilder
+// builds it as the parse goes, anchors and aliases included. typedBuilder fills a struct,
+// and gives up on what it cannot serve. See errNeedsTheTree.
+// Everything else needs the tree:
+//   - a CommentMap is keyed by the paths of the nodes carrying the comments;
+//   - MapSlice keeps the order held by the tree;
+//   - ReferenceFiles publishes anchors from documents this one never sees.
 func (d *Decoder) canWalk(v reflect.Value) bool {
 	if d.toCommentMap != nil || d.useOrderedMap {
 		return false
@@ -3129,10 +3131,10 @@ func (d *Decoder) canWalk(v reflect.Value) bool {
 
 	dst := v.Elem()
 	if codecutils.HoldsAnything(dst) {
-		// UseStringKeys names every key by its text, which mapKeyNodeToValue
-		// does on the tree. valueBuilder keys a mapping by what each key
-		// resolves to, so it would give "1: a" the key uint64(1) whatever the
-		// option says.
+		// UseStringKeys names every key by its text, as mapKeyNodeToValue
+		// does on the tree. valueBuilder keys a mapping by the resolved value of each key,
+		// so it would give "1: a" the key uint64(1) whatever the
+		// option is.
 		return !d.useStringKeys
 	}
 
@@ -3141,8 +3143,8 @@ func (d *Decoder) canWalk(v reflect.Value) bool {
 		return false
 	}
 	if d.useStringKeys {
-		// An "any" field is built by valueBuilder, which keys a mapping by
-		// value whatever the option says, as for a bare "any" above.
+		// valueBuilder builds an "any" field, and keys a mapping by
+		// value whatever the option is, as for a bare "any" above.
 		return false
 	}
 	if dst.Kind() != reflect.Struct || !dst.CanSet() {
@@ -3162,9 +3164,9 @@ func (d *Decoder) decodeInit(v reflect.Value) error {
 	if err != nil {
 		return err
 	}
-	// Keep the document: an error found while decoding draws the lines around
-	// itself, and only the text can say what those are. It shares the bytes
-	// the tree was built from rather than copying them again.
+	// Keep the document. An error found while decoding prints the lines around
+	// itself, and only the text holds those lines. d.source shares the bytes
+	// the tree was built from instead of copying them again.
 	d.source = yamlerrors.Source{Text: nocopy.String(src), FirstLine: 1}
 	d.src = src
 	d.built, d.budget = 0, codecutils.AliasBudget(len(src))
@@ -3199,10 +3201,10 @@ func (d *Decoder) decodeInit(v reflect.Value) error {
 // decodeWalking reads the next document of the stream into v by walking it, and
 // returns true when it has.
 //
-// It returns false where the document needs a tree, or where v is a destination
-// the walk cannot fill. The walk then stops for good, the source is read into a
-// tree, and the decode carries on from the document in hand. A document the
-// walk had started is decoded again from the start, over what the walk wrote.
+// It returns false when the document needs a tree, or when the walk cannot fill v.
+// The walk then stops for good, decodeWalking reads the source into a
+// tree, and the decode carries on from the current document. A document started by the
+// walk is decoded again from the start, over the values written by the walk.
 func (d *Decoder) decodeWalking(v reflect.Value) (bool, error) {
 	w := d.stream
 	if d.canWalk(v) {
@@ -3227,7 +3229,7 @@ func (d *Decoder) decodeWalking(v reflect.Value) (bool, error) {
 
 // buildTree reads the source into a tree, for a decode the walk cannot serve.
 //
-// One Decoder may be handed different destinations for the documents of one
+// One Decoder may receive different destinations for the documents of one
 // stream, and only the first of them decided how the source was read.
 func (d *Decoder) buildTree() error {
 	file, err := d.parse(d.src)
@@ -3243,7 +3245,7 @@ func (d *Decoder) buildTree() error {
 
 func (d *Decoder) decode(v reflect.Value) error {
 	if d.walkedFirst {
-		// Unmarshal's destination was filled as the parse read the source.
+		// The parse filled the destination of Unmarshal as it read the source.
 		d.walkedFirst = false
 		d.streamIndex++
 
@@ -3258,14 +3260,14 @@ func (d *Decoder) decode(v reflect.Value) error {
 	d.decodeDepth = 0
 	d.anchorValueMap = make(map[string]reflect.Value)
 	if d.streamIndex >= len(d.parsedFile.Docs) && d.pendingErr != nil {
-		// The documents before the broken one have been read: the stream stops here, for this Decode and every
+		// The documents before the broken one have been read. The stream stops here, for this Decode and every
 		// one after it.
 		d.streamErr = d.pendingErr
 
 		return d.pendingErr
 	}
 	if len(d.parsedFile.Docs) == 0 {
-		// empty document.
+		// An empty document.
 		dst := v.Elem()
 		if dst.IsValid() {
 			dst.Set(reflect.Zero(dst.Type()))
@@ -3279,8 +3281,8 @@ func (d *Decoder) decode(v reflect.Value) error {
 	body := doc.Body
 	if doc.IsEmpty() {
 		// A document written with "---" or "..." and holding nothing holds the
-		// empty node, which decodes to null. Leaving the stream index where it
-		// was returned the document before it again and never reached the ones
+		// empty node, which decodes to null. Before, the stream index stayed where it
+		// was, so Decode returned the previous document again and never reached the ones
 		// after it.
 		if dst := v.Elem(); dst.IsValid() {
 			dst.Set(reflect.Zero(dst.Type()))
@@ -3298,8 +3300,8 @@ func (d *Decoder) decode(v reflect.Value) error {
 	d.anchorNodeMap = d.anchorNodeMaps[d.streamIndex]
 	// The document is read, whatever it held, so the next Decode reads the
 	// next one, as encoding/json.Decoder moves past a value that does not fit.
-	// Left where it was, the index handed the same document and its error to
-	// every Decode after it, and a Decode loop never reached the end.
+	// Before, the index stayed where it was. Every later Decode returned the same document
+	// and its error, and a Decode loop never reached the end.
 	err := d.decodeValue(v.Elem(), body)
 	d.streamIndex++
 

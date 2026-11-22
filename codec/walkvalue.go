@@ -20,42 +20,44 @@ import (
 	"github.com/go-openapi/go-yaml/token"
 )
 
-// valueBuilder folds a document into Go values as the parse reaches each node,
-// so that a document is read once rather than built into a tree and walked.
+// valueBuilder folds a document into Go values as the parse reaches each node.
+// The document is read once, instead of built into a tree and walked.
 //
-// It is codec.jsonTokener's walk with a different fold: the same Enter and
+// It runs codec.jsonTokener's walk with a different fold: the same Enter and
 // Leave over the same nodes, keeping Go values where the converter keeps JSON
 // tokens.
-// Four things differ, and they are what a JSON writer has no use for -- a
-// number too wide for a machine word stays a *big.Int or *big.Float, a
-// "!!timestamp" becomes a time.Time, "!!binary" becomes []byte, and an infinity
-// stays one where JSON has to refuse it.
+// It differs in four values that a JSON writer cannot use:
+//
+//   - a number too wide for a machine word stays a *big.Int or *big.Float;
+//   - a "!!timestamp" becomes a time.Time;
+//   - "!!binary" becomes []byte;
+//   - an infinity stays one, where JSON must reject it.
 type valueBuilder struct {
 	// docs holds the value of each document body, in stream order.
 	docs []any
-	// stack is what is being filled, innermost last: a mapping, a sequence, or
-	// a property standing around the node it names.
+	// stack holds the frames being filled, innermost last: a mapping, a sequence,
+	// or a property standing around the node it names.
 	stack []buildFrame
-	// named holds what each anchor of the document named, for an alias to name
-	// again. It is emptied at each document, since an anchor belongs to one.
+	// named holds what each anchor of the document named, for a later alias.
+	// Enter empties it at each document, because an anchor belongs to one document.
 	named map[string]any
-	// declared holds the anchors parser.WithAnchors passed, which the walk
-	// never hands over, and declaredValues the value each one built the first
-	// time an alias named it. Both serve every document of the stream.
+	// declared holds the anchors passed by parser.WithAnchors, which the walk
+	// never passes over. declaredValues holds the value built for each one the
+	// first time an alias named it. Both serve every document of the stream.
 	declared       map[string]ast.Node
 	declaredValues map[string]any
-	// strs holds the text of every string this builds, copied out of the
+	// strs holds the text of every string built here, copied out of the
 	// document so that the values outlive it.
 	strs codecutils.Arena
 	// open holds the anchors whose node is being read, innermost last. An alias
-	// naming one of them stands inside what it names.
+	// naming one of them stands inside its own anchor.
 	open []string
-	// share hands every alias of one anchor the same value. See
+	// share gives every alias of one anchor the same value. See
 	// codec.ShareAliases.
 	share bool
 	// built counts the values copied for an alias, and budget bounds them. A
-	// chain of aliases multiplies, so an independent copy is what a document
-	// written to exhaust memory abuses.
+	// chain of aliases multiplies the copies, and a document written to exhaust
+	// memory abuses exactly that.
 	built  int
 	budget int
 	err    error
@@ -64,58 +66,58 @@ type valueBuilder struct {
 type frameKind uint8
 
 const (
-	// frameMapping and frameSequence are collections being filled.
+	// frameMapping and frameSequence mark collections being filled.
 	frameMapping frameKind = iota
 	frameSequence
-	// frameProperty is an anchor, a tag or a "?" standing around one node. It
-	// takes the value that node builds and hands it on transformed.
+	// frameProperty marks an anchor, a tag or a "?" standing around one node. It
+	// takes the value built by that node and passes it on transformed.
 	frameProperty
 )
 
 type buildFrame struct {
 	kind frameKind
-	// asKey records whether the node this frame stands for arrived as a mapping key,
-	// since its Leave delivers what it built and the walk has moved on by then.
+	// asKey records whether the node of this frame arrived as a mapping key.
+	// Its Leave delivers the built value, and the walk has moved on by then.
 	asKey bool
 
 	// mapping
 	//
-	// m holds a mapping whose keys are all strings, which is nearly all of
-	// them. anyKeyed replaces it on the first key that resolves to anything
-	// else -- an integer, a float, a null, a Base64, a time.Time -- so the key
-	// keeps the value it resolves to rather than the text that spells it, and
-	// two keys alike in text stay two entries.
+	// m holds a mapping whose keys are all strings, as nearly all are.
+	// anyKeyed replaces it on the first key that resolves to anything else:
+	// an integer, a float, a null, a Base64, a time.Time. The key then keeps
+	// its resolved value instead of its text, and two keys alike in text stay
+	// two entries.
 	m        map[string]any
 	anyKeyed map[any]any
-	// key is the arena's copy of the name the entry is written under, keyValue
-	// what the key resolves to, and keyIsString which of the two a widened
-	// mapping writes.
+	// key holds the arena's copy of the entry's name, and keyValue the resolved
+	// value of the key. keyIsString selects which of the two a widened mapping
+	// writes.
 	key         string
 	keyValue    any
 	keyIsString bool
 	hasKey      bool
 	merging     bool
-	// broughtByValue says a "<<" brought in a key a Go map lookup cannot match
-	// by value -- a time.Time, a *big.Int, a *big.Float. An own key that is one
-	// YAML key with it then takes that entry's place.
+	// broughtByValue records that a "<<" brought in a key that a Go map lookup
+	// cannot match by value: a time.Time, a *big.Int, a *big.Float. An own key
+	// equal to it in YAML then replaces that entry.
 	broughtByValue bool
-	// keyErr is a key this destination cannot hold, kept until the mapping
-	// closes. The parser hangs a mapping's repeated keys on it as it closes, so
-	// reporting an unusable key where it is met would speak over a repeat --
+	// keyErr holds the error for a key that this destination cannot hold, kept
+	// until the mapping closes. The parser attaches a mapping's repeated keys to
+	// it as it closes. Returning the unusable key at once would hide a repeat:
 	// "{[a]: 1, [ a ]: 2}" is a repeat first and an unusable key second.
 	keyErr error
 
 	// sequence
 	seq []any
-	// mergeSource says the sequence is the value of a "<<", so every element
-	// has to be a mapping. Each is checked as it arrives, where its node is to
-	// hand for the complaint to point at.
+	// mergeSource records that the sequence is the value of a "<<", so every
+	// element must be a mapping. deliver checks each one as it arrives, while
+	// its node is at hand for the error to point at.
 	mergeSource bool
 
 	// property
 	node     ast.Node
 	received any
-	// mergeKey says the property stands as a key on a "<<": it names no entry. See markMerge.
+	// mergeKey records that the property stands as a key on a "<<" and names no entry. See markMerge.
 	mergeKey bool
 	got      bool
 }
@@ -131,7 +133,7 @@ func (b *valueBuilder) Enter(node ast.Node, at parser.Cursor) error {
 	}
 
 	if key, isKey := node.(ast.MapKeyNode); isKey && key.IsMergeKey() {
-		// "<<" names no key of its own: what it brings in is folded into the
+		// "<<" names no key of its own. merge folds its entries into the
 		// mapping when the value below it arrives.
 		b.markMerge()
 
@@ -142,9 +144,9 @@ func (b *valueBuilder) Enter(node ast.Node, at parser.Cursor) error {
 	case *ast.MappingNode:
 		b.stack = append(b.stack, buildFrame{kind: frameMapping, asKey: at.IsKey(), m: map[string]any{}})
 	case *ast.SequenceNode:
-		// An empty sequence is an empty slice and not a nil one, which is what
-		// the tree-walking decoder gives and what a caller comparing against
-		// "[]any{}" expects.
+		// An empty sequence decodes to an empty slice, not a nil one. The
+		// tree-walking decoder does the same, and a caller comparing against
+		// "[]any{}" expects it.
 		b.stack = append(b.stack,
 			buildFrame{kind: frameSequence, asKey: at.IsKey(), seq: []any{}, mergeSource: b.mergingValue(at.IsKey())})
 	case *ast.AnchorNode:
@@ -164,15 +166,15 @@ func (b *valueBuilder) Enter(node ast.Node, at parser.Cursor) error {
 		b.deliver(v, node, at.IsKey())
 	}
 
-	// aliasValue and copyValue record their own refusals, so the walk is told here.
+	// aliasValue and copyValue record their own errors in b.err, and Enter returns it here.
 	return b.err
 }
 
 // Leave is called once everything a node holds has been.
 func (b *valueBuilder) Leave(node ast.Node, _ parser.Closing) error {
 	if b.err != nil {
-		// The walk hands nothing more over once a visitor has failed, and still leaves the nodes it had open.
-		// The frames below stay as they were, since nothing reads them again.
+		// After a visitor fails, the walk passes no more nodes, but still leaves the nodes it had open.
+		// The frames below stay as they were, because nothing reads them again.
 		return b.err
 	}
 
@@ -187,8 +189,8 @@ func (b *valueBuilder) Leave(node ast.Node, _ parser.Closing) error {
 
 	switch frame.kind {
 	case frameMapping:
-		// The parser hangs the repeats on the mapping as it closes, so they are
-		// read here rather than as it opened.
+		// The parser attaches the repeated keys to the mapping as it closes, so
+		// Leave reads them here and not as the mapping opens.
 		if err := astutils.RefuseDuplicateKeys(node); err != nil {
 			return b.fail(err)
 		}
@@ -200,7 +202,7 @@ func (b *valueBuilder) Leave(node ast.Node, _ parser.Closing) error {
 		b.deliver(frame.seq, node, frame.asKey)
 	case frameProperty:
 		if frame.mergeKey {
-			// The property stood on a "<<", which names no entry: nothing goes to the mapping, and its anchor
+			// The property stood on a "<<", which names no entry. Nothing goes to the mapping, and its anchor
 			// names no value.
 			if _, anchored := frame.node.(*ast.AnchorNode); anchored && len(b.open) > 0 {
 				b.open = b.open[:len(b.open)-1]
@@ -222,9 +224,9 @@ func (b *valueBuilder) Leave(node ast.Node, _ parser.Closing) error {
 
 // markMerge records that a "<<" opens the next entry of the mapping being built.
 //
-// The "<<" may stand under an anchor written as the key, "&a <<: *b": the walk hands the anchor over before the node
-// it names, so the anchor's frame is on top when the "<<" arrives. The mapping is the frame below the key's
-// properties, and those properties are marked so they hand no key over as they close.
+// The "<<" may stand under an anchor written as the key, "&a <<: *b". The walk passes the anchor before the node
+// it names, so the anchor's frame is on top when the "<<" arrives. The mapping sits in the frame below the key's
+// properties. markMerge marks those properties so that they deliver no key as they close.
 func (b *valueBuilder) markMerge() {
 	i := len(b.stack) - 1
 	for i >= 0 && b.stack[i].kind == frameProperty && b.stack[i].asKey {
@@ -239,16 +241,16 @@ func (b *valueBuilder) markMerge() {
 	}
 }
 
-// closeProperty turns what a property's node built into what the property makes
-// of it.
+// closeProperty applies a property to the value built by its node, and returns
+// the result.
 func (b *valueBuilder) closeProperty(frame buildFrame) (any, error) {
 	value := frame.received
 	if !frame.got {
-		// A tag on a scalar hands nothing over -- parseScalarValue builds the
-		// value without going through parseToken -- so it is read from the node
-		// here, as jsonTokener.closeTag does. An anchor between a tag and its
-		// scalar is the same shape. A property standing on nothing reads as the
-		// empty node.
+		// The walk passes nothing under a tag on a scalar, because
+		// parseScalarValue builds the value without going through parseToken.
+		// closeProperty reads it from the node here, as jsonTokener.closeTag does.
+		// An anchor between a tag and its scalar has the same shape. A property
+		// standing on nothing reads as the empty node.
 		v, err := b.propertyValue(frame.node)
 		if err != nil {
 			return nil, err
@@ -275,14 +277,14 @@ func (b *valueBuilder) closeProperty(frame buildFrame) (any, error) {
 			return nil, err
 		}
 		if anchor, anchored := n.Value.(*ast.AnchorNode); anchored {
-			// The anchor closed before the tag was applied and recorded what it
-			// held untagged. 6.9 gives the node both properties, so the name
+			// The anchor closed before the tag was applied, and recorded its
+			// value untagged. 6.9 gives the node both properties, so the name
 			// stands for the tagged value: "a: !!int &a1 \"5\"" reads 5 at a,
-			// and an alias to a1 reads 5 rather than "5".
+			// and an alias to a1 reads 5, not "5".
 			//
-			// A flow key written alone, "{!!null &a1 null, k: *a1}", hands the
-			// tag over without what it stands on, so the anchor never opened
-			// and this is the only place its name is recorded.
+			// For a flow key written alone, "{!!null &a1 null, k: *a1}", the walk
+			// passes the tag without the node under it. The anchor never opened,
+			// and only this branch records its name.
 			if name := astutils.AnchorName(anchor.Name); name != "" {
 				if b.named == nil {
 					b.named = map[string]any{}
@@ -293,13 +295,13 @@ func (b *valueBuilder) closeProperty(frame buildFrame) (any, error) {
 
 		return tagged, nil
 	default:
-		// A "?" key stands around the node it addresses the entry by.
+		// A "?" key stands around the node that names the entry.
 		return value, nil
 	}
 }
 
-// propertyValue reads the node a property stands on, for the scalars the parse
-// builds without handing over.
+// propertyValue reads the node under a property, for the scalars that the parse
+// builds without passing them to the walk.
 func (b *valueBuilder) propertyValue(n ast.Node) (any, error) {
 	var inner ast.Node
 	switch t := n.(type) {
@@ -320,9 +322,9 @@ func (b *valueBuilder) propertyValue(n ast.Node) (any, error) {
 	return b.scalarValue(inner)
 }
 
-// aliasValue returns what an alias names: the value the document's anchor
-// recorded as it closed, or else the value of an anchor parser.WithAnchors
-// declared.
+// aliasValue returns the value named by an alias: the value recorded by the
+// document's anchor as it closed, or else the value of an anchor declared by
+// parser.WithAnchors.
 func (b *valueBuilder) aliasValue(n *ast.AliasNode) any {
 	name := astutils.AnchorName(n.Value)
 	if v, named := b.named[name]; named {
@@ -331,18 +333,18 @@ func (b *valueBuilder) aliasValue(n *ast.AliasNode) any {
 		}
 
 		// Two aliases of one anchor give two values, so writing through one
-		// leaves the other alone. The walk has handed the anchored nodes over
-		// already and cannot read them again, so the value it built is copied
-		// rather than rebuilt. See codec.ShareAliases.
+		// leaves the other alone. The walk has already passed the anchored
+		// nodes and cannot read them again, so aliasValue copies the built
+		// value instead of rebuilding it. See codec.ShareAliases.
 		return b.copyValue(v, n)
 	}
 
 	if slices.Contains(b.open, name) {
-		// The anchor is being read right now, so the alias stands inside what
-		// its own anchor names.
-		// A Go value is built by walking and has nowhere to put a cycle.
-		// AliasNode.Target does not answer this during a walk:
-		// the parser fills it at the document's end, which is after the alias has been handed over.
+		// The anchor is being read right now, so the alias stands inside its
+		// own anchor.
+		// The walk builds a Go value and has nowhere to put a cycle.
+		// AliasNode.Target cannot detect this during a walk:
+		// the parser fills it at the document's end, after the walk has passed the alias.
 		_ = b.fail(yamlerrors.NewRecursiveAlias(name, n.GetToken()))
 
 		return nil
@@ -368,18 +370,18 @@ func (b *valueBuilder) aliasValue(n *ast.AliasNode) any {
 	return nil
 }
 
-// declaredValue returns the value a declared anchor names, built once from the
-// tree the caller passed.
+// declaredValue returns the value named by a declared anchor, built once from
+// the tree passed by the caller.
 //
 // The tree comes from another parse and is whole, so the tree decoder reads it.
-// Built once, every alias of the anchor gets the same value under ShareAliases,
-// as it does for an anchor of the document.
+// Because the value is built once, every alias of the anchor gets the same value
+// under ShareAliases, as it does for an anchor of the document.
 func (b *valueBuilder) declaredValue(name string, node ast.Node, alias *ast.AliasNode) (any, error) {
 	if v, built := b.declaredValues[name]; built {
 		return v, nil
 	}
 	if node == nil {
-		// The parser takes a nil entry as a declaration, and ToJSON refuses it
+		// The parser takes a nil entry as a declaration, and ToJSON rejects it
 		// the same way.
 		return nil, yamlerrors.NewUnknownAnchor(name, alias.GetToken())
 	}
@@ -398,9 +400,9 @@ func (b *valueBuilder) declaredValue(name string, node ast.Node, alias *ast.Alia
 	return v, nil
 }
 
-// copyValue returns v with nothing shared with it: a map and a slice are built
-// again and what they hold is copied in turn, and everything else is a value a
-// caller cannot write through.
+// copyValue returns a copy of v that shares nothing with it. It builds a map
+// and a slice again, and copies their elements in turn. A caller cannot write
+// through any other value, so copyValue returns it as is.
 func (b *valueBuilder) copyValue(v any, at ast.Node) any {
 	if b.err != nil {
 		return nil
@@ -440,7 +442,7 @@ func (b *valueBuilder) copyValue(v any, at ast.Node) any {
 	}
 }
 
-// deliver puts a value where the node that built it belongs.
+// deliver puts v into the frame enclosing node, or into docs at the top level.
 func (b *valueBuilder) deliver(v any, node ast.Node, key bool) {
 	n := len(b.stack)
 	if n == 0 {
@@ -459,7 +461,7 @@ func (b *valueBuilder) deliver(v any, node ast.Node, key bool) {
 		if top.mergeSource && !codecutils.IsMapValue(v) {
 			// "<<" takes a mapping or a sequence of them, and nothing else:
 			// not a null, and not a sequence inside the sequence. mergingValue
-			// set the flag only on a sequence the merging mapping holds, so
+			// sets the flag only on a sequence held by the merging mapping, so
 			// that mapping stands just below it.
 			b.stack[n-2].refuseMerge(yamlerrors.NewUnexpectedNodeType(node.Type(), ast.MappingType, node.GetToken()))
 
@@ -471,13 +473,13 @@ func (b *valueBuilder) deliver(v any, node ast.Node, key bool) {
 	}
 }
 
-// deliverToMapping puts v in the mapping top builds, as the key of the next
-// entry when key is set and as the value of the current one otherwise.
+// deliverToMapping puts v in the mapping built by top: as the key of the next
+// entry when key is set, and as the value of the current entry otherwise.
 func (b *valueBuilder) deliverToMapping(top *buildFrame, v any, node ast.Node, key bool) {
 	if key {
-		// Named from the node and not from the value, so that the type spells
-		// it: astutils.MapKeyString writes an integer in decimal and a float with the
-		// point that tells it from one.
+		// The name comes from the node and not from the value, so that the type
+		// sets its spelling: astutils.MapKeyString writes an integer in decimal and
+		// a float with a decimal point.
 		name, err := astutils.MapKeyString(node, v)
 		if err != nil {
 			if top.keyErr == nil {
@@ -501,20 +503,20 @@ func (b *valueBuilder) deliverToMapping(top *buildFrame, v any, node ast.Node, k
 	top.key, top.hasKey = "", false
 }
 
-// keyed records the key an entry is being written under, and whether it is a
+// keyed records the key of the entry being written, and whether it is a
 // string.
 //
-// The name is kept for a string key so the arena's copy is the one the map
-// holds; keyValue carries what the key resolves to for every other type, which
-// is what the mapping is widened to hold.
+// keyed keeps the name for a string key, so that the map holds the arena's copy.
+// For every other type, keyValue holds the resolved value of the key, and the
+// widened mapping holds that value.
 func (f *buildFrame) keyed(name string, value any) {
 	f.key, f.hasKey = name, true
 	_, f.keyIsString = value.(string)
 	f.keyValue = value
 }
 
-// put writes value under the key the frame is holding, widening the mapping
-// where the key is not a string.
+// put writes value under the key held by the frame. It widens the mapping
+// when the key is not a string.
 func (f *buildFrame) put(value any) {
 	if f.keyIsString && f.anyKeyed == nil {
 		f.m[f.key] = value
@@ -526,8 +528,9 @@ func (f *buildFrame) put(value any) {
 	}
 	key := f.mapKey()
 	if f.broughtByValue {
-		// The mapping's own key replaces what a "<<" brought in under it: for a
-		// timestamp the same instant in any zone, for a wide number its value.
+		// The mapping's own key replaces the entry brought in by a "<<" under an
+		// equal key: for a timestamp the same instant in any zone, for a wide number
+		// the same value.
 		if held, found := codecutils.SameKeyIn(f.anyKeyed, key); found {
 			delete(f.anyKeyed, held)
 		}
@@ -535,8 +538,8 @@ func (f *buildFrame) put(value any) {
 	f.anyKeyed[key] = value
 }
 
-// mapKey is the key a widened mapping is written under: the arena's copy of the
-// name for a string, and what the key resolves to for anything else.
+// mapKey returns the key for a widened mapping: the arena's copy of the name for
+// a string, and the resolved value of the key for anything else.
 func (f *buildFrame) mapKey() any {
 	if f.keyIsString {
 		return f.key
@@ -545,12 +548,12 @@ func (f *buildFrame) mapKey() any {
 	return f.keyValue
 }
 
-// widen moves a mapping from map[string]any to map[any]any, which happens on
-// the first key that is not a string.
+// widen moves a mapping from map[string]any to map[any]any, on the first key
+// that is not a string.
 //
-// The keys already written are strings and go over as they stand. A document
-// whose keys are all strings never reaches this, and keeps the map a caller has
-// always been handed.
+// The keys already written are strings, and widen copies them as they stand.
+// A document whose keys are all strings never calls widen, and keeps the
+// map[string]any that callers have always received.
 func (f *buildFrame) widen() {
 	f.anyKeyed = make(map[any]any, len(f.m)+1)
 	for key, value := range f.m {
@@ -559,7 +562,7 @@ func (f *buildFrame) widen() {
 	f.m = nil
 }
 
-// value is the mapping the frame built, under whichever key type it settled on.
+// value returns the mapping built by the frame, with whichever key type it settled on.
 func (f *buildFrame) value() any {
 	if f.anyKeyed != nil {
 		return f.anyKeyed
@@ -568,8 +571,8 @@ func (f *buildFrame) value() any {
 	return f.m
 }
 
-// holds reports whether the mapping already writes key, which a "<<" asks
-// before bringing one in.
+// holds reports whether the mapping already writes key. merge calls it before
+// bringing a key in.
 func (f *buildFrame) holds(key any) bool {
 	if f.anyKeyed != nil {
 		if _, held := f.anyKeyed[key]; held {
@@ -588,7 +591,7 @@ func (f *buildFrame) holds(key any) bool {
 	return held
 }
 
-// bring writes what a "<<" names under key, where the mapping holds none.
+// bring writes value, brought in by a "<<", under key, where the mapping holds none.
 func (f *buildFrame) bring(key any, value any) {
 	if name, isString := key.(string); isString && f.anyKeyed == nil {
 		f.m[name] = value
@@ -604,13 +607,13 @@ func (f *buildFrame) bring(key any, value any) {
 	f.anyKeyed[key] = value
 }
 
-// merge folds what a "<<" names into the mapping holding it.
+// merge folds the value named by a "<<" into the mapping holding it.
 //
-// The merged entries are defaults: a key the mapping writes itself wins,
-// whichever side of the "<<" it stands on. Writing them without overwriting
-// gives that either way -- a "<<" written first fills an empty mapping and the
-// mapping's own keys replace what they repeat, and one written last finds those
-// keys already there.
+// The merged entries are defaults: a key written by the mapping itself wins,
+// whichever side of the "<<" it stands on. merge writes them without
+// overwriting, and that gives the same result either way. A "<<" written first
+// fills an empty mapping, and the mapping's own keys replace the entries they
+// repeat. A "<<" written last finds those keys already there.
 //
 // A "<<" takes a mapping or a sequence of them, and an earlier mapping of the
 // sequence wins over a later one.
@@ -631,9 +634,9 @@ func (b *valueBuilder) merge(top *buildFrame, v any, node ast.Node) {
 	case []any:
 		for _, one := range t {
 			if !codecutils.IsMapValue(one) {
-				// Reached through an anchor or an alias, where the element's own
-				// node is not to hand; a sequence written in place was checked
-				// element by element as it was built.
+				// The walk reaches this case through an anchor or an alias, where
+				// the element's own node is not at hand. deliver checked a sequence
+				// written in place element by element as it was built.
 				top.refuseMerge(yamlerrors.NewUnexpectedNodeType(node.Type(), ast.MappingType, node.GetToken()))
 
 				return
@@ -642,14 +645,14 @@ func (b *valueBuilder) merge(top *buildFrame, v any, node ast.Node) {
 		}
 	default:
 		// "<<" takes a mapping or a sequence of them, and nothing else. A null
-		// is no mapping: "<<:" with no value is refused, as the tree refuses it.
+		// is no mapping: merge rejects "<<:" with no value, as the tree does.
 		top.refuseMerge(yamlerrors.NewUnexpectedNodeType(node.Type(), ast.MappingType, node.GetToken()))
 	}
 }
 
-// refuseMerge keeps err on the mapping a "<<" stands in, for its close to
-// report after the repeats the parse recorded. "{<<: {x: 1}, <<: }" repeats a
-// key before it merges a null, and the tree reports the repeat.
+// refuseMerge keeps err on the mapping holding a "<<". Leave returns it at the
+// close, after the repeats recorded by the parse. "{<<: {x: 1}, <<: }" repeats
+// a key before it merges a null, and the tree returns the repeat.
 func (f *buildFrame) refuseMerge(err error) {
 	if f.keyErr == nil {
 		f.keyErr = err
@@ -672,7 +675,7 @@ func (b *valueBuilder) fail(err error) error {
 	return b.err
 }
 
-// scalarValue reads the Go value a scalar node denotes.
+// scalarValue returns the Go value of a scalar node.
 func (b *valueBuilder) scalarValue(n ast.Node) (any, error) {
 	switch t := n.(type) {
 	case *ast.NullNode:
@@ -717,31 +720,30 @@ func (b *valueBuilder) taggedWalkValue(n *ast.TagNode, value any) (any, error) {
 		return tagZero(res.Tag)
 	}
 
-	// What each tag makes of the node is where this parts company with the JSON
-	// converter: a number too wide for a machine word stays a *big.Int or
-	// *big.Float, "!!binary" is bytes and "!!timestamp" a time.Time, none of
-	// which JSON has a spelling for.
+	// Here the walk departs from the JSON converter. A number too wide for a
+	// machine word stays a *big.Int or *big.Float, "!!binary" gives bytes and
+	// "!!timestamp" a time.Time. JSON has no spelling for any of them.
 	switch res.Tag {
 	case token.StringTag:
 		return b.strs.Value(res.Text), nil
 	case token.NullTag:
 		return nil, nil
 	case token.IntegerTag:
-		// From the text and the document's schema, as Decoder.taggedValue
+		// Read from the text and the document's schema, as Decoder.taggedValue
 		// reads it. Converting the walked value instead took a quoted scalar
-		// as the string it is, and the two paths parted on `!!float -0`. It
-		// keeps the Go type the untagged number decodes to.
+		// as a string, and the two paths parted on `!!float -0`. The result
+		// keeps the Go type of the untagged number.
 		return taggedInteger(res.Text, res.Schema), nil
 	case token.FloatTag:
 		return codecutils.CastToFloatValue(taggedFloat(res.Text, res.Schema)), nil
 	case token.BooleanTag:
-		// Resolve has agreed there is a boolean to read, in whatever case the
+		// Resolve has found a boolean to read, in whatever case the
 		// document wrote it.
 		b, _ := token.ParseBool(strings.ToLower(res.Text))
 
 		return b, nil
 	case token.BinaryTag:
-		// A Base64, as Decoder.taggedValue reads it. The two paths have to
+		// A Base64, as Decoder.taggedValue reads it. The two paths must
 		// agree, and they parted on "!!float -0" once already.
 		return Base64(res.Text), nil
 	case token.TimestampTag:
@@ -751,18 +753,18 @@ func (b *valueBuilder) taggedWalkValue(n *ast.TagNode, value any) (any, error) {
 	case token.OrderedMapTag:
 		return orderedMapOfWalked(value, n)
 	default:
-		// A tag naming a kind -- !!seq, !!map, !!set, !!merge -- takes the node
+		// A tag naming a kind (!!seq, !!map, !!set, !!merge) takes the node
 		// as it stands.
 		return value, nil
 	}
 }
 
-// oneEntryOf is the single entry a mapping holds, and whether it is a mapping
-// holding exactly one.
+// oneEntryOf returns the single entry of a mapping, and reports whether value
+// is a mapping holding exactly one entry.
 //
-// A mapping the walk built is a map[string]any while its keys are all strings
-// and a map[any]any once one is not, so both are read here -- "!!omap [:]"
-// holds a null key and arrives as the second.
+// The walk builds a map[string]any while all keys are strings, and a
+// map[any]any once one is not, so oneEntryOf reads both. "!!omap [:]" holds
+// a null key and arrives as a map[any]any.
 func oneEntryOf(value any) (MapItem, bool) {
 	switch m := value.(type) {
 	case map[string]any:
@@ -784,17 +786,17 @@ func oneEntryOf(value any) (MapItem, bool) {
 	return MapItem{}, false
 }
 
-// orderedMapOfWalked folds what an "!!omap" node built into a [MapSliceSeq].
+// orderedMapOfWalked folds the value built by an "!!omap" node into a [MapSliceSeq].
 //
-// The walk has already built the sequence and each of its mappings, so this
-// reads the values and not the nodes. It holds the shape Decoder.orderedMapOf
-// holds and is lenient the same way: a sequence that is not one-entry mappings
-// stands as it is written. A key repeated across entries is refused through the
-// record the parser keeps on the sequence, as Decoder.orderedMapOf refuses it.
+// The walk has already built the sequence and each of its mappings, so
+// orderedMapOfWalked reads the values and not the nodes. It checks the shape that Decoder.orderedMapOf checks, and
+// returns the same error for a value that is not a sequence of one-entry mappings. It rejects a key repeated
+// across entries through the record kept by the parser on the sequence, as
+// Decoder.orderedMapOf does.
 //
-// The key keeps the value it resolves to, as it does on the tree: a mapping
-// widens to map[any]any on the first key that is not a string, so
-// "!!omap [{1: a}]" reads uint64(1) here as well and "!!omap [:]" reads nil.
+// The key keeps its resolved value, as it does on the tree: a mapping widens
+// to map[any]any on the first key that is not a string, so "!!omap [{1: a}]"
+// reads uint64(1) here as well and "!!omap [:]" reads nil.
 func orderedMapOfWalked(value any, n *ast.TagNode) (any, error) {
 	seq, isSeq := value.([]any)
 	if !isSeq {

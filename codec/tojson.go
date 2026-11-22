@@ -21,11 +21,11 @@ import (
 )
 
 func toJSON(src []byte, opts ...parser.Option) ([]byte, error) {
-	// The JSON runs from half the source to a little under it on the workload
-	// corpus -- 0.51x on golang_source, 0.93x on twitter_status -- so the
-	// source's length is one allocation that holds all of it. Growing from
-	// nothing cost more than the text itself: appendJSONString was a quarter of
-	// what the conversion allocated, almost all of it doubling.
+	// On the workload corpus the JSON is between half the source and a little
+	// under it: 0.51x on golang_source, 0.93x on twitter_status. One allocation
+	// of the source's length therefore holds all of it. Growing from nothing
+	// cost more than the text itself: appendJSONString made a quarter of the
+	// conversion's allocations, almost all of them from doubling.
 	out := make([]byte, 0, len(src))
 
 	tokens := ToJSONTokens(src, opts...)
@@ -43,8 +43,9 @@ func toJSON(src []byte, opts ...parser.Option) ([]byte, error) {
 // appendJSONToken writes one token as JSON text, with the separator in front of
 // it, and reports whether the next token takes a comma.
 //
-// No token stands for a "," or a ":", so they are put back here: a comma in
-// front of anything that follows a value or a closer, a colon after a key.
+// No token stands for a "," or a ":", so appendJSONToken writes them back. It
+// writes a comma in front of anything that follows a value or a closer, and a
+// colon after a key.
 func appendJSONToken(out []byte, tok JSONToken, comma bool) ([]byte, bool) {
 	switch tok.Kind {
 	case JSONObjectEnd:
@@ -76,22 +77,21 @@ func appendJSONToken(out []byte, tok JSONToken, comma bool) ([]byte, bool) {
 	}
 }
 
-// tagReader reads what a tag stands over, and holds the refusal where it names
-// a kind its node is not.
+// tagReader reads the node under a tag. err holds the error when the tag names a
+// kind its node is not.
 //
-// Only this much of a second reading of the document is left: ToJSON writes the
-// tokens ToJSONTokens hands over, so the two converters share this reading as
-// code and everything else as tokens.
+// tagReader is all that is left of a second reading of the document. ToJSON
+// writes the tokens handed over by ToJSONTokens, so the two converters share
+// this reading as code and everything else as tokens.
 type tagReader struct {
 	err error
 }
 
-// scalarToken is the JSON one scalar node is worth, as the token that carries
-// it.
+// scalarToken returns the JSON token for one scalar node.
 //
-// It reads the node's own fields rather than the any GetValue boxes them into.
-// Boxing a string costs an allocation apiece, and a document is mostly strings:
-// ast.StringNode.GetValue was 9% of everything a conversion allocated.
+// It reads the node's own fields instead of the any returned by GetValue.
+// Boxing a string costs one allocation per string, and a document is mostly
+// strings: ast.StringNode.GetValue made 9% of a conversion's allocations.
 func scalarToken(n ast.Node) JSONToken {
 	switch t := n.(type) {
 	case *ast.StringNode:
@@ -104,11 +104,11 @@ func scalarToken(n ast.Node) JSONToken {
 		return JSONToken{Kind: JSONNull}
 	case *ast.FloatNode:
 		if tk := t.GetToken(); tk != nil {
-			// The digits the document wrote, where JSON spells a number the
-			// same way. Reading them into a float64 and writing them back
-			// rounds to what one holds: "0.1234567890123456789012345" came out
-			// as 0.12345678901234568, seventeen digits of twenty-five, on a
-			// value JSON can carry whole. The token takes the source's own
+			// Keep the digits the document wrote, where JSON spells the number
+			// the same way. Reading them into a float64 and writing them back
+			// rounds them to float64 precision: "0.1234567890123456789012345"
+			// came out as 0.12345678901234568, seventeen digits of twenty-five,
+			// for a value JSON can carry whole. The token takes the source's own
 			// string, so nothing is parsed and nothing is copied.
 			if isJSONNumber(tk.Value) {
 				return numberToken(tk.Value)
@@ -125,9 +125,9 @@ func scalarToken(n ast.Node) JSONToken {
 	case *ast.IntegerNode:
 		if tk := t.GetToken(); tk != nil {
 			if isJSONNumber(tk.Value) {
-				// The digits the document wrote, where JSON spells the integer
-				// the same way. "-0" is a JSON number and reading it through
-				// strconv writes it back as "0", which is a different literal.
+				// Keep the digits the document wrote, where JSON spells the
+				// integer the same way. "-0" is a JSON number, and reading it
+				// through strconv writes it back as "0", a different literal.
 				return numberToken(tk.Value)
 			}
 			if u, negative, ok := token.ParseWholeNumber(tk.Value, tk.Type); ok {
@@ -152,14 +152,14 @@ func scalarToken(n ast.Node) JSONToken {
 	}
 }
 
-// numberToken is a number carrying digits already spelled as JSON spells them.
+// numberToken returns a number token for digits already spelled as JSON spells them.
 func numberToken(digits string) JSONToken {
 	return JSONToken{Kind: JSONNumber, Value: digits}
 }
 
-// name is the string a mapping holds an entry under where this token stands as
-// its key. JSON names a member with a string, so a number is named by the
-// digits it is written with and a bool by its word.
+// name returns the string that names a mapping entry when tok is its key. JSON
+// names a member with a string, so a number is named by its digits and a bool
+// by its word.
 func (tok JSONToken) name() string {
 	switch tok.Kind {
 	case JSONKey, JSONString, JSONNumber:
@@ -171,24 +171,24 @@ func (tok JSONToken) name() string {
 	}
 }
 
-// taggedValue is the JSON a tagged scalar is written as, and whether the tag
-// names a scalar type at all.
+// taggedValue returns the JSON token for a tagged scalar, and reports whether the
+// tag names a scalar type at all.
 //
-// The decision is [ast.TagNode.Resolve]'s and not this function's. Before it,
-// the converter and the decoder each read the tag for themselves and answered
-// differently: "!!timestamp not-a-date" was refused by one and written as
-// "not-a-date" by the other. Here the conversion is all that is left -- the
-// converter writes the date as the document wrote it where the decoder wants a
-// time.Time, and both ask the same question first.
+// [ast.TagNode.Resolve] makes the decision, not taggedValue. Before Resolve, the
+// converter and the decoder each read the tag on their own and gave different
+// answers: one rejected "!!timestamp not-a-date" and the other wrote it as
+// "not-a-date". taggedValue now only converts. The converter writes the date
+// as the document wrote it, where the decoder builds a time.Time, and both call
+// Resolve first.
 //
-// A "%TAG" line gives the handle a prefix of the document's own, so "!!int"
-// under one names the document's type and not YAML's; Resolve reads the URI and
-// reports it unresolved, and the value stands as it is written.
+// A "%TAG" line can give the handle a prefix of the document's own. "!!int"
+// under such a line names the document's type, not YAML's. Resolve reads the
+// URI and returns it unresolved, and the value is written as it stands.
 //
-// key says the tag stands as a mapping key. A key is a string named after the
-// value, as a bare key is -- "!!float 1e3" names its entry 1000.0, as "1e3"
-// does -- so a float there is read into a value first, where a float standing
-// as a value is written from its digits.
+// key marks a tag that stands as a mapping key. A key is a string named after
+// the value, as a bare key is: "!!float 1e3" names its entry 1000.0, as "1e3"
+// does. A float key is therefore read into a value first, while a float value
+// is written from its digits.
 func (w *tagReader) taggedValue(t *ast.TagNode, key bool) (JSONToken, bool) {
 	res := t.Resolve()
 
@@ -204,8 +204,8 @@ func (w *tagReader) taggedValue(t *ast.TagNode, key bool) (JSONToken, bool) {
 		return JSONToken{}, false
 	case ast.TagValueMismatch:
 		if res.Lax {
-			// parser.WithLaxTags: the characters the scalar was written with
-			// stand in for the value the tag could not make of them.
+			// parser.WithLaxTags: the scalar's text replaces the value the tag
+			// could not read from it.
 			return JSONToken{Kind: JSONString, Value: res.Text}, true
 		}
 
@@ -218,8 +218,8 @@ func (w *tagReader) taggedValue(t *ast.TagNode, key bool) (JSONToken, bool) {
 	}
 
 	if res.Empty {
-		// The tag stands on no value and takes its own default, which is what
-		// the decoder gives for the same document.
+		// The tag has no value under it and takes its type's default. The
+		// decoder gives the same value for the same document.
 		return tagZeroToken(res.Tag), true
 	}
 
@@ -245,30 +245,30 @@ func (w *tagReader) taggedValue(t *ast.TagNode, key bool) (JSONToken, bool) {
 	case token.BinaryTag:
 		return binaryToken(res.Text), true
 	case token.TimestampTag:
-		// JSON has no date, so a timestamp is written as a string -- and as the
-		// instant it names rather than as the text that spelled it.
+		// JSON has no date, so a timestamp is written as a string. The string
+		// holds the instant, not the text that spelled it.
 		//
 		// yaml.org/type/timestamp.html admits a "t" for the "T", a space for
-		// it, a date with no time at all and a zone as short as "-5", none of
-		// which RFC 3339 spells, so one instant written two ways converted two
-		// ways. The value converter writes the time.Time the decoder builds,
-		// which is RFC 3339, and tagZeroToken already writes that for a
-		// "!!timestamp" standing on no value -- so the text was the odd one
-		// out inside this library before it was a question about the field.
+		// it, a date with no time at all and a zone as short as "-5". RFC 3339
+		// spells none of these, so writing the text converted one instant
+		// written two ways into two strings. The value converter writes the
+		// time.Time built by the decoder, in RFC 3339, and tagZeroToken already
+		// writes RFC 3339 for a "!!timestamp" with no value. Writing the text
+		// was therefore the one inconsistency inside this library.
 		//
-		// Resolve has read it already, so this cannot fail.
+		// Resolve has read the timestamp already, so this cannot fail.
 		stamp, _ := ast.ParseTimestamp(res.Text)
 
 		return JSONToken{Kind: JSONString, Value: stamp.Format(time.RFC3339Nano)}, true
 	default:
-		// A tag naming a kind -- !!seq, !!map, !!set, !!omap, !!merge. The node
+		// A tag naming a kind: !!seq, !!map, !!set, !!omap, !!merge. The node
 		// writes itself.
 		return JSONToken{}, false
 	}
 }
 
-// tagZeroToken is the JSON for a tag standing on no value: the value its type
-// starts at, written as the decoder's own zero would be.
+// tagZeroToken returns the JSON token for a tag with no value under it. It gives
+// the zero value of the tag's type, written as the decoder writes its zero.
 func tagZeroToken(tag token.ReservedTagKeyword) JSONToken {
 	switch tag {
 	case token.IntegerTag:
@@ -280,8 +280,8 @@ func tagZeroToken(tag token.ReservedTagKeyword) JSONToken {
 	case token.StringTag:
 		return JSONToken{Kind: JSONString}
 	case token.BinaryTag:
-		// "!!binary" with nothing after it is the empty byte string, which
-		// base64 spells as no characters at all.
+		// "!!binary" with nothing after it gives the empty byte string. Its
+		// base64 spelling has no characters at all.
 		return JSONToken{Kind: JSONString}
 	case token.TimestampTag:
 		// The zero time, as encoding/json writes a time.Time.
@@ -297,14 +297,14 @@ func (w *tagReader) fail(err error) {
 	}
 }
 
-// taggedInteger reads the whole number a "!!int" stands on. A text that is not
-// a number at all counts as zero, and one written as a float keeps its whole
-// part: "!!int 3.7" is 3.
+// taggedInteger reads the whole number under a "!!int". A text that is not a
+// number at all reads as zero, and one written as a float keeps its whole part:
+// "!!int 3.7" gives 3.
 func taggedInteger(text string, schema token.Schema) any {
 	base, ok := token.IntegerBase(text, schema)
 	if !ok {
-		// ast.Resolve reported a mismatch and the document was refused before
-		// this, so nothing reaches here with digits it cannot read.
+		// ast.Resolve reported a mismatch, and the conversion returned an
+		// error before this. No text with unreadable digits reaches here.
 		return int64(0)
 	}
 	if n, parsed := token.ParseInteger(text, base); parsed {
@@ -312,7 +312,7 @@ func taggedInteger(text string, schema token.Schema) any {
 	}
 	if b, big := token.ParseBigInteger(text, base); big {
 		// A number wider than a machine word keeps its digits, as the same
-		// number untagged already does. strconv.AppendInt on an int64 wrote
+		// number does untagged. strconv.AppendInt on an int64 wrote
 		// "!!int 123456789012345678901" out as math.MinInt64.
 		return b
 	}
@@ -320,13 +320,13 @@ func taggedInteger(text string, schema token.Schema) any {
 	return int64(0)
 }
 
-// taggedFloat reads what "!!float" was written over, keeping the width the
-// number needs.
+// taggedFloat reads the number under a "!!float", keeping the width the number
+// needs.
 //
-// strconv.ParseFloat reports ErrRange for a number outside float64 and hands
-// back an infinity or a zero, and writing that gave "0.0" for "!!float 1e+310"
-// and for "!!float 1e-400" alike. token.ParseBigFloat reads both, which is what
-// the untagged spellings already convert through.
+// strconv.ParseFloat returns ErrRange for a number outside float64, with an
+// infinity or a zero. Writing that value gave "0.0" for "!!float 1e+310" and for
+// "!!float 1e-400" alike. token.ParseBigFloat reads both, and the untagged
+// spellings already convert through it.
 func taggedFloat(text string, schema token.Schema) any {
 	base, ok := token.FloatBase(text, schema)
 	if !ok {
@@ -345,10 +345,9 @@ func taggedFloat(text string, schema token.Schema) any {
 		// nothing to do
 	}
 	if base.IsInteger() {
-		// A whole number under "!!float". The digits are read in the base the
-		// schema gave them -- "!!float 017" is 15 under 1.1 -- and widened,
-		// where sniffing the text again under 1.2 wrote 0 for every base but
-		// decimal.
+		// A whole number under "!!float". The digits are read in the base set
+		// by the schema, so "!!float 017" gives 15 under 1.1, and then widened.
+		// Sniffing the text again under 1.2 wrote 0 for every base but decimal.
 		return integerAsFloat(text, base)
 	}
 	if f, parsed := token.ParseFloat(text, base); parsed {
@@ -364,8 +363,8 @@ func taggedFloat(text string, schema token.Schema) any {
 	return float64(0)
 }
 
-// integerAsFloat widens a whole number written in any base to the real number
-// it names, keeping a *big.Float for one no float64 holds.
+// integerAsFloat widens a whole number written in any base to a real number. It
+// returns a *big.Float for a number that no float64 holds.
 func integerAsFloat(text string, base token.Type) any {
 	if u, negative, ok := token.ParseWholeNumber(text, base); ok {
 		f := float64(u)
@@ -382,22 +381,22 @@ func integerAsFloat(text string, base token.Type) any {
 	return float64(0)
 }
 
-// valueToken is the JSON one Go value is worth.
+// valueToken returns the JSON token for one Go value.
 //
-// A number keeps its digits whatever width it takes. JSON bounds neither
-// integers nor floats -- RFC 8259 §6 leaves the range to the reader -- so a
-// value too wide for a machine word arrives as a *big.Int or a *big.Float and
-// goes out with its digits intact. What a reader makes of it is the reader's:
-// encoding/json refuses a number past 1e308 into a float64 and rounds one below
-// 1e-324 to zero, and a reader that wants either uses json.Number.
+// A number keeps its digits whatever its width. JSON bounds neither integers nor
+// floats: RFC 8259 §6 leaves the range to the reader. A value too wide for a
+// machine word arrives as a *big.Int or a *big.Float, and valueToken writes it
+// with its digits intact. The reader decides what to do with it. encoding/json
+// rejects a number past 1e308 into a float64 and rounds one below 1e-324 to
+// zero. A reader that needs either uses json.Number.
 //
 // Infinity and NaN are the exception, and not because of width: JSON has no
-// spelling for them at all. They become null, which is what encoding/json
-// refuses to write.
+// spelling for them at all. They become null, where encoding/json returns an
+// error instead of writing them.
 //
-// The types are the closed set a scalar node and a tag hand over -- what
-// ast.ScalarNode.GetValue returns, and what taggedInteger and taggedFloat read.
-// Anything else is null.
+// v holds one of the closed set of types handed over by a scalar node or a tag:
+// those returned by ast.ScalarNode.GetValue, and by taggedInteger and
+// taggedFloat. Any other type gives null.
 func valueToken(v any) JSONToken {
 	switch t := v.(type) {
 	case nil:
@@ -431,11 +430,11 @@ func valueToken(v any) JSONToken {
 	}
 }
 
-// floatToken is valueToken for a value YAML read as a float.
+// floatToken calls valueToken for a value that YAML read as a float.
 //
-// JSON has one number type, so 1.0 and 1 are the same value -- but a document
-// that wrote a float and converts back to YAML should still hold one, and a
-// bare "1" reads as an integer. The fractional part is kept for that.
+// JSON has one number type, so 1.0 and 1 are the same value. But a document that
+// wrote a float should still hold one when converted back to YAML, and a bare
+// "1" reads as an integer. floatToken keeps the fractional part for that.
 func floatToken(v any) JSONToken {
 	tok := valueToken(v)
 	if tok.Kind == JSONNumber {
@@ -445,8 +444,8 @@ func floatToken(v any) JSONToken {
 	return tok
 }
 
-// float64Token is floatToken for a value already read as a float64, which is
-// every float a document writes that one can hold.
+// float64Token does the work of floatToken for a value already read as a
+// float64. Every float of a document that fits in a float64 takes this path.
 func float64Token(f float64) JSONToken {
 	if math.IsInf(f, 0) || math.IsNaN(f) {
 		return JSONToken{Kind: JSONNull}
@@ -460,7 +459,7 @@ func float64Token(f float64) JSONToken {
 // YAML writes several floats JSON does not: ".5" and "5." leave a side of the
 // point empty, "+1.0" carries a sign JSON has no place for, "007.5" leads with
 // a zero, ".inf" and ".nan" are words, and YAML 1.1 puts "_" between digits.
-// Each of those is converted rather than copied.
+// Each of those is converted instead of copied.
 func isJSONNumber(text string) bool {
 	i := 0
 	if i < len(text) && text[i] == '-' {
@@ -496,17 +495,17 @@ func isJSONNumber(text string) bool {
 	return i == len(text)
 }
 
-// decimalJSON writes a decimal float -- or a decimal integer standing under
-// "!!float" -- from its text, spelled as JSON spells a number, and reports false
-// for any other text.
+// decimalJSON rewrites the text of a decimal float, or of a decimal integer
+// under "!!float", as JSON spells a number. It reports false for any other text.
 //
 // JSON's number grammar is narrower than YAML's: no "+", no leading zero, a
 // digit on each side of a point, no "_". Rewriting the text keeps every digit
-// the document wrote. Read into a Go value first, a number was rounded to what
-// one holds -- "+0.12345678901234567890123" came out as 0.12345678901234568 --
-// and respelled -- ".5e10" as 5e+09 -- and one past 1e±1000, which the decoder
-// reads as an infinity or zero, was written as null or 0.0. YAML 1.1's base-60
-// floats and its octal, hex and binary integers still go through their value.
+// the document wrote. When the number was read into a Go value first, it was
+// rounded to the value's precision: "+0.12345678901234567890123" came out as
+// 0.12345678901234568. It was also respelled, ".5e10" as 5e+09. A number past
+// 1e±1000, which the decoder reads as an infinity or zero, was written as null
+// or 0.0. YAML 1.1's base-60 floats and its octal, hex and binary integers still
+// go through their value.
 func decimalJSON(text string, typ token.Type) (string, bool) {
 	if typ != token.FloatType && typ != token.IntegerType {
 		return "", false
@@ -521,7 +520,7 @@ func decimalJSON(text string, typ token.Type) (string, bool) {
 
 // jsonNumberText rewrites a YAML decimal float as JSON spells it: no "+", no
 // "_", one digit at least and no leading zero before the point, and no point
-// with nothing after it. It reports false where the result is not a JSON
+// with nothing after it. It reports false when the result is not a JSON
 // number.
 func jsonNumberText(text string) (string, bool) {
 	s := strings.ReplaceAll(text, "_", "")
@@ -563,8 +562,8 @@ func jsonNumberText(text string) (string, bool) {
 	return out, isJSONNumber(out)
 }
 
-// digitsFrom reads one or more digits and returns where they end, or -1 where
-// there are none.
+// digitsFrom reads one or more digits from text[i:] and returns the index where
+// they end, or -1 when there are none.
 func digitsFrom(text string, i int) int {
 	start := i
 	for i < len(text) && text[i] >= '0' && text[i] <= '9' {
@@ -577,7 +576,8 @@ func digitsFrom(text string, i int) int {
 	return i
 }
 
-// withFraction keeps digits looking like a float.
+// withFraction appends ".0" to digits that hold no point and no exponent, so they
+// read as a float.
 func withFraction(digits string) string {
 	for i := range len(digits) {
 		switch digits[i] {
@@ -589,19 +589,19 @@ func withFraction(digits string) string {
 	return digits + ".0"
 }
 
-// binaryToken is a "!!binary" scalar as the base64 string the document carries,
-// in canonical form: the same characters with the line breaks RFC 2045 allows
-// taken out.
+// binaryToken returns a "!!binary" scalar as the document's base64 string, in
+// canonical form: the same characters, without the line breaks allowed by
+// RFC 2045.
 //
-// JSON has no binary type and no way to spell arbitrary bytes -- a JSON string
-// is UTF-8 -- so the encoded text is what travels, which is what
-// encoding/json writes for a []byte and what every JSON API means by binary.
-// The bytes are not decoded and re-encoded: the document already holds the
-// canonical spelling bar the breaks, and ast.TagNode.Resolve has already read
-// it as base64, so writing the text back cannot invent one.
+// JSON has no binary type and no way to spell arbitrary bytes, because a JSON
+// string is UTF-8. The token therefore carries the encoded text. encoding/json
+// writes the same for a []byte, and JSON APIs commonly use it for binary data. The bytes
+// are not decoded and re-encoded. The document already holds the canonical
+// spelling apart from the breaks, and ast.TagNode.Resolve has already read it as
+// base64, so writing the text back cannot invent a spelling.
 //
-// It was a sequence of the numbers before -- "!!binary aGVsbG8=" gave
-// [104,101,108,108,111] -- which no other JSON writer produces.
+// binaryToken used to write a sequence of the byte values: "!!binary aGVsbG8="
+// gave [104,101,108,108,111]. No other JSON writer produces that.
 func binaryToken(text string) JSONToken {
 	canonical := withoutBase64Breaks(text)
 	if _, err := base64.StdEncoding.DecodeString(canonical); err != nil {
@@ -611,8 +611,9 @@ func binaryToken(text string) JSONToken {
 	return JSONToken{Kind: JSONString, Value: canonical}
 }
 
-// withoutBase64Breaks returns text with the line breaks and spacing RFC 2045
-// permits inside an encoded stream taken out, which is base64's canonical form.
+// withoutBase64Breaks returns text without the line breaks and spacing that
+// RFC 2045 permits inside an encoded stream. The result is base64's canonical
+// form.
 func withoutBase64Breaks(text string) string {
 	if !strings.ContainsAny(text, " \t\r\n") {
 		return text
@@ -631,9 +632,8 @@ func withoutBase64Breaks(text string) string {
 	return b.String()
 }
 
-// appendJSONString writes a JSON string. Anything needing an escape goes
-// through encoding/json rather than being escaped here, so the rules are the
-// standard library's and not a second set of them.
+// appendJSONString writes s as a JSON string. A string that needs an escape goes
+// through encoding/json, so the escape rules are the standard library's.
 func appendJSONString(out []byte, s string) []byte {
 	if plainJSONString(s) {
 		out = append(out, '"')

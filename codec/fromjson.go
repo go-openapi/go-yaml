@@ -13,11 +13,11 @@ import (
 	"github.com/go-openapi/go-yaml/token"
 )
 
-// fromJSON is [FromJSON], which checks src as JSON text when syntax is set.
+// fromJSON implements [FromJSON]. It checks src as JSON text when syntax is set.
 //
-// Without the check it reads any YAML with a JSON form, as [ToJSONTokens] does. The encoder converts what a
-// MarshalJSON method returns that way: json.RawMessage returns its bytes unchecked, and a RawMessage holding YAML has
-// always been written as that YAML.
+// Without the check it reads any YAML with a JSON form, as [ToJSONTokens] does. The encoder converts the output of a
+// MarshalJSON method without the check. json.RawMessage returns its bytes unchecked, and a RawMessage holding YAML
+// has always been written as that YAML.
 func fromJSON(src []byte, syntax bool, opts ...ast.RenderOption) ([]byte, error) {
 	var out bytes.Buffer
 	out.Grow(len(src) + len(src)/4)

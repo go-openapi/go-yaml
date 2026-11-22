@@ -92,8 +92,8 @@ func (e *Encoder) Encode(v any) error {
 	}
 	e.written = true
 
-	// Lay the document out from the tree rather than from the positions the
-	// nodes carry: this is where the encoder's indentation options take effect.
+	// Lay the document out from the tree, not from the positions held by the
+	// nodes. The encoder's indentation options take effect here.
 	renderer := ast.NewRenderer(
 		ast.WithIndent(e.indentNum),
 		ast.WithIndentSequence(e.indentSequence),
@@ -114,7 +114,7 @@ func (e *Encoder) EncodeToNode(v any) (ast.Node, error) {
 		}
 	}
 	if e.enableSmartAnchor {
-		// during the first encoding, store all mappings between alias addresses and their names.
+		// The first encoding stores every mapping from an alias address to its name.
 		if _, err := e.encodeValue(reflect.ValueOf(v), 1); err != nil {
 			return nil, err
 		}
@@ -224,9 +224,9 @@ func (e *Encoder) marshalerFromCustomMarshalerMap(t reflect.Type) (func(any) ([]
 	return nil, false
 }
 
-// heldNode is the node v holds, for a caller encoding a parsed or built tree.
+// heldNode returns the node held by v, for a caller encoding a parsed or built tree.
 //
-// The node is written where it stands, so a document keeps its comments, its anchors and its tags.
+// The encoder writes the node as it stands, so a document keeps its comments, its anchors and its tags.
 func (e *Encoder) heldNode(v reflect.Value) (ast.Node, bool) {
 	if !v.CanInterface() {
 		return nil, false
@@ -244,18 +244,18 @@ func (e *Encoder) canEncodeByMarshaler(v reflect.Value) bool {
 	iface := v.Interface()
 	switch iface.(type) {
 	case ast.Node:
-		// A parsed node is written as it stands, by encodeNode. Through a
-		// marshaler it went out as its own text and was parsed again, which
-		// cost a round trip and left the node's comments to be read back from
-		// what it rendered.
+		// encodeNode writes a parsed node as it stands. Through a marshaler,
+		// the node went out as its own text and was parsed again. That cost
+		// a round trip, and the node's comments had to be read back from the
+		// rendered text.
 		return false
 	case MapSlice, MapSliceSeq, MapItem, Base64:
-		// Written by the encoder itself, ahead of any interface they satisfy.
-		// [UseJSONMarshaler] is a last resort -- a route for a type the encoder
-		// has no reading of -- and these four it does: a MapSlice is a mapping,
-		// a MapSliceSeq an "!!omap", a Base64 a "!!binary". Asking the
-		// interface first sent a Base64 out through FromJSON as a plain string
-		// with the tag gone, for anyone who set the option.
+		// The encoder writes these four itself, ahead of any interface they
+		// satisfy. [UseJSONMarshaler] is a last resort, for a type the encoder
+		// cannot otherwise write. The encoder writes a MapSlice as a mapping, a
+		// MapSliceSeq as an "!!omap", and a Base64 as a "!!binary". When the
+		// interface came first, a Base64 went out through FromJSON as a plain
+		// string without its tag, whenever the option was set.
 		return false
 	case Marshaler:
 		return true
@@ -275,9 +275,9 @@ func (e *Encoder) canEncodeByMarshaler(v reflect.Value) bool {
 
 // encodeBinary writes a [Base64] as the "!!binary" scalar it came from.
 //
-// The text is written in canonical form -- the line breaks RFC 2045 permits
-// taken out -- so a value carried through Go comes back on one line whatever
-// the document it was read from looked like.
+// It writes the text in canonical form, without the line breaks permitted by
+// RFC 2045. A value carried through Go therefore comes back on one line,
+// whatever the layout of the document it was read from.
 func (e *Encoder) encodeBinary(b Base64, column int) ast.Node {
 	value := e.encodeString(b.Canonical(), column)
 	node := ast.Tag(token.New("!!binary", "!!binary", value.GetToken().Position))
@@ -324,7 +324,7 @@ func (e *Encoder) encodeByMarshaler(v reflect.Value, column int) (ast.Node, erro
 	if t, ok := iface.(time.Time); ok {
 		return e.encodeTime(t, column), nil
 	}
-	// Handle *time.Time explicitly since it implements TextMarshaler and shouldn't be treated as plain text
+	// Handle *time.Time here: it implements TextMarshaler, and must not be written as plain text.
 	if t, ok := iface.(*time.Time); ok && t != nil {
 		return e.encodeTime(*t, column), nil
 	}
@@ -334,9 +334,9 @@ func (e *Encoder) encodeByMarshaler(v reflect.Value, column int) (ast.Node, erro
 	}
 
 	// A number keeps its type. *big.Int and *big.Float both carry MarshalText,
-	// so the branch below wrote them as quoted text and a round trip turned a
-	// number into a string: the decoder builds these for a value no machine
-	// word holds, and codec.ToJSON writes them as numbers.
+	// so the branch below wrote them as quoted text, and a round trip turned a
+	// number into a string. The decoder builds these for a value too wide for a
+	// machine word, and codec.ToJSON writes them as numbers.
 	if n, ok := iface.(*big.Int); ok && n != nil {
 		value := n.String()
 
@@ -364,7 +364,7 @@ func (e *Encoder) encodeByMarshaler(v reflect.Value, column int) (ast.Node, erro
 	return nil, errors.New("does not implemented GoYAMLMarshaler")
 }
 
-// encodeJSON encodes the YAML document the JSON marshaler writes converts to.
+// encodeJSON converts the JSON written by marshaler to a YAML document, and encodes it.
 func (e *Encoder) encodeJSON(marshaler jsonMarshaler) (ast.Node, error) {
 	jsonBytes, err := marshaler.MarshalJSON()
 	if err != nil {
@@ -383,7 +383,7 @@ func (e *Encoder) encodeValue(v reflect.Value, column int) (ast.Node, error) {
 		return e.encodeNil(), nil
 	}
 	if v.Kind() == reflect.Interface {
-		// Ahead of the marshalers, which write a time.Time plain.
+		// Check before the marshalers, which write a time.Time plain.
 		if t, held := e.heldTime(v.Elem()); held {
 			return e.encodeTaggedTime(t, column), nil
 		}
@@ -398,15 +398,15 @@ func (e *Encoder) encodeValue(v reflect.Value, column int) (ast.Node, error) {
 		}
 		return node, nil
 	}
-	// compare against a value's type rather than read
-	// through reflect.Value.Interface: that panics on an unexported field, and a
-	// struct holding one is written like any other.
+	// Compare the value's type instead of reading it through
+	// reflect.Value.Interface. Interface panics on an unexported field, and the
+	// encoder writes a struct holding one like any other.
 	if v.Type() == reflect.TypeFor[Base64]() {
 		b := Base64(v.String())
 		// The tag goes back on, so a document read and written again keeps its
-		// "!!binary". A plain string could not say so, which is half the reason
-		// the decoder builds a [Base64]. JSON has no tags and no binary type,
-		// so there it is the base64 string alone -- which is what ToJSON writes
+		// "!!binary". A plain string cannot carry the tag, and that is half the
+		// reason the decoder builds a [Base64]. JSON has no tags and no binary
+		// type, so JSON output holds the base64 string alone, as ToJSON writes
 		// for the same document.
 		if e.isJSONStyle {
 			return e.encodeString(b.Canonical(), column), nil
@@ -516,7 +516,7 @@ func (e *Encoder) encodeFloat(v float64, bitSize int) ast.Node {
 			if e.autoInt {
 				return ast.Integer(token.New(value, value, e.pos(e.column)))
 			}
-			// append x.0 suffix to keep float value context
+			// Append a ".0" suffix so that the value reads back as a float.
 			value += ".0"
 		}
 
@@ -524,9 +524,9 @@ func (e *Encoder) encodeFloat(v float64, bitSize int) ast.Node {
 	}
 }
 
-// encodeBigFloat writes a float past what a float64 holds, as [Encoder.encodeFloat]
-// writes one that fits: a bare number reads back as an integer, so the ".0" is
-// what keeps the float.
+// encodeBigFloat writes a float too wide for a float64, as [Encoder.encodeFloat]
+// writes one that fits. A bare number reads back as an integer, so the ".0"
+// keeps the float.
 func (e *Encoder) encodeBigFloat(v *big.Float, column int) ast.Node {
 	if v.IsInf() {
 		value := ".inf"
@@ -555,8 +555,8 @@ func (e *Encoder) isNeedQuoted(v string) bool {
 
 	if e.useLiteralStyleIfMultiline && strings.Contains(v, "\n") && !token.NeedsQuotedSpelling(v) {
 		// A value holding a carriage return or a byte order mark has no block
-		// scalar spelling, so the literal style cannot be given to it however
-		// the option is set.
+		// scalar spelling, so it never gets the literal style, whatever the
+		// option.
 		return false
 	}
 
@@ -585,8 +585,8 @@ func (e *Encoder) isNeedQuoted(v string) bool {
 
 func (e *Encoder) encodeString(v string, column int) *ast.StringNode {
 	if e.isNeedQuoted(v) {
-		// A single-quoted scalar has no escapes, so a character only an escape can carry takes double quotes even
-		// under UseSingleQuote: written single-quoted, "\r" read back as a backslash and an "r".
+		// A single-quoted scalar has no escapes. A character that needs an escape takes double quotes even under
+		// UseSingleQuote: written single-quoted, "\r" read back as a backslash and an "r".
 		if e.singleQuote && !token.NeedsQuotedSpelling(v) {
 			v = codecutils.QuoteWith(v, '\'')
 		} else {
@@ -637,14 +637,14 @@ func (e *Encoder) encodeArray(value reflect.Value) (*ast.SequenceNode, error) {
 
 // encodeMapItem writes one entry of a [MapSlice].
 //
-// The key is encoded as a value, as [Encoder.encodeMap] encodes a Go map's key,
-// and falls back to its text where that does not give a node a key can be:
-// MapItem.Key is an interface{} and a decode fills it with what the key
-// resolves to, so it holds an int for "1:", a float for "1.0:" and nil for
+// encodeMapItem encodes the key as a value, as [Encoder.encodeMap] encodes a
+// Go map's key. When that gives no node usable as a key, it falls back to the
+// key's text. MapItem.Key is an interface{}, and a decode fills it with the
+// resolved value of the key: an int for "1:", a float for "1.0:" and nil for
 // "null:". Asserting a string here panicked on every one of those, and on a
-// MapSlice a caller built by hand with any key but a string.
+// MapSlice built by hand with any key but a string.
 func (e *Encoder) encodeMapItem(item MapItem, column int) (*ast.MappingValueNode, error) {
-	// Both fields are interface slots, and reach encodeValue as ones, so a
+	// Both fields are interface slots and reach encodeValue as such, so a
 	// time.Time in either takes its tag.
 	value, err := e.encodeValue(reflect.ValueOf(&item.Value).Elem(), column)
 	if err != nil {
@@ -665,17 +665,17 @@ func (e *Encoder) encodeMapItem(item MapItem, column int) (*ast.MappingValueNode
 	), nil
 }
 
-// encodeOrderedMapSeq writes a [MapSliceSeq] as the "!!omap" the tag names: a
-// flow sequence of one-entry mappings, "!!omap [{x: 1}, {y: 2}]".
+// encodeOrderedMapSeq writes a [MapSliceSeq] as an "!!omap": a flow sequence of
+// one-entry mappings, "!!omap [{x: 1}, {y: 2}]".
 //
 // The tag goes back on, so a document read and written again keeps it. A
-// MapSlice writes a plain mapping instead, which is why the two are separate
-// types: the destination a caller declares decides the spelling.
+// MapSlice writes a plain mapping instead. The two types stay separate so that
+// the destination declared by a caller decides the spelling.
 func (e *Encoder) encodeOrderedMapSeq(value MapSliceSeq, column int) (ast.Node, error) {
 	if e.isJSONStyle {
-		// JSON has no ordered map and no tags. The entries are written as an
-		// object in the order the sequence held them, which is what ToJSON
-		// writes for the same document.
+		// JSON has no ordered map and no tags. The encoder writes the entries
+		// as an object, in sequence order, as ToJSON does for the same
+		// document.
 		return e.encodeMapSlice(MapSlice(value), column)
 	}
 
@@ -708,17 +708,16 @@ func (e *Encoder) encodeMapSlice(value MapSlice, column int) (*ast.MappingNode, 
 	return node, nil
 }
 
-// jsonKeyNode is key written the way JSON names a member, where the encoder is
-// writing JSON.
+// jsonKeyNode returns key as a JSON member name, when the encoder writes JSON.
 //
-// A JSON member name is a string and every other spelling is a YAML key, so
-// "1: a" writes {"1":"a"} and not {1: "a"} -- which is what this wrote for
-// every key that is not a string, and is not JSON at all.
+// A JSON member name is a string, and every other spelling is a YAML key, so
+// "1: a" writes {"1":"a"} and not {1: "a"}. The encoder used to write the
+// second form for every key that is not a string, and that is not JSON.
 //
-// The text comes from [ast.KeyName], which is the same reading [ToJSON] takes
-// through astutils.KeyText: one rule for a member name, asked of the node the key
-// encoded to rather than of the Go value, so an integer writes in decimal and a
-// float with the point that tells it from one.
+// The text comes from [ast.KeyName], which [ToJSON] also reads through
+// astutils.KeyText. The one rule applies to the node encoded from the key, not
+// to the Go value, so an integer writes in decimal and a float with a decimal
+// point.
 func (e *Encoder) jsonKeyNode(key ast.MapKeyNode, column int) ast.MapKeyNode {
 	if !e.isJSONStyle {
 		return key
@@ -746,8 +745,8 @@ func (e *Encoder) encodeMap(value reflect.Value, column int) (ast.Node, error) {
 			return a < b
 		}
 
-		// int(1) and uint64(1) print alike. Ordered by their Go types, the
-		// entry SkipDuplicateMapKey keeps does not depend on map iteration.
+		// int(1) and uint64(1) print alike. Ordering them by Go type makes the
+		// entry kept by SkipDuplicateMapKey independent of map iteration.
 		return fmt.Sprintf("%T", keys[i]) < fmt.Sprintf("%T", keys[j])
 	})
 	seen := repeatableKeys(value.Type().Key())
@@ -771,7 +770,7 @@ func (e *Encoder) encodeMap(value reflect.Value, column int) (ast.Node, error) {
 		keyText := fmt.Sprint(key)
 		vRef := e.toPointer(v)
 
-		// during the second encoding, an anchor is assigned if it is found to be used by an alias.
+		// The second encoding assigns an anchor to a value used by an alias.
 		if aliasName, exists := e.getSmartAlias(vRef); exists {
 			anchorName := aliasName
 			anchorNode := ast.Anchor(token.New("&", "&", e.pos(column)))
@@ -782,8 +781,8 @@ func (e *Encoder) encodeMap(value reflect.Value, column int) (ast.Node, error) {
 
 		keyValue := reflect.ValueOf(key)
 		if value.Type().Key().Kind() == reflect.Interface {
-			// A map[any]any key stands in an interface slot, and keeps saying
-			// so to encodeValue: a time.Time there takes its tag.
+			// A map[any]any key stands in an interface slot, and reaches
+			// encodeValue as one: a time.Time there takes its tag.
 			keyValue = reflect.ValueOf(&key).Elem()
 		}
 		kn, err := e.encodeValue(keyValue, column)
@@ -802,18 +801,18 @@ func (e *Encoder) encodeMap(value reflect.Value, column int) (ast.Node, error) {
 	return node, nil
 }
 
-// keySet records the YAML identity of each key a Go map writes, for a map
-// whose Go keys can be one YAML key.
+// keySet records the YAML identity of each key written from a Go map, for a
+// map where two Go keys can be one YAML key.
 type keySet map[keyIdentity]any
 
-// keyIdentity is the kind and compared name codecutils.KeyIDOf gives a key.
+// keyIdentity holds the kind and compared name given to a key by codecutils.KeyIDOf.
 type keyIdentity struct {
 	kind token.KeyKind
 	name string
 }
 
 // repeatableKeys returns an empty keySet for a map whose key type can hold two
-// Go keys that are one YAML key, and nil for one whose keys == already tells
+// Go keys that are one YAML key. It returns nil when == already tells the keys
 // apart the way YAML does.
 //
 // An interface holds int(1) beside uint64(1); a float, one NaN beside another;
@@ -830,8 +829,8 @@ func repeatableKeys(t reflect.Type) keySet {
 	}
 }
 
-// add records key, and returns the key already recorded under its identity
-// and whether there was one. A key codecutils.KeyIDOf has no kind for is never a repeat.
+// add records key, and returns the key already recorded under its identity and
+// whether there was one. A key without a kind from codecutils.KeyIDOf is never a repeat.
 func (s keySet) add(key any) (any, bool) {
 	kind, name, named := codecutils.KeyIDOf(key)
 	if !named {
@@ -908,13 +907,12 @@ func (e *Encoder) isOmittedByOmitEmptyOption(v reflect.Value) bool {
 	return false
 }
 
-// The current implementation of the omitempty tag combines the functionality of encoding/json's omitempty and omitzero tags.
-// This stems from a historical decision to respect the implementation of gopkg.in/yaml.v2, but it has caused confusion,
-// so we are working to integrate it into the functionality of encoding/json. (However, this will take some time.)
-// In the current implementation, in addition to the exclusion conditions of omitempty,
-// if a type implements IsZero, that implementation will be used.
-// Furthermore, for non-pointer structs, if all fields are eligible for exclusion,
-// the struct itself will also be excluded. These behaviors are originally the functionality of omitzero.
+// isOmittedByOmitEmptyTag reports whether the omitempty tag omits v.
+//
+// The omitempty tag combines encoding/json's omitempty and omitzero tags. It follows gopkg.in/yaml.v2, and that
+// has caused confusion. The plan is to align it with encoding/json, which will take some time.
+// Beyond the omitempty conditions, it calls IsZero when the type implements it.
+// It also omits a non-pointer struct when every field can be omitted. Both rules come from omitzero.
 func (e *Encoder) isOmittedByOmitEmptyTag(v reflect.Value) bool {
 	kind := v.Kind()
 	if z, ok := reflect.TypeAssert[IsZeroer](v); ok {
@@ -963,8 +961,8 @@ func (e *Encoder) encodeTime(v time.Time, column int) *ast.StringNode {
 	return ast.String(token.New(value, value, e.pos(column)))
 }
 
-// heldTime returns the time.Time an interface slot holds, and whether the
-// encoder writes it itself. A custom marshaler registered for the type wins.
+// heldTime returns the time.Time held by an interface slot, and reports whether
+// the encoder writes it itself. A custom marshaler registered for the type wins.
 func (e *Encoder) heldTime(v reflect.Value) (time.Time, bool) {
 	if !v.IsValid() || !v.CanInterface() || e.existsTypeInCustomMarshalerMap(v.Type()) {
 		return time.Time{}, false
@@ -983,14 +981,14 @@ func (e *Encoder) heldTime(v reflect.Value) (time.Time, bool) {
 	}
 }
 
-// encodeTaggedTime writes a time.Time held in an interface slot -- a value in an
-// any, a map[any]any key, a MapSlice entry -- as a "!!timestamp".
+// encodeTaggedTime writes a time.Time held in an interface slot (a value in an
+// any, a map[any]any key, a MapSlice entry) as a "!!timestamp".
 //
 // The core schema resolves no timestamp, so the plain spelling reads back as a
-// string wherever the destination does not say time.Time, and a round trip
-// through an any turned the value into text. A field or a map key typed
-// time.Time stays plain: its destination says what the text is. JSON has no
-// tags, so there it is the RFC 3339 string alone, as ToJSON writes it.
+// string wherever the destination is not a time.Time. A round trip through an
+// any used to turn the value into text. A field or a map key typed time.Time
+// stays plain, because its destination sets the type. JSON has no tags, so
+// JSON output holds the RFC 3339 string alone, as ToJSON writes it.
 func (e *Encoder) encodeTaggedTime(t time.Time, column int) ast.Node {
 	value := e.encodeTime(t, column)
 	if e.isJSONStyle {
@@ -1028,9 +1026,9 @@ func (e *Encoder) encodeAnchor(anchorName string, value ast.Node, fieldValue ref
 	return anchorNode, nil
 }
 
-// tagMode says which of encoding/json's rules this encoder adds to the `yaml`
-// tag. Neither option set is go.yaml.in/yaml/v3 exactly, and the pair mirrors
-// [UseJSONTags] and [UseInferredNames] on the decoder.
+// tagMode returns the encoding/json rules that this encoder adds to the `yaml`
+// tag. With neither option set, it follows go.yaml.in/yaml/v3 exactly. The pair
+// mirrors [UseJSONTags] and [UseInferredNames] on the decoder.
 func (e *Encoder) tagMode() structfields.Mode {
 	mode := structfields.YAMLTags
 	if e.writeJSONTags {
@@ -1098,7 +1096,7 @@ func (e *Encoder) encodeStruct(value reflect.Value, column int) (ast.Node, error
 				}
 			}
 			if sf.IsInline {
-				// if both used alias and inline, output `<<: *alias`
+				// With both alias and inline, write `<<: *alias`.
 				key = ast.MergeKey(token.New("<<", "<<", e.pos(column)))
 			}
 		case sf.AnchorName != "":
@@ -1117,15 +1115,15 @@ func (e *Encoder) encodeStruct(value reflect.Value, column int) (ast.Node, error
 			}
 			mapNode, ok := encoded.(ast.MapNode)
 			if !ok {
-				// if an inline field is null, skip encoding it
+				// Skip an inline field that is null.
 				if _, ok := encoded.(*ast.NullNode); ok {
 					continue
 				}
 				return nil, errors.New("inline value is must be map or struct type")
 			}
-			// A map holds the document's own keys, so the only question is
-			// whether a field writes the name already. A struct holds fields,
-			// and flat says which one each name reaches.
+			// A map holds the document's own keys, so the encoder only checks
+			// whether a field already writes the name. A struct holds fields,
+			// and flat records the field reached by each name.
 			fromMap := structfields.InlineTakesUnclaimedEntries(fieldValue.Type())
 			mapIter := mapNode.MapRange()
 			for mapIter.Next() {
