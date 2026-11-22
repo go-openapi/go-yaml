@@ -7,6 +7,9 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+
+	"github.com/go-openapi/testify/v2/assert"
+	"github.com/go-openapi/testify/v2/require"
 )
 
 // TestArenaBoxHoldsWhatItWasGiven checks the hand-built interface behaves like
@@ -32,18 +35,10 @@ func TestArenaBoxHoldsWhatItWasGiven(t *testing.T) {
 	m := map[any]int{}
 	for i, v := range got {
 		s, ok := v.(string)
-		if !ok {
-			t.Fatalf("%d: holds %T, not a string", i, v)
-		}
-		if s != want[i] {
-			t.Fatalf("%d: holds %q, want %q", i, s, want[i])
-		}
-		if v != any(want[i]) {
-			t.Errorf("%d: does not compare equal to the same string", i)
-		}
+		require.Truef(t, ok, "%d: holds %T, not a string", i, v)
+		require.Equalf(t, want[i], s, "%d", i)
+		assert.Truef(t, v == any(want[i]), "%d: does not compare equal to the same string", i)
 		m[v] = i
 	}
-	if len(m) == 0 {
-		t.Error("boxed strings do not key a map")
-	}
+	assert.Len(t, m, len(got), "boxed strings key a map, one entry each")
 }

@@ -16,8 +16,8 @@ import (
 // A node handed to [github.com/go-openapi/go-yaml/codec.Decoder.DecodeFromNode] has no source to measure.
 // The decoder sets its alias budget from this count instead.
 //
-// [ast.Walk] visits an alias once and does not follow its target.
-// An alias therefore adds one to the count, however large the node it names.
+// [ast.Walk] visits an alias and its name, and does not follow its target.
+// An alias therefore adds the same count, however large the node it names.
 func CountNodes(node ast.Node) int {
 	var n nodeCount
 	ast.Walk(&n, node)
@@ -223,7 +223,8 @@ func NodeAt(n ast.Node) token.Position {
 
 // KeyText returns a scalar key as the string a JSON object holds it under.
 //
-// JSON keys are strings, so 4.0 and 4 address the same entry and are both "4".
+// The string is the canonical name [ast.KeyName] gives the key, so 4 is "4" and 4.0 is "4.0":
+// two YAML keys stay two JSON keys. A null key is "null".
 func KeyText(node ast.Node) string {
 	if name, kind := ast.KeyName(node); kind != token.KeyOther {
 		return name
@@ -241,7 +242,8 @@ func KeyText(node ast.Node) string {
 	}
 }
 
-// AnchorName reads the name off an anchor or an alias.
+// AnchorName returns the name written by n, the name node of an anchor or an alias:
+// [ast.AnchorNode.Name] or [ast.AliasNode.Value]. It returns "" for a nil node.
 func AnchorName(n ast.Node) string {
 	if n == nil || n.GetToken() == nil {
 		return ""

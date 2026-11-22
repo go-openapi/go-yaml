@@ -26,9 +26,14 @@ const (
 // firstSupplementaryRune marks the first rune outside the Basic Multilingual Plane. A \\u escape cannot write it.
 const firstSupplementaryRune = 0x10000
 
-// QuoteWith returns s as a Go string literal between two quote characters, escaped as strconv.Quote escapes it.
+// QuoteWith returns s between two quote characters, for a YAML single-quoted scalar.
 //
-// It is strconv's private quoteWith with ASCIIonly and graphicOnly both false.
+// It doubles the quote character, as YAML writes ” for a single quote, and leaves a backslash as it is.
+// Every other rune is written as strconv.Quote writes it: a printable rune stands for itself,
+// and any other rune takes a backslash escape, which a single-quoted scalar cannot read.
+// The encoder therefore calls QuoteWith only for a string that needs no escape.
+//
+// It is strconv's private quoteWith with ASCIIonly and graphicOnly both false, and the two changes above.
 func QuoteWith(s string, quote byte) string {
 	return string(appendQuotedWith(make([]byte, 0, 3*len(s)/2), s, quote))
 }

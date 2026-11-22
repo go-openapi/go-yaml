@@ -42,7 +42,7 @@ func AliasBudget(n int) int {
 
 // CastToFloatValue converts the value a "!!float" node decoded to a float64.
 //
-// A *big.Float or a string that float64 cannot hold keeps its width, and any other value is returned as it is.
+// A *big.Float or a string that float64 cannot hold keeps its width. A value of any other type converts to 0.
 func CastToFloatValue(v any) any {
 	switch vv := v.(type) {
 	case int:
