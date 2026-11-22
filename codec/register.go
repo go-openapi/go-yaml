@@ -11,8 +11,8 @@ import (
 )
 
 var (
-	globalCustomMarshalerMu    sync.Mutex
-	globalCustomUnmarshalerMu  sync.Mutex
+	globalCustomMarshalerMu    sync.RWMutex
+	globalCustomUnmarshalerMu  sync.RWMutex
 	globalCustomMarshalerMap   = map[reflect.Type]func(any) ([]byte, error){}
 	globalCustomUnmarshalerMap = map[reflect.Type]func(any, []byte) error{}
 )
@@ -55,8 +55,8 @@ func RegisterCustomUnmarshaler[T any](unmarshaler func(*T, []byte) error) {
 // registeredUnmarshaler reports whether RegisterCustomUnmarshaler holds a
 // function for the type ptr, a pointer to the type it was registered for.
 func registeredUnmarshaler(ptr reflect.Type) bool {
-	globalCustomUnmarshalerMu.Lock()
-	defer globalCustomUnmarshalerMu.Unlock()
+	globalCustomUnmarshalerMu.RLock()
+	defer globalCustomUnmarshalerMu.RUnlock()
 	_, exists := globalCustomUnmarshalerMap[ptr]
 
 	return exists

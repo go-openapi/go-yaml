@@ -1017,8 +1017,8 @@ func (d *Decoder) existsTypeInCustomUnmarshalerMap(t reflect.Type) bool {
 		return true
 	}
 
-	globalCustomUnmarshalerMu.Lock()
-	defer globalCustomUnmarshalerMu.Unlock()
+	globalCustomUnmarshalerMu.RLock()
+	defer globalCustomUnmarshalerMu.RUnlock()
 	if _, exists := globalCustomUnmarshalerMap[t]; exists {
 		return true
 	}
@@ -1030,8 +1030,8 @@ func (d *Decoder) unmarshalerFromCustomUnmarshalerMap(t reflect.Type) (func(any,
 		return unmarshaler, exists
 	}
 
-	globalCustomUnmarshalerMu.Lock()
-	defer globalCustomUnmarshalerMu.Unlock()
+	globalCustomUnmarshalerMu.RLock()
+	defer globalCustomUnmarshalerMu.RUnlock()
 	if unmarshaler, exists := globalCustomUnmarshalerMap[t]; exists {
 		return unmarshaler, exists
 	}
