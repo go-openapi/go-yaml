@@ -1946,22 +1946,6 @@ map: &map
 	})
 }
 
-func ExampleNodeToValue() {
-	f, err := parser.ParseBytes([]byte("text: node example"))
-	if err != nil {
-		panic(err)
-	}
-	var v struct {
-		Text string `yaml:"text"`
-	}
-	if err := codec.NodeToValue(f.Docs[0].Body, &v); err != nil {
-		panic(err)
-	}
-	fmt.Println(v.Text)
-	// OUTPUT:
-	// node example
-}
-
 func TestDecoder_UseOrderedMap(t *testing.T) {
 	yml := `
 a: b
