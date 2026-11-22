@@ -227,7 +227,7 @@ func ownHeadComment(node ast.Node, fn func(path string, place CommentPlace, text
 		return
 	}
 
-	fn(HeadCommentPath(node), HeadPlace, texts)
+	fn(headCommentPath(node), HeadPlace, texts)
 }
 
 // entryLineComment records the comment written on a mapping entry's own

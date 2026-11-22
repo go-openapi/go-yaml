@@ -5,6 +5,8 @@ package codec_test
 
 import (
 	"errors"
+	"iter"
+	"slices"
 	"testing"
 
 	"github.com/go-openapi/testify/v2/assert"
@@ -60,5 +62,84 @@ func TestValidatorErrorsCarryErrValidation(t *testing.T) {
 		var e *yamlerrors.Error
 		require.ErrorAs(t, err, &e)
 		assert.Equal(t, int32(2), e.GetToken().Position.Line)
+	})
+}
+
+// missingFieldError reports a struct field the document left out, as a validator such as go-playground/validator does:
+// an error that is a slice of field errors.
+type missingFieldError struct{ field string }
+
+func (e missingFieldError) StructField() string { return e.field }
+
+type missingFieldErrors []missingFieldError
+
+func (missingFieldErrors) Error() string { return "size is required" }
+
+type sizedItem struct {
+	Name string `yaml:"name"`
+	Size int    `yaml:"size"`
+}
+
+func requireSize(v any) error {
+	if it, ok := v.(sizedItem); ok && it.Size == 0 {
+		return missingFieldErrors{{"Size"}}
+	}
+
+	return nil
+}
+
+// TestAMissingFieldIsReportedAtTheSamePlaceWithComments decodes a struct that leaves out a field the validator
+// requires, and checks that the error position does not depend on CommentToMap.
+//
+// The parser keeps the "- " node of a sequence entry only when it reads comments, so the error once pointed at the
+// "-" with CommentToMap and at the struct's first key without it.
+func TestAMissingFieldIsReportedAtTheSamePlaceWithComments(t *testing.T) {
+	for tc := range missingFieldCases() {
+		for path := range decodePaths() {
+			for _, comments := range []bool{false, true} {
+				opts := append([]codec.DecodeOption{codec.Validator(requireSize)}, path.opts...)
+				name := path.name + "/comments off"
+				if comments {
+					opts = append(opts, codec.CommentToMap(codec.CommentMap{}))
+					name = path.name + "/comments on"
+				}
+
+				t.Run(tc.name+"/"+name, func(t *testing.T) {
+					var v struct {
+						Items []sizedItem `yaml:"items"`
+						Item  sizedItem   `yaml:"item"`
+					}
+					err := codec.Unmarshal([]byte(tc.source), &v, opts...)
+					require.ErrorIs(t, err, yamlerrors.ErrValidation)
+
+					var e *yamlerrors.Error
+					require.ErrorAs(t, err, &e)
+					assert.Equal(t, tc.line, e.GetToken().Position.Line)
+					assert.Equal(t, tc.column, e.GetToken().Position.Column)
+				})
+			}
+		}
+	}
+}
+
+// missingFieldCase holds a document that leaves out a required field, and where the error points.
+type missingFieldCase struct {
+	name         string
+	source       string
+	line, column int32
+}
+
+func missingFieldCases() iter.Seq[missingFieldCase] {
+	return slices.Values([]missingFieldCase{
+		{
+			name:   "in a sequence entry, at the first key",
+			source: "items:\n  - name: a\n",
+			line:   2, column: 5,
+		},
+		{
+			name:   "in a mapping entry, at its colon",
+			source: "item:\n  name: a\n",
+			line:   1, column: 5,
+		},
 	})
 }

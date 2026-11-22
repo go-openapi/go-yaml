@@ -18,8 +18,8 @@
 //   - Comments. [EachComment] reads a tree's comments for [github.com/go-openapi/go-yaml/codec.CommentToMap], and
 //     [PlaceHeadComment], [PlaceLineComment] and [PlaceFootComment] write them back for
 //     [github.com/go-openapi/go-yaml/codec.WithComment].
-//   - Values and positions. [JSONScalarOf], [ScalarNumber] and [AnchorName] read a node. [NodeAt],
-//     [ValidationErrorToken] and [SequenceEntryNode] find the source position an error points at. [CountNodes] sizes
+//   - Values and positions. [JSONScalarOf], [ScalarNumber] and [AnchorName] read a node. [NodeAt] and
+//     [ValidationErrorToken] find the source position an error points at. [CountNodes] sizes
 //     the alias budget of a tree decoded without its source.
 //
 // A question about what a piece of YAML means usually belongs in package ast itself, e.g [ast.Unwrap], [ast.IsNull], [ast.OrderedMapOf].

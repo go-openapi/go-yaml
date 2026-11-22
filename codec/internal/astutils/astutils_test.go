@@ -131,16 +131,6 @@ func TestValidationErrorToken(t *testing.T) {
 		"a collection without its entry is reported at itself")
 }
 
-func TestSequenceEntryNode(t *testing.T) {
-	// The parser keeps the entry nodes only under WithComments.
-	seq, ok := bodyOf(t, "- a\n- b\n", parser.WithComments()).(*ast.SequenceNode)
-	require.True(t, ok)
-
-	assert.Same(t, seq.Entries[1], SequenceEntryNode(seq, 1))
-	assert.Nil(t, SequenceEntryNode(seq, 2))
-	assert.Nil(t, SequenceEntryNode(seq, -1))
-}
-
 func TestStandsOnNothing(t *testing.T) {
 	scalar := bodyOf(t, "x")
 
@@ -176,8 +166,8 @@ func TestNodeAt(t *testing.T) {
 func TestHeadCommentPath(t *testing.T) {
 	m := mappingOf(t, "a: 1\nb: 2\n")
 
-	assert.Equal(t, m.Values[0].Key.GetPath(), HeadCommentPath(m), "a mapping's head comment goes to its first key")
-	assert.Equal(t, m.Values[1].Key.GetPath(), HeadCommentPath(m.Values[1]), "an entry's goes to its key")
+	assert.Equal(t, m.Values[0].Key.GetPath(), headCommentPath(m), "a mapping's head comment goes to its first key")
+	assert.Equal(t, m.Values[1].Key.GetPath(), headCommentPath(m.Values[1]), "an entry's goes to its key")
 }
 
 // ************** map keys test cases **********************

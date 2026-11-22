@@ -143,10 +143,10 @@ func mergeEntry(node ast.Node) bool {
 	return ok && n.Key != nil && n.Key.IsMergeKey()
 }
 
-// HeadCommentPath returns the path a head comment on node is keyed by.
+// headCommentPath returns the path a head comment on node is keyed by.
 //
 // A mapping's own head comment belongs to its first key, and an entry's to its key, as [EachComment] records them.
-func HeadCommentPath(node ast.Node) string {
+func headCommentPath(node ast.Node) string {
 	switch n := node.(type) {
 	case *ast.MappingNode:
 		if len(n.Values) != 0 {
@@ -178,16 +178,6 @@ func ValidationErrorToken(value, entry ast.Node) *token.Token {
 	}
 
 	return value.GetToken()
-}
-
-// SequenceEntryNode returns the node holding the '-' of entry idx in node, or nil where the sequence did not keep it.
-func SequenceEntryNode(node ast.ArrayNode, idx int) ast.Node {
-	seq, ok := node.(*ast.SequenceNode)
-	if !ok || idx < 0 || idx >= len(seq.Entries) {
-		return nil
-	}
-
-	return seq.Entries[idx]
 }
 
 // StandsOnNothing reports whether a chain of key wrappers bottoms out with no

@@ -38,13 +38,13 @@ type Decoder struct {
 	// source is the document being decoded, so an error found in it can draw
 	// the lines around itself.
 	source yamlerrors.Source
-	// entry is the node that writes the one being decoded: the "key:" of a
-	// mapping entry, or the "-" of a sequence one. Decoding is depth first, so
-	// each step saves it and puts it back, and the field behaves as a stack.
+	// entry is the mapping entry that writes the node being decoded, and nil for a sequence element.
+	// Decoding is depth first, so each step saves it and puts it back, and the field behaves as a stack.
 	//
-	// It says where to report a validation error about a field the document
-	// left out, there being nothing inside the node to point at, and what
-	// indentation to strip when a node is handed to a custom unmarshaler.
+	// missingFieldToken reads it to place a validation error about a field the document left out,
+	// because the node holds nothing to point at.
+	// A sequence element has no entry here: the parser keeps the "- " entry node only under WithComments,
+	// and the error must not move with that option. missingFieldToken then points at the element's first key.
 	entry            ast.Node
 	reader           io.Reader
 	referenceReaders []io.Reader
@@ -2487,20 +2487,15 @@ func (d *Decoder) decodeSlice(dst reflect.Value, src ast.Node) error {
 	sliceValue := reflect.MakeSlice(sliceType, 0, iter.Len())
 	elemType := sliceType.Elem()
 
-	var (
-		foundErr error
-		idx      int
-	)
+	var foundErr error
 	for iter.Next() {
 		v := iter.Value()
-		entryIdx := idx
-		idx++
 		if elemType.Kind() == reflect.Pointer && ast.IsNull(v) {
 			// set nil value to pointer
 			sliceValue = reflect.Append(sliceValue, reflect.Zero(elemType))
 			continue
 		}
-		prevEntry := d.enterEntry(astutils.SequenceEntryNode(arrayNode, entryIdx))
+		prevEntry := d.enterEntry(nil)
 		dstValue, err := d.createDecodedNewValue(elemType, reflect.Value{}, v)
 		d.entry = prevEntry
 		if stopsTheDocument(err) {
