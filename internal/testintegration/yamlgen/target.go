@@ -13,8 +13,6 @@ import (
 	"strconv"
 	"strings"
 	"time"
-
-	"github.com/go-openapi/go-yaml/codec"
 )
 
 // The Go type a document is read into, built from the value the document was
@@ -536,17 +534,9 @@ func jsonNumbers(v any) any {
 		}
 
 		return out
-	case codec.MapSliceSeq:
-		var items []codec.MapItem
-		for key, value := range n.All() {
-			items = append(items, codec.MapItem{Key: key, Value: jsonNumbers(value)})
-		}
-		ordered, err := codec.NewMapSliceSeq(items...)
-		if err != nil {
-			return n
-		}
-
-		return ordered
+	case OrderedMap:
+		// OrderedMap.MarshalJSON names the keys and writes the values itself.
+		return n
 	}
 
 	return v

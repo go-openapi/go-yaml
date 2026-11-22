@@ -15,9 +15,6 @@ import (
 	"time"
 
 	"pgregory.net/rapid"
-
-	"github.com/go-openapi/go-yaml/codec"
-	"github.com/go-openapi/go-yaml/token"
 )
 
 // Value is a logical YAML value: what a document means, with nothing said about
@@ -105,9 +102,10 @@ type (
 	Timestamp struct{ V time.Time }
 	// Binary is a byte string. The library reads one into a codec.Base64, the
 	// encoded text -- comparable, so it can key a mapping, and it tells an
-	// encoder the value is binary. So Decoded says Base64 and not []byte; a
-	// caller asking for a []byte still gets one, which is the destination's
-	// choice and not what the document means on its own.
+	// encoder the value is binary. So Decoded returns a [Base64], this
+	// package's twin of it, and not []byte. A caller asking for a []byte still
+	// gets one, which is the destination's choice and not what the document
+	// means on its own.
 	//
 	// Binary is a byte string, which this library reads from a scalar carrying
 	// `!!binary` by decoding its base64 text.
@@ -305,7 +303,7 @@ func (b BigFloat) Decoded() any     { return b.V }
 func (s Str) Decoded() any          { return s.V }
 
 func (t Timestamp) Decoded() any { return t.V }
-func (b Binary) Decoded() any    { return codec.Base64(base64.StdEncoding.EncodeToString(b.V)) }
+func (b Binary) Decoded() any    { return Base64(base64.StdEncoding.EncodeToString(b.V)) }
 
 func (s Seq) Decoded() any {
 	if len(s.Items) == 0 {
@@ -355,34 +353,29 @@ func (t Tagged) Decoded() any {
 // does for a tag it passes through, so this reports the shape rather than
 // assuming it.
 //
-// Each key is what it resolves to, as a codec.MapItem holds it: a plain null is
+// Each key is what it resolves to, as the library's codec.MapItem holds it: a plain null is
 // nil and 1 is uint64(1). It was KeyText's name until 2026-09-11, when a draw
 // put a null key in an "!!omap" and the stream property read nil where this
 // said "null".
-func orderedMapDecoded(v Value) (codec.MapSliceSeq, bool) {
+func orderedMapDecoded(v Value) (OrderedMap, bool) {
 	seq, isSeq := v.(Seq)
 	if !isSeq {
-		return codec.MapSliceSeq{}, false
+		return OrderedMap{}, false
 	}
 
-	items := make([]codec.MapItem, 0, len(seq.Items))
+	items := make([]OrderedEntry, 0, len(seq.Items))
 	for _, entry := range seq.Items {
 		m, isMap := entry.(Map)
 		if !isMap || len(m.Pairs) != 1 {
-			return codec.MapSliceSeq{}, false
+			return OrderedMap{}, false
 		}
-		items = append(items, codec.MapItem{
+		items = append(items, OrderedEntry{
 			Key:   keyValue(m.Pairs[0].Key),
 			Value: m.Pairs[0].Val.Decoded(),
 		})
 	}
 
-	ordered, err := codec.NewMapSliceSeq(items...)
-	if err != nil {
-		return codec.MapSliceSeq{}, false
-	}
-
-	return ordered, true
+	return newOrderedMap(items)
 }
 
 // Decoded returns what the anchored value decodes to, built afresh.
@@ -400,7 +393,7 @@ func (a Alias) Decoded() any { return a.V.Decoded() }
 // keyed by what each key resolves to from the first key that does not. That is
 // the rule codec's keyedMap applies, and [keyedMap] here copies it: Int{1} and
 // Str{"1"} are two keys, uint64(1) and "1". A "!!binary" key widens the mapping
-// too, because a codec.Base64 is not a string to a type switch.
+// too, because a [Base64] is not a string to a type switch.
 //
 // YAML 1.2 dropped tag:yaml.org,2002:merge, so the merge happens under a
 // "%YAML 1.1" directive, under parser.WithYAMLVersion(YAML11), or where the
@@ -457,7 +450,7 @@ func newKeyedMap(size int) *keyedMap {
 // the same instant is, in any zone: "2001-12-14t21:59:43.10-05:00" and
 // "2001-12-15 02:59:43.10" are one key to the override, and the map keeps the
 // own key's zone. A *big.Int or a *big.Float is a pointer, so == compares the
-// pointers and not the numbers. A codec.Base64 is held where one with the same
+// pointers and not the numbers. A [Base64] is held where one with the same
 // canonical text is, since RFC 2045 lets the text carry line breaks.
 func (k *keyedMap) holds(key any) bool {
 	if k.byKey != nil {
@@ -526,11 +519,11 @@ func bigFloatKeyText(f *big.Float) string {
 
 // sameKeyValue reports whether a and b are one key though == says they are not:
 // a time.Time at the same instant, a *big.Int or *big.Float of the same value,
-// or a codec.Base64 of the same canonical text.
+// or a [Base64] of the same canonical text.
 func sameKeyValue(a, b any) bool {
 	switch x := a.(type) {
-	case codec.Base64:
-		y, ok := b.(codec.Base64)
+	case Base64:
+		y, ok := b.(Base64)
 
 		return ok && x.Canonical() == y.Canonical()
 	case time.Time:
@@ -620,7 +613,7 @@ func timestampOf(v Value) (time.Time, bool) {
 //
 // A "!!binary" key has a kind of its own: binary and str are two YAML types, so
 // "!!binary AA==" and the string "AA==" are two keys.
-func keyKind(v Value) token.KeyKind {
+func keyKind(v Value) keyClass {
 	switch n := v.(type) {
 	case Anchored:
 		return keyKind(n.V)
@@ -629,21 +622,21 @@ func keyKind(v Value) token.KeyKind {
 	case Tagged:
 		return keyKind(n.V)
 	case Null:
-		return token.KeyNull
+		return classNull
 	case Bool:
-		return token.KeyBool
+		return classBool
 	case Int, BigInt:
-		return token.KeyInt
+		return classInt
 	case Float, BigFloat:
-		return token.KeyFloat
+		return classFloat
 	case Timestamp:
-		return token.KeyTimestamp
+		return classTimestamp
 	case Binary:
-		return token.KeyBinary
+		return classBinary
 	case Str, MergeKey:
-		return token.KeyString
+		return classString
 	default:
-		return token.KeyOther
+		return classOther
 	}
 }
 

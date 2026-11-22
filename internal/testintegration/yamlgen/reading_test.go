@@ -404,7 +404,7 @@ func readsAs(t *testing.T, w yamlgen.Written, core, under11 any) {
 	require.NoError(t, yaml.Unmarshal([]byte(w.Text), &got), "%q", w.Text)
 	assert.Equal(t, core, got, "%q does not read back as the value it was written from", w.Text)
 
-	assert.Equal(t, under11, w.Readings[yamlgen.Reading11],
+	assert.Equal(t, under11, toCodec(w.Readings[yamlgen.Reading11]),
 		"%q: yamlgen states %v under 1.1", w.Text, w.Readings[yamlgen.Reading11])
 
 	var legacy any
@@ -443,7 +443,7 @@ func TestAnOrderedMapKeyIsWhatItResolvesTo(t *testing.T) {
 
 	// readsAs holds the library to core and the 1.1 reading to the library, and
 	// never the core meaning yamlgen states, which is the half the draw caught.
-	assert.Equal(t, core, w.Means, "%q: yamlgen states %v under core", w.Text, w.Means)
+	assert.Equal(t, core, toCodec(w.Means), "%q: yamlgen states %v under core", w.Text, w.Means)
 	readsAs(t, w, core,
 		map[string]any{"k": ordered(codec.MapItem{Key: nil, Value: false}, codec.MapItem{Key: true, Value: "v"})})
 }

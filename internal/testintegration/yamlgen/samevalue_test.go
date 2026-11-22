@@ -127,6 +127,34 @@ func sameValue(want, got any) bool {
 		}
 
 		return true
+	case yamlgen.Base64:
+		// The generator's own type for a "!!binary", where the library decodes a codec.Base64.
+		g, ok := got.(codec.Base64)
+
+		return ok && w.Canonical() == g.Canonical()
+	case yamlgen.OrderedMap:
+		// The generator's own type for an "!!omap", where the library decodes a codec.MapSliceSeq.
+		// The entries compare in order.
+		g, ok := got.(codec.MapSliceSeq)
+		if !ok || w.Len() != g.Len() {
+			return false
+		}
+
+		var wantKeys, wantValues []any
+		for key, value := range w.All() {
+			wantKeys = append(wantKeys, key)
+			wantValues = append(wantValues, value)
+		}
+
+		i := 0
+		for key, value := range g.All() {
+			if !sameValue(wantKeys[i], key) || !sameValue(wantValues[i], value) {
+				return false
+			}
+			i++
+		}
+
+		return true
 	case []any:
 		g, ok := got.([]any)
 		if !ok || len(w) != len(g) {
