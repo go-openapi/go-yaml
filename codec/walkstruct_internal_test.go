@@ -1115,3 +1115,13 @@ func TestADuplicateKeyDecodeWalks(t *testing.T) {
 	assert.Equal(t, 2, v.A)
 	require.NotNil(t, dec.stream, "the struct was not walked")
 }
+
+// TestARootOtherThanAStructWalks checks that a slice, a string map, a scalar and a pointer at the root take the walk.
+func TestARootOtherThanAStructWalks(t *testing.T) {
+	var p *int
+	for _, dst := range []any{new([]int), new(map[string]int), new(int), &p} {
+		dec := NewDecoder(bytes.NewReader([]byte("1\n")))
+		_ = dec.Decode(dst)
+		assert.NotNilf(t, dec.stream, "%T was not walked", dst)
+	}
+}

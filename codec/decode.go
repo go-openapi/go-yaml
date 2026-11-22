@@ -737,6 +737,12 @@ func (d *Decoder) getMapNode(node ast.Node, isMerge bool) (ast.MapNode, error) {
 		return nil, yamlerrors.ErrExceededMaxDepth
 	}
 
+	if node == nil {
+		// A node the parse left unfinished, such as the value of a tag when the document ends inside a flow
+		// collection. The walk hands such a node over as the parse fails, and the parse error is what the decode
+		// returns.
+		return nil, yamlerrors.NewSyntax("a mapping holds no node", nil)
+	}
 	if err := astutils.RefuseDuplicateKeys(node); err != nil {
 		return nil, err
 	}
@@ -800,6 +806,10 @@ func (d *Decoder) getArrayNode(node ast.Node) (ast.ArrayNode, error) {
 		return nil, yamlerrors.ErrExceededMaxDepth
 	}
 
+	if node == nil {
+		// A node the parse left unfinished. See getMapNode.
+		return nil, nil
+	}
 	if _, ok := node.(*ast.NullNode); ok {
 		return nil, nil
 	}
@@ -3156,7 +3166,7 @@ func (d *Decoder) canWalk(v reflect.Value) bool {
 		// value whatever the option is, as for a bare "any" above.
 		return false
 	}
-	if dst.Kind() != reflect.Struct || !dst.CanSet() {
+	if !dst.CanSet() {
 		return false
 	}
 
