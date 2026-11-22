@@ -11,10 +11,10 @@ import (
 )
 
 var (
-	globalCustomMarshalerMu    sync.RWMutex
-	globalCustomUnmarshalerMu  sync.RWMutex
-	globalCustomMarshalerMap   = map[reflect.Type]func(any) ([]byte, error){}
-	globalCustomUnmarshalerMap = map[reflect.Type]func(any, []byte) error{}
+	customMarshalerMx    sync.RWMutex
+	customUnmarshalerMx  sync.RWMutex
+	customMarshalerMap   = map[reflect.Type]func(any) ([]byte, error){}
+	customUnmarshalerMap = map[reflect.Type]func(any, []byte) error{}
 )
 
 // RegisterCustomMarshaler overrides any encoding process for the type specified in generics.
@@ -24,11 +24,11 @@ var (
 // If RegisterCustomMarshaler and CustomMarshaler of EncodeOption are specified for the same type,
 // the CustomMarshaler specified in EncodeOption takes precedence.
 func RegisterCustomMarshaler[T any](marshaler func(T) ([]byte, error)) {
-	globalCustomMarshalerMu.Lock()
-	defer globalCustomMarshalerMu.Unlock()
+	customMarshalerMx.Lock()
+	defer customMarshalerMx.Unlock()
 
 	var typ T
-	globalCustomMarshalerMap[reflect.TypeOf(typ)] = func(v any) ([]byte, error) {
+	customMarshalerMap[reflect.TypeOf(typ)] = func(v any) ([]byte, error) {
 		return marshaler(codecutils.CustomArg[T](v))
 	}
 }
@@ -39,11 +39,11 @@ func RegisterCustomMarshaler[T any](marshaler func(T) ([]byte, error)) {
 // NOTE: If RegisterCustomUnmarshaler and CustomUnmarshaler of DecodeOption are specified for the same type,
 // the CustomUnmarshaler specified in DecodeOption takes precedence.
 func RegisterCustomUnmarshaler[T any](unmarshaler func(*T, []byte) error) {
-	globalCustomUnmarshalerMu.Lock()
-	defer globalCustomUnmarshalerMu.Unlock()
+	customUnmarshalerMx.Lock()
+	defer customUnmarshalerMx.Unlock()
 
 	var typ *T
-	globalCustomUnmarshalerMap[reflect.TypeOf(typ)] = func(v any, b []byte) error {
+	customUnmarshalerMap[reflect.TypeOf(typ)] = func(v any, b []byte) error {
 		return unmarshaler(codecutils.CustomArg[*T](v), b)
 	}
 	// A type walkableType read before the registration may hold T.
@@ -55,9 +55,9 @@ func RegisterCustomUnmarshaler[T any](unmarshaler func(*T, []byte) error) {
 // registeredUnmarshaler reports whether RegisterCustomUnmarshaler holds a
 // function for the type ptr, a pointer to the type it was registered for.
 func registeredUnmarshaler(ptr reflect.Type) bool {
-	globalCustomUnmarshalerMu.RLock()
-	defer globalCustomUnmarshalerMu.RUnlock()
-	_, exists := globalCustomUnmarshalerMap[ptr]
+	customUnmarshalerMx.RLock()
+	_, exists := customUnmarshalerMap[ptr]
+	customUnmarshalerMx.RUnlock()
 
 	return exists
 }

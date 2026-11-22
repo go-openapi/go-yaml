@@ -211,9 +211,9 @@ func (e *Encoder) existsTypeInCustomMarshalerMap(t reflect.Type) bool {
 		return true
 	}
 
-	globalCustomMarshalerMu.RLock()
-	defer globalCustomMarshalerMu.RUnlock()
-	if _, exists := globalCustomMarshalerMap[t]; exists {
+	customMarshalerMx.RLock()
+	defer customMarshalerMx.RUnlock()
+	if _, exists := customMarshalerMap[t]; exists {
 		return true
 	}
 	return false
@@ -224,9 +224,9 @@ func (e *Encoder) marshalerFromCustomMarshalerMap(t reflect.Type) (func(any) ([]
 		return marshaler, exists
 	}
 
-	globalCustomMarshalerMu.RLock()
-	defer globalCustomMarshalerMu.RUnlock()
-	if marshaler, exists := globalCustomMarshalerMap[t]; exists {
+	customMarshalerMx.RLock()
+	defer customMarshalerMx.RUnlock()
+	if marshaler, exists := customMarshalerMap[t]; exists {
 		return marshaler, exists
 	}
 	return nil, false

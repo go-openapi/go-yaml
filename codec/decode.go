@@ -1010,19 +1010,16 @@ func (d *Decoder) unmarshalableText(node ast.Node) ([]byte, error) {
 	return []byte(v), nil
 }
 
-var astNodeType = reflect.TypeFor[ast.Node]()
-
 func (d *Decoder) existsTypeInCustomUnmarshalerMap(t reflect.Type) bool {
 	if _, exists := d.customUnmarshalerMap[t]; exists {
 		return true
 	}
 
-	globalCustomUnmarshalerMu.RLock()
-	defer globalCustomUnmarshalerMu.RUnlock()
-	if _, exists := globalCustomUnmarshalerMap[t]; exists {
-		return true
-	}
-	return false
+	customUnmarshalerMx.RLock()
+	_, exists := customUnmarshalerMap[t]
+	customUnmarshalerMx.RUnlock()
+
+	return exists
 }
 
 func (d *Decoder) unmarshalerFromCustomUnmarshalerMap(t reflect.Type) (func(any, []byte) error, bool) {
@@ -1030,9 +1027,9 @@ func (d *Decoder) unmarshalerFromCustomUnmarshalerMap(t reflect.Type) (func(any,
 		return unmarshaler, exists
 	}
 
-	globalCustomUnmarshalerMu.RLock()
-	defer globalCustomUnmarshalerMu.RUnlock()
-	if unmarshaler, exists := globalCustomUnmarshalerMap[t]; exists {
+	customUnmarshalerMx.RLock()
+	defer customUnmarshalerMx.RUnlock()
+	if unmarshaler, exists := customUnmarshalerMap[t]; exists {
 		return unmarshaler, exists
 	}
 	return nil, false
@@ -1222,7 +1219,7 @@ func (d *Decoder) decodeValue(dst reflect.Value, src ast.Node) error {
 			return decodeErr
 		}
 	case reflect.Interface:
-		if dst.Type() == astNodeType {
+		if dst.Type() == reflect.TypeFor[ast.Node]() {
 			dst.Set(reflect.ValueOf(src))
 			return nil
 		}
