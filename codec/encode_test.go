@@ -6,6 +6,7 @@ package codec_test
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"iter"
 	"math"
@@ -3051,4 +3052,62 @@ func walkBuilt(n ast.Node, fn func(ast.Node)) {
 	case *ast.LiteralNode:
 		walkBuilt(v.Value, fn)
 	}
+}
+
+// errWriterFull is the error failOnceWriter returns for the write that does not fit.
+var errWriterFull = errors.New("writer full")
+
+// failOnceWriter takes room bytes and returns errWriterFull for the write that goes past them.
+// It then takes every later write, so an error dropped at that write does not resurface at the next one.
+type failOnceWriter struct {
+	room   int
+	failed bool
+}
+
+func (w *failOnceWriter) Write(p []byte) (int, error) {
+	if !w.failed && len(p) > w.room {
+		w.failed = true
+
+		return w.room, errWriterFull
+	}
+	w.room -= len(p)
+
+	return len(p), nil
+}
+
+// TestEncodeReturnsTheWriterError fails one write at each of the three points where Encode writes, and checks
+// that Encode returns the writer's error each time.
+func TestEncodeReturnsTheWriterError(t *testing.T) {
+	var one bytes.Buffer
+	require.NoError(t, codec.NewEncoder(&one).Encode(map[string]int{"a": 1}))
+	document := one.Len()
+
+	for tc := range writerErrorCases(document) {
+		t.Run(tc.name, func(t *testing.T) {
+			enc := codec.NewEncoder(&failOnceWriter{room: tc.room})
+			var err error
+			for range tc.documents {
+				if err = enc.Encode(map[string]int{"a": 1}); err != nil {
+					break
+				}
+			}
+
+			require.ErrorIs(t, err, errWriterFull)
+		})
+	}
+}
+
+// writerErrorCase holds how many bytes the writer takes, and how many documents are encoded to fill it.
+type writerErrorCase struct {
+	name      string
+	room      int
+	documents int
+}
+
+func writerErrorCases(document int) iter.Seq[writerErrorCase] {
+	return slices.Values([]writerErrorCase{
+		{name: "in the document", room: 0, documents: 1},
+		{name: "in the newline after the document", room: document - 1, documents: 1},
+		{name: "in the separator before the second document", room: document, documents: 2},
+	})
 }

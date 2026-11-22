@@ -87,12 +87,13 @@ func (e *Encoder) Encode(v any) error {
 	if err := e.setCommentByCommentMap(node); err != nil {
 		return err
 	}
-	if !e.written {
-		e.written = true
-	} else {
-		// write document separator
-		_, _ = e.writer.Write([]byte("---\n"))
+	if e.written {
+		// Every document after the first opens with a separator.
+		if _, err := io.WriteString(e.writer, "---\n"); err != nil {
+			return err
+		}
 	}
+	e.written = true
 
 	// Lay the document out from the tree rather than from the positions the
 	// nodes carry: this is where the encoder's indentation options take effect.
@@ -103,9 +104,9 @@ func (e *Encoder) Encode(v any) error {
 	if err := renderer.Render(e.writer, node); err != nil {
 		return err
 	}
-	_, _ = e.writer.Write([]byte("\n"))
+	_, err = io.WriteString(e.writer, "\n")
 
-	return nil
+	return err
 }
 
 // EncodeToNode convert v to ast.Node.
