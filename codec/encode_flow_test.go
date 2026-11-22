@@ -175,3 +175,19 @@ m: {test: [1, 2, 3]}
 	actual := "\n" + buf.String()
 	require.Equal(t, expect, actual)
 }
+
+// TestFlowQuotesAMultilineString marshals strings holding line breaks under Flow, with and without
+// UseLiteralStyleIfMultiline. A block scalar cannot stand inside a flow collection, so each is quoted and reads back
+// as it was. Written as a block, "{d: |   l}" did not parse.
+func TestFlowQuotesAMultilineString(t *testing.T) {
+	for _, s := range []string{"l\n", "a\nb", "a\nb\n\n"} {
+		for _, literal := range []bool{false, true} {
+			out, err := codec.Marshal(map[string]string{"d": s}, codec.Flow(true), codec.UseLiteralStyleIfMultiline(literal))
+			require.NoError(t, err)
+
+			var back map[string]string
+			require.NoErrorf(t, codec.Unmarshal(out, &back), "%q", out)
+			require.Equalf(t, s, back["d"], "%q", out)
+		}
+	}
+}

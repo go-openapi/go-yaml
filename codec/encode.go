@@ -553,15 +553,17 @@ func (e *Encoder) isNeedQuoted(v string) bool {
 		return true
 	}
 
+	if e.isFlowStyle && strings.ContainsAny(v, "]},'\"\n") {
+		// A block scalar cannot stand inside a flow collection, so a line break takes quotes there, whatever
+		// UseLiteralStyleIfMultiline asks.
+		return true
+	}
+
 	if e.useLiteralStyleIfMultiline && strings.Contains(v, "\n") && !token.NeedsQuotedSpelling(v) {
 		// A value holding a carriage return or a byte order mark has no block
 		// scalar spelling, so it never gets the literal style, whatever the
 		// option.
 		return false
-	}
-
-	if e.isFlowStyle && strings.ContainsAny(v, `]},'"`) {
-		return true
 	}
 
 	if e.isFlowStyle {
