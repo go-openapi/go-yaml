@@ -53,7 +53,7 @@ type walkState struct {
 	share    bool
 	budget   int
 	// strs holds the text of the strings typedBuilder builds.
-	strs arena
+	strs codecutils.Arena
 	// yield pauses the walk at the end of a document, and is nil for a walk
 	// that reads the stream through without pausing.
 	yield func(struct{}) bool

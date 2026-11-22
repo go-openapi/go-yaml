@@ -144,7 +144,7 @@ type typedBuilder struct {
 	mode  structfields.Mode
 	root  reflect.Value
 	stack []typedFrame
-	strs  *arena
+	strs  *codecutils.Arena
 	err   error
 
 	// values builds the subtree under a destination that holds an "any", where
@@ -834,7 +834,7 @@ func (b *typedBuilder) mergeEntry(i int, keyNode, value ast.Node, alias *ast.Ali
 		}
 		top.skip, top.target = false, field
 	case typedMap:
-		name = b.strs.clone(name)
+		name = b.strs.Clone(name)
 		key := reflect.ValueOf(name).Convert(top.dst.Type().Key())
 		if top.wrote != nil {
 			if _, wrote := top.wrote[name]; wrote {
@@ -1196,7 +1196,7 @@ func (b *typedBuilder) openEntry(top *typedFrame, keyNode ast.Node) error {
 		top.target = top.dst.Field(ff.SF.Index)
 	case typedMap:
 		top.skip = false
-		name = b.strs.clone(name)
+		name = b.strs.Clone(name)
 		if top.wrote != nil {
 			top.wrote[name] = struct{}{}
 		}
@@ -1231,7 +1231,7 @@ func (b *typedBuilder) setScalar(dst reflect.Value, node ast.Node) error {
 		if !isText {
 			return errNotWritten
 		}
-		dst.SetString(b.strs.clone(s.Value))
+		dst.SetString(b.strs.Clone(s.Value))
 
 		return nil
 	case reflect.Bool:

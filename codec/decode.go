@@ -105,7 +105,7 @@ type Decoder struct {
 	pendingErr error
 	// strs holds the text of every string a decode hands back, copied out of
 	// the document so that the values outlive it.
-	strs arena
+	strs codecutils.Arena
 	// built counts what this decode has made, and budget bounds it. See
 	// codecutils.AliasBudget. expanding is the outermost alias being read through, and
 	// expanded the last one, which a refusal names.
@@ -298,7 +298,7 @@ func (d *Decoder) mapKeyNodeToString(node ast.MapKeyNode) (string, error) {
 		return "", err
 	}
 
-	return d.strs.clone(name), nil
+	return d.strs.Clone(name), nil
 }
 
 // mapKeyNodeToValue is the key a [MapSlice] entry is addressed by.
@@ -323,7 +323,7 @@ func (d *Decoder) mapKeyNodeToValue(node ast.MapKeyNode) (any, error) {
 			return nil, err
 		}
 
-		return d.strs.clone(name), nil
+		return d.strs.Clone(name), nil
 	}
 
 	return key, nil
@@ -338,7 +338,7 @@ func (d *Decoder) mapKeyNodeToValue(node ast.MapKeyNode) (any, error) {
 // rule keyToNodeMap applies for a struct, and this path did not: "x: 9" over
 // "<<: *a" took the merged x, and "<<: [*a, *b]" took b's where the merge spec
 // gives it to a.
-func (d *Decoder) setToMapValue(node ast.Node, m *keyedMap, merged bool) error {
+func (d *Decoder) setToMapValue(node ast.Node, m *codecutils.KeyedMap, merged bool) error {
 	d.stepIn()
 	defer d.stepOut()
 	if d.isExceededMaxDepth() {
@@ -359,7 +359,7 @@ func (d *Decoder) setToMapValue(node ast.Node, m *keyedMap, merged bool) error {
 		if err != nil {
 			return err
 		}
-		if merged && m.holds(key) {
+		if merged && m.Holds(key) {
 			return nil
 		}
 
@@ -367,7 +367,7 @@ func (d *Decoder) setToMapValue(node ast.Node, m *keyedMap, merged bool) error {
 		if err != nil {
 			return err
 		}
-		m.put(key, v)
+		m.Put(key, v)
 	case *ast.MappingNode:
 		return astutils.EachEntryOwnFirst(n, func(value ast.Node, isMerge bool) error {
 			return d.setToMapValue(value, m, merged || isMerge)
@@ -477,7 +477,7 @@ func (d *Decoder) nodeToValue(node ast.Node) (any, error) {
 	case *ast.NullNode:
 		return nil, nil
 	case *ast.StringNode:
-		return d.strs.value(n.Value), nil
+		return d.strs.Value(n.Value), nil
 	case *ast.IntegerNode:
 		return n.GetValue(), nil
 	case *ast.FloatNode:
@@ -508,7 +508,7 @@ func (d *Decoder) nodeToValue(node ast.Node) (any, error) {
 			if res.Lax {
 				// parser.WithLaxTags: the characters the scalar was written
 				// with stand in for the value the tag could not make of them.
-				return d.strs.value(res.Text), nil
+				return d.strs.Value(res.Text), nil
 			}
 
 			return nil, yamlerrors.NewSyntax(
@@ -595,7 +595,7 @@ func (d *Decoder) nodeToValue(node ast.Node) (any, error) {
 		}
 		return nil, yamlerrors.NewUnknownAnchor(text, n.Value.GetToken())
 	case *ast.LiteralNode:
-		return d.strs.value(n.Value.Value), nil
+		return d.strs.Value(n.Value.Value), nil
 	case *ast.MappingKeyNode:
 		return d.nodeToValue(n.Value)
 	case *ast.MappingValueNode:
@@ -644,13 +644,13 @@ func (d *Decoder) nodeToValue(node ast.Node) (any, error) {
 			}
 			return m, nil
 		}
-		m := newKeyedMap(len(n.Values))
+		m := codecutils.NewKeyedMap(len(n.Values))
 		if err := astutils.EachEntryOwnFirst(n, func(value ast.Node, isMerge bool) error {
 			return d.setToMapValue(value, m, isMerge)
 		}); err != nil {
 			return nil, err
 		}
-		return m.value(), nil
+		return m.Value(), nil
 	case *ast.SequenceNode:
 		v := make([]any, 0, len(n.Values))
 		for _, value := range n.Values {
@@ -869,7 +869,7 @@ func (d *Decoder) mergeKeyValue(node ast.Node) (any, error) {
 
 		return m, err
 	}
-	m := newKeyedMap(0)
+	m := codecutils.NewKeyedMap(0)
 	err := d.eachMergeSource(node, func(value ast.MapNode) error {
 		return astutils.EachMergedEntry(value, func(v ast.Node) error {
 			return d.setToMapValue(v, m, true)
@@ -879,7 +879,7 @@ func (d *Decoder) mergeKeyValue(node ast.Node) (any, error) {
 		return nil, err
 	}
 
-	return m.value(), nil
+	return m.Value(), nil
 }
 
 func (d *Decoder) convertValue(v reflect.Value, typ reflect.Type, src ast.Node) (reflect.Value, error) {
@@ -1662,7 +1662,7 @@ func (d *Decoder) taggedValue(n *ast.TagNode, res ast.Resolution) (any, error) {
 		// "!!str 0x10" is "0x10" and not "16", and "!!str False" keeps its
 		// capital F. An anchor over that scalar names the same string, so
 		// its recorded value is replaced too.
-		text := d.strs.clone(res.Text)
+		text := d.strs.Clone(res.Text)
 		if anchor, anchored := n.Value.(*ast.AnchorNode); anchored {
 			d.anchorValueMap[anchor.Name.GetToken().Value] = reflect.ValueOf(text)
 		}
@@ -2904,7 +2904,7 @@ func (d *Decoder) stringMapKey(key ast.Node) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return d.strs.clone(name), nil
+	return d.strs.Clone(name), nil
 }
 
 func (d *Decoder) fileToReader(file string) (io.Reader, error) {

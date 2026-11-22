@@ -46,7 +46,7 @@ type valueBuilder struct {
 	declaredValues map[string]any
 	// strs holds the text of every string this builds, copied out of the
 	// document so that the values outlive it.
-	strs arena
+	strs codecutils.Arena
 	// open holds the anchors whose node is being read, innermost last. An alias
 	// naming one of them stands inside what it names.
 	open []string
@@ -487,7 +487,7 @@ func (b *valueBuilder) deliverToMapping(top *buildFrame, v any, node ast.Node, k
 
 			return
 		}
-		top.keyed(b.strs.clone(name), v)
+		top.keyed(b.strs.Clone(name), v)
 
 		return
 	}
@@ -682,9 +682,9 @@ func (b *valueBuilder) scalarValue(n ast.Node) (any, error) {
 			return "", nil
 		}
 
-		return b.strs.value(t.Value.Value), nil
+		return b.strs.Value(t.Value.Value), nil
 	case *ast.StringNode:
-		return b.strs.value(t.Value), nil
+		return b.strs.Value(t.Value), nil
 	case ast.ScalarNode:
 		return t.GetValue(), nil
 	default:
@@ -704,7 +704,7 @@ func (b *valueBuilder) taggedWalkValue(n *ast.TagNode, value any) (any, error) {
 			fmt.Sprintf("%s does not support this kind of node", res.Tag), n.GetToken())
 	case ast.TagValueMismatch:
 		if res.Lax {
-			return b.strs.value(res.Text), nil
+			return b.strs.Value(res.Text), nil
 		}
 
 		return nil, yamlerrors.NewSyntax(
@@ -723,7 +723,7 @@ func (b *valueBuilder) taggedWalkValue(n *ast.TagNode, value any) (any, error) {
 	// which JSON has a spelling for.
 	switch res.Tag {
 	case token.StringTag:
-		return b.strs.value(res.Text), nil
+		return b.strs.Value(res.Text), nil
 	case token.NullTag:
 		return nil, nil
 	case token.IntegerTag:

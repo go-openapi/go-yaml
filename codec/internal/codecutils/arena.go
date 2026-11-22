@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: Copyright 2025 go-swagger maintainers
 // SPDX-License-Identifier: Apache-2.0
 
-package codec
+package codecutils
 
 import (
 	"strings"
@@ -10,22 +10,22 @@ import (
 	"github.com/go-openapi/go-yaml/internal/nocopy"
 )
 
-// arena holds the strings a decode hands back, copied out of the document and
+// Arena holds the strings a decode hands back, copied out of the document and
 // boxed in bulk.
 //
 // The parse never copies: nocopy.String turns the document into a string once
 // and every token's Value is a slice of it, so a decoded string used to point
 // into the caller's bytes. One key kept out of a 100 MB file then held all
 // 100 MB, and a Decoder reading from an io.Reader held the buffer it read.
-// clone gives the caller memory the document does not own.
+// Clone gives the caller memory the document does not own.
 //
 // Copying each string on its own would cost two allocations where there was
-// one: the bytes, then the interface header. The arena allocates both in
+// one: the bytes, then the interface header. The Arena allocates both in
 // chunks, so it hands back owned strings for fewer allocations than pointing
 // into the document took. A live string then pins a chunk rather than the
 // document: 8 KB at worst, and a string longer than 2 KB gets its own
 // allocation instead.
-type arena struct {
+type Arena struct {
 	text []byte
 	strs []string
 }
@@ -40,8 +40,8 @@ const (
 	arenaSlab = 256
 )
 
-// clone returns s copied into memory the arena owns.
-func (a *arena) clone(s string) string {
+// Clone returns s copied into memory the arena owns.
+func (a *Arena) Clone(s string) string {
 	switch {
 	case len(s) == 0:
 		return ""
@@ -60,7 +60,7 @@ func (a *arena) clone(s string) string {
 	return nocopy.String(a.text[at:len(a.text)])
 }
 
-// stringProto carries the type word of an any holding a string. box copies that
+// stringProto carries the type word of an any holding a string. Box copies that
 // word rather than fabricating one.
 var stringProto any = "proto"
 
@@ -71,7 +71,7 @@ type eface struct {
 	data unsafe.Pointer
 }
 
-// box returns s as an any.
+// Box returns s as an any.
 //
 // Writing "any(s)" calls runtime.convTstring, which allocates 16 bytes for the
 // string header every time -- 31,458 of them for citm_catalog. This appends to
@@ -81,7 +81,7 @@ type eface struct {
 //
 // The slab is kept alive by the interfaces pointing into it, so a slab whose
 // strings are all dropped is collected like anything else.
-func (a *arena) box(s string) any {
+func (a *Arena) Box(s string) any {
 	if len(a.strs) == cap(a.strs) {
 		a.strs = make([]string, 0, arenaSlab)
 	}
@@ -93,7 +93,7 @@ func (a *arena) box(s string) any {
 	return v
 }
 
-// value returns s as an any the document does not own.
-func (a *arena) value(s string) any {
-	return a.box(a.clone(s))
+// Value returns s as an any the document does not own.
+func (a *Arena) Value(s string) any {
+	return a.Box(a.Clone(s))
 }
