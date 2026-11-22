@@ -2,7 +2,6 @@ go 1.26.0
 
 use (
 	.
-	./conformance-suites
 	./internal/analysis
 	./internal/benchmarks
 	./internal/testintegration

@@ -26,7 +26,7 @@ const bom = "\ufeff"
 // suffix, and before an explicit document.
 //
 // Every verdict below was taken from the recognizer compiled from yaml-spec-1.2.json, in
-// conformance-suites/grammar, and not read off the specification by hand.
+// github.com/go-openapi/conformance-suites/grammar, and not read off the specification by hand.
 // The two that the ledgers named are the first pair: "a: <mark>b" was read and is now refused, and "a: 1 / ... /
 // <mark>--- / b: 2" was refused and is now read.
 func TestByteOrderMarkStandsOnlyInADocumentPrefix(t *testing.T) {
