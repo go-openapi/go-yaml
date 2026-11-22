@@ -68,19 +68,29 @@ See the runnable examples in our [go doc][godoc-url] as well as the [commented e
 
 Our main design goal for this lib was to reduce _peak_ memory usage as much as we could.
 
-| -               | go-openapi/go-yaml | yaml/go-yaml/v3 | goccy/go-yaml |
-|-----------------|-------------------:|----------------:|--------------:|
-| Timings         |              78 ms |           67 ms |        135 ms |
-| # Allocations   |              92.8k |            335k |         1.40M |
-| Bytes allocated |            3.0 MiB |        15.1 MiB |      85.3 MiB |
-| Peak memory     |           0.68 MiB |        11.3 MiB |      35.1 MiB |
+Each library unmarshals each workload into an `any`. Times are the median of 6 runs; peak memory is the highest
+live heap during the decode.
 
-Each library unmarshals [citm_catalog](./internal/analysis/workloads), a 0.56 MiB document, into its Go types,
-which take 0.57 MiB once decoded.
-The first three rows come from `BenchmarkTyped` in [internal/benchmarks](./internal/benchmarks), as the median of
-10 runs. Peak memory is the highest live heap during one decode, from `TestTypedDecodePeakStaysNearTheResult` in
-[internal/analysis](./internal/analysis). Measured on 2026-11-22 with go.yaml.in/yaml/v3 v3.0.6 and
-github.com/goccy/go-yaml v1.19.2, on an AMD Ryzen 7 5800X.
+| workload          | source   | time: go-openapi | v3     | goccy  | peak: go-openapi | v3       | goccy     |
+|-------------------|---------:|-----------------:|-------:|-------:|-----------------:|---------:|----------:|
+| azure_swagger     | 0.52 MiB |            25 ms |  31 ms |  57 ms |         2.39 MiB | 6.41 MiB | 17.04 MiB |
+| canada_geometry   | 0.38 MiB |            19 ms |  47 ms |  41 ms |         0.56 MiB | 4.53 MiB | 12.53 MiB |
+| citm_catalog      | 0.56 MiB |            61 ms |  55 ms | 104 ms |         4.78 MiB | 14.66 MiB | 35.79 MiB |
+| commented_swagger | 0.57 MiB |            28 ms |  39 ms |  63 ms |         2.35 MiB | 6.59 MiB | 17.49 MiB |
+| golang_source     | 3.61 MiB |           163 ms | 196 ms | 324 ms |         8.46 MiB | 38.06 MiB | 116.72 MiB |
+| twitter_status    | 0.48 MiB |            29 ms |  35 ms |  59 ms |         1.77 MiB | 5.89 MiB | 15.05 MiB |
+
+Our peak stays near the size of the value the decode returns, so the decode holds little besides its result.
+citm_catalog is our least favourable workload: the two runs we took put our time at 0.99x and 1.10x of v3's,
+with about 7% spread on either side.
+
+Decoded into its Go types, citm_catalog takes 78 ms with go-openapi/go-yaml, 67 ms with v3 and 135 ms with goccy,
+and peaks at 0.68 MiB, 11.3 MiB and 35.1 MiB.
+
+Times come from `BenchmarkWorkloads` and `BenchmarkTyped` in [internal/benchmarks](./internal/benchmarks), peaks
+from `TestWorkloadPeaks` and `TestTypedDecodePeakStaysNearTheResult` in [internal/analysis](./internal/analysis).
+The workloads are in [internal/analysis/workloads](./internal/analysis/workloads). Measured on 2026-11-22 with
+go.yaml.in/yaml/v3 v3.0.6 and github.com/goccy/go-yaml v1.19.2, on an AMD Ryzen 7 5800X.
 
 ## Known limitations
 
