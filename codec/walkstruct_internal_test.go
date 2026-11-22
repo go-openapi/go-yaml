@@ -1091,3 +1091,15 @@ func aTagTheWalkCannotReadGoesToTheTreeCases() iter.Seq[aTagTheWalkCannotReadGoe
 		{name: "an anchor inside a tagged node", src: "leaf: !!map {s: &s x}\nname: *s\n"},
 	})
 }
+
+// TestAStrictDecodeWalks checks that DisallowUnknownField no longer sends a struct decode to the tree.
+func TestAStrictDecodeWalks(t *testing.T) {
+	type strict struct {
+		A int `yaml:"a"`
+	}
+	dec := NewDecoder(bytes.NewReader([]byte("a: 1\n")), DisallowUnknownField())
+	var v strict
+	require.NoError(t, dec.Decode(&v))
+	assert.Equal(t, 1, v.A)
+	require.NotNil(t, dec.stream, "the struct was not walked")
+}

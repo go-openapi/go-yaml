@@ -101,12 +101,14 @@ func newWalkState(d *Decoder, src []byte) *walkState {
 		budget:   budget,
 	}
 	st.b = typedBuilder{
-		mode:     d.tagMode(),
-		strs:     &st.strs,
-		share:    d.shareAliases,
-		budget:   budget,
-		declared: st.declared,
-		opts:     d.opts,
+		mode:            d.tagMode(),
+		strict:          d.disallowUnknownField,
+		allowedPrefixes: d.allowedFieldPrefixes,
+		strs:            &st.strs,
+		share:           d.shareAliases,
+		budget:          budget,
+		declared:        st.declared,
+		opts:            d.opts,
 	}
 
 	return st

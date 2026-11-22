@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"reflect"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/go-openapi/go-yaml/codec/internal/structfields"
@@ -132,6 +133,11 @@ type typedFrame struct {
 	// the caller's entries when it opened. A merge uses it to tell the two apart.
 	// It is nil for a map that opened empty, where the walk wrote every key.
 	wrote map[string]struct{}
+	// unknown holds the first key of a struct's mapping that names no field, own or merged, under
+	// DisallowUnknownField. fieldFailed records a field error inside the struct, which the tree returns
+	// in place of the unknown key. See closeStruct.
+	unknown     *token.Token
+	fieldFailed bool
 }
 
 // typedBuilder fills a Go value as the parse passes the document over, without
@@ -141,11 +147,15 @@ type typedFrame struct {
 // keep the Decoder alive. See walkStream.
 type typedBuilder struct {
 	// mode holds the Decoder's Mode, which sets how struct fields are named.
-	mode  structfields.Mode
-	root  reflect.Value
-	stack []typedFrame
-	strs  *codecutils.Arena
-	err   error
+	mode structfields.Mode
+	// strict holds DisallowUnknownField, and allowedPrefixes the prefixes of AllowFieldPrefixes, which let an
+	// unknown key through.
+	strict          bool
+	allowedPrefixes []string
+	root            reflect.Value
+	stack           []typedFrame
+	strs            *codecutils.Arena
+	err             error
 
 	// values builds the subtree under a destination of type "any", where the
 	// document decides the value instead of the Go type. The walk creates it on
@@ -308,6 +318,9 @@ func (b *typedBuilder) Leave(node ast.Node, at parser.Closing) error {
 			return b.fail(err)
 		}
 		if err := b.applyMerges(&b.stack[len(b.stack)-1]); err != nil {
+			return err
+		}
+		if err := b.closeStruct(&b.stack[len(b.stack)-1]); err != nil {
 			return err
 		}
 	}
@@ -810,7 +823,7 @@ func (b *typedBuilder) mergeEntry(i int, keyNode, value ast.Node, alias *ast.Ali
 	name, kind := ast.KeyName(keyNode)
 	named := kind != token.KeyOther
 	if !named {
-		if top.kind == typedMap {
+		if top.kind == typedMap || b.strict {
 			return b.fail(errNeedsTheTree)
 		}
 
@@ -824,7 +837,12 @@ func (b *typedBuilder) mergeEntry(i int, keyNode, value ast.Node, alias *ast.Ali
 			return b.fail(err)
 		}
 		ff, known := fields.Lookup(name)
-		if !known || top.written.has(ff.Ord) {
+		if !known {
+			b.noteUnknown(top, name, keyNode)
+
+			return nil
+		}
+		if top.written.has(ff.Ord) {
 			return nil
 		}
 		top.written.mark(ff.Ord)
@@ -1102,6 +1120,11 @@ func (b *typedBuilder) fieldError(err error) {
 
 		return
 	}
+	for i := range b.stack {
+		if b.stack[i].kind == typedStruct {
+			b.stack[i].fieldFailed = true
+		}
+	}
 	recordFieldError(&b.docErr, err, func(te *yamlerrors.Error) string {
 		for _, frame := range b.stack {
 			if frame.kind == typedStruct && !frame.dropped && frame.field.SF != nil {
@@ -1111,6 +1134,30 @@ func (b *typedBuilder) fieldError(err error) {
 
 		return te.StructField()
 	})
+}
+
+// noteUnknown records name, a key of top's mapping that names no field, under DisallowUnknownField. Only the first
+// such key of a struct counts, and a key starting with one of the allowed prefixes does not count.
+func (b *typedBuilder) noteUnknown(top *typedFrame, name string, keyNode ast.Node) {
+	if !b.strict || top.dropped || top.unknown != nil {
+		return
+	}
+	if slices.ContainsFunc(b.allowedPrefixes, func(prefix string) bool { return strings.HasPrefix(name, prefix) }) {
+		return
+	}
+	// The walk recycles the key's node and token, so the error keeps a token of its own at the key's position.
+	at := keyNode.GetToken().Position
+	top.unknown = token.New(name, name, at)
+}
+
+// closeStruct returns the error for the first unknown key of the struct closing in top, as the tree's finishStruct
+// does: only when no field of the struct failed, since a field error takes precedence. The error stops the document.
+func (b *typedBuilder) closeStruct(top *typedFrame) error {
+	if top.kind != typedStruct || top.dropped || top.unknown == nil || top.fieldFailed {
+		return nil
+	}
+
+	return b.fail(yamlerrors.NewUnknownField(fmt.Sprintf(`unknown field "%s"`, top.unknown.Value), top.unknown))
 }
 
 // nodeDecoder returns the tree decoder used by decodeNode. It makes it from the
@@ -1164,7 +1211,7 @@ func (b *typedBuilder) openEntry(top *typedFrame, keyNode ast.Node) error {
 	name, kind := ast.KeyName(keyNode)
 	named := kind != token.KeyOther
 	if !named {
-		if top.kind == typedMap {
+		if top.kind == typedMap || b.strict {
 			return b.fail(errNeedsTheTree)
 		}
 		// No field can be named after it.
@@ -1182,6 +1229,7 @@ func (b *typedBuilder) openEntry(top *typedFrame, keyNode ast.Node) error {
 		ff, known := fields.Lookup(name)
 		if !known {
 			top.skip, top.target = true, reflect.Value{}
+			b.noteUnknown(top, name, keyNode)
 
 			return parser.ErrSkipNode
 		}

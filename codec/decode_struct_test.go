@@ -1855,3 +1855,75 @@ func decodeStructCases() iter.Seq[decodeCase] {
 		},
 	})
 }
+
+// TestDisallowUnknownFieldAgreesOnBothPaths decodes each case under DisallowUnknownField on the walk and on the tree,
+// and requires the same error, or none, from both.
+func TestDisallowUnknownFieldAgreesOnBothPaths(t *testing.T) {
+	for tc := range disallowUnknownFieldCases() {
+		t.Run(tc.name, func(t *testing.T) {
+			var errs []error
+			for path := range walkAndTreePaths() {
+				var v strictOuter
+				opts := append([]codec.DecodeOption{codec.DisallowUnknownField(), codec.AllowFieldPrefixes("x-")}, path.opts...)
+				errs = append(errs, codec.Unmarshal([]byte(tc.src), &v, opts...))
+			}
+			walked, treed := errs[0], errs[1]
+
+			if tc.want == "" {
+				require.NoError(t, walked, "walk")
+				require.NoError(t, treed, "tree")
+
+				return
+			}
+			require.Error(t, walked, "walk")
+			require.Error(t, treed, "tree")
+			assert.Contains(t, treed.Error(), tc.want)
+			assert.Equal(t, treed.Error(), walked.Error())
+		})
+	}
+}
+
+type strictInner struct {
+	A int `yaml:"a"`
+}
+
+type strictPromoted struct {
+	P int `yaml:"p"`
+}
+
+type strictOuter struct {
+	strictPromoted `yaml:",inline"`
+
+	X    strictInner    `yaml:"x"`
+	Y    strictInner    `yaml:"y"`
+	Base map[string]int `yaml:"base"`
+}
+
+// disallowUnknownFieldCase holds a document and the text of the error DisallowUnknownField gives it, or "" for none.
+type disallowUnknownFieldCase struct {
+	name string
+	src  string
+	want string
+}
+
+func disallowUnknownFieldCases() iter.Seq[disallowUnknownFieldCase] {
+	return slices.Values([]disallowUnknownFieldCase{
+		{name: "known fields only", src: "x: {a: 1}\np: 2\n"},
+		{name: "an unknown key at the root", src: "x: {a: 1}\nzz: 1\n", want: `unknown field "zz"`},
+		{name: "an unknown key in a nested struct", src: "x: {a: 1, zz: 1}\n", want: `unknown field "zz"`},
+		{name: "an allowed prefix", src: "x-note: 1\nx: {a: 1}\n"},
+		{name: "the first of two unknown keys", src: "zz: 1\nyy: 2\n", want: `unknown field "zz"`},
+		{name: "a field error in the same struct wins", src: "x: {a: nope, zz: 1}\n", want: "cannot unmarshal"},
+		{
+			name: "an unknown key after a sibling's field error",
+			src:  "x: {a: nope}\ny: {zz: 1}\n",
+			want: `unknown field "zz"`,
+		},
+		{
+			name: "a key brought in by a merge",
+			src:  "%YAML 1.1\n---\nbase: &b {zz: 1}\nx:\n  <<: *b\n  a: 1\n",
+			want: `unknown field "zz"`,
+		},
+		{name: "a promoted field", src: "p: 1\n"},
+	})
+}
