@@ -10,7 +10,7 @@
 <!-- Badges: others & stats -->
 [![Doc][doc-badge]][doc-url] [![GoDoc][godoc-badge]][godoc-url] [![Discord Channel][discord-badge]][discord-url] [![go version][goversion-badge]][goversion-url] ![Top language][top-badge] ![Commits since latest release][commits-badge]
 
-**A advanced Go library to work with YAML documents.**
+**An advanced Go library to work with YAML documents.**
 
 
 ## Status
@@ -24,7 +24,7 @@ Early days. API remains subject to changes.
 > It is a hard fork of [`goccy/go-yaml`][upstream]. A lot of work has been issued on top of our fork point
 > (`edee2f91616c6d73112a13e7c0dbde72ce938877`), and the exported API is still in flux.
 >
-> The posture we have adopted for various so-YAML puzzles may also be debatable and might need to be revisited.
+> The posture we have adopted for various YAML puzzles may also be debatable and might need to be revisited.
 >
 > If you want a stable version of this library today, use upstream: [`github.com/goccy/go-yaml`][upstream].
 >
@@ -34,7 +34,7 @@ Early days. API remains subject to changes.
 
 1. At `go-openapi` we consume and produce a lot of YAML. A typical API spec can be a fairly large document, so
    we need an efficient parser for those, both in CPU cycles and memory.
-2. We also face a lot of challenges dealing with YAML that your typical go program won't care about, like keeping the orde
+2. We also face a lot of challenges dealing with YAML that your typical go program won't care about, like keeping the order
    of keys, or the comments in a document.
 
 What we need is:
@@ -62,7 +62,7 @@ In addition, we want this lib to bring tools for advanced work with YAML documen
 See also our [documentation][doc-url] for a detailed presentation of these features, and the differences
 with other libraries etc.
 
-See the runnable examples in our [go doc][godoc-url] as well as the [commented examples][doc-examples] in thee documentation.
+See the runnable examples in our [go doc][godoc-url] as well as the [commented examples][doc-examples] in the documentation.
 
 ## Performances
 
@@ -106,7 +106,7 @@ By design limitations - they'll stay here:
 
 Transitory limitations - we are currently working on those.
 
-- no streaming support: can't parse from an `io.Reader` yet
+- no streaming support: a decoder reads the whole of its `io.Reader` before it parses
 - document size is currently limited to 2 GB
 
 ## Credits
@@ -124,7 +124,7 @@ Our work was also inspired by some of the ideas and designs proposed by:
 - [libfyaml][libfyaml](https://github.com/pantoniou/libfyaml), by [`@pantoniou`][pantoniou].
   Arguably one of the best YAML library out there (`C`). We've used it a lot as a yardstick to compare against.
 - the [Perl reference parser][referenceparser], by [`@ingydotnet`][ingydotnet].
-- [`go.yaml.in/yaml/v3`][goyamlv3], by the go-yaml contributors (originally [`@niemeyer`][niemeyer], with ported seminal work from `Kiril Simonov`)
+- [`go.yaml.in/yaml/v3`][goyamlv3], by the go-yaml contributors (originally [`@niemeyer`][niemeyer], with ported seminal work from `Kirill Simonov`)
 - PyYAML for YAML 1.1 compatibility checks
 
 ## Reference
@@ -185,7 +185,8 @@ every other component this library is built on, are recorded in the [NOTICE](./N
 [goyamlv3]: https://github.com/yaml/go-yaml
 [libfyaml]: https://github.com/pantoniou/libfyaml
 [conformance]: https://github.com/yaml/yaml-test-suite
-[conformance-gen]: https://github.com/go-openapi/conformance-test-suites
+[conformance-gen]: https://github.com/go-openapi/conformance-suites
 [referenceparser]: https://github.com/ingydotnet/yaml-pp-p5
 [ingydotnet]: https://github.com/ingydotnet
+[niemeyer]: https://github.com/niemeyer
 [pantoniou]: https://github.com/pantoniou
