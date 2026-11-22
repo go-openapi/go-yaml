@@ -25,7 +25,7 @@ import (
 	"github.com/go-openapi/go-yaml/token"
 )
 
-// Encoder writes YAML values to an output stream.
+// Encoder writes Go values to a YAML stream, one document for each call to [Encoder.Encode].
 type Encoder struct {
 	writer                     io.Writer
 	opts                       []EncodeOption
@@ -56,8 +56,8 @@ type Encoder struct {
 	indentSequence bool
 }
 
-// NewEncoder returns a new encoder that writes to w.
-// The Encoder should be closed after use to flush all data to w.
+// NewEncoder returns an encoder that writes to w, with the given options. Each call to [Encoder.Encode] writes a whole
+// document to w, so there is nothing to flush.
 func NewEncoder(w io.Writer, opts ...EncodeOption) *Encoder {
 	return &Encoder{
 		writer:             w,
@@ -73,12 +73,9 @@ func NewEncoder(w io.Writer, opts ...EncodeOption) *Encoder {
 	}
 }
 
-// Encode writes the YAML encoding of v to the stream.
-// If multiple items are encoded to the stream,
-// the second and subsequent document will be preceded with a "---" document separator,
-// but the first will not.
+// Encode writes v to the stream as one document. Every document after the first opens with a "---" separator.
 //
-// See the documentation for Marshal for details about the conversion of Go values to YAML.
+// See [Marshal] for how a Go value maps to YAML.
 func (e *Encoder) Encode(v any) error {
 	node, err := e.EncodeToNode(v)
 	if err != nil {
@@ -109,7 +106,7 @@ func (e *Encoder) Encode(v any) error {
 	return err
 }
 
-// EncodeToNode convert v to ast.Node.
+// EncodeToNode returns the AST node that [Encoder.Encode] would write for v, without writing it.
 func (e *Encoder) EncodeToNode(v any) (ast.Node, error) {
 	for _, opt := range e.opts {
 		if err := opt(e); err != nil {

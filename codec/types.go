@@ -17,60 +17,51 @@ import (
 	"github.com/go-openapi/go-yaml/token"
 )
 
-// Base64 is the value a "!!binary" scalar decodes to: the base64 text the
-// document carries, with the bytes it stands for a method call away.
+// Base64 holds the base64 text of a "!!binary" scalar, as an any destination decodes it. [Base64.Bytes] returns the
+// bytes.
 //
-// The text and not the bytes, for three reasons. It is comparable, so a
-// "!!binary" scalar can key a mapping where a []byte cannot -- Go hashes no
-// slice. It survives a round trip, since a Base64 tells an encoder it is
-// binary where a plain string or a []byte does not. And it is what JSON means
-// by binary, so [ToJSON] and a decode followed by a JSON encode write the same
-// thing.
+// It holds the text, not the bytes, for three reasons:
 //
-// The underlying type is string, so a caller may compare two, use one as a map
-// key, and print one without decoding anything. RFC 2045 lets the encoded
-// stream carry line breaks; a Base64 holds them as the document wrote them, and
-// [Base64.Canonical] takes them out.
+//   - The text is comparable, so a "!!binary" scalar can key a mapping. A []byte cannot, because Go hashes no slice.
+//   - It survives a round trip: a Base64 tells the encoder to write "!!binary", where a string or a []byte does not.
+//   - JSON writes binary as base64 text, so [ToJSON] and a decode followed by a JSON encode write the same thing.
+//
+// The underlying type is string, so you can compare two values, use one as a map key, and print one without decoding
+// anything. RFC 2045 lets the encoded text carry line breaks. A Base64 keeps them as the document wrote them, and
+// [Base64.Canonical] removes them.
 type Base64 string
 
 // Bytes returns the bytes the text stands for.
 //
-// The decode happens here and not when the document was read, so a caller who
-// only moves the value about never pays for it. An error says the text is not
-// RFC 2045 base64, which a "!!binary" that resolved cannot be -- reach for it
-// on a Base64 a caller built themselves.
+// The bytes are decoded here, not when the document is read, so a caller that only passes the value on never pays for
+// the decode. Bytes returns an error when the text is not RFC 2045 base64. A decoded "!!binary" is always valid, so
+// the error can only come from a Base64 the caller built.
 func (b Base64) Bytes() ([]byte, error) {
 	return base64.StdEncoding.DecodeString(b.Canonical())
 }
 
-// String returns the base64 text, which is what a Base64 holds.
+// String returns the base64 text.
 //
-// It is the encoded form and not the bytes: printing binary would write
-// whatever the payload happens to be, and a Stringer is read by fmt wherever a
-// value is logged. Use [Base64.Bytes] for the payload.
+// It returns the encoded form, not the bytes, because fmt calls String wherever the value is logged, and the raw
+// payload may not be printable. Use [Base64.Bytes] for the payload.
 func (b Base64) String() string { return string(b) }
 
-// Canonical returns the text with the line breaks and spacing RFC 2045 permits
-// inside an encoded stream taken out, which is base64's canonical spelling.
-// [token.CanonicalBase64] holds the rule, which the parser also names a
-// "!!binary" key by.
+// Canonical returns the text without the line breaks and spaces that RFC 2045 allows inside the encoded text.
+// It applies [token.CanonicalBase64], which the parser also uses to name a "!!binary" key.
 func (b Base64) Canonical() string { return token.CanonicalBase64(string(b)) }
 
 // MarshalJSON writes the base64 text as a JSON string, in canonical form.
 //
-// JSON has no binary type and no tags, so a Base64 is its text -- which is what
-// [ToJSON] writes for the "!!binary" it came from, and what encoding/json
-// writes for a []byte. The line breaks RFC 2045 permits are taken out, so a
-// value carried through Go comes back on one line.
+// JSON has no binary type and no tags, so a Base64 is written as its text, as [ToJSON] writes the "!!binary" it came
+// from and as encoding/json writes a []byte. The line breaks are removed, so the value comes back on one line.
 func (b Base64) MarshalJSON() ([]byte, error) {
 	return appendJSONString(nil, b.Canonical()), nil
 }
 
 // UnmarshalJSON reads a JSON string as base64 text.
 //
-// The text is validated and not decoded: a Base64 holds the encoded form, and
-// [Base64.Bytes] is where the payload is read. A string that is not RFC 2045
-// base64 is refused here rather than at the first call to Bytes.
+// UnmarshalJSON checks the text but does not decode it, because a Base64 holds the encoded form and [Base64.Bytes]
+// decodes it. A string that is not RFC 2045 base64 returns an error here, so the first call to Bytes cannot fail.
 func (b *Base64) UnmarshalJSON(data []byte) error {
 	var text string
 	if err := json.Unmarshal(data, &text); err != nil {
@@ -84,14 +75,13 @@ func (b *Base64) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-// RawMessage is a raw encoded YAML value. It implements [Marshaler] and
-// [Unmarshaler] and can be used to delay YAML decoding or precompute a YAML
-// encoding.
-// It also implements [json.GoYAMLMarshaler] and [json.GoYAMLUnmarshaler].
+// RawMessage holds an encoded YAML value as it stands, as [encoding/json.RawMessage] does for JSON.
 //
-// This is similar to [json.RawMessage] in the stdlib.
+// Use it to delay the decoding of part of a document, or to write YAML text that is already encoded. It implements
+// [Marshaler] and [Unmarshaler], and also [encoding/json.Marshaler] and [encoding/json.Unmarshaler].
 type RawMessage []byte
 
+// MarshalYAML returns the encoded value, or "null" for a nil RawMessage.
 func (m RawMessage) MarshalYAML() ([]byte, error) {
 	if m == nil {
 		return []byte("null"), nil
@@ -99,6 +89,7 @@ func (m RawMessage) MarshalYAML() ([]byte, error) {
 	return m, nil
 }
 
+// UnmarshalYAML stores a copy of the encoded value.
 func (m *RawMessage) UnmarshalYAML(dt []byte) error {
 	if m == nil {
 		return errors.New("yaml.RawMessage: UnmarshalYAML on nil pointer")
@@ -107,39 +98,37 @@ func (m *RawMessage) UnmarshalYAML(dt []byte) error {
 	return nil
 }
 
+// UnmarshalJSON stores a copy of a JSON value, which is also YAML.
 func (m *RawMessage) UnmarshalJSON(b []byte) error {
 	return m.UnmarshalYAML(b)
 }
 
+// MarshalJSON converts the encoded YAML value to JSON.
 func (m RawMessage) MarshalJSON() ([]byte, error) {
 	return ToJSON(m)
 }
 
 // MapItem is one entry of a [MapSlice] or a [MapSliceSeq].
 //
-// A decode fills Key with the value the key resolves to, as it fills a
-// map[any]any key: "1:" gives uint64(1), "1.0:" float64(1), "null:" nil,
-// "true:" true. So the string "1.0" and the float 1.0 are two entries, which
-// 3.2.1.1 makes them. Use [UseStringKeys] to read every key as text instead.
+// A decode fills Key with the value the key resolves to, as it fills a map[any]any key: "1:" gives uint64(1), "1.0:"
+// gives float64(1), "null:" gives nil and "true:" gives true. So the string "1.0" and the float 1.0 are two entries,
+// as YAML 1.2.2 section 3.2.1.1 requires. Use [UseStringKeys] to read every key as text instead.
 //
-// A key must be comparable. Go hashes no slice, map or function, so a
-// collection written as a mapping key is refused on the way in, as it is for
-// every other destination.
+// A key must be comparable. Go hashes no slice, map or function, so a decode returns an error for a collection
+// written as a mapping key, as it does for every other destination.
 type MapItem struct {
 	Key, Value any
 }
 
-// MapSlice decodes and encodes as a YAML mapping, keeping the order the
-// document wrote and the keys a Go map cannot tell apart.
+// MapSlice decodes and encodes as a YAML mapping, and keeps the order of its entries and keys that a Go map cannot
+// tell apart.
 //
-// It holds both entries of "1: a" over "\"1\": b", where a map[string]any
-// refuses the pair as a duplicate and a map[any]any keeps both and loses the
-// order.
+// It holds both entries of "1: a" and "\"1\": b". A map[string]any rejects the pair as a duplicate, and a map[any]any
+// keeps both but loses the order.
 //
-// Every key is unique and comparable. [MapSlice.Set] overwrites the entry
-// already holding a key rather than appending a second, and refuses a key Go
-// cannot hash. The zero value is an empty map ready to Set; [NewMapSlice]
-// builds one from entries you already have.
+// Every key is unique and comparable. [MapSlice.Set] overwrites the entry that already holds a key, and returns an
+// error for a key Go cannot hash. The zero value is an empty map ready for Set. Use [NewMapSlice] to build one from
+// entries you already have.
 //
 // Use [UseOrderedMap] to read every mapping of a document into one.
 type MapSlice struct {
@@ -148,9 +137,8 @@ type MapSlice struct {
 
 // NewMapSlice returns a MapSlice holding items, in the order given.
 //
-// It returns an error for a key Go cannot hash, and for a key given twice --
-// listing one key twice is the caller's mistake, where [MapSlice.Set] is the
-// caller asking for the value to be replaced.
+// It returns an error for a key Go cannot hash, and for a key given twice: two items with one key are a mistake here,
+// while [MapSlice.Set] replaces the value on purpose.
 func NewMapSlice(items ...MapItem) (MapSlice, error) {
 	var m MapSlice
 	if len(items) == 0 {
@@ -177,14 +165,12 @@ func (s MapSlice) Len() int { return len(s.items) }
 
 // At returns the entry standing at position i, counting from 0.
 //
-// It panics where a slice index panics, so range over [MapSlice.All] unless the
-// position is what you want.
+// It panics where a slice index panics. Range over [MapSlice.All] unless you need the position.
 func (s MapSlice) At(i int) MapItem { return s.items[i] }
 
 // Get returns the value stored under key, and whether the map holds one.
 //
-// A key Go cannot hash addresses no entry and reads as absent rather than
-// panicking.
+// A key Go cannot hash addresses no entry: Get reports it absent, and does not panic.
 func (s MapSlice) Get(key any) (any, bool) {
 	i := s.index(key)
 	if i < 0 {
@@ -196,9 +182,8 @@ func (s MapSlice) Get(key any) (any, bool) {
 
 // Set stores value under key.
 //
-// Where the key already stands in the map, the entry keeps its position and
-// takes the new value; otherwise the entry goes on the end. It returns an error
-// for a key Go cannot hash, which no map may hold.
+// Where the map already holds the key, the entry keeps its position and takes the new value. Otherwise the entry goes
+// at the end. Set returns an error for a key Go cannot hash.
 func (s *MapSlice) Set(key, value any) error {
 	if !codecutils.HashableKey(key) {
 		return codecutils.UnusableKey(key)
@@ -236,7 +221,7 @@ func (s MapSlice) Keys() iter.Seq[any] {
 	}
 }
 
-// Values iterates the values in key order.
+// Values iterates the values in entry order.
 func (s MapSlice) Values() iter.Seq[any] {
 	return func(yield func(any) bool) {
 		for _, item := range s.items {
@@ -247,7 +232,7 @@ func (s MapSlice) Values() iter.Seq[any] {
 	}
 }
 
-// All iterates the entries in order, as ranging over a map would without one.
+// All iterates the keys and values in entry order.
 func (s MapSlice) All() iter.Seq2[any, any] {
 	return func(yield func(any, any) bool) {
 		for _, item := range s.items {
@@ -270,17 +255,14 @@ func (s MapSlice) ToMap() map[any]any {
 	return v
 }
 
-// MarshalJSON writes the entries as a JSON object, in the order they stand.
+// MarshalJSON writes the entries as a JSON object, in entry order.
 //
-// JSON specifies no ordering, so nothing carries the order to a reader that
-// takes the object apart into a map -- but the bytes hold it, which is what a
-// caller reading them in order, or diffing them, has. A MapSliceSeq writes the
-// same object: "!!omap" is a YAML tag and JSON has no spelling for it.
+// JSON gives an object no order, so a reader that loads the object into a map loses it. The bytes keep it, for a
+// reader that reads them in order or compares them. A [MapSliceSeq] writes the same object, because JSON cannot write
+// the "!!omap" tag.
 //
-// The keys are named by the encoder in its JSON style, which is the same path
-// [Marshal] with [JSON] takes, so a MapSlice and the document it was
-// read from write the same JSON. TestToJSONMatchesTheValueConverter holds that
-// path against [ToJSON] over the whole corpus.
+// The encoder names the keys as [Marshal] with [JSON] does, so a MapSlice writes the same JSON as [ToJSON] writes for
+// the document it was read from.
 func (s MapSlice) MarshalJSON() ([]byte, error) {
 	out, err := Marshal(s, JSON())
 	if err != nil {
@@ -301,14 +283,11 @@ func (s MapSlice) MarshalJSON() ([]byte, error) {
 // UnmarshalJSON reads a JSON object, keeping the order its members were written
 // in.
 //
-// encoding/json reads an object into a map and loses that order; this reads the
-// token stream instead. A nested object becomes a MapSlice too, so the order is
-// kept all the way down, and an array becomes a []any.
+// encoding/json reads an object into a map and loses the order, so UnmarshalJSON reads the token stream instead.
+// A nested object becomes a MapSlice too, so the order is kept at every depth, and an array becomes a []any.
 //
-// Numbers resolve the way the YAML decoder resolves them -- uint64, int64 or
-// float64 -- and not encoding/json's float64 for everything. JSON has one
-// number type and YAML has integers, so a value read here and written back as
-// YAML keeps the type the YAML side gives it.
+// A number resolves as the YAML decoder resolves it, to a uint64, an int64 or a float64, where encoding/json gives a
+// float64 for every number. A value read here and written back as YAML keeps the type the YAML decoder gives it.
 func (s *MapSlice) UnmarshalJSON(b []byte) error {
 	dec := json.NewDecoder(bytes.NewReader(b))
 	dec.UseNumber()
@@ -341,20 +320,17 @@ func (s MapSlice) index(key any) int {
 	return -1
 }
 
-// MapSliceSeq is a [MapSlice] that reads and writes YAML's "!!omap", a sequence
-// of one-entry mappings: "!!omap [{x: 1}, {y: 2}]".
+// MapSliceSeq is a [MapSlice] that reads and writes YAML's "!!omap", a sequence of one-entry mappings:
+// "!!omap [{x: 1}, {y: 2}]".
 //
-// It holds the same entries under the same rules and differs in what the
-// encoder writes: a MapSlice writes a plain mapping, a MapSliceSeq writes the
-// tagged sequence, with or without [UseOrderedMap]. A decode builds one for a
-// node tagged "!!omap", and builds whichever type the destination names where
-// the destination names one.
+// It holds the same entries under the same rules. The encoder writes a MapSlice as a plain mapping, and a MapSliceSeq
+// as the tagged sequence, with or without [UseOrderedMap]. A decode into an any builds a MapSliceSeq for a node tagged
+// "!!omap", and a decode into a named destination builds the type it names.
 //
 // The two convert into each other: MapSlice(seq) and MapSliceSeq(m).
 type MapSliceSeq MapSlice
 
-// NewMapSliceSeq returns a [MapSliceSeq] holding items, reading them as
-// [NewMapSlice] does.
+// NewMapSliceSeq returns a [MapSliceSeq] holding items, with the checks of [NewMapSlice].
 func NewMapSliceSeq(items ...MapItem) (MapSliceSeq, error) {
 	m, err := NewMapSlice(items...)
 
@@ -379,7 +355,7 @@ func (s *MapSliceSeq) Delete(key any) bool { return (*MapSlice)(s).Delete(key) }
 // Keys iterates the keys in order.
 func (s MapSliceSeq) Keys() iter.Seq[any] { return MapSlice(s).Keys() }
 
-// Values iterates the values in key order.
+// Values iterates the values in entry order.
 func (s MapSliceSeq) Values() iter.Seq[any] { return MapSlice(s).Values() }
 
 // All iterates the entries in order.
@@ -388,8 +364,8 @@ func (s MapSliceSeq) All() iter.Seq2[any, any] { return MapSlice(s).All() }
 // ToMap returns the entries as a Go map, dropping the order.
 func (s MapSliceSeq) ToMap() map[any]any { return MapSlice(s).ToMap() }
 
-// MarshalJSON writes the entries as a JSON object, as [MapSlice.MarshalJSON]
-// does: JSON has no spelling for the "!!omap" that tells the two types apart.
+// MarshalJSON writes the entries as a JSON object, as [MapSlice.MarshalJSON] does, because JSON cannot write the
+// "!!omap" tag that tells the two types apart.
 func (s MapSliceSeq) MarshalJSON() ([]byte, error) { return MapSlice(s).MarshalJSON() }
 
 // UnmarshalJSON reads a JSON object, as [MapSlice.UnmarshalJSON] does.

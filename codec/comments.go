@@ -3,26 +3,23 @@
 
 package codec
 
-// CommentPosition says where a comment stands relative to the value it belongs
-// to.
+// CommentPosition gives the place of a comment relative to its value: above it, on its line, or below it.
 //
-// This is the one thing [ast] does not record. An [ast.CommentGroupNode] holds
-// the text of a run of comments and nothing about its placement: a node has a
-// single comment slot, and which of the three a comment is follows from which
-// node the group was attached to. The parser works the placement out and the
-// tree does not keep it, so a caller reading comments out of a document or
-// writing them into one needs this to say what the tree cannot.
+// An [ast.CommentGroupNode] holds the text of a run of comments, but not its place. The place follows from the node
+// the parser attaches the group to, and the tree does not record it. A caller that reads comments out of a document,
+// or writes them into one, uses CommentPosition to give the place.
 type CommentPosition int
 
 const (
-	// CommentHeadPosition is a comment on the lines above its value.
+	// CommentHeadPosition puts the comment on the lines above its value.
 	CommentHeadPosition CommentPosition = CommentPosition(iota)
-	// CommentLinePosition is a comment sharing a line with its value, after it.
+	// CommentLinePosition puts the comment on its value's line, after the value.
 	CommentLinePosition
-	// CommentFootPosition is a comment on the lines below its value.
+	// CommentFootPosition puts the comment on the lines below its value.
 	CommentFootPosition
 )
 
+// String returns the name of the position: "Head", "Line" or "Foot".
 func (p CommentPosition) String() string {
 	switch p {
 	case CommentHeadPosition:
@@ -60,15 +57,13 @@ func FootComment(texts ...string) *Comment {
 	}
 }
 
-// Comment is the text of a comment and where it goes, apart from any document.
+// Comment holds the text of a comment and its place relative to its value, outside any document.
 //
-// It carries what [ast.CommentGroupNode] carries -- one line of text per entry
-// in Texts -- plus the [CommentPosition] the tree drops. Build one with
-// [HeadComment], [LineComment] or [FootComment] rather than by hand, so that
-// the texts and the position agree.
+// Texts holds what an [ast.CommentGroupNode] holds, one line of text per entry, and Position adds the
+// [CommentPosition] that the tree does not record. Build one with [HeadComment], [LineComment] or [FootComment], so
+// that the texts and the position agree.
 //
-// Nothing here addresses a document. A Comment says what to write and whether
-// it goes above, beside or below; [CommentMap] says which value it belongs to.
+// A Comment does not address a value. A [CommentMap] files each Comment under the path of its value.
 type Comment struct {
 	// Texts is one line of comment per entry, written without the '#'.
 	Texts []string
@@ -76,14 +71,12 @@ type Comment struct {
 	Position CommentPosition
 }
 
-// CommentMap holds the comments of a document, against the path of the value
-// each belongs to.
+// CommentMap holds the comments of a document, keyed by the path of the value each belongs to.
 //
-// A key is a YAML path as [PathString] parses it -- "$.foo.bar", "$.baz[1]".
-// [CommentToMap] fills one in while decoding, taking each key from the node's
-// own path, and [WithComment] reads one while encoding. So a map produced by
-// decoding is a map the encoder can write back.
+// A key is a YAML path, such as "$.foo.bar" or "$.baz[1]". [CommentToMap] fills a CommentMap while decoding, with each
+// key taken from the node's own path, and [WithComment] reads one while encoding. So the encoder can write back a map
+// the decoder filled.
 //
-// A value may carry more than one comment: a head comment and a line comment
-// stand in different places and are two entries under the same key.
+// A value can carry several comments. A head comment and a line comment stand in different places, and are two
+// entries under the same key.
 type CommentMap map[string][]*Comment

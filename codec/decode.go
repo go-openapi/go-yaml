@@ -33,7 +33,7 @@ import (
 	"github.com/go-openapi/go-yaml/token"
 )
 
-// Decoder reads and decodes YAML values from an input stream.
+// Decoder reads the documents of a YAML stream into Go values, one document for each call to [Decoder.Decode].
 type Decoder struct {
 	// source is the document being decoded, so an error found in it can draw
 	// the lines around itself.
@@ -122,7 +122,7 @@ type Decoder struct {
 	docSchema token.Schema
 }
 
-// NewDecoder returns a new decoder that reads from r.
+// NewDecoder returns a decoder that reads the stream from r, with the given options.
 func NewDecoder(r io.Reader, opts ...DecodeOption) *Decoder {
 	return &Decoder{
 		reader:                 r,
@@ -154,11 +154,15 @@ const (
 	maxDecodeDepth = 50000
 )
 
-// Decode reads the next YAML-encoded value from its input
-// and stores it in the value pointed to by v.
+// Decode reads the next document of the stream into the value v points to, and returns [io.EOF] once the stream holds
+// no more document.
 //
-// See the documentation for Unmarshal for details about the
-// conversion of YAML into a Go value.
+// A value that does not fit its field leaves that field alone, and Decode reads the rest of the document, then returns
+// the first such error. An error that stops one document, such as a repeated key, fails that call only: the next call
+// reads the next document. A syntax error, or a document nested past the depth limit, stops the stream, and every later
+// call returns it.
+//
+// See [Unmarshal] for how a document maps to a Go value.
 func (d *Decoder) Decode(v any) error {
 	rv := reflect.ValueOf(v)
 	if !codecutils.IsPointer(rv) {
@@ -191,7 +195,7 @@ func (d *Decoder) Decode(v any) error {
 	return nil
 }
 
-// DecodeFromNode decodes node into the value pointed to by v.
+// DecodeFromNode decodes node into the value v points to, with the decoder's options. It reads nothing from the stream.
 func (d *Decoder) DecodeFromNode(node ast.Node, v any) error {
 	rv := reflect.ValueOf(v)
 	if !codecutils.IsPointer(rv) {

@@ -8,66 +8,58 @@ import (
 )
 
 const (
-	// DefaultIndentSpaces default number of space for indent.
+	// DefaultIndentSpaces gives the number of spaces of each indentation level, unless [Indent] sets another.
 	DefaultIndentSpaces = 2
 )
 
 // The interfaces a type implements to encode itself.
 //
-// [Marshaler] writes the YAML text of the value, as [encoding/json.Marshaler]
-// writes its JSON. [GoYAMLMarshaler] hands back another Go value to encode in
-// its place, which is what github.com/go-yaml/yaml asks for and is kept so a
-// type written for that library encodes here unchanged.
+// [Marshaler] returns the YAML text of the value, as [encoding/json.Marshaler] returns its JSON. [GoYAMLMarshaler]
+// returns another Go value to encode in its place, as github.com/go-yaml/yaml expects, so that a type written for that
+// library encodes here unchanged.
 //
-// A type satisfying more than one is written by the first the encoder looks
-// for, so implement the one that says what the type means.
+// For a type that implements both, the encoder uses the first it checks for, so implement only the one you mean.
 //
 // An error returned by MarshalYAML stops the encoding and reaches the caller.
 
-// Marshaler returns the YAML text to write for the value.
+// Marshaler returns the YAML text to write for its value.
 type Marshaler interface {
 	MarshalYAML() ([]byte, error)
 }
 
 // GoYAMLMarshaler returns another Go value to encode in place of this one.
 //
-// This is github.com/go-yaml/yaml's shape. Prefer [Marshaler], which writes the
-// text and needs no second pass over what it returns.
+// It has the shape github.com/go-yaml/yaml expects. Prefer [Marshaler], which returns the text, so the encoder makes no
+// second pass over a returned value.
 type GoYAMLMarshaler interface {
 	MarshalYAML() (any, error)
 }
 
 // The interfaces a type implements to decode itself.
 //
-// [Unmarshaler] is handed the YAML text of the value, as
-// [encoding/json.Unmarshaler] is handed its JSON. [GoYAMLUnmarshaler] is handed
-// a function that decodes into whatever it is given, which is what
-// github.com/go-yaml/yaml asks for. [NodeUnmarshaler] is handed the
-// [ast.Node], which carries what the text does not -- the comments, and where
-// each token stood.
+// [Unmarshaler] receives the YAML text of the value, as [encoding/json.Unmarshaler] receives its JSON.
+// [GoYAMLUnmarshaler] receives a function that decodes the value into any destination, as github.com/go-yaml/yaml
+// expects. [NodeUnmarshaler] receives the [ast.Node], which also carries the comments and each token's position.
 
-// Unmarshaler is handed the YAML text of the value.
+// Unmarshaler receives the YAML text of its value.
 type Unmarshaler interface {
 	UnmarshalYAML(data []byte) error
 }
 
-// GoYAMLUnmarshaler is handed a function that decodes the value into whatever
-// it is given.
+// GoYAMLUnmarshaler receives a function that decodes its value into any destination.
 //
-// This is github.com/go-yaml/yaml's shape. Prefer [Unmarshaler], which is handed
-// the text directly.
+// It has the shape github.com/go-yaml/yaml expects. Prefer [Unmarshaler], which receives the text directly.
 type GoYAMLUnmarshaler interface {
 	UnmarshalYAML(unmarshal func(any) error) error
 }
 
-// NodeUnmarshaler is handed the node the value was read from.
+// NodeUnmarshaler receives the node its value was read from.
 type NodeUnmarshaler interface {
 	UnmarshalYAML(node ast.Node) error
 }
 
-// IsZeroer is used to check whether an object is zero to determine
-// whether it should be omitted when marshaling with the omitempty flag.
-// One notable implementation is time.Time.
+// IsZeroer reports whether a value is zero. The encoder skips a field whose IsZero method returns true under the
+// omitempty and omitzero tags, and under the [OmitZero] option. time.Time implements it.
 type IsZeroer interface {
 	IsZero() bool
 }

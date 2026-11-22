@@ -15,10 +15,10 @@ import (
 	"github.com/go-openapi/go-yaml/parser"
 )
 
-// DecodeOption functional option type for Decoder.
+// DecodeOption sets an option of a [Decoder], or of a call to [Unmarshal] or [NodeToValue].
 type DecodeOption func(d *Decoder) error
 
-// ReferenceReaders pass to Decoder that reference to anchor defined by passed readers.
+// ReferenceReaders reads the anchors declared in readers, so that the decoded document can alias them.
 func ReferenceReaders(readers ...io.Reader) DecodeOption {
 	return func(d *Decoder) error {
 		d.referenceReaders = append(d.referenceReaders, readers...)
@@ -26,7 +26,7 @@ func ReferenceReaders(readers ...io.Reader) DecodeOption {
 	}
 }
 
-// ReferenceFiles pass to Decoder that reference to anchor defined by passed files.
+// ReferenceFiles reads the anchors declared in files, so that the decoded document can alias them.
 func ReferenceFiles(files ...string) DecodeOption {
 	return func(d *Decoder) error {
 		d.referenceFiles = files
@@ -34,7 +34,8 @@ func ReferenceFiles(files ...string) DecodeOption {
 	}
 }
 
-// ReferenceDirs pass to Decoder that reference to anchor defined by files under the passed dirs.
+// ReferenceDirs reads the anchors declared in the .yml and .yaml files of dirs, so that the decoded document can alias
+// them. Use [RecursiveDir] to read their subdirectories too.
 func ReferenceDirs(dirs ...string) DecodeOption {
 	return func(d *Decoder) error {
 		d.referenceDirs = dirs
@@ -42,7 +43,7 @@ func ReferenceDirs(dirs ...string) DecodeOption {
 	}
 }
 
-// RecursiveDir search yaml file recursively from passed dirs by ReferenceDirs option.
+// RecursiveDir makes [ReferenceDirs] read the subdirectories of its directories too.
 func RecursiveDir(isRecursive bool) DecodeOption {
 	return func(d *Decoder) error {
 		d.isRecursiveDir = isRecursive
@@ -52,12 +53,11 @@ func RecursiveDir(isRecursive bool) DecodeOption {
 
 // Validator calls validate with each struct the decoder fills, once it is filled, passing the struct by value.
 // An error validate returns comes back as [github.com/go-openapi/go-yaml/errors.ErrValidation],
-// with a position and validate's message, and [errors.Is] and [errors.As] reach validate's own error through it.
+// with a position and validate's message. [errors.Is] and [errors.As] reach validate's own error through it.
 //
-// An error that is a slice, and whose elements have a StructField() string method, is placed at the entry of the
-// first field it names, or at the mapping when the document leaves that field out. Any other error is placed at the
-// struct's mapping.
-// github.com/go-playground/validator/v10 returns such errors: pass its Struct method.
+// An error that is a slice whose elements have a StructField() string method points at the entry of the first field it
+// names, or at the struct's first key when the document leaves that field out. Any other error points at the struct's
+// mapping. github.com/go-playground/validator/v10 returns such errors, so pass its Struct method:
 //
 //	validate := validator.New()
 //	dec := codec.NewDecoder(r, codec.Validator(validate.Struct))
@@ -70,7 +70,7 @@ func Validator(validate func(any) error) DecodeOption {
 	}
 }
 
-// Strict enable DisallowUnknownField.
+// Strict is [DisallowUnknownField].
 func Strict() DecodeOption {
 	return func(d *Decoder) error {
 		d.disallowUnknownField = true
@@ -78,9 +78,8 @@ func Strict() DecodeOption {
 	}
 }
 
-// DisallowUnknownField causes the Decoder to return an error when the destination
-// is a struct and the input contains object keys which do not match any
-// non-ignored, exported fields in the destination.
+// DisallowUnknownField returns an error for a mapping key that names no exported field of the struct it decodes into.
+// A field tagged "-" names nothing. Use [AllowFieldPrefixes] to let some keys through.
 func DisallowUnknownField() DecodeOption {
 	return func(d *Decoder) error {
 		d.disallowUnknownField = true
@@ -88,8 +87,7 @@ func DisallowUnknownField() DecodeOption {
 	}
 }
 
-// AllowFieldPrefixes, when paired with [DisallowUnknownField], allows fields
-// with the specified prefixes to bypass the unknown field check.
+// AllowFieldPrefixes lets [DisallowUnknownField] accept an unknown key that starts with one of prefixes, such as "x-".
 func AllowFieldPrefixes(prefixes ...string) DecodeOption {
 	return func(d *Decoder) error {
 		d.allowedFieldPrefixes = append(d.allowedFieldPrefixes, prefixes...)
@@ -104,14 +102,13 @@ func AllowFieldPrefixes(prefixes ...string) DecodeOption {
 // Under this option a Go map and a struct field hold the last value,
 // and a [MapSlice] holds it at the place the key was first written.
 //
-// Two keys that YAML tells apart and that share one name, such as 1 and "1", are a repeat for a destination keyed
+// Two keys that YAML tells apart but that share one name, such as 1 and "1", count as a repeat for a destination keyed
 // by name: a struct, a map[string]T, an inline map, or an any under [UseStringKeys].
-// An any and a [MapSlice] key their entries by value and hold both, with or without this option.
+// An any and a [MapSlice] key their entries by value, and hold both keys with or without this option.
 //
-// [ToJSON] and [ToJSONTokens] keep the first value instead,
-// under [github.com/go-openapi/go-yaml/parser.WithAllowDuplicateMapKey].
-// They hand each token over as the parse reaches it, so the first value has gone to the caller before the repeat
-// is read. A document read both ways under the option can therefore give two values for one repeated key.
+// [ToJSON] and [ToJSONTokens] keep the first value instead, under [parser.WithAllowDuplicateMapKey].
+// They hand each token over as the parser reaches it, so the caller has the first value before the repeat is read.
+// A document read both ways under the option can therefore give two values for one repeated key.
 // Leave the option off where a decode and a conversion must agree.
 func AllowDuplicateMapKey() DecodeOption {
 	return func(d *Decoder) error {
@@ -122,25 +119,20 @@ func AllowDuplicateMapKey() DecodeOption {
 
 // WithParserOptions passes options straight to the parser the decode runs.
 //
-// The decode options here name what a caller wants of the *decode*, and the
-// decoder turns some of them into parser options on the caller's behalf --
-// [AllowDuplicateMapKey] becomes
-// [github.com/go-openapi/go-yaml/parser.WithAllowDuplicateMapKey], and
-// [CommentToMap] asks the parser for comments. This is the way through for the
-// rest of the parser's surface, which the decoder has no opinion about.
+// The decoder already turns some decode options into parser options: [AllowDuplicateMapKey] sets
+// [parser.WithAllowDuplicateMapKey], and [CommentToMap] sets [parser.WithComments]. Use WithParserOptions for the rest
+// of the parser's options.
 //
-// The one most callers want is the version a document is read under:
+// Most callers want the YAML version a document is read under:
 //
 //	codec.Unmarshal(src, &v,
 //		codec.WithParserOptions(parser.WithYAMLVersion(parser.YAML11)))
 //
-// Without it a "%YAML 1.1" directive is the only route into the 1.1 schema, and
-// a document that does not carry one cannot be read under it at all.
+// Without it, only a "%YAML 1.1" directive selects the 1.1 schema, and a document without one is read as YAML 1.2.
 //
-// They are applied last and in order, so where two options set the same field
-// the later one wins. Every parser option a decode option asks for today only
-// turns something on and has no counterpart that turns it off, so this cannot
-// take one back -- it adds to them.
+// The options apply after the ones the decoder sets, in the order given, so where two options set the same thing the
+// later one wins. Each parser option the decoder sets only turns a feature on, and no parser option turns one off,
+// so WithParserOptions can add to them but cannot undo them.
 func WithParserOptions(opts ...parser.Option) DecodeOption {
 	return func(d *Decoder) error {
 		d.extraParserOptions = append(d.extraParserOptions, opts...)
@@ -149,28 +141,21 @@ func WithParserOptions(opts ...parser.Option) DecodeOption {
 	}
 }
 
-// ShareAliases makes every alias of one anchor stand for the same Go value,
-// rather than each building its own.
+// ShareAliases gives every alias of one anchor the same Go value, instead of a value of its own.
 //
-// By default they are independent: "first: *b" and "second: *b" give two maps,
-// so writing through one leaves the other alone. Sharing gives one map under
-// both names, and a caller who writes through either writes through both.
+// By default the aliases are independent: "first: *b" and "second: *b" give two maps, and writing through one leaves
+// the other alone. Under ShareAliases both names hold one map, and writing through either changes both.
 //
-// Two reasons to ask for it:
+// Use it for two reasons:
 //
-//   - The anchors survive a round trip through a Go value. [MarshalAnchor] and
-//     the ",anchor" and ",alias" struct tags find an anchor by the address the
-//     value stands at, so an encoder can only write "*name" where the decode
-//     left one value under two names. Without this option, decoding a document
-//     and encoding it again writes the anchored node out in full at each alias.
-//     Reading a document into an [github.com/go-openapi/go-yaml/ast] tree and
-//     rendering it keeps the anchors either way; this is about the Go value.
-//   - An alias costs nothing. Building each alias its own value is what a
-//     document written to exhaust memory abuses -- see [errors.ErrExcessiveAliasing]
-//     -- and a shared value is built once however many aliases name it.
+//   - The anchors survive a round trip through a Go value. [MarshalAnchor] and the ",anchor" and ",alias" struct tags
+//     find an anchor by the address of its value, so the encoder writes "*name" only where one value stands under two
+//     names. Without this option, a decoded document encoded again writes the anchored node in full at each alias.
+//     A document read into an [ast] tree and rendered keeps its anchors either way: this concerns the Go value only.
+//   - An alias costs nothing. A document written to exhaust memory relies on each alias building its own value
+//     (see [errors.ErrExcessiveAliasing]). A shared value is built once, however many aliases name it.
 //
-// Do not use it on a value the program then writes to, unless the aliasing is
-// the point.
+// Do not use it on a value the program writes to afterwards, unless you want the writes shared.
 func ShareAliases() DecodeOption {
 	return func(d *Decoder) error {
 		d.shareAliases = true
@@ -179,8 +164,8 @@ func ShareAliases() DecodeOption {
 	}
 }
 
-// UseOrderedMap can be interpreted as a map,
-// and uses MapSlice ( ordered map ) aggressively if there is no type specification.
+// UseOrderedMap decodes a mapping into a [MapSlice] wherever the destination does not name a type, as for an any,
+// so that the mapping keeps the order of its keys.
 func UseOrderedMap() DecodeOption {
 	return func(d *Decoder) error {
 		d.useOrderedMap = true
@@ -188,23 +173,19 @@ func UseOrderedMap() DecodeOption {
 	}
 }
 
-// UseStringKeys reads every mapping key as text, so a map with an interface key
-// type holds strings rather than the Go types the keys resolve to.
+// UseStringKeys reads every mapping key as text, so a map with an interface key type holds strings instead of the Go
+// types the keys resolve to.
 //
-// Without it, "1.5: a" decoded into a map[any]any gives the key float64(1.5),
-// "true: a" gives bool(true), and a key the map's own type cannot take is an
-// error. With it both give a string, the same spelling a map[string]any gets,
-// which is what a JSON object needs. A map whose key type is named -- a
-// map[float64]any -- is untouched, since the caller asked for that type.
+// Without it, "1.5: a" decoded into a map[any]any gives the key float64(1.5), "true: a" gives bool(true), and a key the
+// map's own type cannot hold is an error. With it both keys are strings, spelled as a map[string]any spells them, as a
+// JSON object needs. A map whose key type is named, such as a map[float64]any, is left alone, because the caller asked
+// for that type.
 //
-// It reaches [MapSlice] too, whose MapItem.Key otherwise holds what the key
-// resolves to. There it makes "1: a" over "\"1\": b" two entries under one
-// name rather than an error, since a MapSlice can hold both.
+// It applies to a [MapSlice] too, whose MapItem.Key otherwise holds the resolved key. There "1: a" and "\"1\": b"
+// become two entries under one name, because a MapSlice can hold both.
 //
-// It does not make a collection usable as a key. Go cannot hash a slice or a
-// map, so "? [a]" is an error either way; use
-// [github.com/go-openapi/go-yaml/parser.WithJSONCompatible] to refuse those at
-// parse time.
+// It does not make a collection usable as a key. Go cannot hash a slice or a map, so "? [a]" is an error either way.
+// Use [parser.WithJSONCompatible] to reject such keys when the document is parsed.
 func UseStringKeys() DecodeOption {
 	return func(d *Decoder) error {
 		d.useStringKeys = true
@@ -218,35 +199,29 @@ func UseStringKeys() DecodeOption {
 // and an anonymous embedded struct that no tag names has its fields promoted
 // into the outer one.
 //
-// The `yaml` tag always wins, so this adds a way to name a field and takes none
-// away. A type carrying both tags on one field reads the same under the option
-// as without it, and a `yaml:"-"` still hides a field the `json` tag names.
+// The `yaml` tag always wins, so the option adds a way to name a field and takes none away. A field carrying both tags
+// reads the same with or without the option, and `yaml:"-"` still hides a field that the `json` tag names.
 //
-// Without it the decoder reads the `yaml` tag alone, as go.yaml.in/yaml/v3
-// does, and promotes an embedded struct only where a tag says `,inline`. A type
-// tagged for JSON alone then takes the lowercased Go name for every field, and
-// carries no inline marker anywhere, because encoding/json never needed one.
-// github.com/go-openapi/spec is such a type, and decoding an OpenAPI document
-// into spec.Swagger without this option fills the outer map and leaves every
+// Without the option, the decoder reads the `yaml` tag alone, as go.yaml.in/yaml/v3 does, and promotes an embedded
+// struct only where a tag says `,inline`. A type tagged for JSON alone then takes the lowercased Go name for every
+// field, and promotes nothing, because encoding/json needs no inline marker. github.com/go-openapi/spec is such a type:
+// without this option, decoding an OpenAPI document into spec.Swagger fills the outer map and leaves every
 // specification in it zero.
 //
-// It does not make the decoder call UnmarshalJSON -- [UseJSONUnmarshaler] does
-// that, converting the document to JSON first. This fills the fields directly,
-// so a type whose UnmarshalJSON does more than assign them (spec.Swagger
-// gathers "x-" keys into its extensions) will not get that.
+// The option does not make the decoder call UnmarshalJSON: [UseJSONUnmarshaler] does that, after converting the
+// document to JSON. UseJSONTags fills the fields directly, so a type whose UnmarshalJSON does more than assign them
+// misses that work. spec.Swagger, for one, gathers its "x-" keys into its extensions.
 //
-// A mapping key matches a field name exactly where it can, and otherwise
-// matches one differing only in case, which is the order encoding/json tries
-// them in. Without the option a key matches exactly or matches nothing, as
-// go.yaml.in/yaml/v3 has it.
+// A mapping key matches a field name exactly where it can, and otherwise matches a name that differs only in case,
+// which is the order encoding/json tries. Without the option, a key matches a name exactly or matches nothing, as in
+// go.yaml.in/yaml/v3.
 //
-// It names a field the `json` tag names, and leaves a field neither tag names
-// under its lowercased Go name. [UseInferredNames] is what changes that one --
-// though with case-insensitive matching on, both spellings of a Go name reach
-// the field either way, and the option decides which of them an encoder writes.
+// A field that neither tag names keeps its lowercased Go name. [UseInferredNames] changes that name. Because a key
+// that differs only in case also matches, both spellings of a Go name reach the field either way, and
+// [UseInferredNames] decides which spelling an encoder writes.
 //
-// [WriteJSONTags] is the encoder's half of it. Pass both and a value read from
-// a document is written back under the names it was read from.
+// [WriteJSONTags] does the same for the encoder. Pass both, and a value read from a document is written back under
+// the names it was read from.
 func UseJSONTags(use bool) DecodeOption {
 	return func(d *Decoder) error {
 		d.useJSONTags = use
@@ -255,23 +230,18 @@ func UseJSONTags(use bool) DecodeOption {
 	}
 }
 
-// UseInferredNames names a field that no tag names after its Go name, verbatim,
-// the way encoding/json does.
+// UseInferredNames names a field that no tag names after its Go name, verbatim, as encoding/json does.
 //
-// Without it such a field takes its Go name lowercased, which is what
-// go.yaml.in/yaml/v3 does: a field declared FieldName is written "fieldname",
-// and a document writing "FieldName" reaches nothing. Under the option the two
-// swap over.
+// Without it, such a field takes its Go name lowercased, as in go.yaml.in/yaml/v3: a field declared FieldName is
+// written "fieldname", and a document writing "FieldName" reaches nothing. Under the option, the two swap over.
 //
-// It changes names and nothing else. Which fields a decode considers, how an
-// anonymous embedded struct is read and how a repeated name is resolved are
-// [UseJSONTags]'s to say, and the two options are independent: a struct with no
-// tags at all reads under this one alone.
+// The option changes names and nothing else. [UseJSONTags] decides which fields a decode considers, how an anonymous
+// embedded struct is read, and how a repeated name is resolved. The two options are independent: a struct with no
+// tags at all needs only UseInferredNames.
 //
-// With [UseJSONTags] set, a mapping key matches a field name but for case, so
-// both spellings of a Go name reach the field whether this is set or not. What
-// it still decides there is which of them is the exact match, and so which one
-// [WriteInferredNames] writes.
+// With [UseJSONTags] set, a mapping key also matches a field name that differs only in case, so both spellings of a Go
+// name reach the field whether UseInferredNames is set or not. UseInferredNames then decides which spelling is the
+// exact match, and so which one [WriteInferredNames] writes.
 func UseInferredNames(use bool) DecodeOption {
 	return func(d *Decoder) error {
 		d.useInferredNames = use
@@ -280,8 +250,8 @@ func UseInferredNames(use bool) DecodeOption {
 	}
 }
 
-// UseJSONUnmarshaler if neither `Unmarshaler` nor `GoYAMLUnmarshaler` is implemented
-// and `UnmashalJSON([]byte)error` is implemented, convert the argument from `YAML` to `JSON` and then call it.
+// UseJSONUnmarshaler decodes a type that implements [encoding/json.Unmarshaler], and none of this package's
+// unmarshaler interfaces, by converting its node to JSON and calling UnmarshalJSON.
 func UseJSONUnmarshaler() DecodeOption {
 	return func(d *Decoder) error {
 		d.useJSONUnmarshaler = true
@@ -289,10 +259,10 @@ func UseJSONUnmarshaler() DecodeOption {
 	}
 }
 
-// CustomUnmarshaler overrides any decoding process for the type specified in generics.
+// CustomUnmarshaler decodes every T with unmarshaler, which receives the YAML text of the node, in place of any other
+// decoding of T.
 //
-// NOTE: If RegisterCustomUnmarshaler and CustomUnmarshaler of DecodeOption are specified for the same type,
-// the CustomUnmarshaler specified in DecodeOption takes precedence.
+// It takes precedence over a function registered for the same type with [RegisterCustomUnmarshaler].
 func CustomUnmarshaler[T any](unmarshaler func(*T, []byte) error) DecodeOption {
 	return func(d *Decoder) error {
 		var typ *T
@@ -303,10 +273,10 @@ func CustomUnmarshaler[T any](unmarshaler func(*T, []byte) error) DecodeOption {
 	}
 }
 
-// EncodeOption functional option type for Encoder.
+// EncodeOption sets an option of an [Encoder], or of a call to [Marshal] or [ValueToNode].
 type EncodeOption func(e *Encoder) error
 
-// Indent change indent number.
+// Indent sets the number of spaces of each indentation level. The default is [DefaultIndentSpaces].
 func Indent(spaces int) EncodeOption {
 	return func(e *Encoder) error {
 		e.indentNum = spaces
@@ -314,7 +284,8 @@ func Indent(spaces int) EncodeOption {
 	}
 }
 
-// IndentSequence causes sequence values to be indented the same value as Indent.
+// IndentSequence indents a block sequence under a mapping key by one level, as set by [Indent]. By default the "- "
+// of each entry stands in the key's column.
 func IndentSequence(indent bool) EncodeOption {
 	return func(e *Encoder) error {
 		e.indentSequence = indent
@@ -322,7 +293,8 @@ func IndentSequence(indent bool) EncodeOption {
 	}
 }
 
-// UseSingleQuote determines if single or double quotes should be preferred for strings.
+// UseSingleQuote quotes a string that needs quoting with single quotes. A string holding a character that only an
+// escape can write is still double-quoted.
 func UseSingleQuote(sq bool) EncodeOption {
 	return func(e *Encoder) error {
 		e.singleQuote = sq
@@ -330,7 +302,7 @@ func UseSingleQuote(sq bool) EncodeOption {
 	}
 }
 
-// Flow encoding by flow style.
+// Flow writes every mapping and sequence in flow style: {k: v} and [a, b].
 func Flow(isFlowStyle bool) EncodeOption {
 	return func(e *Encoder) error {
 		e.isFlowStyle = isFlowStyle
@@ -338,16 +310,13 @@ func Flow(isFlowStyle bool) EncodeOption {
 	}
 }
 
-// WithSmartAnchor when multiple map values share the same pointer,
-// an anchor is automatically assigned to the first occurrence, and aliases are used for subsequent elements.
-// The map key name is used as the anchor name by default.
-// If key names conflict, a suffix is automatically added to avoid collisions.
-// This is an experimental feature and cannot be used simultaneously with anchor tags.
+// WithSmartAnchor writes an anchor on the first map value that a pointer reaches, and an alias at every later value
+// with the same pointer. The anchor takes the name of the map key, with a suffix where two keys share a name.
+// The option is experimental, and cannot be combined with the anchor and alias struct tags.
 //
-// Encoding a value that came from Unmarshal writes an anchor only where the
-// decode left two names at one address, so pass [ShareAliases] to the decode.
-// Without it every alias builds its own value, nothing shares a pointer, and
-// this option has nothing to find.
+// A value decoded by [Unmarshal] shares a pointer only where the decode gave two names one value, so pass
+// [ShareAliases] to the decode. Without it, every alias has a value of its own and the option finds no pointer to
+// share.
 func WithSmartAnchor() EncodeOption {
 	return func(e *Encoder) error {
 		e.enableSmartAnchor = true
@@ -355,8 +324,8 @@ func WithSmartAnchor() EncodeOption {
 	}
 }
 
-// UseLiteralStyleIfMultiline causes encoding multiline strings with a literal syntax,
-// no matter what characters they include.
+// UseLiteralStyleIfMultiline writes every string that spans several lines as a literal block scalar ("|"),
+// whatever characters it holds.
 func UseLiteralStyleIfMultiline(useLiteralStyleIfMultiline bool) EncodeOption {
 	return func(e *Encoder) error {
 		e.useLiteralStyleIfMultiline = useLiteralStyleIfMultiline
@@ -364,7 +333,7 @@ func UseLiteralStyleIfMultiline(useLiteralStyleIfMultiline bool) EncodeOption {
 	}
 }
 
-// JSON encode in JSON format.
+// JSON writes the document in flow style with every string quoted, so that the output is also JSON.
 func JSON() EncodeOption {
 	return func(e *Encoder) error {
 		e.isJSONStyle = true
@@ -373,13 +342,11 @@ func JSON() EncodeOption {
 	}
 }
 
-// MarshalAnchor call back if encoder find an anchor during encoding.
+// MarshalAnchor calls callback for each anchor the encoder writes, with the anchor node and the value it anchors.
 //
-// An anchor is found by the address its value stands at, so a document decoded
-// and encoded again keeps its anchors only where the decode left one value
-// under every name that points at it. Pass [ShareAliases] to Unmarshal for
-// that; without it each alias builds its own value and the anchored node is
-// written out in full at every one.
+// The encoder finds an anchor by the address of its value. A decoded document encoded again therefore keeps its
+// anchors only where the decode gave every name of an anchor one value. Pass [ShareAliases] to [Unmarshal] for that.
+// Without it, each alias has a value of its own, and the anchored node is written in full at every alias.
 func MarshalAnchor(callback func(*ast.AnchorNode, any) error) EncodeOption {
 	return func(e *Encoder) error {
 		e.anchorCallback = callback
@@ -387,9 +354,8 @@ func MarshalAnchor(callback func(*ast.AnchorNode, any) error) EncodeOption {
 	}
 }
 
-// UseJSONMarshaler if neither `Marshaler` nor `GoYAMLMarshaler`
-// nor `encoding.TextMarshaler` is implemented and `MarshalJSON()([]byte, error)` is implemented,
-// call `MarshalJSON` to convert the returned `JSON` to `YAML` for processing.
+// UseJSONMarshaler encodes a type that implements [encoding/json.Marshaler], and neither this package's marshaler
+// interfaces nor [encoding.TextMarshaler], by calling MarshalJSON and converting the JSON it returns to YAML.
 func UseJSONMarshaler() EncodeOption {
 	return func(e *Encoder) error {
 		e.useJSONMarshaler = true
@@ -401,10 +367,9 @@ func UseJSONMarshaler() EncodeOption {
 // wherever the `yaml` tag leaves off, so that a value read under [UseJSONTags]
 // is written back under the names it was read from.
 //
-// The `json` tag names a field carrying no `yaml` tag, and an anonymous
-// embedded struct that no tag names has its fields written into the mapping
-// around it rather than under a key of their own. The `yaml` tag still wins
-// wherever a field carries one.
+// The `json` tag names a field that carries no `yaml` tag, and an anonymous embedded struct that no tag names has its
+// fields written into the mapping around it, not under a key of its own. The `yaml` tag still wins wherever a field
+// carries one.
 //
 // Without it the encoder writes the `yaml` tag's name, or the lowercased Go
 // name, as go.yaml.in/yaml/v3 does.
@@ -430,11 +395,11 @@ func WriteInferredNames(write bool) EncodeOption {
 	}
 }
 
-// CustomMarshaler overrides any encoding process for the type specified in generics.
+// CustomMarshaler encodes every T with marshaler, which returns the YAML text to write, in place of any other encoding
+// of T.
 //
-// NOTE: If type T implements MarshalYAML for pointer receiver, the type specified in CustomMarshaler must be *T.
-// If RegisterCustomMarshaler and CustomMarshaler of EncodeOption are specified for the same type,
-// the CustomMarshaler specified in EncodeOption takes precedence.
+// Where T implements MarshalYAML on a pointer receiver, give *T as the type parameter. The option takes precedence over
+// a function registered for the same type with [RegisterCustomMarshaler].
 func CustomMarshaler[T any](marshaler func(T) ([]byte, error)) EncodeOption {
 	return func(e *Encoder) error {
 		var typ T
@@ -445,8 +410,7 @@ func CustomMarshaler[T any](marshaler func(T) ([]byte, error)) EncodeOption {
 	}
 }
 
-// AutoInt automatically converts floating-point numbers to integers when the fractional part is zero.
-// For example, a value of 1.0 will be encoded as 1.
+// AutoInt writes a float with no fractional part as an integer: 1.0 is written 1.
 func AutoInt() EncodeOption {
 	return func(e *Encoder) error {
 		e.autoInt = true
@@ -454,10 +418,11 @@ func AutoInt() EncodeOption {
 	}
 }
 
-// OmitEmpty behaves in the same way as the interpretation of the omitempty tag in the encoding/json library.
-// set on all the fields.
-// In the current implementation, the omitempty tag is not implemented in the same way as encoding/json,
-// so please specify this option if you expect the same behavior.
+// OmitEmpty skips every struct field that encoding/json's omitempty would skip: a false bool, a zero number, an empty
+// string, a nil pointer or interface, and an empty slice or map.
+//
+// It applies to every field, tagged or not. Use it where you expect encoding/json's rule: this package's omitempty tag
+// also skips a value whose IsZero method returns true, and a struct whose fields would all be skipped (see [Marshal]).
 func OmitEmpty() EncodeOption {
 	return func(e *Encoder) error {
 		e.omitEmpty = true
@@ -465,8 +430,8 @@ func OmitEmpty() EncodeOption {
 	}
 }
 
-// OmitZero forces the encoder to assume an `omitzero` struct tag is
-// set on all the fields. See `Marshal` commentary for the `omitzero` tag logic.
+// OmitZero skips every struct field that the omitzero tag would skip, as if each field carried it. See [Marshal] for
+// the rule.
 func OmitZero() EncodeOption {
 	return func(e *Encoder) error {
 		e.omitZero = true
@@ -474,19 +439,15 @@ func OmitZero() EncodeOption {
 	}
 }
 
-// SkipDuplicateMapKey writes the first of two map keys that are one YAML key,
-// and drops the rest.
+// SkipDuplicateMapKey writes the first of two map keys that YAML reads as one key, and drops the rest.
 //
-// A Go map can hold two keys YAML holds as one: int(1) and uint64(1) in a
-// map[any]any, two NaN in a map[float64]T, one instant in two zones in a
-// map[time.Time]T. Without this option the encoder returns an error wrapping
-// [errors.ErrDuplicateKey] for such a map, as the decoder refuses a document
-// that writes one key twice.
+// A Go map can hold two keys that YAML reads as one: int(1) and uint64(1) in a map[any]any, two NaN in a
+// map[float64]T, or one instant in two zones in a map[time.Time]T. Without this option, the encoder returns an error
+// wrapping [errors.ErrDuplicateKey] for such a map, as the decoder does for a document that writes one key twice.
 //
-// The encoder orders a map's keys by their text and then by their Go type, so
-// the first is the same whatever order the map iterates in. [AllowDuplicateMapKey]
-// keeps the last on the way in instead: the decoder has every entry before it
-// fills a map, and the encoder writes each key as it comes to it.
+// The encoder orders a map's keys by their text and then by their Go type, so the same key comes first whatever order
+// the map iterates in. [AllowDuplicateMapKey] keeps the last value on decoding instead: the decoder has every entry
+// before it fills a map, while the encoder writes each key as it comes to it.
 func SkipDuplicateMapKey() EncodeOption {
 	return func(e *Encoder) error {
 		e.skipDuplicateMapKey = true
@@ -496,14 +457,12 @@ func SkipDuplicateMapKey() EncodeOption {
 
 // WithComment writes the comments cm holds into the document being encoded.
 //
-// Each key is parsed as a YAML path and the comment is written at the value the
-// path addresses. A key addressing no value in the document is passed over
-// rather than reported: a map read from one document may be written to another
-// that does not hold every value.
+// Each key is parsed as a YAML path, and the comment is written at the value the path addresses. A key that addresses
+// no value in the document is skipped without an error, so a map read from one document can be written to another
+// that lacks some of its values.
 //
-// The keys are full path expressions, so "$..a" and "$[*]" parse. Only the
-// first value such a key reaches takes the comment, because a comment goes in
-// one place -- prefer a key that addresses one value.
+// The keys are full path expressions, so "$..a" and "$[*]" parse. A comment goes in one place, so only the first value
+// such a key reaches takes the comment. Prefer keys that address one value each.
 func WithComment(cm CommentMap) EncodeOption {
 	return func(e *Encoder) error {
 		commentMap := map[nodeFilter][]*Comment{}
@@ -521,12 +480,10 @@ func WithComment(cm CommentMap) EncodeOption {
 
 // CommentToMap collects the comments of the document being decoded into cm.
 //
-// Each comment is filed under the path of the value it belongs to, so the map
-// is one [WithComment] can write back. cm must not be nil; the decoder fills
-// the map the caller keeps rather than returning one.
+// Each comment is filed under the path of the value it belongs to, so [WithComment] can write the map back. cm must not
+// be nil: the decoder fills the caller's map and does not return one.
 //
-// Decoding a document reads its values; this is how the comments come out with
-// them, since a Go value has nowhere to hold a comment.
+// A Go value has nowhere to hold a comment, so use CommentToMap to keep a document's comments when you decode it.
 func CommentToMap(cm CommentMap) DecodeOption {
 	return func(d *Decoder) error {
 		if cm == nil {

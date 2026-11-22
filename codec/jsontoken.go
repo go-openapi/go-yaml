@@ -17,38 +17,38 @@ import (
 	"github.com/go-openapi/go-yaml/token"
 )
 
-// JSONTokenKind says what a [JSONToken] carries.
+// JSONTokenKind gives the kind of a [JSONToken].
 //
-// The nine kinds are what a JSON document is made of once the separators are
-// left out. A reader that colors by kind, indexes by key or records a position
-// needs no more, and nothing about YAML crosses this boundary: no tags, no
-// anchors, no styles, no comments.
+// A JSON document is made of nine kinds of token once its separators are left out. They are enough for a reader that
+// colors by kind, indexes by key or records positions. No YAML feature reaches the tokens: no tags, anchors, styles
+// or comments.
 type JSONTokenKind uint8
 
 const (
-	// JSONInvalid is the zero value, and the kind of no token this package
-	// hands over.
+	// JSONInvalid is the zero value. No token handed over has this kind.
 	JSONInvalid JSONTokenKind = iota
-	// JSONObjectStart is the "{" of a mapping.
+	// JSONObjectStart opens a mapping: "{".
 	JSONObjectStart
-	// JSONObjectEnd is the "}" of a mapping.
+	// JSONObjectEnd closes a mapping: "}".
 	JSONObjectEnd
-	// JSONArrayStart is the "[" of a sequence.
+	// JSONArrayStart opens a sequence: "[".
 	JSONArrayStart
-	// JSONArrayEnd is the "]" of a sequence.
+	// JSONArrayEnd closes a sequence: "]".
 	JSONArrayEnd
-	// JSONKey is a mapping key, as the string JSON names a member with.
+	// JSONKey holds a mapping key, as the string that names a JSON member.
 	JSONKey
-	// JSONString is a string value, decoded.
+	// JSONString holds a string value, decoded.
 	JSONString
-	// JSONNumber is a number value, carrying the digits JSON spells it with.
+	// JSONNumber holds a number value, as the digits JSON writes it with.
 	JSONNumber
-	// JSONBool is true or false, read from [JSONToken.Bool].
+	// JSONBool holds true or false, in [JSONToken.Bool].
 	JSONBool
-	// JSONNull is null.
+	// JSONNull stands for null.
 	JSONNull
 )
 
+// String returns the bracket a collection token writes, such as "{", or the name of any other kind, such as "key"
+// or "number". It returns "invalid" for [JSONInvalid].
 func (k JSONTokenKind) String() string {
 	switch k {
 	case JSONObjectStart:
@@ -74,39 +74,35 @@ func (k JSONTokenKind) String() string {
 	}
 }
 
-// JSONToken is one piece of the JSON a YAML document holds the same values as.
+// JSONToken is one token of the JSON that holds the same values as a YAML document.
 //
-// Value carries the text of a key, a string or a number, and is empty for
-// everything else; a number keeps the digits rather than a parsed float, so a
-// value JSON can carry whole is not rounded on the way through. Bool carries
-// true or false and is read only when Kind is [JSONBool].
+// Value holds the text of a key, a string or a number, and is empty for the other kinds. A number keeps its digits
+// instead of a parsed float, so a value that JSON can carry whole is not rounded. Bool holds true or false, and counts
+// only when Kind is [JSONBool].
 //
-// A token's Value is safe to keep for as long as the source is: the scanner
-// hands back either a window into the document or a string of its own, and
-// never a view of a buffer it writes again. That is a stronger promise than the
-// nodes of a walk carry, which are good only until Leave returns.
+// A token's Value stays valid as long as the source does: the scanner returns either a window into the document or a
+// string of its own, never a view of a buffer it reuses. The nodes of a walk, by contrast, are valid only until Leave
+// returns.
 //
 // No token stands for a "," or a ":". An object is a [JSONObjectStart], its
 // members as a [JSONKey] and a value each, then a [JSONObjectEnd].
 type JSONToken struct {
 	// Value is the text of a key, a string or a number, and empty otherwise.
 	Value string
-	// At is where the token's first byte stands in the source. Offset is a
+	// At gives the position of the token's first byte in the source. Offset is a
 	// 0-based byte index, so src[At.Offset():] begins at the token, and Line
 	// and Column count from 1 with Column counting characters.
 	At token.Position
-	// Kind says what the token is.
+	// Kind gives the kind of the token.
 	Kind JSONTokenKind
 	// Bool is the value of a [JSONBool].
 	Bool bool
 }
 
-// JSONTokens converts a YAML document to JSON tokens, and answers for where the
-// conversion stands while it reads.
+// JSONTokens converts a YAML document to JSON tokens, and tracks the position of the conversion while it reads.
 //
-// Build one with [ToJSONTokens] and range over [JSONTokens.Tokens]. [JSONTokens.Depth]
-// and [JSONTokens.Path] describe the token the range is on, and
-// [JSONTokens.Err] reports what stopped it.
+// Build one with [ToJSONTokens] and range over [JSONTokens.Tokens]. [JSONTokens.Depth] and [JSONTokens.Path] describe
+// the token the range is on, and [JSONTokens.Err] returns the error that stopped it.
 type JSONTokens struct {
 	src  []byte
 	opts []parser.Option
@@ -128,13 +124,12 @@ type JSONTokens struct {
 	frames []jsonPathFrame
 }
 
-// Budget bounds how many tokens one document may hand over, and returns the
-// receiver so that it reads in the range statement.
+// Budget caps the number of tokens one document may hand over, and returns the receiver so that the call fits in the
+// range statement.
 //
-// An alias hands over everything its anchor names, again, each time it is
-// named, so a document of a few hundred bytes can name more values than there
-// is memory to hold. Neither the nesting depth nor the size of one scalar
-// bounds that; this does. Set it for input you did not write.
+// Each alias hands over everything its anchor names again, so a document of a few hundred bytes can name more values
+// than memory holds. The depth limit and the size of a scalar do not bound that, and Budget does. Set it for input you
+// did not write.
 //
 // A budget of 0, which is the default, does not bound it.
 func (s *JSONTokens) Budget(tokens int) *JSONTokens {
@@ -143,46 +138,40 @@ func (s *JSONTokens) Budget(tokens int) *JSONTokens {
 	return s
 }
 
-// OneDocument refuses a stream holding more than one document, and returns the
-// receiver so that it reads in the range statement.
+// OneDocument makes a stream of more than one document an error, and returns the receiver so that the call fits in
+// the range statement.
 //
-// Without it a stream converts its first document, which is the one [Unmarshal]
-// reads, and the rest are read without being handed over. A caller building one
-// JSON value has no room for the second and should say so here rather than
-// converting a document the author did not put first.
+// Without it, the conversion hands over the first document of a stream, as [Unmarshal] decodes the first, and reads
+// the others without handing them over. Use OneDocument when you build one JSON value, so that a second document is an
+// error and not silently dropped.
 //
-// A "%YAML" or "%TAG" line does not count: it opens a document of its own ahead
-// of the one it applies to.
+// A "%YAML" or "%TAG" line does not count as a document of its own.
 func (s *JSONTokens) OneDocument() *JSONTokens {
 	s.oneDocument = true
 
 	return s
 }
 
-// Err reports what stopped the conversion, and nil where nothing did.
+// Err returns the error that stopped the conversion, or nil.
 //
-// A range over [JSONTokens.Tokens] ends silently on an error, as a lexer does,
-// so read this after the loop.
+// A range over [JSONTokens.Tokens] ends without a sign on an error, as a lexer does, so call Err after the loop.
 func (s *JSONTokens) Err() error { return s.err }
 
 // Depth counts the objects and arrays open around the token just handed over.
 //
-// A document's outermost value stands at 1, and what it holds at 2. A closing
-// [JSONObjectEnd] or [JSONArrayEnd] reports the depth it returns to rather than
-// the one it closes, so the opener and the closer of one collection report
-// different numbers.
+// A document's outermost value stands at depth 1, and the values it holds at 2. A closing [JSONObjectEnd] or
+// [JSONArrayEnd] has the depth it returns to, not the depth it closes, so the opener and the closer of one collection
+// have different depths.
 func (s *JSONTokens) Depth() int { return s.depth }
 
-// Path is the RFC 6901 JSON pointer to the token just handed over.
+// Path returns the RFC 6901 JSON pointer to the token just handed over.
 //
-// A key and the value it names share a pointer -- the key names the member the
-// value fills -- and the document's outermost value is "". The pointer is built
-// as the conversion reads, so this costs a walk of the open collections and no
-// bookkeeping between calls.
+// A key and its value share one pointer, the pointer of the member. The document's outermost value has the pointer "".
+// Path builds the pointer from the open collections when it is called, so the conversion keeps no pointer between
+// calls.
 func (s *JSONTokens) Path() string { return string(s.AppendPath(nil)) }
 
-// AppendPath writes [JSONTokens.Path] to dst and returns it, for a caller that
-// keeps a buffer rather than taking a string each time.
+// AppendPath appends [JSONTokens.Path] to dst and returns the result, so that a caller can reuse one buffer.
 func (s *JSONTokens) AppendPath(dst []byte) []byte {
 	for _, f := range s.frames {
 		if !f.named {
@@ -200,12 +189,10 @@ func (s *JSONTokens) AppendPath(dst []byte) []byte {
 	return dst
 }
 
-// Tokens hands over the tokens of the first document, in the order JSON writes
-// them, and stops at the first one the conversion refuses.
+// Tokens iterates the tokens of the first document, in the order JSON writes them, and stops at the first error.
 //
-// Breaking out of the range stops the parse. [JSONTokens.Depth] and
-// [JSONTokens.Path] describe the token the body is running on, so read them
-// there rather than after the loop.
+// Breaking out of the range stops the parse. [JSONTokens.Depth] and [JSONTokens.Path] describe the token the loop body
+// is running on, so call them inside the loop.
 func (s *JSONTokens) Tokens() iter.Seq[JSONToken] {
 	return func(yield func(JSONToken) bool) {
 		s.err = nil

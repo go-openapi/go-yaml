@@ -12,53 +12,25 @@ import (
 	"github.com/go-openapi/go-yaml/parser"
 )
 
-// Marshal serializes the value provided into a YAML document. The structure
-// of the generated document will reflect the structure of the value itself.
-// Maps and pointers (to struct, string, int, etc) are accepted as the in value.
+// Marshal returns the YAML encoding of v, as one document.
 //
-// Struct fields are only marshaled if they are exported (have an upper case
-// first letter), and are marshaled using the field name lowercased as the
-// default key. Custom keys may be defined via the "yaml" name in the field
-// tag: the content preceding the first comma is used as the key, and the
-// following comma-separated options are used to tweak the marshaling process.
-// Conflicting names result in a runtime error.
+// A struct is written as a mapping of its exported fields. A field is written under its name lowercased, or under the
+// name its `yaml` tag gives. Two fields that end up with one name are an error.
 //
-// The field tag format accepted is:
+// The tag reads `yaml:"[name][,flag...]"`, and a field tagged "-" is skipped. The flags are:
 //
-//	`(...) yaml:"[<key>][,<flag1>[,<flag2>]]" (...)`
-//
-// The following flags are currently supported:
-//
-//	omitempty    Only include the field if it's not set to the zero
-//	             value for the type or to empty slices or maps.
-//	             Zero valued structs will be omitted if all their public
-//	             fields are zero, unless they implement an IsZero
-//	             method (see the IsZeroer interface type), in which
-//	             case the field will be included if that method returns true.
-//	             Note that this definition is slightly different from the Go's
-//	             encoding/json 'omitempty' definition. It combines some elements
-//	             of 'omitempty' and 'omitzero'. See https://github.com/go-openapi/go-yaml/issues/695.
-//
-//	omitzero      The omitzero tag behaves in the same way as the interpretation of the omitzero tag in the encoding/json library.
-//	              1) If the field type has an "IsZero() bool" method, that will be used to determine whether the value is zero.
-//	              2) Otherwise, the value is zero if it is the zero value for its type.
-//
-//	flow         Marshal using a flow style (useful for structs,
-//	             sequences and maps).
-//
-//	inline       Inline the field, which must be a struct or a map,
-//	             causing all of its fields or keys to be processed as if
-//	             they were part of the outer struct. For maps, keys must
-//	             not conflict with the yaml keys of other struct fields.
-//
-//	anchor       Marshal with anchor. If want to define anchor name explicitly, use anchor=name style.
-//	             Otherwise, if used 'anchor' name only, used the field name lowercased as the anchor name
-//
-//	alias        Marshal with alias. If want to define alias name explicitly, use alias=name style.
-//	             Otherwise, If omitted alias name and the field type is pointer type,
-//	             assigned anchor name automatically from same pointer address.
-//
-// In addition, if the key is "-", the field is ignored.
+//	omitempty  skip a zero number, a false bool, an empty string, a nil pointer or interface, an empty slice or map,
+//	           a value whose IsZero method returns true (see [IsZeroer]), and a struct whose exported fields would
+//	           all be skipped. This takes in part of encoding/json's omitzero as well as its omitempty:
+//	           see https://github.com/goccy/go-yaml/issues/695.
+//	omitzero   skip the field as encoding/json's omitzero does: where IsZero returns true for a type with that
+//	           method, and otherwise where the value is the zero value of its type.
+//	flow       write the value in flow style: [a, b] and {k: v}.
+//	inline     write the fields of a struct, or the keys of a map, into the mapping around it. A map's keys must not
+//	           repeat the names of the other fields.
+//	anchor     write the value with an anchor, named after the field lowercased. anchor=name sets the name.
+//	alias      write an alias in place of the value. alias=name names the anchor. Without a name the field must be a
+//	           pointer, and the alias names the anchor written for the same address.
 //
 // For example:
 //
@@ -66,10 +38,10 @@ import (
 //	    F int `yaml:"a,omitempty"`
 //	    B int
 //	}
-//	yaml.Marshal(&T{B: 2}) // Returns "b: 2\n"
-//	yaml.Marshal(&T{F: 1}) // Returns "a: 1\nb: 0\n"
+//	codec.Marshal(&T{B: 2}) // returns "b: 2\n"
+//	codec.Marshal(&T{F: 1}) // returns "a: 1\nb: 0\n"
 //
-// Options apply to this call only. Use [NewEncoder] to encode a stream.
+// Options apply to this call only. Use [NewEncoder] to write a stream of documents.
 func Marshal(v any, opts ...EncodeOption) ([]byte, error) {
 	var buf bytes.Buffer
 	if err := NewEncoder(&buf, opts...).Encode(v); err != nil {
@@ -78,7 +50,7 @@ func Marshal(v any, opts ...EncodeOption) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-// ValueToNode convert from value to ast.Node.
+// ValueToNode returns the AST node that [Marshal] would write for v, without rendering it.
 func ValueToNode(v any, opts ...EncodeOption) (ast.Node, error) {
 	var buf bytes.Buffer
 	node, err := NewEncoder(&buf, opts...).EncodeToNode(v)
@@ -88,16 +60,11 @@ func ValueToNode(v any, opts ...EncodeOption) (ast.Node, error) {
 	return node, nil
 }
 
-// Unmarshal decodes the first document found within the in byte slice
-// and assigns decoded values into the out value.
+// Unmarshal decodes the first document of data into the value v points to.
 //
-// Struct fields are only unmarshalled if they are exported (have an
-// upper case first letter), and are unmarshalled using the field name
-// lowercased as the default key. Custom keys may be defined via the
-// "yaml" name in the field tag: the content preceding the first comma
-// is used as the key, and the following comma-separated options are
-// used to tweak the marshaling process (see Marshal).
-// Conflicting names result in a runtime error.
+// A mapping fills a struct's exported fields, matched by the names [Marshal] writes: the field name lowercased, or the
+// name its `yaml` tag gives. See [Marshal] for the tag and its flags. Two fields that end up with one name are an
+// error.
 //
 // For example:
 //
@@ -106,15 +73,12 @@ func ValueToNode(v any, opts ...EncodeOption) (ast.Node, error) {
 //	    B int
 //	}
 //	var t T
-//	yaml.Unmarshal([]byte("a: 1\nb: 2"), &t)
-//
-// See the documentation of Marshal for the format of tags and a list of
-// supported tag options.
+//	codec.Unmarshal([]byte("a: 1\nb: 2"), &t)
 //
 // A value that does not fit its field, such as "a: x" into an int, is skipped
 // and decoding goes on, as encoding/json does. Unmarshal returns the first such
 // error, which matches [github.com/go-openapi/go-yaml/errors.ErrTypeMismatch],
-// and out holds everything decoded around it: the fields after it,
+// and v holds everything decoded around it: the fields after it,
 // and the parts of a nested struct, slice or map read before it.
 //
 // Options apply to this call only. Use [NewDecoder] to read every document of a stream.
@@ -130,7 +94,7 @@ func Unmarshal(data []byte, v any, opts ...DecodeOption) error {
 	return nil
 }
 
-// NodeToValue converts node to the value pointed to by v.
+// NodeToValue decodes node into the value v points to, as [Decoder.DecodeFromNode] does.
 func NodeToValue(node ast.Node, v any, opts ...DecodeOption) error {
 	var buf bytes.Buffer
 	if err := NewDecoder(&buf, opts...).DecodeFromNode(node, v); err != nil {
@@ -143,12 +107,12 @@ func NodeToValue(node ast.Node, v any, opts ...DecodeOption) error {
 //
 // It reads src with the parser's walk under [parser.WithJSONSyntax], so a document not written as JSON returns
 // [github.com/go-openapi/go-yaml/errors.ErrNotJSONSyntax], and a repeated member name returns
-// [github.com/go-openapi/go-yaml/errors.ErrDuplicateKey]. It writes each value as the walk reads it, through an
-// [ast.Stream]: the walk keeps nothing behind it and the stream nothing behind its output, so beyond its output
-// FromJSON holds what grows with the document's nesting, not its length.
+// [github.com/go-openapi/go-yaml/errors.ErrDuplicateKey]. It writes each value through an [ast.Stream] as the walk
+// reads it. Neither the walk nor the stream keeps what it has passed, so apart from its output, FromJSON holds memory
+// in proportion to the document's nesting depth, not its length.
 //
-// The YAML holds what the JSON wrote. A number keeps its text, "1e3" or "-0" or twenty digits, as a YAML 1.2 number.
-// Member order is kept. A string is written as [Marshal] writes a Go string: plain where the plain text reads back as
+// The YAML holds what the JSON wrote. A number keeps its text, such as "1e3", "-0" or a 20-digit integer, and reads
+// back as a YAML 1.2 number. Member order is kept. A string is written as [Marshal] writes a Go string: plain where the plain text reads back as
 // that string, quoted otherwise, so "yes", "1" and "null" stay quoted, and a string over several lines as a "|"
 // block.
 //
@@ -159,55 +123,43 @@ func FromJSON(src []byte, opts ...ast.RenderOption) ([]byte, error) {
 
 // ToJSON converts a YAML document to the JSON that holds the same values.
 //
-// It writes the tokens [ToJSONTokens] hands over into one buffer, putting back
-// the commas and colons the tokens leave out. The two converters are one reading
-// of a document -- the same aliases, merges, tags and refusals -- and differ only
-// in what they hand the caller.
+// ToJSON writes the tokens of [ToJSONTokens] into one buffer, and adds the commas and colons the tokens leave out.
+// The two converters read a document the same way: they resolve the same aliases, merges and tags, and reject the
+// same documents.
 //
-// A stream of several documents converts its first, which is the one
-// [Unmarshal] reads. The rest are still read, so a stream whose later documents
-// cannot be converted is refused rather than half-answered.
+// For a stream of several documents, ToJSON converts the first, as [Unmarshal] decodes the first. It still reads the
+// others, and returns an error if one of them cannot be converted.
 //
-// opts are passed to the parse. The one that changes what is written is
-// [github.com/go-openapi/go-yaml/parser.WithLaxTags], which reads a tag naming
-// a type its scalar is not as the text rather than refusing it, so
-// "k: !!int abc" converts to {"k":"abc"} instead of failing. Pass it here and
-// to whatever else reads the same document, or the two disagree about it.
+// opts go to the parser. [parser.WithLaxTags] is the one that changes the output: a scalar whose tag names a type it
+// cannot hold converts to its text, so "k: !!int abc" gives {"k":"abc"} instead of an error. Pass it to every reader
+// of the same document, so that they agree.
 //
-// [github.com/go-openapi/go-yaml/parser.WithJSONCompatible] is always on and
-// cannot be turned off: a document JSON has no spelling for is refused rather
-// than given one this converter invented.
+// [parser.WithJSONCompatible] is always on: a document holding a value JSON cannot write, such as an infinity or a
+// collection used as a key, returns an error.
 //
-// Under [github.com/go-openapi/go-yaml/parser.WithAllowDuplicateMapKey] a
-// repeated key keeps its first value, as in [ToJSONTokens], where a decoder
-// keeps the last.
+// Under [parser.WithAllowDuplicateMapKey], a repeated key keeps its first value, as in [ToJSONTokens].
+// A decoder under [AllowDuplicateMapKey] keeps the last.
 func ToJSON(src []byte, opts ...parser.Option) ([]byte, error) {
 	return toJSON(src, opts...)
 }
 
-// ToJSONTokens reads src as the JSON tokens holding the same values, handing
-// each over as the parse reaches it.
+// ToJSONTokens returns a reader of src as JSON tokens, which hands each token over as the parser reaches it.
 //
-// It converts what [ToJSON] writes, token by token instead of into one buffer,
-// and refuses the same documents: a value JSON has no spelling for -- an
-// infinity, a NaN, a collection as a mapping key -- stops the conversion rather
-// than being given one this package invented.
+// The tokens hold what [ToJSON] writes, and the two reject the same documents. A value JSON cannot write, such as an
+// infinity, a NaN or a collection used as a mapping key, stops the conversion with an error.
 //
-// A stream of several documents converts its first, which is the one
-// [Unmarshal] reads. The rest are converted too and none of them is handed
-// over, so a stream whose later documents cannot be converted is refused, as
-// [ToJSON] refuses it.
+// For a stream of several documents, only the first document's tokens are handed over, as [Unmarshal] decodes the
+// first. The others are still converted, and an error in one of them stops the range, as it does for [ToJSON].
 //
-// opts are passed to the parse. [github.com/go-openapi/go-yaml/parser.WithJSONCompatible]
-// is always on and cannot be turned off.
+// opts go to the parser. [parser.WithJSONCompatible] is always on.
 //
-// A document that repeats a mapping key is refused, as [Unmarshal] refuses it.
-// Under [github.com/go-openapi/go-yaml/parser.WithAllowDuplicateMapKey] the conversion keeps the first entry and
-// drops the later one, where a decoder under [AllowDuplicateMapKey] keeps the last value.
-// The first entry's tokens are handed over before the repeat is read, and cannot be taken back.
+// A document that repeats a mapping key returns an error, as it does for [Unmarshal]. Under
+// [parser.WithAllowDuplicateMapKey], the conversion keeps the first entry and drops the later one, while a decoder
+// under [AllowDuplicateMapKey] keeps the last value. The conversion hands the first entry's tokens over before it
+// reads the repeat, so it cannot keep the last one.
 //
-// Nothing is read until [JSONTokens.Tokens] is ranged over, and ranging twice
-// converts twice.
+// ToJSONTokens reads nothing until the caller ranges over [JSONTokens.Tokens], and each range converts the document
+// again.
 func ToJSONTokens(src []byte, opts ...parser.Option) *JSONTokens {
 	return &JSONTokens{src: src, opts: opts}
 }

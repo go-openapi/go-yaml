@@ -17,12 +17,11 @@ var (
 	customUnmarshalerMap = map[reflect.Type]func(any, []byte) error{}
 )
 
-// RegisterCustomMarshaler overrides any encoding process for the type specified in generics.
-// If you want to switch the behavior for each encoder, use `CustomMarshaler` defined as EncodeOption.
+// RegisterCustomMarshaler makes every encoder encode a T with marshaler, which returns the YAML text to write, in place
+// of any other encoding of T. Use [CustomMarshaler] to set it for one encoder only.
 //
-// NOTE: If type T implements MarshalYAML for pointer receiver, the type specified in RegisterCustomMarshaler must be *T.
-// If RegisterCustomMarshaler and CustomMarshaler of EncodeOption are specified for the same type,
-// the CustomMarshaler specified in EncodeOption takes precedence.
+// Where T implements MarshalYAML on a pointer receiver, give *T as the type parameter. A [CustomMarshaler] option for
+// the same type takes precedence.
 func RegisterCustomMarshaler[T any](marshaler func(T) ([]byte, error)) {
 	customMarshalerMx.Lock()
 	defer customMarshalerMx.Unlock()
@@ -33,11 +32,10 @@ func RegisterCustomMarshaler[T any](marshaler func(T) ([]byte, error)) {
 	}
 }
 
-// RegisterCustomUnmarshaler overrides any decoding process for the type specified in generics.
-// If you want to switch the behavior for each decoder, use `CustomUnmarshaler` defined as DecodeOption.
+// RegisterCustomUnmarshaler makes every decoder decode a T with unmarshaler, which receives the YAML text of the node,
+// in place of any other decoding of T. Use [CustomUnmarshaler] to set it for one decoder only.
 //
-// NOTE: If RegisterCustomUnmarshaler and CustomUnmarshaler of DecodeOption are specified for the same type,
-// the CustomUnmarshaler specified in DecodeOption takes precedence.
+// A [CustomUnmarshaler] option for the same type takes precedence.
 func RegisterCustomUnmarshaler[T any](unmarshaler func(*T, []byte) error) {
 	customUnmarshalerMx.Lock()
 	defer customUnmarshalerMx.Unlock()
