@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"iter"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -496,5 +497,91 @@ func TestAnInlineMapIsFilledByBothDecodePaths(t *testing.T) {
 			[]byte("known: K\ndeep: D\n"), &v, codec.DisallowUnknownField()))
 		assert.Equal(t, "D", v.Deep)
 		assert.Nil(t, v.Rest)
+	})
+}
+
+// KeptRaw records the YAML text a bytes unmarshaler receives.
+type KeptRaw struct{ Text string }
+
+func (r *KeptRaw) UnmarshalYAML(b []byte) error { r.Text = string(b); return nil }
+
+// KeptUpper reads its value through the function a GoYAMLUnmarshaler receives, and upper-cases it.
+type KeptUpper struct{ S string }
+
+func (u *KeptUpper) UnmarshalYAML(unmarshal func(any) error) error {
+	if err := unmarshal(&u.S); err != nil {
+		return err
+	}
+	u.S = strings.ToUpper(u.S)
+
+	return nil
+}
+
+// KeptText records the text an encoding.TextUnmarshaler receives.
+type KeptText struct{ S string }
+
+func (k *KeptText) UnmarshalText(b []byte) error { k.S = "text:" + string(b); return nil }
+
+// KeptFields holds a field of each type the walk keeps the node of, for the tree decoder to read.
+type KeptFields struct {
+	Name    string         `yaml:"name"`
+	When    time.Time      `yaml:"when"`
+	Every   time.Duration  `yaml:"every"`
+	Ordered codec.MapSlice `yaml:"ordered"`
+	Raw     KeptRaw        `yaml:"raw"`
+	Upper   *KeptUpper     `yaml:"upper"`
+	Text    KeptText       `yaml:"text"`
+	Times   []time.Time    `yaml:"times"`
+	ByName  map[string]KeptRaw
+	After   int `yaml:"after"`
+}
+
+// TestAFieldTheTreeReadsAgreesOnBothPaths decodes documents into fields the walk keeps the node of, and checks the
+// walk and the tree give the same value and the same error.
+func TestAFieldTheTreeReadsAgreesOnBothPaths(t *testing.T) {
+	for tc := range keptFieldCases() {
+		t.Run(tc.name, func(t *testing.T) {
+			var want, got KeptFields
+			wantErr := codec.Unmarshal([]byte(tc.doc), &want, treeOnly())
+			gotErr := codec.Unmarshal([]byte(tc.doc), &got)
+			if wantErr != nil {
+				require.Error(t, gotErr)
+				assert.Equal(t, wantErr.Error(), gotErr.Error())
+			} else {
+				require.NoError(t, gotErr)
+			}
+			assert.Equal(t, want, got)
+		})
+	}
+}
+
+// ***************** kept field test cases **************************
+
+// keptFieldCase holds a case name and a document decoded into [KeptFields].
+type keptFieldCase struct {
+	name string
+	doc  string
+}
+
+func keptFieldCases() iter.Seq[keptFieldCase] {
+	return slices.Values([]keptFieldCase{
+		{"a timestamp", "name: x\nwhen: 2001-12-14T21:59:43.10-05:00\nafter: 1\n"},
+		{"a tagged timestamp", "when: !!timestamp 2002-12-14\n"},
+		{"a timestamp that is not one", "when: soon\nafter: 1\n"},
+		{"a duration", "every: 90s\n"},
+		{"an ordered mapping", "ordered: {b: 1, a: [x, y], c: {d: e}}\nafter: 2\n"},
+		{"an !!omap", "ordered: !!omap [{b: 1}, {a: 2}]\n"},
+		{"a bytes unmarshaler on a mapping", "raw: {k: v, n: [1, 2]}\n"},
+		{"a bytes unmarshaler on a scalar", "raw: hello\n"},
+		{"a bytes unmarshaler on a sequence", "raw: [1, 2]\n"},
+		{"a GoYAMLUnmarshaler behind a pointer", "upper: shout\n"},
+		{"a GoYAMLUnmarshaler given a mapping", "upper: {a: b}\nafter: 3\n"},
+		{"a TextUnmarshaler", "text: plain\n"},
+		{"a TextUnmarshaler given a mapping", "text: {a: b}\nafter: 4\n"},
+		{"nulls", "when: ~\nevery: ~\nordered: ~\nraw: ~\nupper: ~\ntext: ~\n"},
+		{"timestamps in a sequence", "times: [2001-12-14, 2002-01-01]\n"},
+		{"unmarshalers in a map", "ByName: {a: 1, b: [2]}\n"},
+		{"an alias into a kept field", "name: &n 2001-12-14\nwhen: *n\n"},
+		{"a fragment under 1.1", "%YAML 1.1\n---\nraw: {on: yes}\n"},
 	})
 }

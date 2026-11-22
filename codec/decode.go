@@ -3159,6 +3159,10 @@ func (d *Decoder) canWalk(v reflect.Value) bool {
 	}
 
 	dst := v.Elem()
+	if v3NodeLayoutOf(dst.Type()) != nil {
+		// A yaml.Node at the root holds the document node, which the decode builds from the tree.
+		return false
+	}
 	if codecutils.HoldsAnything(dst) {
 		// UseStringKeys names every key by its text, as mapKeyNodeToValue
 		// does on the tree. valueBuilder keys a mapping by the resolved value of each key,

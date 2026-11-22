@@ -7,6 +7,7 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/go-openapi/testify/v2/require"
 	goccy "github.com/goccy/go-yaml"
@@ -71,6 +72,14 @@ type (
 		AreaID   int64   `yaml:"areaId"`
 		BlockIDs []int64 `yaml:"blockIds"`
 	}
+
+	// citmStamped adds a time.Time field the document never sets. The walk keeps such a field's node for the tree
+	// decoder, so the field does not send the whole decode to the tree.
+	citmStamped struct {
+		citmCatalog `yaml:",inline"`
+
+		Stamp time.Time `yaml:"stamp"`
+	}
 )
 
 // typedPeakRatioCap caps the typed walk's peak live heap as a multiple of the value it builds. The walk holds the
@@ -107,6 +116,7 @@ func TestTypedDecodePeakStaysNearTheResult(t *testing.T) {
 		{"v3, into the struct", plain, func(s []byte) error { var v citmCatalog; return v3.Unmarshal(s, &v) }, false},
 		{"goccy, into the struct", plain, func(s []byte) error { var v citmCatalog; return goccy.Unmarshal(s, &v) }, false},
 		{"typed walk", plain, func(s []byte) error { var v citmCatalog; return codec.Unmarshal(s, &v) }, true},
+		{"typed walk, a time.Time", plain, func(s []byte) error { var v citmStamped; return codec.Unmarshal(s, &v) }, true},
 		{"tree", plain, func(s []byte) error { var v citmCatalog; return codec.Unmarshal(s, &v, tree) }, false},
 		{"v3, anchored", anchored, func(s []byte) error { var v citmCatalog; return v3.Unmarshal(s, &v) }, false},
 		{"typed walk, anchored", anchored, func(s []byte) error { var v citmCatalog; return codec.Unmarshal(s, &v) }, true},

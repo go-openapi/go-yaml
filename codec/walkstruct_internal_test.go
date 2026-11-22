@@ -182,15 +182,35 @@ type walkableTypeRefusesWhatTheTreeReadsCase struct {
 
 func walkableTypeRefusedCases() iter.Seq[walkableTypeRefusesWhatTheTreeReadsCase] {
 	return slices.Values([]walkableTypeRefusesWhatTheTreeReadsCase{
-		{name: "a MapSlice", typ: reflect.TypeFor[struct{ A MapSlice }]()},
 		{name: "a RawMessage", typ: reflect.TypeFor[struct{ A RawMessage }]()},
 		{name: "a complex number", typ: reflect.TypeFor[struct{ A complex128 }]()},
 		{name: "a map keyed by an int", typ: reflect.TypeFor[struct{ A map[int]string }]()},
-		{name: "a time.Duration", typ: reflect.TypeFor[struct{ A time.Duration }]()},
-		{name: "a time.Time", typ: reflect.TypeFor[struct{ A time.Time }]()},
 		{name: "an array", typ: reflect.TypeFor[struct{ A [3]int }]()},
+		// A NodeUnmarshaler and an ast.Node field may keep the node they receive, which the walk recycles.
+		{name: "a NodeUnmarshaler", typ: reflect.TypeFor[struct{ A walkNodeHook }]()},
+		{name: "an ast.Node field", typ: reflect.TypeFor[struct{ A ast.Node }]()},
+		// A self-decoding inline field reads the whole mapping, which the walk passes entry by entry.
+		{name: "an inline field that decodes itself", typ: reflect.TypeFor[struct {
+			A walkBytesHook `yaml:",inline"`
+		}]()},
 	})
 }
+
+// The hooks the gate sorts: each walkXHook implements one interface of the decoder's.
+type (
+	walkBytesHook struct{ text string }
+	walkFuncHook  struct{ v any }
+	walkTextHook  struct{ text string }
+	walkNodeHook  struct{ node ast.Node }
+)
+
+func (h *walkBytesHook) UnmarshalYAML(b []byte) error { h.text = string(b); return nil }
+
+func (h *walkFuncHook) UnmarshalYAML(unmarshal func(any) error) error { return unmarshal(&h.v) }
+
+func (h *walkTextHook) UnmarshalText(b []byte) error { h.text = string(b); return nil }
+
+func (h *walkNodeHook) UnmarshalYAML(n ast.Node) error { h.node = n; return nil }
 
 func walkableTypeAcceptedCases() iter.Seq[walkableTypeRefusesWhatTheTreeReadsCase] {
 	return slices.Values([]walkableTypeRefusesWhatTheTreeReadsCase{
@@ -203,6 +223,14 @@ func walkableTypeAcceptedCases() iter.Seq[walkableTypeRefusesWhatTheTreeReadsCas
 		{name: "nested maps", typ: reflect.TypeFor[struct{ A map[string][]map[string]int }]()},
 		{name: "plain scalars", typ: reflect.TypeFor[WalkLeaf]()},
 		{name: "the shape above", typ: reflect.TypeFor[walkShape]()},
+		// The walk keeps the node of each of these, and the tree decoder reads that one node.
+		{name: "a MapSlice", typ: reflect.TypeFor[struct{ A MapSlice }]()},
+		{name: "a time.Duration", typ: reflect.TypeFor[struct{ A time.Duration }]()},
+		{name: "a time.Time", typ: reflect.TypeFor[struct{ A time.Time }]()},
+		{name: "a bytes Unmarshaler", typ: reflect.TypeFor[struct{ A walkBytesHook }]()},
+		{name: "a GoYAMLUnmarshaler", typ: reflect.TypeFor[struct{ A walkFuncHook }]()},
+		{name: "a TextUnmarshaler", typ: reflect.TypeFor[struct{ A *walkTextHook }]()},
+		{name: "a time.Time at the root", typ: reflect.TypeFor[time.Time]()},
 	})
 }
 
@@ -1117,6 +1145,23 @@ func TestADuplicateKeyDecodeWalks(t *testing.T) {
 }
 
 // TestARootOtherThanAStructWalks checks that a slice, a string map, a scalar and a pointer at the root take the walk.
+// TestAStructHoldingAFieldTheTreeReadsWalks checks a struct holding a time.Time, a MapSlice or a hook type walks:
+// the walk keeps that field's node, and the tree decoder reads it alone.
+func TestAStructHoldingAFieldTheTreeReadsWalks(t *testing.T) {
+	type holder struct {
+		When  time.Time     `yaml:"when"`
+		Order MapSlice      `yaml:"order"`
+		Raw   walkBytesHook `yaml:"raw"`
+		Text  walkTextHook  `yaml:"text"`
+	}
+	dec := NewDecoder(bytes.NewReader([]byte("when: 2001-12-14\norder: {a: 1}\nraw: [1]\ntext: x\n")))
+	var v holder
+	require.NoError(t, dec.Decode(&v))
+	assert.NotNil(t, dec.stream, "the struct was not walked")
+	assert.Equal(t, 2001, v.When.Year())
+	assert.Equal(t, "x", v.Text.text)
+}
+
 func TestARootOtherThanAStructWalks(t *testing.T) {
 	var p *int
 	for _, dst := range []any{new([]int), new(map[string]int), new(int), &p} {

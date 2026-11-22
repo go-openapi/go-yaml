@@ -63,9 +63,22 @@ import (
 // The walk keeps the first error for the document to return, and decodes the
 // fields after it, as the tree does. See decodeNode.
 //
-// The remaining cases guard against shapes that walkableType rejects first, or
-// that no document has produced so far: a destination that decodes itself or is
-// a MapSlice, an anchor with no node under it, and a lone entry
+// Nor does a field the tree decoder reads by rules of its own: a time.Time, a
+// time.Duration, a MapSlice, a MapSliceSeq, a MapItem, a yaml.Node of
+// go.yaml.in/yaml/v3, and a type that decodes itself from text or through a
+// value (Unmarshaler, GoYAMLUnmarshaler, encoding.TextUnmarshaler, v3's
+// UnmarshalYAML(*yaml.Node), RegisterCustomUnmarshaler). The walk keeps that
+// field's node whole and passes it to the tree decoder alone. Such a node
+// holding an anchor or an alias falls back, as a tagged node does.
+//
+// walkableType sends a decode to the tree before the walk for a destination
+// handed the node itself, which it may keep: a NodeUnmarshaler or an ast.Node
+// field. The walk recycles its nodes after their Leave. So does a RawMessage,
+// whose source text the walk drops, and a ",inline" field that decodes itself,
+// which reads the whole mapping.
+//
+// The remaining cases guard against shapes that no document has produced so
+// far: an anchor with no node under it, and a lone entry
 // (an ast.MappingValueNode) replayed for an alias.
 var errNeedsTheTree = errors.New("this decode needs the tree")
 
@@ -195,12 +208,15 @@ type typedBuilder struct {
 	docErr error
 	opts   []DecodeOption
 	nodes  *Decoder
+	// schema is the schema of the document being walked, which the node decoder reads a kept node under.
+	schema token.Schema
 	// naming records that the walk holds a key whole, an explicit "?" or a
 	// tagged key, for Leave to name the entry by. See keepKey.
 	naming bool
 }
 
 func (b *typedBuilder) Enter(node ast.Node, at parser.Cursor) error {
+	b.schema = at.Schema()
 	if _, isDirective := node.(*ast.DirectiveNode); isDirective && at.IsRoot() {
 		// The parse passes a "%YAML" or "%TAG" line as a root of its own, ahead
 		// of the document it opens. It holds no value.
@@ -581,7 +597,7 @@ func (b *typedBuilder) replayNode(node ast.Node, key bool, at *ast.AliasNode) er
 		}
 	}
 
-	cursor := replayCursor{key: key}
+	cursor := replayCursor{key: key, schema: b.schema}
 	switch err := b.Enter(node, cursor); {
 	case errors.Is(err, parser.ErrSkipNode):
 		return nil
@@ -907,7 +923,8 @@ func (b *typedBuilder) openMapping(dst reflect.Value, wanted bool) error {
 	out := dst
 	dst = b.indirect(dst)
 	if b.handled(dst) {
-		return b.fail(errNeedsTheTree)
+		// The tree decoder reads this one node.
+		return b.keepWhole(out, true)
 	}
 	switch dst.Kind() {
 	case reflect.Struct:
@@ -950,7 +967,8 @@ func (b *typedBuilder) openSequence(dst reflect.Value, wanted bool) error {
 	out := dst
 	dst = b.indirect(dst)
 	if b.handled(dst) {
-		return b.fail(errNeedsTheTree)
+		// The tree decoder reads this one node.
+		return b.keepWhole(out, true)
 	}
 	if dst.Kind() != reflect.Slice || !dst.CanSet() {
 		return b.fail(errNeedsTheTree)
@@ -1096,6 +1114,8 @@ func (b *typedBuilder) decodeNode(dst reflect.Value, node ast.Node) {
 
 		return
 	}
+	// A bytes unmarshaler reads its fragment under the document's version, as on the tree.
+	d.docSchema = b.schema
 	if len(b.stack) == 0 {
 		b.fieldError(d.decodeValue(dst, node))
 
@@ -1283,8 +1303,12 @@ func (b *typedBuilder) setScalar(dst reflect.Value, node ast.Node) error {
 	}
 
 	dst = b.indirect(dst)
-	if !dst.CanSet() || b.handled(dst) {
+	if !dst.CanSet() {
 		return errNeedsTheTree
+	}
+	if b.handled(dst) {
+		// convertScalar passes the scalar to the tree decoder.
+		return errNotWritten
 	}
 
 	switch dst.Kind() {
@@ -1373,7 +1397,7 @@ func (b *typedBuilder) handled(dst reflect.Value) bool {
 	}
 	// canWalk skips the walk for a Decoder holding a custom unmarshaler
 	// or UseJSONUnmarshaler, so neither applies here.
-	if decodesItself(dst.Addr(), false) {
+	if decodesItself(dst.Addr(), false) || v3NodeLayoutOf(dst.Type()) != nil || registeredUnmarshaler(dst.Addr().Type()) {
 		return true
 	}
 	switch dst.Interface().(type) {
@@ -1417,14 +1441,29 @@ var (
 		reflect.TypeFor[encoding.TextUnmarshaler](),
 		reflect.TypeFor[ast.Node](),
 	}
+	// keptForTheTree holds the interfaces of a type the walk keeps the node of, for the tree decoder to read at
+	// its Leave. Each one receives text, or a value the tree decoder builds, and keeps nothing of the node.
+	keptForTheTree = []reflect.Type{
+		reflect.TypeFor[Unmarshaler](),
+		reflect.TypeFor[GoYAMLUnmarshaler](),
+		reflect.TypeFor[encoding.TextUnmarshaler](),
+	}
+	// heldNodeTypes holds the interfaces of a type handed the node itself. A NodeUnmarshaler may keep the node it
+	// receives, and so may an ast.Node field. The walk recycles its nodes after their Leave, so such a type sends
+	// the whole decode to the tree, whose nodes live as long as the file.
+	heldNodeTypes = []reflect.Type{
+		reflect.TypeFor[NodeUnmarshaler](),
+		reflect.TypeFor[ast.Node](),
+	}
+	// readByTheTree holds the types the tree decoder reads by rules of its own, which the walk keeps the node of.
 	readByTheTree = []reflect.Type{
 		reflect.TypeFor[time.Time](),
 		reflect.TypeFor[time.Duration](),
 		reflect.TypeFor[MapSlice](),
 		reflect.TypeFor[MapSliceSeq](),
 		reflect.TypeFor[MapItem](),
-		reflect.TypeFor[RawMessage](),
 	}
+	rawMessageType = reflect.TypeFor[RawMessage]()
 )
 
 // init registers unmarshalerTypes with structfields.SelfDecoding: a `,inline` field whose type
@@ -1439,23 +1478,15 @@ func readWalkable(t reflect.Type, seen map[reflect.Type]bool, mode structfields.
 	}
 	seen[t] = true
 
-	if slices.Contains(readByTheTree, t) || v3NodeLayoutOf(t) != nil {
-		return false
-	}
 	pointer := reflect.PointerTo(t)
-	if v3NodeHook(pointer) != nil {
-		// UnmarshalYAML(*yaml.Node): the tree decoder builds the yaml.Node from its node.
+	switch {
+	case t == rawMessageType:
+		// A RawMessage holds the source text of its node, which the walk does not keep.
 		return false
-	}
-	if registeredUnmarshaler(pointer) {
-		// RegisterCustomUnmarshaler: the tree decoder passes the node's text to
-		// the function, and the walk has no node to pass.
+	case implementsAny(t, pointer, heldNodeTypes):
 		return false
-	}
-	for _, iface := range unmarshalerTypes {
-		if t.Implements(iface) || pointer.Implements(iface) {
-			return false
-		}
+	case keptWhole(t, pointer):
+		return true
 	}
 
 	switch t.Kind() {
@@ -1468,6 +1499,10 @@ func readWalkable(t reflect.Type, seen map[reflect.Type]bool, mode structfields.
 		}
 		for _, sf := range fields.ByGoName {
 			ft := t.Field(sf.Index).Type
+			if sf.IsInline && structfields.InlineReadsItsOwnNode(ft) {
+				// The field reads the whole mapping, which the walk passes entry by entry.
+				return false
+			}
 			if sf.IsInline && structfields.InlineTakesUnclaimedEntries(ft) {
 				// The walk meets an entry once and must place it then, through
 				// an index path named in structfields.Fields.flat. A map has no
@@ -1501,6 +1536,26 @@ func readWalkable(t reflect.Type, seen map[reflect.Type]bool, mode structfields.
 		// An array, a channel, a function, a complex number.
 		return false
 	}
+}
+
+// keptWhole reports whether the walk keeps the node of a destination of type t, for the tree decoder to read: a
+// type the tree decoder reads by rules of its own, or one that decodes itself from text or through a value.
+func keptWhole(t, pointer reflect.Type) bool {
+	return slices.Contains(readByTheTree, t) ||
+		v3NodeLayoutOf(t) != nil ||
+		v3NodeHook(pointer) != nil ||
+		registeredUnmarshaler(pointer) ||
+		implementsAny(t, pointer, keptForTheTree)
+}
+
+func implementsAny(t, pointer reflect.Type, interfaces []reflect.Type) bool {
+	for _, iface := range interfaces {
+		if t.Implements(iface) || pointer.Implements(iface) {
+			return true
+		}
+	}
+
+	return false
 }
 
 // reset readies b to fill root with the next document, and keeps the capacity
