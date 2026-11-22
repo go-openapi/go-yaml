@@ -234,6 +234,28 @@ func decodePaths() iter.Seq[decodePath] {
 	})
 }
 
+// TestAnIntTagReadsIntoEveryIntegerField decodes a number tagged "!!int" into signed and unsigned integer fields on
+// both decode paths, as the same number without a tag reads.
+func TestAnIntTagReadsIntoEveryIntegerField(t *testing.T) {
+	type ints struct {
+		I   int    `yaml:"i"`
+		I8  int8   `yaml:"i8"`
+		I64 int64  `yaml:"i64"`
+		U   uint   `yaml:"u"`
+		U8  uint8  `yaml:"u8"`
+		U64 uint64 `yaml:"u64"`
+	}
+	const src = "i: !!int -5\ni8: !!int -5\ni64: !!int -5\nu: !!int 5\nu8: !!int 5\nu64: !!int 5\n"
+
+	for path := range decodePaths() {
+		t.Run(path.name, func(t *testing.T) {
+			var got ints
+			require.NoError(t, codec.Unmarshal([]byte(src), &got, path.opts...))
+			assert.Equal(t, ints{I: -5, I8: -5, I64: -5, U: 5, U8: 5, U64: 5}, got)
+		})
+	}
+}
+
 // TestABinaryTagReadsAsTheTextItCarries: "!!binary" decodes to [codec.Base64],
 // the base64 the document wrote, with the bytes a method call away.
 //

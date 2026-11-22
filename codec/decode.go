@@ -1260,14 +1260,6 @@ func (d *Decoder) decodeValue(dst reflect.Value, src ast.Node) error {
 			return err
 		}
 		switch vv := v.(type) {
-		case int:
-			// No reader returns an int today: taggedInteger and an untagged number both give an int64,
-			// a uint64 or a *big.Int. The case dates from castToInteger, which returned an int, and
-			// without it "n: !!int 5" was rejected where "n: 5" read.
-			if !dst.OverflowInt(int64(vv)) {
-				dst.SetInt(int64(vv))
-				return nil
-			}
 		case int64:
 			if !dst.OverflowInt(vv) {
 				dst.SetInt(vv)
@@ -1306,12 +1298,6 @@ func (d *Decoder) decodeValue(dst reflect.Value, src ast.Node) error {
 			return err
 		}
 		switch vv := v.(type) {
-		case int:
-			// See the signed case above: no reader returns an int today.
-			if 0 <= vv && !dst.OverflowUint(uint64(vv)) {
-				dst.SetUint(uint64(vv))
-				return nil
-			}
 		case int64:
 			if 0 <= vv && !dst.OverflowUint(uint64(vv)) {
 				dst.SetUint(uint64(vv))
