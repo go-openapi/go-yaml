@@ -5,7 +5,9 @@ package codec_test
 
 import (
 	"encoding/json"
+	"iter"
 	"math/big"
+	"slices"
 	"testing"
 
 	"github.com/go-openapi/testify/v2/assert"
@@ -24,22 +26,8 @@ import (
 func TestAWideNumberEncodesAsANumber(t *testing.T) {
 	t.Parallel()
 
-	wide, ok := new(big.Int).SetString("12345678901234567890123456789", 10)
-	require.True(t, ok)
-	over, _, err := big.ParseFloat("1e400", 10, 64, big.ToNearestEven)
-	require.NoError(t, err)
-	under, _, err := big.ParseFloat("-9.948e-328", 10, 64, big.ToNearestEven)
-	require.NoError(t, err)
-
-	for name, tc := range map[string]struct {
-		value any
-		want  string
-	}{
-		"an integer past a machine word": {value: wide, want: "12345678901234567890123456789"},
-		"a float past float64's range":   {value: over, want: "1e+400"},
-		"a float under float64's range":  {value: under, want: "-9.948e-328"},
-	} {
-		t.Run(name, func(t *testing.T) {
+	for tc := range aWideNumberEncodesAsANumberCases(t) {
+		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
 			out, err := codec.Marshal(map[string]any{"num": tc.value})
@@ -47,6 +35,30 @@ func TestAWideNumberEncodesAsANumber(t *testing.T) {
 			assert.Equal(t, "num: "+tc.want+"\n", string(out), "the number is written unquoted")
 		})
 	}
+}
+
+// aWideNumberEncodesAsANumberCase holds a wide number and the text it encodes to.
+type aWideNumberEncodesAsANumberCase struct {
+	name  string
+	value any
+	want  string
+}
+
+func aWideNumberEncodesAsANumberCases(t *testing.T) iter.Seq[aWideNumberEncodesAsANumberCase] {
+	t.Helper()
+
+	wide, ok := new(big.Int).SetString("12345678901234567890123456789", 10)
+	require.True(t, ok)
+	over, _, err := big.ParseFloat("1e400", 10, 64, big.ToNearestEven)
+	require.NoError(t, err)
+	under, _, err := big.ParseFloat("-9.948e-328", 10, 64, big.ToNearestEven)
+	require.NoError(t, err)
+
+	return slices.Values([]aWideNumberEncodesAsANumberCase{
+		{name: "a float past float64's range", value: over, want: "1e+400"},
+		{name: "a float under float64's range", value: under, want: "-9.948e-328"},
+		{name: "an integer past a machine word", value: wide, want: "12345678901234567890123456789"},
+	})
 }
 
 // TestAWideNumberSurvivesARoundTrip reads a document holding numbers no machine

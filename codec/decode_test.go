@@ -10,6 +10,7 @@ import (
 	"io"
 	"iter"
 	"reflect"
+	"slices"
 	"testing"
 
 	"github.com/go-openapi/go-yaml/codec"
@@ -82,4 +83,13 @@ func decoderCases() iter.Seq[decodeCase] {
 		decodeBlockScalarCases(),
 		decodeStructCases(),
 	)
+}
+
+// walkAndTreePaths returns the walking reader and the tree decoder. An unmarshaler for a type no document holds
+// sends the decode down the tree path without changing the value it decodes.
+func walkAndTreePaths() iter.Seq[decodePath] {
+	return slices.Values([]decodePath{
+		{name: "walk"},
+		{name: "tree", opts: []codec.DecodeOption{codec.CustomUnmarshaler[chan int](func(*chan int, []byte) error { return nil })}},
+	})
 }

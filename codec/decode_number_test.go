@@ -119,13 +119,23 @@ func decoded(t *testing.T, src string) any {
 
 // TestFixedANumberPastBigFloatIsAnInfinity: each of these came back as zero.
 func TestFixedANumberPastBigFloatIsAnInfinity(t *testing.T) {
-	for src, want := range map[string]float64{
-		"a: 1e2147483647\n":        math.Inf(1),
-		"a: -3.96068E4059375226\n": math.Inf(-1),
-		"a: -36.74E69647216797\n":  math.Inf(-1),
-	} {
-		assert.Equal(t, want, decoded(t, src), "%q", src)
+	for tc := range fixedANumberPastBigFloatIsAnInfinityCases() {
+		assert.Equal(t, tc.want, decoded(t, tc.src), "%q", tc.src)
 	}
+}
+
+// fixedANumberPastBigFloatIsAnInfinityCase holds a document and the infinity its number decodes to.
+type fixedANumberPastBigFloatIsAnInfinityCase struct {
+	src  string
+	want float64
+}
+
+func fixedANumberPastBigFloatIsAnInfinityCases() iter.Seq[fixedANumberPastBigFloatIsAnInfinityCase] {
+	return slices.Values([]fixedANumberPastBigFloatIsAnInfinityCase{
+		{src: "a: -3.96068E4059375226\n", want: math.Inf(-1)},
+		{src: "a: -36.74E69647216797\n", want: math.Inf(-1)},
+		{src: "a: 1e2147483647\n", want: math.Inf(1)},
+	})
 }
 
 // TestAWideNumberBelowThatBoundIsKept holds the numbers inside the ±1000 bound,

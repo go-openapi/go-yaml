@@ -5,6 +5,8 @@ package codec_test
 
 import (
 	"bytes"
+	"iter"
+	"slices"
 	"strings"
 	"testing"
 
@@ -25,35 +27,10 @@ type depthTarget struct {
 // into an interface and into a pointer-to-struct field. Each accepts 10,000 levels and returns ErrExceededMaxDepth
 // at 10,001, whatever a level costs it in calls.
 func TestEveryReaderStopsPast10000Levels(t *testing.T) {
-	shapes := map[string]func(int) string{
-		"flow sequence": func(n int) string { return strings.Repeat("[", n) + strings.Repeat("]", n) },
-		"flow mapping":  func(n int) string { return strings.Repeat("{a: ", n) + "1" + strings.Repeat("}", n) },
-		"block sequence": func(n int) string {
-			return strings.Repeat("- ", n) + "1"
-		},
-	}
-
-	readers := map[string]func([]byte) error{
-		"walk into any": func(src []byte) error {
-			var v any
-
-			return codec.Unmarshal(src, &v)
-		},
-		"tree into any": func(src []byte) error {
-			var v any
-
-			return codec.Unmarshal(src, &v, codec.UseOrderedMap())
-		},
-		"ToJSON": func(src []byte) error {
-			_, err := codec.ToJSON(src)
-
-			return err
-		},
-	}
-
-	for shape, build := range shapes {
-		for reader, read := range readers {
-			t.Run(shape+"/"+reader, func(t *testing.T) {
+	for shape := range everyReaderStopsPast10000LevelsShapeCases() {
+		for reader := range everyReaderStopsPast10000LevelsReaderCases() {
+			t.Run(shape.name+"/"+reader.name, func(t *testing.T) {
+				build, read := shape.build, reader.read
 				require.NoError(t, read([]byte(build(deepNestingLimit))))
 
 				err := read([]byte(build(deepNestingLimit + 1)))
@@ -72,6 +49,48 @@ func TestEveryReaderStopsPast10000Levels(t *testing.T) {
 		err := codec.Unmarshal([]byte(chain(deepNestingLimit+1)), &v)
 		require.Error(t, err)
 		assert.ErrorIs(t, err, yamlerrors.ErrExceededMaxDepth)
+	})
+}
+
+// everyReaderStopsPast10000LevelsShapeCase holds a nesting shape and the function that writes it n levels deep.
+type everyReaderStopsPast10000LevelsShapeCase struct {
+	name  string
+	build func(int) string
+}
+
+func everyReaderStopsPast10000LevelsShapeCases() iter.Seq[everyReaderStopsPast10000LevelsShapeCase] {
+	return slices.Values([]everyReaderStopsPast10000LevelsShapeCase{
+		{name: "block sequence", build: func(n int) string {
+			return strings.Repeat("- ", n) + "1"
+		}},
+		{name: "flow mapping", build: func(n int) string { return strings.Repeat("{a: ", n) + "1" + strings.Repeat("}", n) }},
+		{name: "flow sequence", build: func(n int) string { return strings.Repeat("[", n) + strings.Repeat("]", n) }},
+	})
+}
+
+// everyReaderStopsPast10000LevelsReaderCase holds a reader and the function that reads a document with it.
+type everyReaderStopsPast10000LevelsReaderCase struct {
+	name string
+	read func([]byte) error
+}
+
+func everyReaderStopsPast10000LevelsReaderCases() iter.Seq[everyReaderStopsPast10000LevelsReaderCase] {
+	return slices.Values([]everyReaderStopsPast10000LevelsReaderCase{
+		{name: "ToJSON", read: func(src []byte) error {
+			_, err := codec.ToJSON(src)
+
+			return err
+		}},
+		{name: "tree into any", read: func(src []byte) error {
+			var v any
+
+			return codec.Unmarshal(src, &v, codec.UseOrderedMap())
+		}},
+		{name: "walk into any", read: func(src []byte) error {
+			var v any
+
+			return codec.Unmarshal(src, &v)
+		}},
 	})
 }
 

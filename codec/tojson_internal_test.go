@@ -4,6 +4,8 @@
 package codec
 
 import (
+	"iter"
+	"slices"
 	"testing"
 
 	"github.com/go-openapi/testify/v2/assert"
@@ -21,21 +23,8 @@ import (
 func TestAMergeTakesOnlyMappingsOnEveryPath(t *testing.T) {
 	const v11 = "%YAML 1.1\n---\n"
 
-	for src, want := range map[string]string{
-		"m:\n  <<:\n  y: 2\n":              "[4:6] null was used where mapping is expected",
-		"<<:\n":                            "[3:5] null was used where mapping is expected",
-		"<<: null\n":                       "[3:5] null was used where mapping is expected",
-		"a:\n  <<:\n":                      "[4:7] null was used where mapping is expected",
-		"<<: [{a: 1}, null]\n":             "[3:14] null was used where mapping is expected",
-		"<<: [{a: 1}, - {b: 2}]\n":         "[3:14] sequence was used where mapping is expected",
-		"<<: [{a: 1}, [{b: 2}]]\n":         "[3:14] sequence was used where mapping is expected",
-		"<<: [{a: 1}, 1]\n":                "[3:14] int was used where mapping is expected",
-		"<<: 1\n":                          "[3:5] int was used where mapping is expected",
-		"<<: [[{a: 1}], {b: 2}]\n":         "[3:6] sequence was used where mapping is expected",
-		"m:\n  <<: [{a: 1}, [x]]\n":        "[4:16] sequence was used where mapping is expected",
-		"m:\n  <<:\n    - {a: 1}\n    -\n": "[6:7] null was used where mapping is expected",
-	} {
-		doc := []byte(v11 + src)
+	for tc := range aMergeOfANonMappingCases() {
+		doc := []byte(v11 + tc.src)
 
 		var walked any
 		walkErr := Unmarshal(doc, &walked)
@@ -45,8 +34,8 @@ func TestAMergeTakesOnlyMappingsOnEveryPath(t *testing.T) {
 		_, tokenErr := collectJSONTokens(doc)
 
 		for name, err := range map[string]error{"walk": walkErr, "tree": treeErr, "ToJSON": jsonErr, "tokens": tokenErr} {
-			if assert.Errorf(t, err, "%s: %q", name, src) {
-				assert.Containsf(t, err.Error(), want, "%s: %q", name, src)
+			if assert.Errorf(t, err, "%s: %q", name, tc.src) {
+				assert.Containsf(t, err.Error(), tc.want, "%s: %q", name, tc.src)
 			}
 		}
 	}
@@ -56,13 +45,8 @@ func TestAMergeTakesOnlyMappingsOnEveryPath(t *testing.T) {
 		// value is handed over, and the tree reports it first. The streaming
 		// readers reported the value, and the int case parted from the tree
 		// before any of the above was fixed.
-		for src, want := range map[string]string{
-			"{<<: {x: 1}, <<: }\n":              `[3:14] mapping key "<<" already defined at [3:2]`,
-			"{<<: {x: 1}, <<: 1}\n":             `[3:14] mapping key "<<" already defined at [3:2]`,
-			"{<<: {x: 1}, <<: [{a: 1}, [x]]}\n": `[3:14] mapping key "<<" already defined at [3:2]`,
-			"<<: {x: 1}\n<<:\n":                 `[4:1] mapping key "<<" already defined at [3:1]`,
-		} {
-			doc := []byte(v11 + src)
+		for tc := range aRepeatedMergeKeyCases() {
+			doc := []byte(v11 + tc.src)
 
 			var walked any
 			walkErr := Unmarshal(doc, &walked)
@@ -72,8 +56,8 @@ func TestAMergeTakesOnlyMappingsOnEveryPath(t *testing.T) {
 			_, tokenErr := collectJSONTokens(doc)
 
 			for name, err := range map[string]error{"walk": walkErr, "tree": treeErr, "ToJSON": jsonErr, "tokens": tokenErr} {
-				if assert.Errorf(t, err, "%s: %q", name, src) {
-					assert.Containsf(t, err.Error(), want, "%s: %q", name, src)
+				if assert.Errorf(t, err, "%s: %q", name, tc.src) {
+					assert.Containsf(t, err.Error(), tc.want, "%s: %q", name, tc.src)
 				}
 			}
 		}
@@ -96,6 +80,38 @@ func TestAMergeTakesOnlyMappingsOnEveryPath(t *testing.T) {
 	})
 }
 
+// aMergeTakesOnlyMappingsOnEveryPathCase holds a document and the error every reader returns for it.
+type aMergeTakesOnlyMappingsOnEveryPathCase struct {
+	src  string
+	want string
+}
+
+func aMergeOfANonMappingCases() iter.Seq[aMergeTakesOnlyMappingsOnEveryPathCase] {
+	return slices.Values([]aMergeTakesOnlyMappingsOnEveryPathCase{
+		{src: "<<:\n", want: "[3:5] null was used where mapping is expected"},
+		{src: "<<: 1\n", want: "[3:5] int was used where mapping is expected"},
+		{src: "<<: [[{a: 1}], {b: 2}]\n", want: "[3:6] sequence was used where mapping is expected"},
+		{src: "<<: [{a: 1}, - {b: 2}]\n", want: "[3:14] sequence was used where mapping is expected"},
+		{src: "<<: [{a: 1}, 1]\n", want: "[3:14] int was used where mapping is expected"},
+		{src: "<<: [{a: 1}, [{b: 2}]]\n", want: "[3:14] sequence was used where mapping is expected"},
+		{src: "<<: [{a: 1}, null]\n", want: "[3:14] null was used where mapping is expected"},
+		{src: "<<: null\n", want: "[3:5] null was used where mapping is expected"},
+		{src: "a:\n  <<:\n", want: "[4:7] null was used where mapping is expected"},
+		{src: "m:\n  <<:\n    - {a: 1}\n    -\n", want: "[6:7] null was used where mapping is expected"},
+		{src: "m:\n  <<:\n  y: 2\n", want: "[4:6] null was used where mapping is expected"},
+		{src: "m:\n  <<: [{a: 1}, [x]]\n", want: "[4:16] sequence was used where mapping is expected"},
+	})
+}
+
+func aRepeatedMergeKeyCases() iter.Seq[aMergeTakesOnlyMappingsOnEveryPathCase] {
+	return slices.Values([]aMergeTakesOnlyMappingsOnEveryPathCase{
+		{src: "<<: {x: 1}\n<<:\n", want: `[4:1] mapping key "<<" already defined at [3:1]`},
+		{src: "{<<: {x: 1}, <<: 1}\n", want: `[3:14] mapping key "<<" already defined at [3:2]`},
+		{src: "{<<: {x: 1}, <<: [{a: 1}, [x]]}\n", want: `[3:14] mapping key "<<" already defined at [3:2]`},
+		{src: "{<<: {x: 1}, <<: }\n", want: `[3:14] mapping key "<<" already defined at [3:2]`},
+	})
+}
+
 // TestTheMergeKeyWrittenTheLongWayMergesOnEveryPath holds the four readers to
 // one answer about "? <<" under YAML 1.1, which is the merge key "<<:" is.
 //
@@ -103,35 +119,45 @@ func TestAMergeTakesOnlyMappingsOnEveryPath(t *testing.T) {
 // named "<<", and ToJSON wrote {"","x":1}, which is not JSON: the walk hands a
 // "?" over before its content says what the key is.
 func TestTheMergeKeyWrittenTheLongWayMergesOnEveryPath(t *testing.T) {
-	const anchor = "a: &a {x: 1}\n"
-
-	for src, want := range map[string]string{
-		"%YAML 1.1\n---\n" + anchor + "m:\n  ? <<\n  : *a\n  w: 2\n": `{"a":{"x":1},"m":{"x":1,"w":2}}`,
-		"%YAML 1.1\n---\n" + anchor + "m: {? <<: *a, w: 2}\n":        `{"a":{"x":1},"m":{"x":1,"w":2}}`,
-		"%YAML 1.1\n---\n" + anchor + "m: {? <<\n  : *a, w: 2}\n":    `{"a":{"x":1},"m":{"x":1,"w":2}}`,
-		// v and not y: 1.1 reads y as the boolean true.
-		"%YAML 1.1\n---\n" + anchor + "m:\n  ? <<\n  : [*a, {v: 3}]\n  w: 2\n": `{"a":{"x":1},"m":{"x":1,"v":3,"w":2}}`,
-		"%YAML 1.1\n---\n" + anchor + "m:\n  ? <<\n  : {x: 9}\n  x: 2\n":       `{"a":{"x":1},"m":{"x":2}}`,
-		"%YAML 1.1\n---\n" + anchor + "m:\n  ? \"<<\"\n  : *a\n":               `{"a":{"x":1},"m":{"<<":{"x":1}}}`,
-		anchor + "m:\n  ? <<\n  : *a\n":                                        `{"a":{"x":1},"m":{"<<":{"x":1}}}`,
-		anchor + "m: {? <<: *a}\n":                                             `{"a":{"x":1},"m":{"<<":{"x":1}}}`,
-	} {
-		doc := []byte(src)
+	for tc := range theMergeKeyWrittenTheLongWayMergesOnEveryPathCases() {
+		doc := []byte(tc.src)
 
 		js, err := ToJSON(doc)
-		require.NoErrorf(t, err, "ToJSON: %q", src)
-		assert.JSONEqf(t, want, string(js), "ToJSON: %q", src)
+		require.NoErrorf(t, err, "ToJSON: %q", tc.src)
+		assert.JSONEqf(t, tc.want, string(js), "ToJSON: %q", tc.src)
 
 		toks, err := collectJSONTokens(doc)
-		require.NoErrorf(t, err, "tokens: %q", src)
-		assert.JSONEqf(t, want, string(rebuildJSON(toks)), "tokens: %q", src)
+		require.NoErrorf(t, err, "tokens: %q", tc.src)
+		assert.JSONEqf(t, tc.want, string(rebuildJSON(toks)), "tokens: %q", tc.src)
 
-		for name, opts := range map[string][]DecodeOption{"walk": nil, "tree": {UseOrderedMap()}} {
+		for path := range walkAndOrderedMapPaths() {
 			var v any
-			require.NoErrorf(t, Unmarshal(doc, &v, opts...), "%s: %q", name, src)
+			require.NoErrorf(t, Unmarshal(doc, &v, path.opts...), "%s: %q", path.name, tc.src)
 			got, err := Marshal(v, JSON())
 			require.NoError(t, err)
-			assert.JSONEqf(t, want, string(got), "%s: %q", name, src)
+			assert.JSONEqf(t, tc.want, string(got), "%s: %q", path.name, tc.src)
 		}
 	}
+}
+
+// theMergeKeyWrittenTheLongWayMergesOnEveryPathCase holds a document and the JSON every reader gives for it.
+type theMergeKeyWrittenTheLongWayMergesOnEveryPathCase struct {
+	src  string
+	want string
+}
+
+func theMergeKeyWrittenTheLongWayMergesOnEveryPathCases() iter.Seq[theMergeKeyWrittenTheLongWayMergesOnEveryPathCase] {
+	const anchor = "a: &a {x: 1}\n"
+
+	return slices.Values([]theMergeKeyWrittenTheLongWayMergesOnEveryPathCase{
+		{src: "%YAML 1.1\n---\n" + anchor + "m:\n  ? <<\n  : *a\n  w: 2\n", want: `{"a":{"x":1},"m":{"x":1,"w":2}}`},
+		{src: "%YAML 1.1\n---\n" + anchor + "m: {? <<: *a, w: 2}\n", want: `{"a":{"x":1},"m":{"x":1,"w":2}}`},
+		{src: "%YAML 1.1\n---\n" + anchor + "m: {? <<\n  : *a, w: 2}\n", want: `{"a":{"x":1},"m":{"x":1,"w":2}}`},
+		// v and not y: 1.1 reads y as the boolean true.
+		{src: "%YAML 1.1\n---\n" + anchor + "m:\n  ? <<\n  : [*a, {v: 3}]\n  w: 2\n", want: `{"a":{"x":1},"m":{"x":1,"v":3,"w":2}}`},
+		{src: "%YAML 1.1\n---\n" + anchor + "m:\n  ? <<\n  : {x: 9}\n  x: 2\n", want: `{"a":{"x":1},"m":{"x":2}}`},
+		{src: "%YAML 1.1\n---\n" + anchor + "m:\n  ? \"<<\"\n  : *a\n", want: `{"a":{"x":1},"m":{"<<":{"x":1}}}`},
+		{src: anchor + "m:\n  ? <<\n  : *a\n", want: `{"a":{"x":1},"m":{"<<":{"x":1}}}`},
+		{src: anchor + "m: {? <<: *a}\n", want: `{"a":{"x":1},"m":{"<<":{"x":1}}}`},
+	})
 }

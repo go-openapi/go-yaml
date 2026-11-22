@@ -141,19 +141,29 @@ func TestJSONTokensBudgetBoundsAnAlias(t *testing.T) {
 }
 
 func TestJSONTokensRefuseWhatJSONCannotHold(t *testing.T) {
-	for name, src := range map[string]string{
-		"an infinity":      "a: .inf\n",
-		"a NaN":            "a: .nan\n",
-		"a sequence key":   "? [1, 2]\n: v\n",
-		"an unknown alias": "a: *nope\n",
-	} {
-		t.Run(name, func(t *testing.T) {
-			s := codec.ToJSONTokens([]byte(src))
+	for tc := range jsonTokensRefuseWhatJSONCannotHoldCases() {
+		t.Run(tc.name, func(t *testing.T) {
+			s := codec.ToJSONTokens([]byte(tc.src))
 			for range s.Tokens() {
 			}
 			assert.Error(t, s.Err())
 		})
 	}
+}
+
+// jsonTokensRefuseWhatJSONCannotHoldCase holds a document JSON cannot hold.
+type jsonTokensRefuseWhatJSONCannotHoldCase struct {
+	name string
+	src  string
+}
+
+func jsonTokensRefuseWhatJSONCannotHoldCases() iter.Seq[jsonTokensRefuseWhatJSONCannotHoldCase] {
+	return slices.Values([]jsonTokensRefuseWhatJSONCannotHoldCase{
+		{name: "a NaN", src: "a: .nan\n"},
+		{name: "a sequence key", src: "? [1, 2]\n: v\n"},
+		{name: "an infinity", src: "a: .inf\n"},
+		{name: "an unknown alias", src: "a: *nope\n"},
+	})
 }
 
 func TestJSONTokensReadTheFirstDocumentOfAStream(t *testing.T) {

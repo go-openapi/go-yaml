@@ -1038,17 +1038,15 @@ func TestARegisteredUnmarshalerReadsItsTypeOnEveryPath(t *testing.T) {
 	type holder struct {
 		Leaf registeredLeaf `yaml:"leaf"`
 	}
-	// A custom unmarshaler turns the walk off, and no field holds a chan int.
-	tree := codec.CustomUnmarshaler[chan int](func(*chan int, []byte) error { return nil })
 
-	for name, opts := range map[string][]codec.DecodeOption{"walk": nil, "tree": {tree}} {
-		t.Run(name, func(t *testing.T) {
+	for path := range walkAndTreePaths() {
+		t.Run(path.name, func(t *testing.T) {
 			var root registeredLeaf
-			require.NoError(t, codec.Unmarshal([]byte("foo: bar\n"), &root, opts...))
+			require.NoError(t, codec.Unmarshal([]byte("foo: bar\n"), &root, path.opts...))
 			assert.Equal(t, "override", root.Foo)
 
 			var field holder
-			require.NoError(t, codec.Unmarshal([]byte("leaf: {foo: bar}\n"), &field, opts...))
+			require.NoError(t, codec.Unmarshal([]byte("leaf: {foo: bar}\n"), &field, path.opts...))
 			assert.Equal(t, "override", field.Leaf.Foo)
 		})
 	}

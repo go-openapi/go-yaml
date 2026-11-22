@@ -277,14 +277,12 @@ func TestAMapFieldKeepsTheCallersEntries(t *testing.T) {
 	type doc struct {
 		Plain map[string]string `yaml:"plain"`
 	}
-	// A custom unmarshaler turns the walk off, and no field holds a chan int.
-	tree := codec.CustomUnmarshaler[chan int](func(*chan int, []byte) error { return nil })
 	want := doc{Plain: map[string]string{"a": "x", "z": "kept"}}
 
-	for name, opts := range map[string][]codec.DecodeOption{"walk": nil, "tree": {tree}} {
-		t.Run(name, func(t *testing.T) {
+	for path := range walkAndTreePaths() {
+		t.Run(path.name, func(t *testing.T) {
 			v := doc{Plain: map[string]string{"a": "default", "z": "kept"}}
-			require.NoError(t, codec.NewDecoder(strings.NewReader("plain: {a: x}\n"), opts...).Decode(&v))
+			require.NoError(t, codec.NewDecoder(strings.NewReader("plain: {a: x}\n"), path.opts...).Decode(&v))
 			require.Equal(t, want, v)
 		})
 	}

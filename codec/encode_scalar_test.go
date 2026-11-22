@@ -242,18 +242,8 @@ func TestATimeTimeInAnInterfaceSlotIsWrittenTagged(t *testing.T) {
 	t.Run("an interface slot reads back as the time.Time", func(t *testing.T) {
 		t.Parallel()
 
-		ordered, err := codec.NewMapSlice(codec.MapItem{Key: zoned, Value: utc})
-		require.NoError(t, err)
-
-		for name, tc := range map[string]struct {
-			in   any
-			tags int
-		}{
-			"a map[any]any key and value": {map[any]any{utc: zoned}, 2},
-			"a value in a map[string]any": {map[string]any{"k": zoned}, 1},
-			"an element of a []any":       {[]any{utc}, 1},
-			"a MapSlice entry":            {ordered, 2},
-		} {
+		for tc := range aTimeTimeInAnInterfaceSlotIsWrittenTaggedCases(t, utc, zoned) {
+			name := tc.name
 			out, err := codec.Marshal(tc.in)
 			require.NoErrorf(t, err, "%s", name)
 			assert.Equalf(t, tc.tags, strings.Count(string(out), "!!timestamp"), "%s: %q", name, out)
@@ -297,5 +287,28 @@ func TestATimeTimeInAnInterfaceSlotIsWrittenTagged(t *testing.T) {
 		require.NoError(t, err)
 		assert.NotContains(t, string(out), "!!timestamp")
 		assert.Contains(t, string(out), `"2001-12-14T00:00:00Z"`)
+	})
+}
+
+// aTimeTimeInAnInterfaceSlotIsWrittenTaggedCase holds a value with a time.Time in it and its "!!timestamp" count.
+type aTimeTimeInAnInterfaceSlotIsWrittenTaggedCase struct {
+	name string
+	in   any
+	tags int
+}
+
+func aTimeTimeInAnInterfaceSlotIsWrittenTaggedCases(
+	t *testing.T, utc, zoned time.Time,
+) iter.Seq[aTimeTimeInAnInterfaceSlotIsWrittenTaggedCase] {
+	t.Helper()
+
+	ordered, err := codec.NewMapSlice(codec.MapItem{Key: zoned, Value: utc})
+	require.NoError(t, err)
+
+	return slices.Values([]aTimeTimeInAnInterfaceSlotIsWrittenTaggedCase{
+		{name: "a MapSlice entry", in: ordered, tags: 2},
+		{name: "a map[any]any key and value", in: map[any]any{utc: zoned}, tags: 2},
+		{name: "a value in a map[string]any", in: map[string]any{"k": zoned}, tags: 1},
+		{name: "an element of a []any", in: []any{utc}, tags: 1},
 	})
 }

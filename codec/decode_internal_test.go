@@ -6,6 +6,8 @@ package codec
 import (
 	"bytes"
 	"fmt"
+	"iter"
+	"slices"
 	"strings"
 	"testing"
 
@@ -267,27 +269,37 @@ type mergePair struct {
 // "<<" came last. The document writes each key once; the two stand in different
 // mappings.
 func TestMergedKeyLosesToTheMappingsOwn(t *testing.T) {
-	for name, src := range map[string]string{
-		"merge first": underEleven("base: &b\n  a: 1\n  b: 2\nuse:\n  <<: *b\n  b: 3\n"),
-		"merge last":  underEleven("base: &b\n  a: 1\n  b: 2\nuse:\n  b: 3\n  <<: *b\n"),
-	} {
-		t.Run(name, func(t *testing.T) {
+	for tc := range mergedKeyLosesToTheMappingsOwnCases() {
+		t.Run(tc.name, func(t *testing.T) {
 			var dst struct {
 				Base mergePair `yaml:"base"`
 				Use  mergePair `yaml:"use"`
 			}
-			require.NoError(t, Unmarshal([]byte(src), &dst))
+			require.NoError(t, Unmarshal([]byte(tc.src), &dst))
 			assert.Equal(t, 1, dst.Use.A, "a from the merge")
 			assert.Equal(t, 3, dst.Use.B, "b from the mapping's own")
 
 			// The two paths read one document, so they answer the same.
 			var walked any
-			require.NoError(t, Unmarshal([]byte(src), &walked))
+			require.NoError(t, Unmarshal([]byte(tc.src), &walked))
 			use, _ := walked.(map[string]any)["use"].(map[string]any)
 			assert.Contains(t, []any{uint64(1), int64(1), 1}, use["a"], "walk read a as %T", use["a"])
 			assert.Contains(t, []any{uint64(3), int64(3), 3}, use["b"], "walk read b as %T", use["b"])
 		})
 	}
+}
+
+// mergedKeyLosesToTheMappingsOwnCase holds a case name and a document that overrides a merged key.
+type mergedKeyLosesToTheMappingsOwnCase struct {
+	name string
+	src  string
+}
+
+func mergedKeyLosesToTheMappingsOwnCases() iter.Seq[mergedKeyLosesToTheMappingsOwnCase] {
+	return slices.Values([]mergedKeyLosesToTheMappingsOwnCase{
+		{name: "merge first", src: underEleven("base: &b\n  a: 1\n  b: 2\nuse:\n  <<: *b\n  b: 3\n")},
+		{name: "merge last", src: underEleven("base: &b\n  a: 1\n  b: 2\nuse:\n  b: 3\n  <<: *b\n")},
+	})
 }
 
 // TestEarlierMergeWinsOverLater covers a mapping merging two others that write
@@ -349,5 +361,21 @@ func TestNodeToValueBudgetsTheNodeItIsGiven(t *testing.T) {
 		require.NoError(t, err)
 		var dst bombDestination
 		require.ErrorIs(t, NodeToValue(file.Docs[0].Body, &dst), yamlerrors.ErrExcessiveAliasing)
+	})
+}
+
+// decodePath names a decode path and the options that select it.
+type decodePath struct {
+	name string
+	opts []DecodeOption
+}
+
+// walkAndOrderedMapPaths returns the walk and the tree decoder, each given opts.
+// UseOrderedMap keeps the tree's decode off the walk. It reads a mapping into a
+// MapSlice, which marshals to the JSON members the walk's map does.
+func walkAndOrderedMapPaths(opts ...DecodeOption) iter.Seq[decodePath] {
+	return slices.Values([]decodePath{
+		{name: "walk", opts: slices.Clone(opts)},
+		{name: "tree", opts: append(slices.Clone(opts), UseOrderedMap())},
 	})
 }

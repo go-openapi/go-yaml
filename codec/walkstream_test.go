@@ -266,12 +266,10 @@ func TestATypeErrorFailsOnlyItsOwnDocument(t *testing.T) {
 		A int    `yaml:"a"`
 		B string `yaml:"b"`
 	}
-	// A custom unmarshaler turns the walk off, and no field holds a chan int.
-	tree := codec.CustomUnmarshaler[chan int](func(*chan int, []byte) error { return nil })
 
-	for name, opts := range map[string][]codec.DecodeOption{"walk": nil, "tree": {tree}} {
-		t.Run(name, func(t *testing.T) {
-			dec := codec.NewDecoder(strings.NewReader("a: x\nb: one\n---\na: 2\nb: two\n"), opts...)
+	for path := range walkAndTreePaths() {
+		t.Run(path.name, func(t *testing.T) {
+			dec := codec.NewDecoder(strings.NewReader("a: x\nb: one\n---\na: 2\nb: two\n"), path.opts...)
 
 			var first doc
 			require.ErrorIs(t, dec.Decode(&first), yamlerrors.ErrTypeMismatch)
@@ -381,12 +379,11 @@ func TestADocumentErrorFailsOnlyItsOwnDocument(t *testing.T) {
 		X any              `yaml:"x"`
 		B string           `yaml:"b"`
 	}
-	// A custom unmarshaler turns the walk off, and no field holds a chan int.
-	tree := codec.CustomUnmarshaler[chan int](func(*chan int, []byte) error { return nil })
 
 	for first := range aDocumentErrorFailsOnlyItsOwnDocumentCases() {
-		for path, opts := range map[string][]codec.DecodeOption{"walk": nil, "tree": {tree}} {
-			t.Run(first.name+"/"+path, func(t *testing.T) {
+		for path := range walkAndTreePaths() {
+			t.Run(first.name+"/"+path.name, func(t *testing.T) {
+				opts := path.opts
 				if first.strict {
 					opts = append([]codec.DecodeOption{codec.DisallowUnknownField()}, opts...)
 				}

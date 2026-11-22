@@ -594,7 +594,8 @@ func TestATimestampIntoAStringIsWrittenInRFC3339(t *testing.T) {
 	}
 
 	t.Run("a tag that is no timestamp is refused", func(t *testing.T) {
-		for field, at := range map[string]string{"s": "[1:16]", "p": "[1:16]", "tu": "[1:17]"} {
+		for tc := range aTimestampIntoAStringRefusedFieldCases() {
+			field, at := tc.field, tc.at
 			var v fields
 			err := codec.Unmarshal([]byte(field+": !!timestamp nope\n"), &v)
 			require.Error(t, err, field)
@@ -631,6 +632,20 @@ func aTimestampIntoAStringIsWrittenInRFC3339Cases() iter.Seq[aTimestampIntoAStri
 	})
 }
 
+// aTimestampIntoAStringRefusedFieldCase holds a field and the position its error names.
+type aTimestampIntoAStringRefusedFieldCase struct {
+	field string
+	at    string
+}
+
+func aTimestampIntoAStringRefusedFieldCases() iter.Seq[aTimestampIntoAStringRefusedFieldCase] {
+	return slices.Values([]aTimestampIntoAStringRefusedFieldCase{
+		{field: "p", at: "[1:16]"},
+		{field: "s", at: "[1:16]"},
+		{field: "tu", at: "[1:17]"},
+	})
+}
+
 // textOnly reads itself through encoding.TextUnmarshaler and nothing else.
 type textOnly struct{ text string }
 
@@ -653,10 +668,8 @@ func (x *textOnly) UnmarshalText(b []byte) error {
 // same one: the converter used to write "not-a-date" through as a string while
 // the decoder refused it.
 func TestATagThatCannotConvertIsRefused(t *testing.T) {
-	for src, want := range map[string]string{
-		"a: !!timestamp not-a-date\n":   `cannot read "not-a-date" as !!timestamp`,
-		"a: !!binary \"not base64!\"\n": `cannot read "not base64!" as !!binary`,
-	} {
+	for tc := range aTagThatCannotConvertIsRefusedCases() {
+		src, want := tc.src, tc.want
 		var v any
 		err := codec.Unmarshal([]byte(src), &v)
 		require.Errorf(t, err, "%q", src)
@@ -669,6 +682,19 @@ func TestATagThatCannotConvertIsRefused(t *testing.T) {
 			require.NoErrorf(t, codec.Unmarshal([]byte(src), &v), "%q", src)
 			assert.Equalf(t, time.Time{}, v["a"], "%q", src)
 		}
+	})
+}
+
+// aTagThatCannotConvertIsRefusedCase holds a document and the text its error contains.
+type aTagThatCannotConvertIsRefusedCase struct {
+	src  string
+	want string
+}
+
+func aTagThatCannotConvertIsRefusedCases() iter.Seq[aTagThatCannotConvertIsRefusedCase] {
+	return slices.Values([]aTagThatCannotConvertIsRefusedCase{
+		{src: "a: !!binary \"not base64!\"\n", want: `cannot read "not base64!" as !!binary`},
+		{src: "a: !!timestamp not-a-date\n", want: `cannot read "not-a-date" as !!timestamp`},
 	})
 }
 
@@ -695,14 +721,8 @@ func laxDecode(t *testing.T, src string) (any, error) {
 // "!!int" and "!!float" -- except that it answered 0, a value a caller can tell
 // neither from a written zero nor from the text that produced it.
 func TestLaxTagsReadsTheTextTheScalarWasWrittenWith(t *testing.T) {
-	for src, want := range map[string]any{
-		"k: !!int abc\n":              "abc",
-		"k: !!float xyz\n":            "xyz",
-		"k: !!bool 7\n":               "7",
-		"k: !!null 5\n":               "5",
-		"k: !!binary not base64!\n":   "not base64!",
-		"k: !!timestamp not-a-date\n": "not-a-date",
-	} {
+	for tc := range laxTagsReadsTheTextTheScalarWasWrittenWithCases() {
+		src, want := tc.src, tc.want
 		t.Run(src, func(t *testing.T) {
 			got, err := laxDecode(t, src)
 			require.NoError(t, err)
@@ -715,26 +735,54 @@ func TestLaxTagsReadsTheTextTheScalarWasWrittenWith(t *testing.T) {
 	}
 }
 
+// laxTagsReadsTheTextTheScalarWasWrittenWithCase holds a document whose tag fails and the value its key reads.
+type laxTagsReadsTheTextTheScalarWasWrittenWithCase struct {
+	src  string
+	want any
+}
+
+func laxTagsReadsTheTextTheScalarWasWrittenWithCases() iter.Seq[laxTagsReadsTheTextTheScalarWasWrittenWithCase] {
+	return slices.Values([]laxTagsReadsTheTextTheScalarWasWrittenWithCase{
+		{src: "k: !!binary not base64!\n", want: "not base64!"},
+		{src: "k: !!bool 7\n", want: "7"},
+		{src: "k: !!float xyz\n", want: "xyz"},
+		{src: "k: !!int abc\n", want: "abc"},
+		{src: "k: !!null 5\n", want: "5"},
+		{src: "k: !!timestamp not-a-date\n", want: "not-a-date"},
+	})
+}
+
 // TestLaxTagsLeavesEveryOtherAnswerAlone is what says the option relaxes one
 // thing and not the reading of tags in general.
 func TestLaxTagsLeavesEveryOtherAnswerAlone(t *testing.T) {
-	for src, want := range map[string]any{
-		// A tag naming what the scalar is.
-		"k: !!int 5\n":     uint64(5),
-		"k: !!bool true\n": true,
-		"k: !!str 0x10\n":  "0x10",
-		// A tag this library has no rule for is read by its kind, option or no.
-		"k: !fred x\n": "x",
-		"k: !Ref x\n":  "x",
-		// A tag standing on no value takes the tag's own default.
-		"k: !!bool\n": false,
-	} {
+	for tc := range laxTagsLeavesEveryOtherAnswerAloneCases() {
+		src, want := tc.src, tc.want
 		t.Run(src, func(t *testing.T) {
 			got, err := laxDecode(t, src)
 			require.NoError(t, err)
 			assert.Equal(t, map[string]any{"k": want}, got)
 		})
 	}
+}
+
+// laxTagsLeavesEveryOtherAnswerAloneCase holds a document and the value its key reads with the option.
+type laxTagsLeavesEveryOtherAnswerAloneCase struct {
+	src  string
+	want any
+}
+
+func laxTagsLeavesEveryOtherAnswerAloneCases() iter.Seq[laxTagsLeavesEveryOtherAnswerAloneCase] {
+	return slices.Values([]laxTagsLeavesEveryOtherAnswerAloneCase{
+		// A tag naming what the scalar is.
+		{src: "k: !!int 5\n", want: uint64(5)},
+		{src: "k: !!bool true\n", want: true},
+		{src: "k: !!str 0x10\n", want: "0x10"},
+		// A tag this library has no rule for is read by its kind, option or no.
+		{src: "k: !fred x\n", want: "x"},
+		{src: "k: !Ref x\n", want: "x"},
+		// A tag standing on no value takes the tag's own default.
+		{src: "k: !!bool\n", want: false},
+	})
 }
 
 // TestLaxTagsKeepsTheTagOnTheNode covers the round trip.

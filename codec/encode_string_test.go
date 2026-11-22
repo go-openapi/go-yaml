@@ -20,19 +20,8 @@ import (
 // double-quoted with an escape, and reads back as it was. Written raw, or single-quoted where there are no escapes,
 // it did not.
 func TestMarshalEscapesWhatAStreamCannotHoldRaw(t *testing.T) {
-	for name, s := range map[string]string{
-		"a C0 control":         "a" + string(rune(0x01)) + "b",
-		"an escape":            "a" + string(rune(0x1b)) + "b",
-		"DEL":                  "a" + string(rune(0x7f)) + "b",
-		"a C1 control":         "a" + string(rune(0x9b)) + "b",
-		"U+FFFE":               "a" + string(rune(0xfffe)) + "b",
-		"U+FFFF":               "a" + string(rune(0xffff)) + "b",
-		"a carriage return":    "a\rb",
-		"a byte order mark":    "a" + string(rune(0xfeff)) + "b",
-		"over several lines":   "a\n" + string(rune(0x01)) + "\nb",
-		"NEL, which may stand": "a" + string(rune(0x85)) + "b",
-		"a tab, which may too": "a\tb",
-	} {
+	for tc := range marshalEscapesWhatAStreamCannotHoldRawCases() {
+		name, s := tc.name, tc.value
 		for _, single := range []bool{false, true} {
 			t.Run(name, func(t *testing.T) {
 				out, err := codec.Marshal(map[string]string{"value": s, s: "key"}, codec.UseSingleQuote(single))
@@ -45,6 +34,28 @@ func TestMarshalEscapesWhatAStreamCannotHoldRaw(t *testing.T) {
 			})
 		}
 	}
+}
+
+// marshalEscapesWhatAStreamCannotHoldRawCase holds a string with a character that must be escaped.
+type marshalEscapesWhatAStreamCannotHoldRawCase struct {
+	name  string
+	value string
+}
+
+func marshalEscapesWhatAStreamCannotHoldRawCases() iter.Seq[marshalEscapesWhatAStreamCannotHoldRawCase] {
+	return slices.Values([]marshalEscapesWhatAStreamCannotHoldRawCase{
+		{name: "DEL", value: "a" + string(rune(0x7f)) + "b"},
+		{name: "NEL, which may stand", value: "a" + string(rune(0x85)) + "b"},
+		{name: "U+FFFE", value: "a" + string(rune(0xfffe)) + "b"},
+		{name: "U+FFFF", value: "a" + string(rune(0xffff)) + "b"},
+		{name: "a C0 control", value: "a" + string(rune(0x01)) + "b"},
+		{name: "a C1 control", value: "a" + string(rune(0x9b)) + "b"},
+		{name: "a byte order mark", value: "a" + string(rune(0xfeff)) + "b"},
+		{name: "a carriage return", value: "a\rb"},
+		{name: "a tab, which may too", value: "a\tb"},
+		{name: "an escape", value: "a" + string(rune(0x1b)) + "b"},
+		{name: "over several lines", value: "a\n" + string(rune(0x01)) + "\nb"},
+	})
 }
 
 // TestMarshalQuotesAStringThatStartsOrEndsWithATab marshals strings whose plain spelling would lose a tab: YAML
@@ -585,15 +596,9 @@ func TestMarshalQuotesLeadingZeroDecimals(t *testing.T) {
 func TestMarshalStringHoldingAByteOrderMark(t *testing.T) {
 	const mark = "\ufeff"
 
-	tests := map[string]string{
-		"in the middle":     "x" + mark + "y",
-		"the whole value":   mark,
-		"opening the value": mark + "x",
-		"with a line feed":  "x\n" + mark + "y\n",
-	}
-
-	for name, in := range tests {
-		t.Run(name, func(t *testing.T) {
+	for tc := range marshalStringHoldingAByteOrderMarkCases(mark) {
+		in := tc.in
+		t.Run(tc.name, func(t *testing.T) {
 			out, err := codec.Marshal(in)
 			require.NoError(t, err)
 			require.NotContains(t, string(out[:len(out)-1]), mark, "the mark is written as an escape, not as itself")
@@ -603,6 +608,21 @@ func TestMarshalStringHoldingAByteOrderMark(t *testing.T) {
 			require.Equal(t, in, back)
 		})
 	}
+}
+
+// marshalStringHoldingAByteOrderMarkCase holds a string with a byte order mark in it.
+type marshalStringHoldingAByteOrderMarkCase struct {
+	name string
+	in   string
+}
+
+func marshalStringHoldingAByteOrderMarkCases(mark string) iter.Seq[marshalStringHoldingAByteOrderMarkCase] {
+	return slices.Values([]marshalStringHoldingAByteOrderMarkCase{
+		{name: "in the middle", in: "x" + mark + "y"},
+		{name: "opening the value", in: mark + "x"},
+		{name: "the whole value", in: mark},
+		{name: "with a line feed", in: "x\n" + mark + "y\n"},
+	})
 }
 
 // TestAStringSpellingAnInfinityIsQuoted holds a Go string that spells an
@@ -676,11 +696,8 @@ func TestAStringReadingAsADocumentMarkerRoundTrips(t *testing.T) {
 		// Shapes outside the fault: a fourth character that is no blank.
 		"----", "....", "...x", "---x",
 	} {
-		for name, v := range map[string]any{
-			"alone":         s,
-			"as a key":      map[string]int{s: 1},
-			"in a sequence": []string{s},
-		} {
+		for tc := range aStringReadingAsADocumentMarkerRoundTripsCases(s) {
+			name, v := tc.name, tc.value
 			t.Run(s+" "+name, func(t *testing.T) {
 				out, err := codec.Marshal(v)
 				require.NoError(t, err)
@@ -702,4 +719,18 @@ func TestAStringReadingAsADocumentMarkerRoundTrips(t *testing.T) {
 			})
 		}
 	}
+}
+
+// aStringReadingAsADocumentMarkerRoundTripsCase holds a value with the string in one place.
+type aStringReadingAsADocumentMarkerRoundTripsCase struct {
+	name  string
+	value any
+}
+
+func aStringReadingAsADocumentMarkerRoundTripsCases(s string) iter.Seq[aStringReadingAsADocumentMarkerRoundTripsCase] {
+	return slices.Values([]aStringReadingAsADocumentMarkerRoundTripsCase{
+		{name: "alone", value: s},
+		{name: "as a key", value: map[string]int{s: 1}},
+		{name: "in a sequence", value: []string{s}},
+	})
 }

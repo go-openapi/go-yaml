@@ -760,26 +760,8 @@ func toJSONSpellingCases() iter.Seq[toJSONSpellingCase] {
 // alias as naming an anchor it had not finished writing and reported it as
 // missing, which said nothing about the cycle.
 func TestToJSONRefusesWhatJSONCannotSpell(t *testing.T) {
-	for src, want := range map[string]string{
-		"? [a, b]\n: 1\n":  "a sequence cannot be a JSON key",
-		"? {a: 1}\n: 2\n":  "a mapping cannot be a JSON key",
-		"{? [a]: 1}\n":     "a sequence cannot be a JSON key",
-		"? &x [a]\n: 1\n":  "a sequence cannot be a JSON key",
-		"? !!seq [a]\n: 1": "a sequence cannot be a JSON key",
-		"a: .inf\n":        "JSON has no number for .inf",
-		"a: -.inf\n":       "JSON has no number for -.inf",
-		"a: .nan\n":        "JSON has no number for .nan",
-		".inf: a\n":        "JSON has no number for .inf",
-
-		"a: &x [1, 2]\n? *x\n: 3\n":               "a sequence cannot be a JSON key",
-		"a: &x {p: 1}\n? *x\n: 3\n":               "a mapping cannot be a JSON key",
-		"a: &x !!seq [1]\n? *x\n: 3\n":            "a sequence cannot be a JSON key",
-		"outer:\n  inner: &x [1, 2]\n? *x\n: 3\n": "a sequence cannot be a JSON key",
-		"a: &x [ *x ]\n":                          "a cycle cannot be written as JSON",
-		"a: &x {b: *x}\n":                         "a cycle cannot be written as JSON",
-		"a: &x\n  - *x\n":                         "a cycle cannot be written as JSON",
-		"a: &x [ &y [ *x ], *y ]\n":               "a cycle cannot be written as JSON",
-	} {
+	for tc := range toJSONRefusesWhatJSONCannotSpellCases() {
+		src, want := tc.src, tc.want
 		t.Run(src, func(t *testing.T) {
 			_, err := codec.ToJSON([]byte(src))
 			require.Error(t, err)
@@ -792,6 +774,35 @@ func TestToJSONRefusesWhatJSONCannotSpell(t *testing.T) {
 			assert.NoError(t, err)
 		})
 	}
+}
+
+// toJSONRefusesWhatJSONCannotSpellCase holds a document ToJSON refuses and a part of its error message.
+type toJSONRefusesWhatJSONCannotSpellCase struct {
+	src  string
+	want string
+}
+
+func toJSONRefusesWhatJSONCannotSpellCases() iter.Seq[toJSONRefusesWhatJSONCannotSpellCase] {
+	return slices.Values([]toJSONRefusesWhatJSONCannotSpellCase{
+		{src: "? [a, b]\n: 1\n", want: "a sequence cannot be a JSON key"},
+		{src: "? {a: 1}\n: 2\n", want: "a mapping cannot be a JSON key"},
+		{src: "{? [a]: 1}\n", want: "a sequence cannot be a JSON key"},
+		{src: "? &x [a]\n: 1\n", want: "a sequence cannot be a JSON key"},
+		{src: "? !!seq [a]\n: 1", want: "a sequence cannot be a JSON key"},
+		{src: "a: .inf\n", want: "JSON has no number for .inf"},
+		{src: "a: -.inf\n", want: "JSON has no number for -.inf"},
+		{src: "a: .nan\n", want: "JSON has no number for .nan"},
+		{src: ".inf: a\n", want: "JSON has no number for .inf"},
+
+		{src: "a: &x [1, 2]\n? *x\n: 3\n", want: "a sequence cannot be a JSON key"},
+		{src: "a: &x {p: 1}\n? *x\n: 3\n", want: "a mapping cannot be a JSON key"},
+		{src: "a: &x !!seq [1]\n? *x\n: 3\n", want: "a sequence cannot be a JSON key"},
+		{src: "outer:\n  inner: &x [1, 2]\n? *x\n: 3\n", want: "a sequence cannot be a JSON key"},
+		{src: "a: &x [ *x ]\n", want: "a cycle cannot be written as JSON"},
+		{src: "a: &x {b: *x}\n", want: "a cycle cannot be written as JSON"},
+		{src: "a: &x\n  - *x\n", want: "a cycle cannot be written as JSON"},
+		{src: "a: &x [ &y [ *x ], *y ]\n", want: "a cycle cannot be written as JSON"},
+	})
 }
 
 // TestToJSONConvertsTheFirstDocument holds ToJSON to the document Unmarshal
@@ -1029,19 +1040,10 @@ func toJSONReadsTheTagsItKnowsCases() iter.Seq[toJSONReadsTheTagsItKnowsCase] {
 // it wrote it as decimal, in time that grew about with the square of the
 // exponent, so "1e10000000: a" took over a minute to parse.
 func TestAFloatPastTheExponentBoundIsAnInfinityOrZero(t *testing.T) {
-	inf, negInf := math.Inf(1), math.Inf(-1)
+	inf := math.Inf(1)
 
-	for src, want := range map[string]float64{
-		"a: 1e1001\n":          inf,
-		"a: -1e1001\n":         negInf,
-		"a: 1e2147483647\n":    inf,
-		"a: -1e2147483647\n":   negInf,
-		"a: 1e10000000\n":      inf,
-		"a: 1e-1001\n":         0,
-		"a: 1e-2147483647\n":   0,
-		"a: !!float 1e2000\n":  inf,
-		"a: !!float -1e2000\n": negInf,
-	} {
+	for tc := range aFloatPastTheExponentBoundIsAnInfinityOrZeroCases() {
+		src, want := tc.src, tc.want
 		// An any goes down the walk, a MapSlice under UseOrderedMap builds the
 		// tree, and a struct takes the typed walk.
 		var walked any
@@ -1085,6 +1087,26 @@ func TestAFloatPastTheExponentBoundIsAnInfinityOrZero(t *testing.T) {
 	})
 }
 
+// aFloatPastTheExponentBoundIsAnInfinityOrZeroCase holds a document with a float past the bound and the float it reads as.
+type aFloatPastTheExponentBoundIsAnInfinityOrZeroCase struct {
+	src  string
+	want float64
+}
+
+func aFloatPastTheExponentBoundIsAnInfinityOrZeroCases() iter.Seq[aFloatPastTheExponentBoundIsAnInfinityOrZeroCase] {
+	return slices.Values([]aFloatPastTheExponentBoundIsAnInfinityOrZeroCase{
+		{src: "a: !!float -1e2000\n", want: math.Inf(-1)},
+		{src: "a: !!float 1e2000\n", want: math.Inf(1)},
+		{src: "a: -1e1001\n", want: math.Inf(-1)},
+		{src: "a: -1e2147483647\n", want: math.Inf(-1)},
+		{src: "a: 1e-1001\n", want: 0},
+		{src: "a: 1e-2147483647\n", want: 0},
+		{src: "a: 1e10000000\n", want: math.Inf(1)},
+		{src: "a: 1e1001\n", want: math.Inf(1)},
+		{src: "a: 1e2147483647\n", want: math.Inf(1)},
+	})
+}
+
 // TestAFloatPastTheExponentBoundConvertsToTheNumberWritten covers ToJSON and
 // ToJSONTokens on a float past ±1000.
 //
@@ -1094,21 +1116,8 @@ func TestAFloatPastTheExponentBoundIsAnInfinityOrZero(t *testing.T) {
 // under "!!float" were read as the infinity and written as null, and
 // "!!float 1e-1001" as 0.0.
 func TestAFloatPastTheExponentBoundConvertsToTheNumberWritten(t *testing.T) {
-	for src, want := range map[string]string{
-		"k: !!float 1e1001\n":   "1e1001",
-		"k: !!float -1e1001\n":  "-1e1001",
-		"k: +1e1001\n":          "1e1001",
-		"k: !!float +1e1001\n":  "1e1001",
-		"k: 1.e1001\n":          "1e1001",
-		"k: -1.e1001\n":         "-1e1001",
-		"k: !!float 1e-1001\n":  "1e-1001",
-		"k: !!float 1.5e1001\n": "1.5e1001",
-		"k: !!float 007e1001\n": "7e1001",
-
-		// Shapes outside the fault: JSON spells these as the document did.
-		"k: 1e1001\n":  "1e1001",
-		"k: 1E+1001\n": "1E+1001",
-	} {
+	for tc := range aFloatPastTheExponentBoundConvertsToTheNumberWrittenCases() {
+		src, want := tc.src, tc.want
 		t.Run(src, func(t *testing.T) {
 			out, err := codec.ToJSON([]byte(src))
 			require.NoError(t, err)
@@ -1123,6 +1132,30 @@ func TestAFloatPastTheExponentBoundConvertsToTheNumberWritten(t *testing.T) {
 			assert.Contains(t, got, "number:"+want)
 		})
 	}
+}
+
+// aFloatPastTheExponentBoundConvertsToTheNumberWrittenCase holds a document with a float past the bound and its JSON digits.
+type aFloatPastTheExponentBoundConvertsToTheNumberWrittenCase struct {
+	src  string
+	want string
+}
+
+func aFloatPastTheExponentBoundConvertsToTheNumberWrittenCases() iter.Seq[aFloatPastTheExponentBoundConvertsToTheNumberWrittenCase] {
+	return slices.Values([]aFloatPastTheExponentBoundConvertsToTheNumberWrittenCase{
+		{src: "k: !!float 1e1001\n", want: "1e1001"},
+		{src: "k: !!float -1e1001\n", want: "-1e1001"},
+		{src: "k: +1e1001\n", want: "1e1001"},
+		{src: "k: !!float +1e1001\n", want: "1e1001"},
+		{src: "k: 1.e1001\n", want: "1e1001"},
+		{src: "k: -1.e1001\n", want: "-1e1001"},
+		{src: "k: !!float 1e-1001\n", want: "1e-1001"},
+		{src: "k: !!float 1.5e1001\n", want: "1.5e1001"},
+		{src: "k: !!float 007e1001\n", want: "7e1001"},
+
+		// Shapes outside the fault: JSON spells these as the document did.
+		{src: "k: 1e1001\n", want: "1e1001"},
+		{src: "k: 1E+1001\n", want: "1E+1001"},
+	})
 }
 
 // Both converters take the first document of a stream, empty or not.
@@ -1283,13 +1316,8 @@ func aKeyIsNamedByItsTypeCases() iter.Seq[aKeyIsNamedByItsTypeCase] {
 // codec.ToJSON never reaches them: parser.WithJSONCompatible refuses a document
 // holding one, since JSON has no number for it either.
 func TestAnInfinityKeyTakesYAMLsSpelling(t *testing.T) {
-	for src, want := range map[string]string{
-		".inf: a\n":  ".inf",
-		"-.inf: a\n": "-.inf",
-		".nan: a\n":  ".nan",
-		".Inf: a\n":  ".inf",
-		".NAN: a\n":  ".nan",
-	} {
+	for tc := range anInfinityKeyTakesYAMLsSpellingCases() {
+		src, want := tc.src, tc.want
 		t.Run(src, func(t *testing.T) {
 			var decoded map[string]any
 			require.NoError(t, codec.Unmarshal([]byte(src), &decoded))
@@ -1299,6 +1327,22 @@ func TestAnInfinityKeyTakesYAMLsSpelling(t *testing.T) {
 			assert.Error(t, err, "JSON has no number for it")
 		})
 	}
+}
+
+// anInfinityKeyTakesYAMLsSpellingCase holds a document with a non-finite float key and the name it decodes to.
+type anInfinityKeyTakesYAMLsSpellingCase struct {
+	src  string
+	want string
+}
+
+func anInfinityKeyTakesYAMLsSpellingCases() iter.Seq[anInfinityKeyTakesYAMLsSpellingCase] {
+	return slices.Values([]anInfinityKeyTakesYAMLsSpellingCase{
+		{src: "-.inf: a\n", want: "-.inf"},
+		{src: ".Inf: a\n", want: ".inf"},
+		{src: ".NAN: a\n", want: ".nan"},
+		{src: ".inf: a\n", want: ".inf"},
+		{src: ".nan: a\n", want: ".nan"},
+	})
 }
 
 // Two keys that resolve to different nodes and name themselves alike are read

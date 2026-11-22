@@ -4,6 +4,8 @@
 package codec_test
 
 import (
+	"iter"
+	"slices"
 	"testing"
 
 	"github.com/go-openapi/go-yaml/ast"
@@ -80,17 +82,11 @@ func TestMarshalWritesANodeWhereItStands(t *testing.T) {
 func TestABuiltNodeClaimsNoSource(t *testing.T) {
 	t.Parallel()
 
-	for name, value := range map[string]any{
-		"a scalar":            42,
-		"a string":            "text",
-		"a mapping":           map[string]any{"x": 0, "y": "two"},
-		"a sequence":          []any{1, "two", nil, true},
-		"a nested structure":  map[string]any{"a": []any{map[string]any{"b": 1.5}}},
-		"a struct":            struct{ Name string }{Name: "n"},
-		"a mapping of slices": map[string][]int{"n": {1, 2, 3}},
-	} {
-		t.Run(name, func(t *testing.T) {
+	for tc := range aBuiltNodeClaimsNoSourceCases() {
+		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
+
+			value := tc.value
 
 			node, err := codec.ValueToNode(value)
 			require.NoError(t, err)
@@ -112,6 +108,24 @@ func TestABuiltNodeClaimsNoSource(t *testing.T) {
 			require.Zero(t, claimed)
 		})
 	}
+}
+
+// aBuiltNodeClaimsNoSourceCase holds a value to build a node tree from.
+type aBuiltNodeClaimsNoSourceCase struct {
+	name  string
+	value any
+}
+
+func aBuiltNodeClaimsNoSourceCases() iter.Seq[aBuiltNodeClaimsNoSourceCase] {
+	return slices.Values([]aBuiltNodeClaimsNoSourceCase{
+		{name: "a mapping", value: map[string]any{"x": 0, "y": "two"}},
+		{name: "a mapping of slices", value: map[string][]int{"n": {1, 2, 3}}},
+		{name: "a nested structure", value: map[string]any{"a": []any{map[string]any{"b": 1.5}}}},
+		{name: "a scalar", value: 42},
+		{name: "a sequence", value: []any{1, "two", nil, true}},
+		{name: "a string", value: "text"},
+		{name: "a struct", value: struct{ Name string }{Name: "n"}},
+	})
 }
 
 // walkBuilt calls fn for every node of a tree, including the ones ast.Walk does

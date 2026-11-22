@@ -269,30 +269,22 @@ func TestFixedATypedMapMergesLikeEveryOtherDestination(t *testing.T) {
 	})
 
 	t.Run("an `any`, a struct and ToJSON read them the same way", func(t *testing.T) {
-		type box struct {
-			A int `yaml:"a"`
-			B int `yaml:"b"`
-		}
-
-		for src, want := range map[string]box{
-			"<<: [{a: 1}, {a: 9}]\n":       {A: 1},
-			"<<: [{a: 1}, {a: 9, b: 2}]\n": {A: 1, B: 2},
-			"a: 1\n<<: {a: 9, b: 2}\n":     {A: 1, B: 2},
-		} {
+		for tc := range fixedATypedMapMergesReadAlikeCases() {
+			src, want := tc.src, tc.want
 			var loose any
 			require.NoErrorf(t, codec.Unmarshal([]byte(underEleven(src)), &loose), "%q", src)
 			entries, ok := loose.(map[string]any)
 			require.Truef(t, ok, "%q", src)
 			assert.EqualValuesf(t, want.A, entries["a"], "%q into an any", src)
 
-			var got box
+			var got fixedATypedMapMergesReadAlikeBox
 			require.NoErrorf(t, codec.Unmarshal([]byte(underEleven(src)), &got), "%q", src)
 			assert.Equal(t, want, got, "%q into a struct", src)
 
 			out, err := codec.ToJSON([]byte(underEleven(src)))
 			require.NoErrorf(t, err, "%q", src)
 
-			var fromJSON box
+			var fromJSON fixedATypedMapMergesReadAlikeBox
 			require.NoErrorf(t, json.Unmarshal(out, &fromJSON), "%q: %s", src, out) //nolint:musttag // this tests the behavior when no json tag is defined
 			assert.Equal(t, want, fromJSON, "%q through ToJSON", src)
 		}
@@ -310,6 +302,26 @@ func fixedATypedMapMergesLikeEveryOtherDestinationCases() iter.Seq[fixedATypedMa
 		{"<<: [{a: 1}, {a: 9}]\n", map[string]any{"a": uint64(1)}},
 		{"<<: [{a: 1}, {a: 9, b: 2}]\n", map[string]any{"a": uint64(1), "b": uint64(2)}},
 		{"a: 5\n<<: [{a: 1}, {a: 9}]\n", map[string]any{"a": uint64(5)}},
+	})
+}
+
+// fixedATypedMapMergesReadAlikeBox is the struct the merges of TestFixedATypedMapMergesLikeEveryOtherDestination decode into.
+type fixedATypedMapMergesReadAlikeBox struct {
+	A int `yaml:"a"`
+	B int `yaml:"b"`
+}
+
+// fixedATypedMapMergesReadAlikeCase holds a document with a merge and the struct it decodes to.
+type fixedATypedMapMergesReadAlikeCase struct {
+	src  string
+	want fixedATypedMapMergesReadAlikeBox
+}
+
+func fixedATypedMapMergesReadAlikeCases() iter.Seq[fixedATypedMapMergesReadAlikeCase] {
+	return slices.Values([]fixedATypedMapMergesReadAlikeCase{
+		{src: "<<: [{a: 1}, {a: 9, b: 2}]\n", want: fixedATypedMapMergesReadAlikeBox{A: 1, B: 2}},
+		{src: "<<: [{a: 1}, {a: 9}]\n", want: fixedATypedMapMergesReadAlikeBox{A: 1}},
+		{src: "a: 1\n<<: {a: 9, b: 2}\n", want: fixedATypedMapMergesReadAlikeBox{A: 1, B: 2}},
 	})
 }
 
@@ -530,15 +542,13 @@ func TestAMergeWritesOverTheCallersMapEntries(t *testing.T) {
 	type doc struct {
 		Plain map[string]string `yaml:"plain"`
 	}
-	// A custom unmarshaler turns the walk off, and no field holds a chan int.
-	tree := codec.CustomUnmarshaler[chan int](func(*chan int, []byte) error { return nil })
 	const src = "%YAML 1.1\n---\nplain: {<<: [{a: merged, b: first}, {b: second, c: merged}], a: own}\n"
 	want := doc{Plain: map[string]string{"a": "own", "b": "first", "c": "merged", "z": "kept"}}
 
-	for name, opts := range map[string][]codec.DecodeOption{"walk": nil, "tree": {tree}} {
-		t.Run(name, func(t *testing.T) {
+	for path := range walkAndTreePaths() {
+		t.Run(path.name, func(t *testing.T) {
 			v := doc{Plain: map[string]string{"a": "default", "b": "default", "c": "default", "z": "kept"}}
-			require.NoError(t, codec.NewDecoder(strings.NewReader(src), opts...).Decode(&v))
+			require.NoError(t, codec.NewDecoder(strings.NewReader(src), path.opts...).Decode(&v))
 			require.Equal(t, want, v)
 		})
 	}
@@ -559,8 +569,6 @@ func TestAMergeSequenceReadsEachMappingWhole(t *testing.T) {
 	type inline struct {
 		Rest map[string]any `yaml:",inline"`
 	}
-	// A custom unmarshaler turns the walk off, and no field holds a chan int.
-	tree := codec.CustomUnmarshaler[chan int](func(*chan int, []byte) error { return nil })
 
 	for c := range aMergeSequenceReadsEachMappingWholeCases() {
 		src := "%YAML 1.1\n---\n" + c.defs + "leaf: {<<: " + c.seq + "}\npair: [<<: " + c.seq + "]\n"
@@ -571,21 +579,21 @@ func TestAMergeSequenceReadsEachMappingWhole(t *testing.T) {
 
 		t.Run(c.seq, func(t *testing.T) {
 			t.Run("struct", func(t *testing.T) {
-				for name, opts := range map[string][]codec.DecodeOption{"walk": nil, "tree": {tree}} {
+				for path := range walkAndTreePaths() {
 					var v struct {
 						Leaf leaf `yaml:"leaf"`
 					}
-					decode(t, &v, opts...)
-					assert.Equalf(t, c.want, v.Leaf.K, "%s", name)
+					decode(t, &v, path.opts...)
+					assert.Equalf(t, c.want, v.Leaf.K, "%s", path.name)
 				}
 			})
 			t.Run("typed map", func(t *testing.T) {
-				for name, opts := range map[string][]codec.DecodeOption{"walk": nil, "tree": {tree}} {
+				for path := range walkAndTreePaths() {
 					var v struct {
 						Leaf map[string]string `yaml:"leaf"`
 					}
-					decode(t, &v, opts...)
-					assert.Equalf(t, c.want, v.Leaf["k"], "%s", name)
+					decode(t, &v, path.opts...)
+					assert.Equalf(t, c.want, v.Leaf["k"], "%s", path.name)
 				}
 			})
 			t.Run("inline map", func(t *testing.T) {

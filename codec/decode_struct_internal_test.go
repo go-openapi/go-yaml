@@ -5,6 +5,8 @@ package codec
 
 import (
 	"bytes"
+	"iter"
+	"slices"
 	"sync"
 	"testing"
 
@@ -65,19 +67,29 @@ type namedOnly struct {
 // before the fields or after: reading the entries into a map gave up on the
 // first key that was not a string and handed back nothing.
 func TestKeyNoFieldCanBeNamedAfterIsSkipped(t *testing.T) {
-	for name, src := range map[string]string{
-		"integer first": "1: a\nname: x\nn: 2\n",
-		"integer last":  "name: x\nn: 2\n1: a\n",
-		"boolean":       "true: a\nname: x\nn: 2\n",
-		"null":          "~: a\nname: x\nn: 2\n",
-		"between":       "name: x\n1: a\nn: 2\n",
-	} {
-		t.Run(name, func(t *testing.T) {
+	for tc := range keyNoFieldCanBeNamedAfterIsSkippedCases() {
+		t.Run(tc.name, func(t *testing.T) {
 			var dst namedOnly
-			require.NoError(t, Unmarshal([]byte(src), &dst))
+			require.NoError(t, Unmarshal([]byte(tc.src), &dst))
 			assert.Equal(t, namedOnly{Name: "x", N: 2}, dst)
 		})
 	}
+}
+
+// keyNoFieldCanBeNamedAfterIsSkippedCase holds a case name and a document with a key no field can be named after.
+type keyNoFieldCanBeNamedAfterIsSkippedCase struct {
+	name string
+	src  string
+}
+
+func keyNoFieldCanBeNamedAfterIsSkippedCases() iter.Seq[keyNoFieldCanBeNamedAfterIsSkippedCase] {
+	return slices.Values([]keyNoFieldCanBeNamedAfterIsSkippedCase{
+		{name: "between", src: "name: x\n1: a\nn: 2\n"},
+		{name: "boolean", src: "true: a\nname: x\nn: 2\n"},
+		{name: "integer first", src: "1: a\nname: x\nn: 2\n"},
+		{name: "integer last", src: "name: x\nn: 2\n1: a\n"},
+		{name: "null", src: "~: a\nname: x\nn: 2\n"},
+	})
 }
 
 // TestLastOfTwoEntriesWins holds the order the inverted loop reads entries in.

@@ -157,41 +157,21 @@ func TestATagDecidesWhetherAnInfinityConverts(t *testing.T) {
 	}
 
 	t.Run("a string tag converts", func(t *testing.T) {
-		for src, want := range map[string]string{
-			"k: !!str .inf\n":           `{"k":".inf"}`,
-			"k: !!str -.inf\n":          `{"k":"-.inf"}`,
-			"k: !!str .nan\n":           `{"k":".nan"}`,
-			"k: !!str &x .inf\n":        `{"k":".inf"}`,
-			"k: &x !!str .inf\n":        `{"k":".inf"}`,
-			"!!str .inf: v\n":           `{".inf":"v"}`,
-			"{!!str .inf: v}\n":         `{".inf":"v"}`,
-			"[!!str .nan]\n":            `[".nan"]`,
-			"k: !a .inf\n":              `{"k":".inf"}`,
-			"k: \".inf\"\n":             `{"k":".inf"}`,
-			"k: !!str &x .inf\nj: *x\n": `{"k":".inf","j":".inf"}`,
-		} {
-			t.Run(src, func(t *testing.T) {
-				fromBytes, fromTokens := convert(t, src)
-				assert.Equal(t, want, fromBytes)
-				assert.Equal(t, want, fromTokens)
+		for tc := range anInfinityUnderAStringTagCases() {
+			t.Run(tc.src, func(t *testing.T) {
+				fromBytes, fromTokens := convert(t, tc.src)
+				assert.Equal(t, tc.want, fromBytes)
+				assert.Equal(t, tc.want, fromTokens)
 			})
 		}
 	})
 
 	t.Run("a number is refused", func(t *testing.T) {
-		for src, want := range map[string]string{
-			"k: .inf\n":            "JSON has no number for .inf",
-			"k: !!float .inf\n":    "JSON has no number for .inf",
-			"k: !!float -.inf\n":   "JSON has no number for -.inf",
-			"k: !!float &x .nan\n": "JSON has no number for .nan",
-			"k: &x !!float .nan\n": "JSON has no number for .nan",
-			"!!float .inf: v\n":    "JSON has no number for .inf",
-			"k: !!int .inf\n":      `cannot read ".inf" as !!int`,
-		} {
-			t.Run(src, func(t *testing.T) {
-				fromBytes, fromTokens := convert(t, src)
-				assert.Contains(t, fromBytes, want)
-				assert.Contains(t, fromTokens, want)
+		for tc := range anInfinityAsANumberCases() {
+			t.Run(tc.src, func(t *testing.T) {
+				fromBytes, fromTokens := convert(t, tc.src)
+				assert.Contains(t, fromBytes, tc.want)
+				assert.Contains(t, fromTokens, tc.want)
 			})
 		}
 	})
@@ -200,6 +180,40 @@ func TestATagDecidesWhetherAnInfinityConverts(t *testing.T) {
 		fromBytes, fromTokens := convert(t, "k: !!int .inf\n", parser.WithLaxTags())
 		assert.Equal(t, `{"k":".inf"}`, fromBytes)
 		assert.Equal(t, `{"k":".inf"}`, fromTokens)
+	})
+}
+
+// aTagDecidesWhetherAnInfinityConvertsCase holds a document and the JSON or the error text both converters give for it.
+type aTagDecidesWhetherAnInfinityConvertsCase struct {
+	src  string
+	want string
+}
+
+func anInfinityUnderAStringTagCases() iter.Seq[aTagDecidesWhetherAnInfinityConvertsCase] {
+	return slices.Values([]aTagDecidesWhetherAnInfinityConvertsCase{
+		{src: "!!str .inf: v\n", want: `{".inf":"v"}`},
+		{src: "[!!str .nan]\n", want: `[".nan"]`},
+		{src: "k: !!str &x .inf\n", want: `{"k":".inf"}`},
+		{src: "k: !!str &x .inf\nj: *x\n", want: `{"k":".inf","j":".inf"}`},
+		{src: "k: !!str -.inf\n", want: `{"k":"-.inf"}`},
+		{src: "k: !!str .inf\n", want: `{"k":".inf"}`},
+		{src: "k: !!str .nan\n", want: `{"k":".nan"}`},
+		{src: "k: !a .inf\n", want: `{"k":".inf"}`},
+		{src: "k: \".inf\"\n", want: `{"k":".inf"}`},
+		{src: "k: &x !!str .inf\n", want: `{"k":".inf"}`},
+		{src: "{!!str .inf: v}\n", want: `{".inf":"v"}`},
+	})
+}
+
+func anInfinityAsANumberCases() iter.Seq[aTagDecidesWhetherAnInfinityConvertsCase] {
+	return slices.Values([]aTagDecidesWhetherAnInfinityConvertsCase{
+		{src: "!!float .inf: v\n", want: "JSON has no number for .inf"},
+		{src: "k: !!float &x .nan\n", want: "JSON has no number for .nan"},
+		{src: "k: !!float -.inf\n", want: "JSON has no number for -.inf"},
+		{src: "k: !!float .inf\n", want: "JSON has no number for .inf"},
+		{src: "k: !!int .inf\n", want: `cannot read ".inf" as !!int`},
+		{src: "k: &x !!float .nan\n", want: "JSON has no number for .nan"},
+		{src: "k: .inf\n", want: "JSON has no number for .inf"},
 	})
 }
 

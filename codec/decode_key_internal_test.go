@@ -5,6 +5,8 @@ package codec
 
 import (
 	"bytes"
+	"iter"
+	"slices"
 	"strings"
 	"testing"
 
@@ -26,51 +28,57 @@ import (
 // under SkipDuplicateMapKey. TestAnAllowedOrderedMapRepeatKeepsOneEntryOnEveryPath
 // covers an "!!omap".
 func TestAnAllowedRepeatKeepsOneEntryOnEveryPath(t *testing.T) {
-	for src, want := range map[string]struct{ first, last string }{
-		"a: 1\nb: 2\na: 3\n":                {`{"a":1,"b":2}`, `{"a":3,"b":2}`},
-		"{a: 1, b: 2, a: 3}\n":              {`{"a":1,"b":2}`, `{"a":3,"b":2}`},
-		"a: 1\n? a\n: 3\n":                  {`{"a":1}`, `{"a":3}`},
-		"a: 1\n&x a: 3\n":                   {`{"a":1}`, `{"a":3}`},
-		"a: 1\n!!str a: 3\n":                {`{"a":1}`, `{"a":3}`},
-		"a: 1\nb: {c: [1, 2]}\na: {d: 3}\n": {`{"a":1,"b":{"c":[1,2]}}`, `{"a":{"d":3},"b":{"c":[1,2]}}`},
-		"a: 1\na: &y 2\nb: *y\n":            {`{"a":1,"b":2}`, `{"a":2,"b":2}`},
-		// A "<<" written twice is a repeat as well, and the entry after it
-		// is not one. YAML 1.1 defines the merge key.
-		"%YAML 1.1\n---\na: &a {x: 1}\nb:\n  <<: *a\n  <<: *a\n  c: 2\n": {
-			`{"a":{"x":1},"b":{"c":2,"x":1}}`, `{"a":{"x":1},"b":{"c":2,"x":1}}`,
-		},
-		// An alias to a mapping that repeats a key, which the tokens read off
-		// the tree.
-		"a: &m {x: 1, x: 2}\nb: *m\n": {`{"a":{"x":1},"b":{"x":1}}`, `{"a":{"x":2},"b":{"x":2}}`},
-		// Two keys to YAML and one member to JSON: the decoders hold both.
-		"1: a\n\"1\": b\n": {`{"1":"a"}`, ``},
-	} {
-		t.Run(src, func(t *testing.T) {
+	for tc := range anAllowedRepeatKeepsOneEntryOnEveryPathCases() {
+		t.Run(tc.src, func(t *testing.T) {
 			allow := parser.WithAllowDuplicateMapKey()
 
-			js, err := ToJSON([]byte(src), allow)
+			js, err := ToJSON([]byte(tc.src), allow)
 			require.NoError(t, err)
-			assert.JSONEq(t, want.first, string(js), "ToJSON keeps the first entry")
+			assert.JSONEq(t, tc.first, string(js), "ToJSON keeps the first entry")
 
-			toks, err := collectJSONTokens([]byte(src), allow)
+			toks, err := collectJSONTokens([]byte(tc.src), allow)
 			require.NoError(t, err)
-			assert.JSONEq(t, want.first, string(rebuildJSON(toks)), "the tokens keep the first entry")
+			assert.JSONEq(t, tc.first, string(rebuildJSON(toks)), "the tokens keep the first entry")
 
-			if want.last == "" {
+			if tc.last == "" {
 				return
 			}
-			for name, opts := range map[string][]DecodeOption{
-				"walk": {AllowDuplicateMapKey()},
-				"tree": {AllowDuplicateMapKey(), UseOrderedMap()},
-			} {
+			for path := range walkAndOrderedMapPaths(AllowDuplicateMapKey()) {
 				var v any
-				require.NoErrorf(t, Unmarshal([]byte(src), &v, opts...), "%s", name)
+				require.NoErrorf(t, Unmarshal([]byte(tc.src), &v, path.opts...), "%s", path.name)
 				got, err := Marshal(v, JSON())
 				require.NoError(t, err)
-				assert.JSONEqf(t, want.last, string(got), "the %s keeps the last entry", name)
+				assert.JSONEqf(t, tc.last, string(got), "the %s keeps the last entry", path.name)
 			}
 		})
 	}
+}
+
+// anAllowedRepeatKeepsOneEntryOnEveryPathCase holds a document and the JSON a converter and a decoder give for it.
+type anAllowedRepeatKeepsOneEntryOnEveryPathCase struct {
+	src   string
+	first string
+	last  string
+}
+
+func anAllowedRepeatKeepsOneEntryOnEveryPathCases() iter.Seq[anAllowedRepeatKeepsOneEntryOnEveryPathCase] {
+	return slices.Values([]anAllowedRepeatKeepsOneEntryOnEveryPathCase{
+		{src: "a: 1\nb: 2\na: 3\n", first: `{"a":1,"b":2}`, last: `{"a":3,"b":2}`},
+		{src: "{a: 1, b: 2, a: 3}\n", first: `{"a":1,"b":2}`, last: `{"a":3,"b":2}`},
+		{src: "a: 1\n? a\n: 3\n", first: `{"a":1}`, last: `{"a":3}`},
+		{src: "a: 1\n&x a: 3\n", first: `{"a":1}`, last: `{"a":3}`},
+		{src: "a: 1\n!!str a: 3\n", first: `{"a":1}`, last: `{"a":3}`},
+		{src: "a: 1\nb: {c: [1, 2]}\na: {d: 3}\n", first: `{"a":1,"b":{"c":[1,2]}}`, last: `{"a":{"d":3},"b":{"c":[1,2]}}`},
+		{src: "a: 1\na: &y 2\nb: *y\n", first: `{"a":1,"b":2}`, last: `{"a":2,"b":2}`},
+		// A "<<" written twice is a repeat as well, and the entry after it
+		// is not one. YAML 1.1 defines the merge key.
+		{src: "%YAML 1.1\n---\na: &a {x: 1}\nb:\n  <<: *a\n  <<: *a\n  c: 2\n", first: `{"a":{"x":1},"b":{"c":2,"x":1}}`, last: `{"a":{"x":1},"b":{"c":2,"x":1}}`},
+		// An alias to a mapping that repeats a key, which the tokens read off
+		// the tree.
+		{src: "a: &m {x: 1, x: 2}\nb: *m\n", first: `{"a":{"x":1},"b":{"x":1}}`, last: `{"a":{"x":2},"b":{"x":2}}`},
+		// Two keys to YAML and one member to JSON: the decoders hold both.
+		{src: "1: a\n\"1\": b\n", first: `{"1":"a"}`, last: ``},
+	})
 }
 
 // keyIdentityCases are keys of every kind a YAML key can be, for the kinds the

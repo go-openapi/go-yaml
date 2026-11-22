@@ -464,19 +464,14 @@ func TestAFailedValueStandsAsFarAsItDecoded(t *testing.T) {
 			Counts: map[string][]int64{"a": {9}, "z": {8}},
 		}
 	}
-	paths := map[string][]codec.DecodeOption{
-		"walk": nil,
-		// A custom unmarshaler turns the walk off, and no field holds a chan int.
-		"tree": {codec.CustomUnmarshaler[chan int](func(*chan int, []byte) error { return nil })},
-	}
 	for tc := range aFailedValueStandsAsFarAsItDecodedCases() {
-		for path, opts := range paths {
-			t.Run(path+"/"+tc.name, func(t *testing.T) {
+		for path := range walkAndTreePaths() {
+			t.Run(path.name+"/"+tc.name, func(t *testing.T) {
 				want := preset()
 				tc.want(&want)
 
 				got := preset()
-				err := codec.NewDecoder(strings.NewReader(tc.src), opts...).Decode(&got)
+				err := codec.NewDecoder(strings.NewReader(tc.src), path.opts...).Decode(&got)
 				require.ErrorIs(t, err, yamlerrors.ErrTypeMismatch)
 				assert.Equal(t, want, got)
 			})

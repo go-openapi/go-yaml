@@ -171,21 +171,12 @@ func TestEncodeDefinedTypeKeyMap(t *testing.T) {
 func TestTheEncoderRefusesTwoKeysThatAreOneYAMLKey(t *testing.T) {
 	t.Parallel()
 
-	instant := time.Date(2001, time.December, 15, 2, 59, 43, 0, time.UTC)
-
 	t.Run("one YAML key twice is refused", func(t *testing.T) {
 		t.Parallel()
 
-		for name, v := range map[string]any{
-			"int and uint64":            map[any]any{1: "a", uint64(1): "b"},
-			"int64 and int":             map[any]any{int64(-1): "a", -1: "b"},
-			"float32 and float64":       map[any]any{float32(0.5): "a", 0.5: "b"},
-			"two NaN":                   map[float64]string{math.NaN(): "a", math.NaN(): "b"},
-			"one instant in two zones":  map[time.Time]string{instant: "a", instant.In(time.FixedZone("", -5*3600)): "b"},
-			"a Base64 written two ways": map[any]any{codec.Base64("AA=="): "a", codec.Base64("AA\n=="): "b"},
-		} {
-			_, err := codec.Marshal(v)
-			require.ErrorIsf(t, err, yamlerrors.ErrDuplicateKey, "%s", name)
+		for tc := range theEncoderRefusesTwoKeysThatAreOneYAMLKeyCases() {
+			_, err := codec.Marshal(tc.value)
+			require.ErrorIsf(t, err, yamlerrors.ErrDuplicateKey, "%s", tc.name)
 		}
 
 		_, err := codec.Marshal(map[any]any{1: "a", uint64(1): "b"}, codec.JSON())
@@ -220,5 +211,24 @@ func TestTheEncoderRefusesTwoKeysThatAreOneYAMLKey(t *testing.T) {
 			require.NoError(t, err)
 			assert.Equal(t, "1: a\n", string(out))
 		}
+	})
+}
+
+// theEncoderRefusesTwoKeysThatAreOneYAMLKeyCase holds a map whose keys are one YAML key.
+type theEncoderRefusesTwoKeysThatAreOneYAMLKeyCase struct {
+	name  string
+	value any
+}
+
+func theEncoderRefusesTwoKeysThatAreOneYAMLKeyCases() iter.Seq[theEncoderRefusesTwoKeysThatAreOneYAMLKeyCase] {
+	instant := time.Date(2001, time.December, 15, 2, 59, 43, 0, time.UTC)
+
+	return slices.Values([]theEncoderRefusesTwoKeysThatAreOneYAMLKeyCase{
+		{name: "a Base64 written two ways", value: map[any]any{codec.Base64("AA=="): "a", codec.Base64("AA\n=="): "b"}},
+		{name: "float32 and float64", value: map[any]any{float32(0.5): "a", 0.5: "b"}},
+		{name: "int and uint64", value: map[any]any{1: "a", uint64(1): "b"}},
+		{name: "int64 and int", value: map[any]any{int64(-1): "a", -1: "b"}},
+		{name: "one instant in two zones", value: map[time.Time]string{instant: "a", instant.In(time.FixedZone("", -5*3600)): "b"}},
+		{name: "two NaN", value: map[float64]string{math.NaN(): "a", math.NaN(): "b"}},
 	})
 }

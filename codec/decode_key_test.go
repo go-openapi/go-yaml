@@ -613,10 +613,8 @@ func TestATimestampKeyIsItsInstant(t *testing.T) {
 
 		// RFC 3339 in the zone the document wrote. A date with no zone is in
 		// UTC.
-		for src, name := range map[string]string{
-			"!!timestamp 2001-12-14t21:59:43.10-05:00: one\n": "2001-12-14T21:59:43.1-05:00",
-			"!!timestamp 2001-12-14: one\n":                   "2001-12-14T00:00:00Z",
-		} {
+		for tc := range aTimestampKeyIsItsInstantNameCases() {
+			src, name := tc.src, tc.name
 			var named map[string]any
 			require.NoError(t, codec.Unmarshal([]byte(src), &named))
 			assert.Equal(t, map[string]any{name: "one"}, named)
@@ -753,6 +751,19 @@ func TestATimestampKeyIsItsInstant(t *testing.T) {
 			"2001-12-14T00:00:00Z": "one",
 			time.Date(2001, time.December, 14, 0, 0, 0, 0, time.UTC): "two",
 		}, asAny)
+	})
+}
+
+// aTimestampKeyIsItsInstantNameCase holds a document with a timestamp key and the name a string key takes from it.
+type aTimestampKeyIsItsInstantNameCase struct {
+	src  string
+	name string
+}
+
+func aTimestampKeyIsItsInstantNameCases() iter.Seq[aTimestampKeyIsItsInstantNameCase] {
+	return slices.Values([]aTimestampKeyIsItsInstantNameCase{
+		{src: "!!timestamp 2001-12-14t21:59:43.10-05:00: one\n", name: "2001-12-14T21:59:43.1-05:00"},
+		{src: "!!timestamp 2001-12-14: one\n", name: "2001-12-14T00:00:00Z"},
 	})
 }
 
