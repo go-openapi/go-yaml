@@ -41,32 +41,7 @@ func keysOf(t *testing.T, doc []byte) map[string]any {
 // It consults the same table the decoder does now, so what comes out is what
 // goes back in. encoding/json writes the same names from the same types.
 func TestTheEncoderWritesTheNamesTheDecoderReads(t *testing.T) {
-	for _, c := range []struct {
-		name string
-		v    any
-		want []string
-	}{
-		{
-			name: "an outer field shadows an embedded one",
-			v:    JOuterShadows{JLeaf: JLeaf{Name: "inner"}, Name: "outer"},
-			want: []string{"name"},
-		},
-		{
-			name: "two embedded types tie and neither is written",
-			v:    JSiblings{JLeaf{Name: "a"}, JOther{Name: "b", OnlyO: "o"}},
-			want: []string{"onlyO"},
-		},
-		{
-			name: "one type reached down two branches ties with itself",
-			v:    JTwoBranches{JLeft{JLeaf{Name: "l"}}, JRight{JLeaf{Name: "r"}}},
-			want: []string{},
-		},
-		{
-			name: "the shallower of two depths is the one written",
-			v:    JMixedDepth{JMid{JLeaf{Name: "deep"}}, JShallow{Name: "shallow", OnlyS: "s"}},
-			want: []string{"name", "onlyS"},
-		},
-	} {
+	for c := range theEncoderWritesTheNamesTheDecoderReadsCases() {
 		t.Run(c.name, func(t *testing.T) {
 			out, err := codec.Marshal(c.v,
 				codec.WriteJSONTags(true), codec.WriteInferredNames(true))
@@ -91,6 +66,38 @@ func TestTheEncoderWritesTheNamesTheDecoderReads(t *testing.T) {
 			assert.ElementsMatch(t, names, jsonNames)
 		})
 	}
+}
+
+// theEncoderWritesTheNamesTheDecoderReadsCase holds a value and the keys its encoding writes.
+type theEncoderWritesTheNamesTheDecoderReadsCase struct {
+	name string
+	v    any
+	want []string
+}
+
+func theEncoderWritesTheNamesTheDecoderReadsCases() iter.Seq[theEncoderWritesTheNamesTheDecoderReadsCase] {
+	return slices.Values([]theEncoderWritesTheNamesTheDecoderReadsCase{
+		{
+			name: "an outer field shadows an embedded one",
+			v:    JOuterShadows{JLeaf: JLeaf{Name: "inner"}, Name: "outer"},
+			want: []string{"name"},
+		},
+		{
+			name: "two embedded types tie and neither is written",
+			v:    JSiblings{JLeaf{Name: "a"}, JOther{Name: "b", OnlyO: "o"}},
+			want: []string{"onlyO"},
+		},
+		{
+			name: "one type reached down two branches ties with itself",
+			v:    JTwoBranches{JLeft{JLeaf{Name: "l"}}, JRight{JLeaf{Name: "r"}}},
+			want: []string{},
+		},
+		{
+			name: "the shallower of two depths is the one written",
+			v:    JMixedDepth{JMid{JLeaf{Name: "deep"}}, JShallow{Name: "shallow", OnlyS: "s"}},
+			want: []string{"name", "onlyS"},
+		},
+	})
 }
 
 // TestAShadowedNameIsWrittenOnce holds the value as well as the name: the field
@@ -673,10 +680,27 @@ c: true
 }
 
 func TestTagMarshalling(t *testing.T) {
-	tests := []struct {
-		name  string
-		input string
-	}{
+	for tt := range tagMarshallingCases() {
+		t.Run(tt.name, func(t *testing.T) {
+			res, _ := parser.ParseBytes([]byte(tt.input))
+			result, err := codec.Marshal(res.Docs[0])
+			require.NoError(t, err)
+
+			expected := strings.TrimSpace(tt.input)
+			output := strings.TrimSpace(string(result))
+			require.Equal(t, expected, output)
+		})
+	}
+}
+
+// tagMarshallingCase holds a tagged document that encodes back to its own text.
+type tagMarshallingCase struct {
+	name  string
+	input string
+}
+
+func tagMarshallingCases() iter.Seq[tagMarshallingCase] {
+	return slices.Values([]tagMarshallingCase{
 		{name: "scalar", input: "a: !mytag 1"},
 		{name: "mapping", input: `
 a: !mytag
@@ -694,19 +718,7 @@ a: &anc !mytag
 		{name: "flow mapping", input: "a: !mytag {b: 2}"},
 		{name: "flow sequence", input: "a: !mytag [1, 2, 3]"},
 		{name: "explicit type", input: "a: !!timestamp test"},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			res, _ := parser.ParseBytes([]byte(tt.input))
-			result, err := codec.Marshal(res.Docs[0])
-			require.NoError(t, err)
-
-			expected := strings.TrimSpace(tt.input)
-			output := strings.TrimSpace(string(result))
-			require.Equal(t, expected, output)
-		})
-	}
+	})
 }
 
 type (
@@ -795,15 +807,7 @@ func TestWriteInferredNamesWritesTheGoNameVerbatim(t *testing.T) {
 
 // TestAValueReadUnderTheOptionsRoundTrips is what the pair is for.
 func TestAValueReadUnderTheOptionsRoundTrips(t *testing.T) {
-	for _, c := range []struct {
-		name string
-		src  string
-		mk   func() any
-	}{
-		{"json tags", "swagger: \"2.0\"\nhost: example.com\n", func() any { return &specProps{} }},
-		{"a promoted struct", "swagger: \"2.0\"\nhost: h\nextra: e\n", func() any { return &specShaped{} }},
-		{"a yaml tag beside an untagged field", "yamlName: bb\nNeither: nn\n", func() any { return &mixedTags{} }},
-	} {
+	for c := range aValueReadUnderTheOptionsRoundTripsCases() {
 		t.Run(c.name, func(t *testing.T) {
 			v := c.mk()
 			require.NoError(t, codec.Unmarshal([]byte(c.src), v,
@@ -815,4 +819,19 @@ func TestAValueReadUnderTheOptionsRoundTrips(t *testing.T) {
 			assert.Equal(t, c.src, string(out))
 		})
 	}
+}
+
+// aValueReadUnderTheOptionsRoundTripsCase holds a document and a constructor for the value it decodes into.
+type aValueReadUnderTheOptionsRoundTripsCase struct {
+	name string
+	src  string
+	mk   func() any
+}
+
+func aValueReadUnderTheOptionsRoundTripsCases() iter.Seq[aValueReadUnderTheOptionsRoundTripsCase] {
+	return slices.Values([]aValueReadUnderTheOptionsRoundTripsCase{
+		{"json tags", "swagger: \"2.0\"\nhost: example.com\n", func() any { return &specProps{} }},
+		{"a promoted struct", "swagger: \"2.0\"\nhost: h\nextra: e\n", func() any { return &specShaped{} }},
+		{"a yaml tag beside an untagged field", "yamlName: bb\nNeither: nn\n", func() any { return &mixedTags{} }},
+	})
 }

@@ -5,6 +5,8 @@ package codec_test
 
 import (
 	"fmt"
+	"iter"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -155,13 +157,8 @@ func TestJSONTokensRefuseWhatJSONCannotHold(t *testing.T) {
 }
 
 func TestJSONTokensReadTheFirstDocumentOfAStream(t *testing.T) {
-	for name, tc := range map[string]struct{ src, want string }{
-		"the first of two": {"a: 1\n---\nb: 2\n", `{"a":1}`},
-		"an empty first":   {"---\n---\nb: 2\n", `null`},
-		"past a directive": {"%YAML 1.2\n---\na: 1\n", `{"a":1}`},
-		"nothing at all":   {"", `null`},
-	} {
-		t.Run(name, func(t *testing.T) {
+	for tc := range jsonTokensReadTheFirstDocumentOfAStreamCases() {
+		t.Run(tc.name, func(t *testing.T) {
 			s := codec.ToJSONTokens([]byte(tc.src))
 			var got []string
 			for tk := range s.Tokens() {
@@ -181,6 +178,21 @@ func TestJSONTokensReadTheFirstDocumentOfAStream(t *testing.T) {
 			assert.Equal(t, tc.want, string(want))
 		})
 	}
+}
+
+// jsonTokensReadTheFirstDocumentOfAStreamCase holds a stream and the JSON its first document converts to.
+type jsonTokensReadTheFirstDocumentOfAStreamCase struct {
+	name      string
+	src, want string
+}
+
+func jsonTokensReadTheFirstDocumentOfAStreamCases() iter.Seq[jsonTokensReadTheFirstDocumentOfAStreamCase] {
+	return slices.Values([]jsonTokensReadTheFirstDocumentOfAStreamCase{
+		{"an empty first", "---\n---\nb: 2\n", `null`},
+		{"nothing at all", "", `null`},
+		{"past a directive", "%YAML 1.2\n---\na: 1\n", `{"a":1}`},
+		{"the first of two", "a: 1\n---\nb: 2\n", `{"a":1}`},
+	})
 }
 
 // TestJSONTokensStopWhenTheRangeDoes holds that breaking out of the range stops
@@ -251,23 +263,8 @@ func TestJSONTokensFoldAMerge(t *testing.T) {
 // change the key's name -- and are pinned as they stand so that a fix reports
 // itself here.
 func TestJSONTokensSpellAKeyAsToJSONDoes(t *testing.T) {
-	for name, tc := range map[string]struct{ src, key string }{
-		"a bare key":      {"1e3: x\n", "1000.0"},
-		"a key under a ?": {"? 1e3\n: x\n", "1000.0"},
-		"a tagged key":    {"!!float 1e3: x\n", "1000.0"},
-		// A tag under an anchor or an alias says what the value is, so the
-		// tagged value names the entry and not the digits.
-		"an anchored tagged key":        {"&a !!float 1e3: x\n", "1000.0"},
-		"an alias to a tagged key":      {"a: &a1 !!float 1e3\n*a1 : v\n", "1000.0"},
-		"a timestamp under a ?":         {"? !!timestamp 2001-12-14\n: x\n", "2001-12-14T00:00:00Z"},
-		"an anchored timestamp":         {"&a !!timestamp 2001-12-14: x\n", "2001-12-14T00:00:00Z"},
-		"an alias to a zoned timestamp": {"a: &a1 !!timestamp 2001-12-14t21:59:43.10-05:00\n*a1 : v\n", "2001-12-14T21:59:43.1-05:00"},
-		"an anchored key":               {"&a 1e3: x\n", "1e3"},
-		"an alias as a key":             {"a: &a1 1e3\n*a1 : v\n", "1e3"},
-		"a bare small float":            {"0.00003: x\n", "3e-05"},
-		"an anchored one":               {"&a 0.00003: x\n", "0.00003"},
-	} {
-		t.Run(name, func(t *testing.T) {
+	for tc := range jsonTokensSpellAKeyAsToJSONDoesCases() {
+		t.Run(tc.name, func(t *testing.T) {
 			s := codec.ToJSONTokens([]byte(tc.src))
 			var keys []string
 			for tk := range s.Tokens() {
@@ -287,17 +284,34 @@ func TestJSONTokensSpellAKeyAsToJSONDoes(t *testing.T) {
 	}
 }
 
+// jsonTokensSpellAKeyAsToJSONDoesCase holds a document and the name its last key gets.
+type jsonTokensSpellAKeyAsToJSONDoesCase struct {
+	name     string
+	src, key string
+}
+
+func jsonTokensSpellAKeyAsToJSONDoesCases() iter.Seq[jsonTokensSpellAKeyAsToJSONDoesCase] {
+	return slices.Values([]jsonTokensSpellAKeyAsToJSONDoesCase{
+		{"a bare key", "1e3: x\n", "1000.0"},
+		{"a key under a ?", "? 1e3\n: x\n", "1000.0"},
+		{"a tagged key", "!!float 1e3: x\n", "1000.0"},
+		// A tag under an anchor or an alias says what the value is, so the
+		// tagged value names the entry and not the digits.
+		{"an anchored tagged key", "&a !!float 1e3: x\n", "1000.0"},
+		{"an alias to a tagged key", "a: &a1 !!float 1e3\n*a1 : v\n", "1000.0"},
+		{"a timestamp under a ?", "? !!timestamp 2001-12-14\n: x\n", "2001-12-14T00:00:00Z"},
+		{"an anchored timestamp", "&a !!timestamp 2001-12-14: x\n", "2001-12-14T00:00:00Z"},
+		{"an alias to a zoned timestamp", "a: &a1 !!timestamp 2001-12-14t21:59:43.10-05:00\n*a1 : v\n", "2001-12-14T21:59:43.1-05:00"},
+		{"an anchored key", "&a 1e3: x\n", "1e3"},
+		{"an alias as a key", "a: &a1 1e3\n*a1 : v\n", "1e3"},
+		{"a bare small float", "0.00003: x\n", "3e-05"},
+		{"an anchored one", "&a 0.00003: x\n", "0.00003"},
+	})
+}
+
 func TestJSONTokensRefuseAStreamWhenAskedTo(t *testing.T) {
-	for name, tc := range map[string]struct {
-		src     string
-		refused bool
-	}{
-		"one document":        {"a: 1\n", false},
-		"one past directives": {"%YAML 1.2\n---\na: 1\n", false},
-		"two documents":       {"a: 1\n---\nb: 2\n", true},
-		"an empty first":      {"---\n---\nb: 2\n", true},
-	} {
-		t.Run(name, func(t *testing.T) {
+	for tc := range jsonTokensRefuseAStreamWhenAskedToCases() {
+		t.Run(tc.name, func(t *testing.T) {
 			s := codec.ToJSONTokens([]byte(tc.src)).OneDocument()
 			for range s.Tokens() {
 			}
@@ -311,6 +325,22 @@ func TestJSONTokensRefuseAStreamWhenAskedTo(t *testing.T) {
 	}
 }
 
+// jsonTokensRefuseAStreamWhenAskedToCase holds a stream and whether OneDocument refuses it.
+type jsonTokensRefuseAStreamWhenAskedToCase struct {
+	name    string
+	src     string
+	refused bool
+}
+
+func jsonTokensRefuseAStreamWhenAskedToCases() iter.Seq[jsonTokensRefuseAStreamWhenAskedToCase] {
+	return slices.Values([]jsonTokensRefuseAStreamWhenAskedToCase{
+		{"an empty first", "---\n---\nb: 2\n", true},
+		{"one document", "a: 1\n", false},
+		{"one past directives", "%YAML 1.2\n---\na: 1\n", false},
+		{"two documents", "a: 1\n---\nb: 2\n", true},
+	})
+}
+
 // TestJSONTokensCloseWhereTheCollectionEnds holds that a closing token never
 // stands before what it closes.
 //
@@ -319,13 +349,8 @@ func TestJSONTokensRefuseAStreamWhenAskedTo(t *testing.T) {
 // consumer ordering tokens by position needs that: reading the node's own
 // position puts the closer back at the collection's first token.
 func TestJSONTokensCloseWhereTheCollectionEnds(t *testing.T) {
-	for name, tc := range map[string]struct{ src, closers string }{
-		"a block mapping":  {"a: 1\nb: 2\n", "L2C4"},
-		"a block sequence": {"items:\n  - x\n  - y\n", "L3C5 L3C5"},
-		"a flow mapping":   {"{a: 1}\n", "L1C6"},
-		"a flow sequence":  {"[1, 2]\n", "L1C6"},
-	} {
-		t.Run(name, func(t *testing.T) {
+	for tc := range jsonTokensCloseWhereTheCollectionEndsCases() {
+		t.Run(tc.name, func(t *testing.T) {
 			s := codec.ToJSONTokens([]byte(tc.src))
 
 			var (
@@ -348,6 +373,21 @@ func TestJSONTokensCloseWhereTheCollectionEnds(t *testing.T) {
 			assert.Equal(t, tc.closers, strings.Join(closers, " "))
 		})
 	}
+}
+
+// jsonTokensCloseWhereTheCollectionEndsCase holds a document and the positions of its closing tokens.
+type jsonTokensCloseWhereTheCollectionEndsCase struct {
+	name         string
+	src, closers string
+}
+
+func jsonTokensCloseWhereTheCollectionEndsCases() iter.Seq[jsonTokensCloseWhereTheCollectionEndsCase] {
+	return slices.Values([]jsonTokensCloseWhereTheCollectionEndsCase{
+		{"a block mapping", "a: 1\nb: 2\n", "L2C4"},
+		{"a block sequence", "items:\n  - x\n  - y\n", "L3C5 L3C5"},
+		{"a flow mapping", "{a: 1}\n", "L1C6"},
+		{"a flow sequence", "[1, 2]\n", "L1C6"},
+	})
 }
 
 // TestJSONTokensAlwaysCarryAPosition holds that every token points somewhere in
@@ -374,16 +414,8 @@ func TestJSONTokensAlwaysCarryAPosition(t *testing.T) {
 // column 6, where k is the seventh character -- which is defect 76 in go-yaml
 // and not this converter's doing.
 func TestJSONTokensPointAKeyAtItsScalar(t *testing.T) {
-	for name, tc := range map[string]struct {
-		src string
-		key string
-	}{
-		"a bare key":      {"k: v\n", "k"},
-		"an anchored key": {"&a k: v\n", "k"},
-		"a tagged key":    {"!!str k: v\n", "k"},
-		"a key under a ?": {"? k\n: v\n", "k"},
-	} {
-		t.Run(name, func(t *testing.T) {
+	for tc := range jsonTokensPointAKeyAtItsScalarCases() {
+		t.Run(tc.name, func(t *testing.T) {
 			s := codec.ToJSONTokens([]byte(tc.src))
 			var found codec.JSONToken
 			for tk := range s.Tokens() {
@@ -401,6 +433,22 @@ func TestJSONTokensPointAKeyAtItsScalar(t *testing.T) {
 	}
 }
 
+// jsonTokensPointAKeyAtItsScalarCase holds a document and the key its offset must land on.
+type jsonTokensPointAKeyAtItsScalarCase struct {
+	name string
+	src  string
+	key  string
+}
+
+func jsonTokensPointAKeyAtItsScalarCases() iter.Seq[jsonTokensPointAKeyAtItsScalarCase] {
+	return slices.Values([]jsonTokensPointAKeyAtItsScalarCase{
+		{"a bare key", "k: v\n", "k"},
+		{"a key under a ?", "? k\n: v\n", "k"},
+		{"a tagged key", "!!str k: v\n", "k"},
+		{"an anchored key", "&a k: v\n", "k"},
+	})
+}
+
 // TestAMergedKeyLosesToTheMappingsOwn pins which member a "<<" writes and which it leaves out.
 //
 // A mapping's own key beats one a merge brings in, whatever their order in the document, and an earlier
@@ -414,7 +462,34 @@ func TestJSONTokensPointAKeyAtItsScalar(t *testing.T) {
 func TestAMergedKeyLosesToTheMappingsOwn(t *testing.T) {
 	t.Parallel()
 
-	for _, tc := range []struct{ name, src, want string }{
+	for tc := range aMergedKeyLosesToTheMappingsOwnCases() {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			out, err := codec.ToJSON([]byte(tc.src), parser.WithMergeKeys())
+			require.NoErrorf(t, err, "%q", tc.src)
+
+			assert.JSONEq(t, tc.want, string(out))
+			assert.Equalf(t, tc.want, string(out), "%q: the members are written in this order", tc.src)
+		})
+	}
+
+	t.Run("a repeated merge key is a repeat like any other", func(t *testing.T) {
+		t.Parallel()
+
+		_, err := codec.ToJSON([]byte("m:\n  <<: {a: 1}\n  <<: {a: 2, b: 3}\n"), parser.WithMergeKeys())
+
+		require.ErrorContains(t, err, `mapping key "<<" already defined`)
+	})
+}
+
+// aMergedKeyLosesToTheMappingsOwnCase holds a document with a merge and the JSON it converts to.
+type aMergedKeyLosesToTheMappingsOwnCase struct {
+	name, src, want string
+}
+
+func aMergedKeyLosesToTheMappingsOwnCases() iter.Seq[aMergedKeyLosesToTheMappingsOwnCase] {
+	return slices.Values([]aMergedKeyLosesToTheMappingsOwnCase{
 		{
 			"an own key written after the merge",
 			"base: &b\n  a: 1\n  b: 2\nm:\n  <<: *b\n  b: own\n",
@@ -499,24 +574,6 @@ func TestAMergedKeyLosesToTheMappingsOwn(t *testing.T) {
 			"base: &b {a: 1}\nm:\n  <<: *b\n",
 			`{"base":{"a":1},"m":{"a":1}}`,
 		},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-
-			out, err := codec.ToJSON([]byte(tc.src), parser.WithMergeKeys())
-			require.NoErrorf(t, err, "%q", tc.src)
-
-			assert.JSONEq(t, tc.want, string(out))
-			assert.Equalf(t, tc.want, string(out), "%q: the members are written in this order", tc.src)
-		})
-	}
-
-	t.Run("a repeated merge key is a repeat like any other", func(t *testing.T) {
-		t.Parallel()
-
-		_, err := codec.ToJSON([]byte("m:\n  <<: {a: 1}\n  <<: {a: 2, b: 3}\n"), parser.WithMergeKeys())
-
-		require.ErrorContains(t, err, `mapping key "<<" already defined`)
 	})
 }
 
@@ -532,14 +589,47 @@ func TestAMergedKeyLosesToTheMappingsOwn(t *testing.T) {
 func TestEveryRouteToAMergeAnswersAlike(t *testing.T) {
 	t.Parallel()
 
+	for tc := range everyRouteToAMergeAnswersAlikeCases() {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			out, err := codec.ToJSON([]byte(tc.src), tc.opts...)
+			require.NoErrorf(t, err, "%q", tc.src)
+
+			assert.Equalf(t, tc.want, string(out), "%q", tc.src)
+		})
+	}
+
+	// The reading HoldsKey answers on -- a name shared by two keys YAML tells apart -- has to be the
+	// same whichever route the merge took, since each reaches collectMerge by a different node shape.
+	t.Run("the name a merged key loses on does not depend on the route", func(t *testing.T) {
+		t.Parallel()
+
+		const want = `{"base":{"1":"merged"},"m":{"1":"own"}}`
+
+		byDirective, err := codec.ToJSON([]byte("%YAML 1.1\n---\nbase: &b\n  \"1\": merged\nm:\n  <<: *b\n  1: own\n"))
+		require.NoError(t, err)
+
+		byTag, err := codec.ToJSON([]byte("base: &b\n  \"1\": merged\nm:\n  !!merge <<: *b\n  1: own\n"))
+		require.NoError(t, err)
+
+		assert.Equal(t, want, string(byDirective))
+		assert.Equal(t, want, string(byTag))
+	})
+}
+
+// everyRouteToAMergeAnswersAlikeCase holds a document, the parser options that make its "<<" merge, and the JSON it converts to.
+type everyRouteToAMergeAnswersAlikeCase struct {
+	name string
+	src  string
+	opts []parser.Option
+	want string
+}
+
+func everyRouteToAMergeAnswersAlikeCases() iter.Seq[everyRouteToAMergeAnswersAlikeCase] {
 	const merged = `{"base":{"a":1,"b":2},"m":{"b":"own","a":1}}`
 
-	for _, tc := range []struct {
-		name string
-		src  string
-		opts []parser.Option
-		want string
-	}{
+	return slices.Values([]everyRouteToAMergeAnswersAlikeCase{
 		{
 			name: "a bare << under WithMergeKeys",
 			src:  "base: &b\n  a: 1\n  b: 2\nm:\n  <<: *b\n  b: own\n",
@@ -568,31 +658,5 @@ func TestEveryRouteToAMergeAnswersAlike(t *testing.T) {
 			src:  "base: &b\n  a: 1\n  b: 2\nm:\n  <<: *b\n  b: own\n",
 			want: `{"base":{"a":1,"b":2},"m":{"<<":{"a":1,"b":2},"b":"own"}}`,
 		},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-
-			out, err := codec.ToJSON([]byte(tc.src), tc.opts...)
-			require.NoErrorf(t, err, "%q", tc.src)
-
-			assert.Equalf(t, tc.want, string(out), "%q", tc.src)
-		})
-	}
-
-	// The reading HoldsKey answers on -- a name shared by two keys YAML tells apart -- has to be the
-	// same whichever route the merge took, since each reaches collectMerge by a different node shape.
-	t.Run("the name a merged key loses on does not depend on the route", func(t *testing.T) {
-		t.Parallel()
-
-		const want = `{"base":{"1":"merged"},"m":{"1":"own"}}`
-
-		byDirective, err := codec.ToJSON([]byte("%YAML 1.1\n---\nbase: &b\n  \"1\": merged\nm:\n  <<: *b\n  1: own\n"))
-		require.NoError(t, err)
-
-		byTag, err := codec.ToJSON([]byte("base: &b\n  \"1\": merged\nm:\n  !!merge <<: *b\n  1: own\n"))
-		require.NoError(t, err)
-
-		assert.Equal(t, want, string(byDirective))
-		assert.Equal(t, want, string(byTag))
 	})
 }

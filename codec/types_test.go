@@ -6,7 +6,9 @@ package codec_test
 import (
 	"encoding/json"
 	"fmt"
+	"iter"
 	"reflect"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -341,11 +343,7 @@ func TestAnOrderedMapTagReadsAsTheMapItNames(t *testing.T) {
 		// The element shape is the codec's rule; the kind is the resolver's,
 		// which reads "!!omap does not support this kind of node" and covers
 		// every collection tag standing on the wrong kind.
-		for _, tc := range []struct{ src, says string }{
-			{"!!omap [{x: 1}, -2]\n", "!!omap names a sequence of one-entry mappings"},
-			{"!!omap [{x: 1, b: 2}]\n", "!!omap names a sequence of one-entry mappings"},
-			{"!!omap {x: 1}\n", "!!omap does not support this kind of node"},
-		} {
+		for tc := range anOrderedMapTagReadsAsTheMapItNamesRefusalCases() {
 			require.NoErrorf(t, parseOnly(tc.src), "%q parses", tc.src)
 
 			var got any
@@ -356,14 +354,23 @@ func TestAnOrderedMapTagReadsAsTheMapItNames(t *testing.T) {
 	})
 }
 
+// anOrderedMapTagReadsAsTheMapItNamesRefusalCase holds a document the loader refuses, and the text its error holds.
+type anOrderedMapTagReadsAsTheMapItNamesRefusalCase struct {
+	src, says string
+}
+
+func anOrderedMapTagReadsAsTheMapItNamesRefusalCases() iter.Seq[anOrderedMapTagReadsAsTheMapItNamesRefusalCase] {
+	return slices.Values([]anOrderedMapTagReadsAsTheMapItNamesRefusalCase{
+		{"!!omap [{x: 1}, -2]\n", "!!omap names a sequence of one-entry mappings"},
+		{"!!omap [{x: 1, b: 2}]\n", "!!omap names a sequence of one-entry mappings"},
+		{"!!omap {x: 1}\n", "!!omap does not support this kind of node"},
+	})
+}
+
 // TestOrderedMapWritesAJSONObject: JSON specifies no ordering, so the four
 // readers write an "!!omap" as one object holding the sequence's order.
 func TestOrderedMapWritesAJSONObject(t *testing.T) {
-	for _, tc := range []struct{ src, want string }{
-		{"!!omap [{x: 1}, {b: 2}]\n", `{"x":1,"b":2}`},
-		{"a: !!omap [{x: 1}, {b: 2}]\n", `{"a":{"x":1,"b":2}}`},
-		{"!!omap []\n", `{}`},
-	} {
+	for tc := range orderedMapWritesAJSONObjectCases() {
 		got, err := codec.ToJSON([]byte(tc.src))
 		require.NoErrorf(t, err, "%q", tc.src)
 		assert.Equalf(t, tc.want, string(got), "%q", tc.src)
@@ -374,6 +381,19 @@ func TestOrderedMapWritesAJSONObject(t *testing.T) {
 		require.NoErrorf(t, err, "%q", tc.src)
 		assert.JSONEqf(t, tc.want, string(viaValues), "%q: the value converter disagrees", tc.src)
 	}
+}
+
+// orderedMapWritesAJSONObjectCase holds a document and the JSON object it converts to.
+type orderedMapWritesAJSONObjectCase struct {
+	src, want string
+}
+
+func orderedMapWritesAJSONObjectCases() iter.Seq[orderedMapWritesAJSONObjectCase] {
+	return slices.Values([]orderedMapWritesAJSONObjectCase{
+		{"!!omap [{x: 1}, {b: 2}]\n", `{"x":1,"b":2}`},
+		{"a: !!omap [{x: 1}, {b: 2}]\n", `{"a":{"x":1,"b":2}}`},
+		{"!!omap []\n", `{}`},
+	})
 }
 
 // parseOnly reports whether the document parses, the loader aside.
@@ -420,13 +440,7 @@ func TestOrderedMapRefusesAShapeTheTagDoesNotName(t *testing.T) {
 // path was skipped. ToJSON replays the text each anchor wrote and had it right,
 // which is how the two converters disagreed.
 func TestFixedAnAliasToAnOrderedMapKeepsTheTag(t *testing.T) {
-	for _, tc := range []struct{ src, want string }{
-		{"a: &m !!omap [{x: 1}]\nb: *m\n", `{"a":{"x":1},"b":{"x":1}}`},
-		{
-			"a: &m !!omap [{x: 1}, {b: 2}]\nb: *m\nc: *m\n",
-			`{"a":{"x":1,"b":2},"b":{"x":1,"b":2},"c":{"x":1,"b":2}}`,
-		},
-	} {
+	for tc := range fixedAnAliasToAnOrderedMapKeepsTheTagCases() {
 		folded, err := codec.ToJSON([]byte(tc.src))
 		require.NoErrorf(t, err, "%q", tc.src)
 		assert.Equalf(t, tc.want, string(folded), "%q", tc.src)
@@ -447,6 +461,21 @@ func TestFixedAnAliasToAnOrderedMapKeepsTheTag(t *testing.T) {
 			}
 			require.Errorf(t, tokens.Err(), "%q", src)
 		}
+	})
+}
+
+// fixedAnAliasToAnOrderedMapKeepsTheTagCase holds a document aliasing an ordered map, and the JSON it converts to.
+type fixedAnAliasToAnOrderedMapKeepsTheTagCase struct {
+	src, want string
+}
+
+func fixedAnAliasToAnOrderedMapKeepsTheTagCases() iter.Seq[fixedAnAliasToAnOrderedMapKeepsTheTagCase] {
+	return slices.Values([]fixedAnAliasToAnOrderedMapKeepsTheTagCase{
+		{"a: &m !!omap [{x: 1}]\nb: *m\n", `{"a":{"x":1},"b":{"x":1}}`},
+		{
+			"a: &m !!omap [{x: 1}, {b: 2}]\nb: *m\nc: *m\n",
+			`{"a":{"x":1,"b":2},"b":{"x":1,"b":2},"c":{"x":1,"b":2}}`,
+		},
 	})
 }
 
@@ -625,16 +654,7 @@ func TestAnOrderedMapEntryIsCountedAfterItsMerge(t *testing.T) {
 	type field struct {
 		K any `yaml:"k"`
 	}
-	for _, c := range []struct {
-		body string
-		json string // "" where every reader refuses the document
-	}{
-		{"k: !!omap\n- {<<: {a: 0}, a: 1}\n", `{"k":{"a":1}}`},
-		{"k: !!omap\n- {<<: {b: 0}}\n", `{"k":{"b":0}}`},
-		{"k: !!omap\n- {<<: [{a: 0}, {a: 1}]}\n", `{"k":{"a":0}}`},
-		{"k: !!omap\n- {<<: {a: 0, b: 1}}\n", ""},
-		{"m: &m {a: 0, b: 1}\nk: !!omap\n- {<<: *m}\n", ""},
-	} {
+	for c := range anOrderedMapEntryIsCountedAfterItsMergeCases() {
 		t.Run(c.body, func(t *testing.T) {
 			src := []byte("%YAML 1.1\n---\n" + c.body)
 			check := func(t *testing.T, err error) {
@@ -668,6 +688,22 @@ func TestAnOrderedMapEntryIsCountedAfterItsMerge(t *testing.T) {
 	}
 }
 
+// anOrderedMapEntryIsCountedAfterItsMergeCase holds a document body, and the JSON every reader reads it as.
+type anOrderedMapEntryIsCountedAfterItsMergeCase struct {
+	body string
+	json string // "" where every reader refuses the document
+}
+
+func anOrderedMapEntryIsCountedAfterItsMergeCases() iter.Seq[anOrderedMapEntryIsCountedAfterItsMergeCase] {
+	return slices.Values([]anOrderedMapEntryIsCountedAfterItsMergeCase{
+		{"k: !!omap\n- {<<: {a: 0}, a: 1}\n", `{"k":{"a":1}}`},
+		{"k: !!omap\n- {<<: {b: 0}}\n", `{"k":{"b":0}}`},
+		{"k: !!omap\n- {<<: [{a: 0}, {a: 1}]}\n", `{"k":{"a":0}}`},
+		{"k: !!omap\n- {<<: {a: 0, b: 1}}\n", ""},
+		{"m: &m {a: 0, b: 1}\nk: !!omap\n- {<<: *m}\n", ""},
+	})
+}
+
 // TestAnOrderedMapRepeatAMergeBringsInIsAKeyWrittenTwice holds every reader to
 // one answer for an "!!omap" whose entries hold a "<<": the key of each entry
 // is what its merge brings in, and a key two entries hold is a repeat across
@@ -679,20 +715,7 @@ func TestAnOrderedMapEntryIsCountedAfterItsMerge(t *testing.T) {
 // merge brought in, so a merged repeat went through: the decoders kept the
 // later value and ToJSON wrote the member twice.
 func TestAnOrderedMapRepeatAMergeBringsInIsAKeyWrittenTwice(t *testing.T) {
-	for _, c := range []struct {
-		body    string
-		json    string // "" where every reader refuses the document by default
-		allowed string // the JSON under AllowDuplicateMapKey, where it differs
-	}{
-		{body: "k: !!omap\n- {<<: {a: 1}}\n- {<<: {b: 2}}\n", json: `{"k":{"a":1,"b":2}}`},
-		{body: "k: !!omap\n- {<<: {a: 1}, a: 2}\n", json: `{"k":{"a":2}}`},
-		{body: "k: !!omap\n- {<<: [{a: 1}, {a: 2}]}\n- {b: 3}\n", json: `{"k":{"a":1,"b":3}}`},
-		{body: "k: !!omap\n- <<: {a: 1}\n- <<: {b: 2}\n", json: `{"k":{"a":1,"b":2}}`},
-		{body: "k: !!omap\n- {a: 1}\n- {<<: {a: 2}}\n", allowed: `{"k":{"a":1}}`},
-		{body: "k: !!omap\n- {<<: {a: 1}}\n- {a: 2}\n", allowed: `{"k":{"a":1}}`},
-		{body: "m: &m {a: 2}\nk: !!omap\n- {a: 1}\n- {<<: *m}\n", allowed: `{"m":{"a":2},"k":{"a":1}}`},
-		{body: "m: &m {a: 2}\nk: !!omap\n- {a: 1}\n- {<<: [{a: 3}, *m]}\n", allowed: `{"m":{"a":2},"k":{"a":1}}`},
-	} {
+	for c := range anOrderedMapRepeatAMergeBringsInIsAKeyWrittenTwiceCases() {
 		t.Run(c.body, func(t *testing.T) {
 			src := []byte("%YAML 1.1\n---\n" + c.body)
 
@@ -734,6 +757,26 @@ func TestAnOrderedMapRepeatAMergeBringsInIsAKeyWrittenTwice(t *testing.T) {
 			}
 		})
 	}
+}
+
+// anOrderedMapRepeatAMergeBringsInIsAKeyWrittenTwiceCase holds a document body, and the JSON the readers read it as by default and under AllowDuplicateMapKey.
+type anOrderedMapRepeatAMergeBringsInIsAKeyWrittenTwiceCase struct {
+	body    string
+	json    string // "" where every reader refuses the document by default
+	allowed string // the JSON under AllowDuplicateMapKey, where it differs
+}
+
+func anOrderedMapRepeatAMergeBringsInIsAKeyWrittenTwiceCases() iter.Seq[anOrderedMapRepeatAMergeBringsInIsAKeyWrittenTwiceCase] {
+	return slices.Values([]anOrderedMapRepeatAMergeBringsInIsAKeyWrittenTwiceCase{
+		{body: "k: !!omap\n- {<<: {a: 1}}\n- {<<: {b: 2}}\n", json: `{"k":{"a":1,"b":2}}`},
+		{body: "k: !!omap\n- {<<: {a: 1}, a: 2}\n", json: `{"k":{"a":2}}`},
+		{body: "k: !!omap\n- {<<: [{a: 1}, {a: 2}]}\n- {b: 3}\n", json: `{"k":{"a":1,"b":3}}`},
+		{body: "k: !!omap\n- <<: {a: 1}\n- <<: {b: 2}\n", json: `{"k":{"a":1,"b":2}}`},
+		{body: "k: !!omap\n- {a: 1}\n- {<<: {a: 2}}\n", allowed: `{"k":{"a":1}}`},
+		{body: "k: !!omap\n- {<<: {a: 1}}\n- {a: 2}\n", allowed: `{"k":{"a":1}}`},
+		{body: "m: &m {a: 2}\nk: !!omap\n- {a: 1}\n- {<<: *m}\n", allowed: `{"m":{"a":2},"k":{"a":1}}`},
+		{body: "m: &m {a: 2}\nk: !!omap\n- {a: 1}\n- {<<: [{a: 3}, *m]}\n", allowed: `{"m":{"a":2},"k":{"a":1}}`},
+	})
 }
 
 // TestAnOrderedMapTagOverAnAliasReadsTheSequenceItNames reads "!!omap *x" on the walk, the tree and ToJSON. The

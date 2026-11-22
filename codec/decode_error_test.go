@@ -18,20 +18,7 @@ import (
 )
 
 func TestDecoder_Invalid(t *testing.T) {
-	tests := []struct {
-		src    string
-		expect string
-	}{
-		{
-			"*-0",
-			`
-[1:2] could not find alias "-0"
->  1 | *-0
-        ^
-`,
-		},
-	}
-	for _, test := range tests {
+	for test := range decoderInvalidCases() {
 		t.Run(test.src, func(t *testing.T) {
 			var v any
 			err := codec.Unmarshal([]byte(test.src), &v)
@@ -40,6 +27,25 @@ func TestDecoder_Invalid(t *testing.T) {
 			require.Equal(t, test.expect, actual)
 		})
 	}
+}
+
+// decoderInvalidCase holds a document the decoder refuses, and the error it returns.
+type decoderInvalidCase struct {
+	src    string
+	expect string
+}
+
+func decoderInvalidCases() iter.Seq[decoderInvalidCase] {
+	return slices.Values([]decoderInvalidCase{
+		{
+			"*-0",
+			`
+[1:2] could not find alias "-0"
+>  1 | *-0
+        ^
+`,
+		},
+	})
 }
 
 // conversionErrorCase is a document the decoder cannot read into target, and the text its error contains.

@@ -24,10 +24,33 @@ import (
 )
 
 func TestDecoder_ScientificNotation(t *testing.T) {
-	tests := []struct {
-		source string
-		value  any
-	}{
+	for test := range decoderScientificNotationCases() {
+		t.Run(test.source, func(t *testing.T) {
+			buf := bytes.NewBufferString(test.source)
+			dec := codec.NewDecoder(buf)
+			typ := reflect.ValueOf(test.value).Type()
+			value := reflect.New(typ)
+			if err := dec.Decode(value.Interface()); err != nil {
+				if errors.Is(err, io.EOF) {
+					return
+				}
+				require.NoError(t, err)
+			}
+			actual := fmt.Sprintf("%+v", value.Elem().Interface())
+			expect := fmt.Sprintf("%+v", test.value)
+			require.Equal(t, expect, actual)
+		})
+	}
+}
+
+// decoderScientificNotationCase holds a number in scientific notation and the value it decodes to.
+type decoderScientificNotationCase struct {
+	source string
+	value  any
+}
+
+func decoderScientificNotationCases() iter.Seq[decoderScientificNotationCase] {
+	return slices.Values([]decoderScientificNotationCase{
 		{
 			"v: 1e3",
 			map[string]uint{"v": 1000},
@@ -68,24 +91,7 @@ func TestDecoder_ScientificNotation(t *testing.T) {
 			"v: 1.0e+3",
 			map[string]float64{"v": 1000},
 		},
-	}
-	for _, test := range tests {
-		t.Run(test.source, func(t *testing.T) {
-			buf := bytes.NewBufferString(test.source)
-			dec := codec.NewDecoder(buf)
-			typ := reflect.ValueOf(test.value).Type()
-			value := reflect.New(typ)
-			if err := dec.Decode(value.Interface()); err != nil {
-				if errors.Is(err, io.EOF) {
-					return
-				}
-				require.NoError(t, err)
-			}
-			actual := fmt.Sprintf("%+v", value.Elem().Interface())
-			expect := fmt.Sprintf("%+v", test.value)
-			require.Equal(t, expect, actual)
-		})
-	}
+	})
 }
 
 // A number past big.Float's exponent decoded to zero.
@@ -125,30 +131,48 @@ func TestFixedANumberPastBigFloatIsAnInfinity(t *testing.T) {
 // TestAWideNumberBelowThatBoundIsKept holds the numbers inside the ±1000 bound,
 // which keep the width they need.
 func TestAWideNumberBelowThatBoundIsKept(t *testing.T) {
-	for _, tc := range []struct{ src, want string }{
+	for tc := range aWideNumberBelowThatBoundIsKeptCases() {
+		assert.Equal(t, tc.want, typeName(decoded(t, tc.src)), "%q", tc.src)
+	}
+}
+
+// aWideNumberBelowThatBoundIsKeptCase holds a document and the Go type its number decodes to.
+type aWideNumberBelowThatBoundIsKeptCase struct {
+	src, want string
+}
+
+func aWideNumberBelowThatBoundIsKeptCases() iter.Seq[aWideNumberBelowThatBoundIsKeptCase] {
+	return slices.Values([]aWideNumberBelowThatBoundIsKeptCase{
 		{src: "a: 1e308\n", want: "float64"},
 		{src: "a: 1e309\n", want: "*big.Float"},
 		{src: "a: 1E400\n", want: "*big.Float"},
 		{src: "a: 1e-400\n", want: "*big.Float"},
 		{src: "a: 123456789012345678901234567890\n", want: "*big.Int"},
-	} {
-		assert.Equal(t, tc.want, typeName(decoded(t, tc.src)), "%q", tc.src)
-	}
+	})
 }
 
 // TestToJSONKeepsTheNumberWhateverItsWidth holds the half that is right, so a
 // fix to the decoder does not take it along.
 func TestToJSONKeepsTheNumberWhateverItsWidth(t *testing.T) {
-	for _, tc := range []struct{ src, want string }{
-		{src: "a: 1e2147483647\n", want: `{"a":1e2147483647}`},
-		{src: "a: -3.96068E4059375226\n", want: `{"a":-3.96068E4059375226}`},
-		{src: "a: 1E400\n", want: `{"a":1E400}`},
-	} {
+	for tc := range toJSONKeepsTheNumberWhateverItsWidthCases() {
 		out, err := codec.ToJSON([]byte(tc.src))
 		require.NoError(t, err, "%q", tc.src)
 		assert.Equal(t, tc.want, string(out),
 			"ToJSON writes what the document said; JSON bounds no number's magnitude")
 	}
+}
+
+// toJSONKeepsTheNumberWhateverItsWidthCase holds a document and the JSON ToJSON writes for it.
+type toJSONKeepsTheNumberWhateverItsWidthCase struct {
+	src, want string
+}
+
+func toJSONKeepsTheNumberWhateverItsWidthCases() iter.Seq[toJSONKeepsTheNumberWhateverItsWidthCase] {
+	return slices.Values([]toJSONKeepsTheNumberWhateverItsWidthCase{
+		{src: "a: 1e2147483647\n", want: `{"a":1e2147483647}`},
+		{src: "a: -3.96068E4059375226\n", want: `{"a":-3.96068E4059375226}`},
+		{src: "a: 1E400\n", want: `{"a":1E400}`},
+	})
 }
 
 func typeName(v any) string {
@@ -172,15 +196,7 @@ func typeName(v any) string {
 // its value and whatever its sign. It reads token.ParseBigInteger now, which is
 // what ast.IntegerNode.GetValue reads for the untagged spelling.
 func TestFixedAnIntTagOnAWideIntegerKeepsItsDigits(t *testing.T) {
-	for _, tc := range []struct{ src, want string }{
-		{src: "!!int 123456789012345678901\n", want: "123456789012345678901"},
-		{src: "!!int -123456789012345678901\n", want: "-123456789012345678901"},
-		{src: "!!int 18446744073709551616\n", want: "18446744073709551616"},
-		{src: "123456789012345678901\n", want: "123456789012345678901"},
-		{src: "-123456789012345678901\n", want: "-123456789012345678901"},
-		{src: "!!int -5\n", want: "-5"},
-		{src: "!!int 0x1f\n", want: "31"},
-	} {
+	for tc := range fixedAnIntTagOnAWideIntegerKeepsItsDigitsCases() {
 		out, err := codec.ToJSON([]byte(tc.src))
 		require.NoErrorf(t, err, "%q", tc.src)
 		assert.Equal(t, tc.want, string(out), "%q", tc.src)
@@ -192,6 +208,23 @@ func TestFixedAnIntTagOnAWideIntegerKeepsItsDigits(t *testing.T) {
 			require.NoError(t, codec.NewDecoder(bytes.NewReader([]byte(src))).Decode(&v))
 			assert.IsType(t, new(big.Int), v, "%q", src)
 		}
+	})
+}
+
+// fixedAnIntTagOnAWideIntegerKeepsItsDigitsCase holds an integer document and the JSON ToJSON writes for it.
+type fixedAnIntTagOnAWideIntegerKeepsItsDigitsCase struct {
+	src, want string
+}
+
+func fixedAnIntTagOnAWideIntegerKeepsItsDigitsCases() iter.Seq[fixedAnIntTagOnAWideIntegerKeepsItsDigitsCase] {
+	return slices.Values([]fixedAnIntTagOnAWideIntegerKeepsItsDigitsCase{
+		{src: "!!int 123456789012345678901\n", want: "123456789012345678901"},
+		{src: "!!int -123456789012345678901\n", want: "-123456789012345678901"},
+		{src: "!!int 18446744073709551616\n", want: "18446744073709551616"},
+		{src: "123456789012345678901\n", want: "123456789012345678901"},
+		{src: "-123456789012345678901\n", want: "-123456789012345678901"},
+		{src: "!!int -5\n", want: "-5"},
+		{src: "!!int 0x1f\n", want: "31"},
 	})
 }
 
@@ -310,17 +343,7 @@ func TestAWideNumberIsRefusedAndAnInfinityIsNot(t *testing.T) {
 // to -9223372036854775808, so a caller could not tell the three apart, and
 // "1e400" decoded to 0.
 func TestFixedAFloatUnderAnIntegerTagIsRefused(t *testing.T) {
-	for _, tc := range []struct{ src, says string }{
-		{src: "k: !!int 1.9\n", says: `cannot read "1.9" as !!int`},
-		{src: "k: !!int -1.9\n", says: `cannot read "-1.9" as !!int`},
-		{src: "k: !!int 1e3\n", says: `cannot read "1e3" as !!int`},
-		{src: "k: !!int 1e400\n", says: `cannot read "1e400" as !!int`},
-		{src: "k: !!int .inf\n", says: `cannot read ".inf" as !!int`},
-		{src: "k: !!int -.inf\n", says: `cannot read "-.inf" as !!int`},
-		{src: "k: !!int .nan\n", says: `cannot read ".nan" as !!int`},
-		{src: "!!int .inf: v\n", says: `cannot read ".inf" as !!int`},
-		{src: "!!int 1.9: v\n", says: `cannot read "1.9" as !!int`},
-	} {
+	for tc := range fixedAFloatUnderAnIntegerTagIsRefusedCases() {
 		var v any
 		err := codec.NewDecoder(strings.NewReader(tc.src)).Decode(&v)
 		require.Errorf(t, err, "%q should be refused", tc.src)
@@ -328,18 +351,7 @@ func TestFixedAFloatUnderAnIntegerTagIsRefused(t *testing.T) {
 	}
 
 	t.Run("and a whole number under the tag still reads, in any base", func(t *testing.T) {
-		for _, tc := range []struct {
-			src  string
-			want any
-		}{
-			// The Go type the untagged number decodes to.
-			{src: "k: !!int 16\n", want: uint64(16)},
-			{src: "k: !!int 0x10\n", want: uint64(16)},
-			{src: "k: !!int 0o17\n", want: uint64(15)},
-			{src: "k: !!int -5\n", want: int64(-5)},
-			// A tag standing on nothing keeps taking the tag's own default.
-			{src: "k: !!int\n", want: uint64(0)},
-		} {
+		for tc := range wholeNumberUnderAnIntTagCases() {
 			var v map[string]any
 			require.NoErrorf(t, codec.NewDecoder(strings.NewReader(tc.src)).Decode(&v), "%q", tc.src)
 			assert.Equalf(t, tc.want, v["k"], "%q", tc.src)
@@ -366,12 +378,7 @@ func TestFixedAFloatUnderAnIntegerTagIsRefused(t *testing.T) {
 	})
 
 	t.Run("and WithLaxTags reads the text instead", func(t *testing.T) {
-		for _, tc := range []struct{ src, want string }{
-			{src: "k: !!int 1.9\n", want: "1.9"},
-			{src: "k: !!int .inf\n", want: ".inf"},
-			{src: "k: !!int .nan\n", want: ".nan"},
-			{src: "k: !!int 1e400\n", want: "1e400"},
-		} {
+		for tc := range laxIntTagReadsTheTextCases() {
 			f, err := parser.ParseBytes([]byte(tc.src), parser.WithLaxTags())
 			require.NoErrorf(t, err, "%q", tc.src)
 
@@ -397,6 +404,57 @@ func TestFixedAFloatUnderAnIntegerTagIsRefused(t *testing.T) {
 	})
 }
 
+// fixedAFloatUnderAnIntegerTagIsRefusedCase holds a float under !!int and the text its error contains.
+type fixedAFloatUnderAnIntegerTagIsRefusedCase struct {
+	src, says string
+}
+
+func fixedAFloatUnderAnIntegerTagIsRefusedCases() iter.Seq[fixedAFloatUnderAnIntegerTagIsRefusedCase] {
+	return slices.Values([]fixedAFloatUnderAnIntegerTagIsRefusedCase{
+		{src: "k: !!int 1.9\n", says: `cannot read "1.9" as !!int`},
+		{src: "k: !!int -1.9\n", says: `cannot read "-1.9" as !!int`},
+		{src: "k: !!int 1e3\n", says: `cannot read "1e3" as !!int`},
+		{src: "k: !!int 1e400\n", says: `cannot read "1e400" as !!int`},
+		{src: "k: !!int .inf\n", says: `cannot read ".inf" as !!int`},
+		{src: "k: !!int -.inf\n", says: `cannot read "-.inf" as !!int`},
+		{src: "k: !!int .nan\n", says: `cannot read ".nan" as !!int`},
+		{src: "!!int .inf: v\n", says: `cannot read ".inf" as !!int`},
+		{src: "!!int 1.9: v\n", says: `cannot read "1.9" as !!int`},
+	})
+}
+
+// wholeNumberUnderAnIntTagCase holds a whole number under !!int and the value it decodes to.
+type wholeNumberUnderAnIntTagCase struct {
+	src  string
+	want any
+}
+
+func wholeNumberUnderAnIntTagCases() iter.Seq[wholeNumberUnderAnIntTagCase] {
+	return slices.Values([]wholeNumberUnderAnIntTagCase{
+		// The Go type the untagged number decodes to.
+		{src: "k: !!int 16\n", want: uint64(16)},
+		{src: "k: !!int 0x10\n", want: uint64(16)},
+		{src: "k: !!int 0o17\n", want: uint64(15)},
+		{src: "k: !!int -5\n", want: int64(-5)},
+		// A tag standing on nothing keeps taking the tag's own default.
+		{src: "k: !!int\n", want: uint64(0)},
+	})
+}
+
+// laxIntTagReadsTheTextCase holds a float under !!int and the text WithLaxTags reads it as.
+type laxIntTagReadsTheTextCase struct {
+	src, want string
+}
+
+func laxIntTagReadsTheTextCases() iter.Seq[laxIntTagReadsTheTextCase] {
+	return slices.Values([]laxIntTagReadsTheTextCase{
+		{src: "k: !!int 1.9\n", want: "1.9"},
+		{src: "k: !!int .inf\n", want: ".inf"},
+		{src: "k: !!int .nan\n", want: ".nan"},
+		{src: "k: !!int 1e400\n", want: "1e400"},
+	})
+}
+
 // TestTheTwoReadersAgreeOnATaggedNumber holds ToJSON to the decoder, spelling
 // by spelling and version by version.
 //
@@ -411,18 +469,7 @@ func TestFixedAFloatUnderAnIntegerTagIsRefused(t *testing.T) {
 func TestTheTwoReadersAgreeOnATaggedNumber(t *testing.T) {
 	const under11 = "%YAML 1.1\n---\n"
 
-	for _, tc := range []struct {
-		body        string
-		value, json string
-	}{
-		{body: "k: !!int 017", value: "15", json: "15"},
-		{body: "k: !!int 0b101", value: "5", json: "5"},
-		{body: "k: !!int 1_000", value: "1000", json: "1000"},
-		{body: "k: !!int 190:20:30", value: "685230", json: "685230"},
-		{body: "k: !!float 190:20:30.5", value: "685230.5", json: "685230.5"},
-		{body: "k: !!float 1_0.5", value: "10.5", json: "10.5"},
-		{body: "k: !!float 017", value: "15", json: "15.0"},
-	} {
+	for tc := range theTwoReadersAgreeOnATaggedNumberCases() {
 		src := under11 + tc.body + "\n"
 
 		var v map[string]any
@@ -441,6 +488,24 @@ func TestTheTwoReadersAgreeOnATaggedNumber(t *testing.T) {
 		got, err := codec.ToJSON([]byte("k: !!float 1e400\n"))
 		require.NoError(t, err)
 		assert.Equal(t, `{"k":1e400}`, strings.TrimSpace(string(got)))
+	})
+}
+
+// theTwoReadersAgreeOnATaggedNumberCase holds a tagged number under 1.1, the value it decodes to and the JSON ToJSON writes.
+type theTwoReadersAgreeOnATaggedNumberCase struct {
+	body        string
+	value, json string
+}
+
+func theTwoReadersAgreeOnATaggedNumberCases() iter.Seq[theTwoReadersAgreeOnATaggedNumberCase] {
+	return slices.Values([]theTwoReadersAgreeOnATaggedNumberCase{
+		{body: "k: !!int 017", value: "15", json: "15"},
+		{body: "k: !!int 0b101", value: "5", json: "5"},
+		{body: "k: !!int 1_000", value: "1000", json: "1000"},
+		{body: "k: !!int 190:20:30", value: "685230", json: "685230"},
+		{body: "k: !!float 190:20:30.5", value: "685230.5", json: "685230.5"},
+		{body: "k: !!float 1_0.5", value: "10.5", json: "10.5"},
+		{body: "k: !!float 017", value: "15", json: "15.0"},
 	})
 }
 
@@ -494,17 +559,7 @@ func TestQuotingAScalarDoesNotChangeWhatItsTagMakesOfIt(t *testing.T) {
 // them through it answered 0 -- the incomplete representation ruled out for
 // "!!int" on 2026-09-09, arriving by another door.
 func TestAnInfinityUnderAFloatTagKeepsItsValue(t *testing.T) {
-	for _, tc := range []struct {
-		src  string
-		want func(float64) bool
-	}{
-		{src: "k: !!float .inf\n", want: func(f float64) bool { return math.IsInf(f, 1) }},
-		{src: "k: !!float .Inf\n", want: func(f float64) bool { return math.IsInf(f, 1) }},
-		{src: "k: !!float -.inf\n", want: func(f float64) bool { return math.IsInf(f, -1) }},
-		{src: `k: !!float ".inf"` + "\n", want: func(f float64) bool { return math.IsInf(f, 1) }},
-		{src: "k: !!float .nan\n", want: math.IsNaN},
-		{src: `k: !!float ".nan"` + "\n", want: math.IsNaN},
-	} {
+	for tc := range anInfinityUnderAFloatTagKeepsItsValueCases() {
 		var v map[string]any
 		require.NoErrorf(t, codec.NewDecoder(strings.NewReader(tc.src)).Decode(&v), "%q", tc.src)
 
@@ -512,6 +567,23 @@ func TestAnInfinityUnderAFloatTagKeepsItsValue(t *testing.T) {
 		require.Truef(t, ok, "%q should read as a float64, got %T", tc.src, v["k"])
 		assert.Truef(t, tc.want(f), "%q read as %v", tc.src, f)
 	}
+}
+
+// anInfinityUnderAFloatTagKeepsItsValueCase holds an infinity or NaN under !!float and a check on the float it decodes to.
+type anInfinityUnderAFloatTagKeepsItsValueCase struct {
+	src  string
+	want func(float64) bool
+}
+
+func anInfinityUnderAFloatTagKeepsItsValueCases() iter.Seq[anInfinityUnderAFloatTagKeepsItsValueCase] {
+	return slices.Values([]anInfinityUnderAFloatTagKeepsItsValueCase{
+		{src: "k: !!float .inf\n", want: func(f float64) bool { return math.IsInf(f, 1) }},
+		{src: "k: !!float .Inf\n", want: func(f float64) bool { return math.IsInf(f, 1) }},
+		{src: "k: !!float -.inf\n", want: func(f float64) bool { return math.IsInf(f, -1) }},
+		{src: `k: !!float ".inf"` + "\n", want: func(f float64) bool { return math.IsInf(f, 1) }},
+		{src: "k: !!float .nan\n", want: math.IsNaN},
+		{src: `k: !!float ".nan"` + "\n", want: math.IsNaN},
+	})
 }
 
 type (
@@ -562,23 +634,7 @@ func TestAStringFillsANamedFloatType(t *testing.T) {
 // sign, so "+.nan" is a string in all three.
 func TestASignedInfinityResolves(t *testing.T) {
 	t.Run("into an any", func(t *testing.T) {
-		for _, tc := range []struct {
-			src  string
-			want any
-		}{
-			{"a: +.inf\n", math.Inf(1)},
-			{"a: +.Inf\n", math.Inf(1)},
-			{"a: +.INF\n", math.Inf(1)},
-			{"a: .inf\n", math.Inf(1)},
-			{"a: -.inf\n", math.Inf(-1)},
-
-			// The control: a NaN admits no sign, so this one stays text.
-			{"a: +.nan\n", "+.nan"},
-			{"a: -.nan\n", "-.nan"},
-
-			// And a quoted infinity is text whatever it spells.
-			{"a: \"+.inf\"\n", "+.inf"},
-		} {
+		for tc := range aSignedInfinityResolvesCases() {
 			var got map[string]any
 			require.NoErrorf(t, codec.Unmarshal([]byte(tc.src), &got), "%q", tc.src)
 			assert.Equalf(t, tc.want, got["a"], "%q", tc.src)
@@ -607,6 +663,29 @@ func TestASignedInfinityResolves(t *testing.T) {
 		err := codec.Unmarshal([]byte("+.inf: a\n.inf: b\n"), &got)
 		require.Error(t, err)
 		assert.ErrorIs(t, err, yamlerrors.ErrDuplicateKey)
+	})
+}
+
+// aSignedInfinityResolvesCase holds an infinity spelling and the value it decodes to in an any.
+type aSignedInfinityResolvesCase struct {
+	src  string
+	want any
+}
+
+func aSignedInfinityResolvesCases() iter.Seq[aSignedInfinityResolvesCase] {
+	return slices.Values([]aSignedInfinityResolvesCase{
+		{"a: +.inf\n", math.Inf(1)},
+		{"a: +.Inf\n", math.Inf(1)},
+		{"a: +.INF\n", math.Inf(1)},
+		{"a: .inf\n", math.Inf(1)},
+		{"a: -.inf\n", math.Inf(-1)},
+
+		// The control: a NaN admits no sign, so this one stays text.
+		{"a: +.nan\n", "+.nan"},
+		{"a: -.nan\n", "-.nan"},
+
+		// And a quoted infinity is text whatever it spells.
+		{"a: \"+.inf\"\n", "+.inf"},
 	})
 }
 

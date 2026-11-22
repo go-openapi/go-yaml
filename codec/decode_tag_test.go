@@ -342,10 +342,32 @@ func TestABinaryTagReadsAsTheTextItCarries(t *testing.T) {
 // bool, int, float and str and no timestamp, so a document gets a time.Time by
 // being decoded into one.
 func TestTimestampFormats(t *testing.T) {
-	for _, tc := range []struct {
-		text string
-		want string
-	}{
+	for tc := range timestampFormatsCases() {
+		t.Run(tc.text, func(t *testing.T) {
+			var into struct {
+				A time.Time `yaml:"a"`
+			}
+			err := codec.Unmarshal([]byte("a: "+tc.text+"\n"), &into)
+
+			if tc.want == "" {
+				assert.Errorf(t, err, "read as %v", into.A)
+
+				return
+			}
+			require.NoError(t, err)
+			assert.Equal(t, tc.want, into.A.Format(time.RFC3339Nano))
+		})
+	}
+}
+
+// timestampFormatsCase holds a timestamp text and the instant it decodes to, or "" when it is refused.
+type timestampFormatsCase struct {
+	text string
+	want string
+}
+
+func timestampFormatsCases() iter.Seq[timestampFormatsCase] {
+	return slices.Values([]timestampFormatsCase{
 		{"2001-12-14t21:59:43.10-05:00", "2001-12-14T21:59:43.1-05:00"},
 		{"2001-12-14T21:59:43.10-05:00", "2001-12-14T21:59:43.1-05:00"},
 		{"2001-12-14 21:59:43.10-05:00", "2001-12-14T21:59:43.1-05:00"},
@@ -362,22 +384,7 @@ func TestTimestampFormats(t *testing.T) {
 
 		{"not a date", ""},
 		{"", "0001-01-01T00:00:00Z"},
-	} {
-		t.Run(tc.text, func(t *testing.T) {
-			var into struct {
-				A time.Time `yaml:"a"`
-			}
-			err := codec.Unmarshal([]byte("a: "+tc.text+"\n"), &into)
-
-			if tc.want == "" {
-				assert.Errorf(t, err, "read as %v", into.A)
-
-				return
-			}
-			require.NoError(t, err)
-			assert.Equal(t, tc.want, into.A.Format(time.RFC3339Nano))
-		})
-	}
+	})
 }
 
 // TestATimestampResolvesUnderTheVersionTheDocumentDeclares records which
@@ -459,13 +466,42 @@ func TestATimestampResolvesUnderTheVersionTheDocumentDeclares(t *testing.T) {
 //
 // A tag on a collection types the collection and not its members, so a plain timestamp inside one still resolves.
 func TestAWrittenTagKeepsATimestampAString(t *testing.T) {
+	for tc := range aWrittenTagKeepsATimestampAStringCases() {
+		t.Run(tc.src, func(t *testing.T) {
+			src := "%YAML 1.1\n---\n" + tc.src
+
+			var v any
+			require.NoError(t, codec.Unmarshal([]byte(src), &v))
+			assert.Equal(t, tc.want, v)
+		})
+	}
+
+	t.Run("and ToJSON writes the text", func(t *testing.T) {
+		got, err := codec.ToJSON([]byte("%YAML 1.1\n---\nk: !a 2001-12-14\n"))
+		require.NoError(t, err)
+		assert.Equal(t, `{"k":"2001-12-14"}`, string(got))
+	})
+
+	t.Run("and the document renders as it was written", func(t *testing.T) {
+		const src = "%YAML 1.1\n---\n!a &x 2001-12-14\n"
+
+		f, err := parser.ParseBytes([]byte(src))
+		require.NoError(t, err)
+		assert.Equal(t, src, f.String())
+	})
+}
+
+// aWrittenTagKeepsATimestampAStringCase holds a YAML 1.1 document body and the value it decodes to.
+type aWrittenTagKeepsATimestampAStringCase struct {
+	src  string
+	want any
+}
+
+func aWrittenTagKeepsATimestampAStringCases() iter.Seq[aWrittenTagKeepsATimestampAStringCase] {
 	const stamp = "2001-12-14"
 	instant := time.Date(2001, time.December, 14, 0, 0, 0, 0, time.UTC)
 
-	for _, tc := range []struct {
-		src  string
-		want any
-	}{
+	return slices.Values([]aWrittenTagKeepsATimestampAStringCase{
 		{"!a 2001-12-14\n", stamp},
 		{"! 2001-12-14\n", stamp},
 		{"!a\n2001-12-14\n", stamp},
@@ -489,28 +525,6 @@ func TestAWrittenTagKeepsATimestampAString(t *testing.T) {
 
 		// A written "!!timestamp" is a timestamp.
 		{"&x !!timestamp 2001-12-14\n", instant},
-	} {
-		t.Run(tc.src, func(t *testing.T) {
-			src := "%YAML 1.1\n---\n" + tc.src
-
-			var v any
-			require.NoError(t, codec.Unmarshal([]byte(src), &v))
-			assert.Equal(t, tc.want, v)
-		})
-	}
-
-	t.Run("and ToJSON writes the text", func(t *testing.T) {
-		got, err := codec.ToJSON([]byte("%YAML 1.1\n---\nk: !a 2001-12-14\n"))
-		require.NoError(t, err)
-		assert.Equal(t, `{"k":"2001-12-14"}`, string(got))
-	})
-
-	t.Run("and the document renders as it was written", func(t *testing.T) {
-		const src = "%YAML 1.1\n---\n!a &x 2001-12-14\n"
-
-		f, err := parser.ParseBytes([]byte(src))
-		require.NoError(t, err)
-		assert.Equal(t, src, f.String())
 	})
 }
 
@@ -556,10 +570,6 @@ func TestATimestampIntoAStringIsWrittenInRFC3339(t *testing.T) {
 		L  []string          `yaml:"l"`
 		TU textOnly          `yaml:"tu"`
 	}
-	const (
-		midnight = "2001-12-14T00:00:00Z"
-		zoned    = "2001-12-14T21:59:43.1-05:00"
-	)
 	read := func(t *testing.T, version parser.YAMLVersion, value string) fields {
 		t.Helper()
 		src := "s: " + value + "\nd: " + value + "\np: " + value + "\nm: {k: " + value +
@@ -577,23 +587,7 @@ func TestATimestampIntoAStringIsWrittenInRFC3339(t *testing.T) {
 		}
 	}
 
-	for _, tc := range []struct {
-		version parser.YAMLVersion
-		value   string
-		want    string
-	}{
-		{parser.YAML11, "2001-12-14", midnight},
-		{parser.YAML11, "2001-12-14t21:59:43.10-05:00", zoned},
-		{parser.YAML11, "!!timestamp 2001-12-14", midnight},
-		{parser.YAML11, `!!timestamp "2001-12-14"`, midnight},
-		{parser.YAML12, "!!timestamp 2001-12-14", midnight},
-		{parser.YAML12, "!!timestamp 2001-12-14t21:59:43.10-05:00", zoned},
-		// YAML 1.2 resolves no timestamp, so the text stands as written.
-		{parser.YAML12, "2001-12-14", "2001-12-14"},
-		{parser.YAML12, "2001-12-14t21:59:43.10-05:00", "2001-12-14t21:59:43.10-05:00"},
-		// A quoted scalar is a string under every version.
-		{parser.YAML11, `"2001-12-14"`, "2001-12-14"},
-	} {
+	for tc := range aTimestampIntoAStringIsWrittenInRFC3339Cases() {
 		t.Run(string(tc.version)+"/"+tc.value, func(t *testing.T) {
 			assert.Equal(t, written(tc.want), read(t, tc.version, tc.value))
 		})
@@ -606,6 +600,34 @@ func TestATimestampIntoAStringIsWrittenInRFC3339(t *testing.T) {
 			require.Error(t, err, field)
 			assert.Contains(t, err.Error(), at+` cannot read "nope" as !!timestamp`, field)
 		}
+	})
+}
+
+// aTimestampIntoAStringIsWrittenInRFC3339Case holds a YAML version, a scalar and the text a string field reads from it.
+type aTimestampIntoAStringIsWrittenInRFC3339Case struct {
+	version parser.YAMLVersion
+	value   string
+	want    string
+}
+
+func aTimestampIntoAStringIsWrittenInRFC3339Cases() iter.Seq[aTimestampIntoAStringIsWrittenInRFC3339Case] {
+	const (
+		midnight = "2001-12-14T00:00:00Z"
+		zoned    = "2001-12-14T21:59:43.1-05:00"
+	)
+
+	return slices.Values([]aTimestampIntoAStringIsWrittenInRFC3339Case{
+		{parser.YAML11, "2001-12-14", midnight},
+		{parser.YAML11, "2001-12-14t21:59:43.10-05:00", zoned},
+		{parser.YAML11, "!!timestamp 2001-12-14", midnight},
+		{parser.YAML11, `!!timestamp "2001-12-14"`, midnight},
+		{parser.YAML12, "!!timestamp 2001-12-14", midnight},
+		{parser.YAML12, "!!timestamp 2001-12-14t21:59:43.10-05:00", zoned},
+		// YAML 1.2 resolves no timestamp, so the text stands as written.
+		{parser.YAML12, "2001-12-14", "2001-12-14"},
+		{parser.YAML12, "2001-12-14t21:59:43.10-05:00", "2001-12-14t21:59:43.10-05:00"},
+		// A quoted scalar is a string under every version.
+		{parser.YAML11, `"2001-12-14"`, "2001-12-14"},
 	})
 }
 
@@ -785,13 +807,7 @@ func TestLaxTagsDoesNotExcuseAKindMismatch(t *testing.T) {
 // and "false"; the tag says the scalar is a string, so its own text is the
 // value.
 func TestStrTagKeepsTheText(t *testing.T) {
-	for _, tc := range []struct{ name, src, want string }{
-		{"hexadecimal", "!!str 0x10", "0x10"},
-		{"trailing zero", "!!str 1.50", "1.50"},
-		{"capitalized bool", "!!str False", "False"},
-		{"null spelled out", "!!str null", "null"},
-		{"under an anchor", "!!str &x False", "False"},
-	} {
+	for tc := range strTagKeepsTheTextCases() {
 		t.Run(tc.name, func(t *testing.T) {
 			var decoded string
 			require.NoError(t, codec.Unmarshal([]byte(tc.src), &decoded))
@@ -802,6 +818,21 @@ func TestStrTagKeepsTheText(t *testing.T) {
 			assert.JSONEq(t, `"`+tc.want+`"`, string(converted))
 		})
 	}
+}
+
+// strTagKeepsTheTextCase holds a "!!str" document and the text it decodes to.
+type strTagKeepsTheTextCase struct {
+	name, src, want string
+}
+
+func strTagKeepsTheTextCases() iter.Seq[strTagKeepsTheTextCase] {
+	return slices.Values([]strTagKeepsTheTextCase{
+		{"hexadecimal", "!!str 0x10", "0x10"},
+		{"trailing zero", "!!str 1.50", "1.50"},
+		{"capitalized bool", "!!str False", "False"},
+		{"null spelled out", "!!str null", "null"},
+		{"under an anchor", "!!str &x False", "False"},
+	})
 }
 
 // TestStrTagOnNothingIsEmpty records that a "!!str" with no scalar after it
@@ -836,19 +867,7 @@ func TestStrTagAliasesTheString(t *testing.T) {
 // (§6.8.2.2). So "!!int", "!<tag:yaml.org,2002:int>" and "!e!int" under
 // "%TAG !e! tag:yaml.org,2002:" are three spellings of one tag.
 func TestTagResolvesToItsURI(t *testing.T) {
-	for _, tc := range []struct{ name, src, want string }{
-		{"shorthand", `a: !!int "12"` + "\n", `{"a":12}`},
-		{"verbatim", "a: !<tag:yaml.org,2002:int> \"12\"\n", `{"a":12}`},
-		{"named handle", "%TAG !e! tag:yaml.org,2002:\n---\na: !e!int \"12\"\n", `{"a":12}`},
-		{"primary handle repointed", "%TAG ! tag:yaml.org,2002:\n---\na: !int \"12\"\n", `{"a":12}`},
-		{"secondary handle restated", "%TAG !! tag:yaml.org,2002:\n---\na: !!int \"12\"\n", `{"a":12}`},
-
-		// ⚠️ And the other way: a "%TAG !!" line takes the secondary handle out
-		// of YAML's namespace, so "!!int" names the document's own tag. Nothing
-		// resolves it, and the scalar keeps the text it was written with.
-		{"secondary handle repointed", "%TAG !! tag:example.com,2020:\n---\na: !!int 12\n", `{"a":"12"}`},
-		{"repointed on a collection", "%TAG !! tag:example.com,2020:\n---\na: !!seq [1,2]\n", `{"a":[1,2]}`},
-	} {
+	for tc := range tagResolvesToItsURICases() {
 		t.Run(tc.name, func(t *testing.T) {
 			got, err := codec.ToJSON([]byte(tc.src))
 			require.NoError(t, err)
@@ -863,16 +882,31 @@ func TestTagResolvesToItsURI(t *testing.T) {
 	}
 }
 
+// tagResolvesToItsURICase holds a document whose tag is spelled one way and the JSON it reads as.
+type tagResolvesToItsURICase struct {
+	name, src, want string
+}
+
+func tagResolvesToItsURICases() iter.Seq[tagResolvesToItsURICase] {
+	return slices.Values([]tagResolvesToItsURICase{
+		{"shorthand", `a: !!int "12"` + "\n", `{"a":12}`},
+		{"verbatim", "a: !<tag:yaml.org,2002:int> \"12\"\n", `{"a":12}`},
+		{"named handle", "%TAG !e! tag:yaml.org,2002:\n---\na: !e!int \"12\"\n", `{"a":12}`},
+		{"primary handle repointed", "%TAG ! tag:yaml.org,2002:\n---\na: !int \"12\"\n", `{"a":12}`},
+		{"secondary handle restated", "%TAG !! tag:yaml.org,2002:\n---\na: !!int \"12\"\n", `{"a":12}`},
+
+		// ⚠️ And the other way: a "%TAG !!" line takes the secondary handle out
+		// of YAML's namespace, so "!!int" names the document's own tag. Nothing
+		// resolves it, and the scalar keeps the text it was written with.
+		{"secondary handle repointed", "%TAG !! tag:example.com,2020:\n---\na: !!int 12\n", `{"a":"12"}`},
+		{"repointed on a collection", "%TAG !! tag:example.com,2020:\n---\na: !!seq [1,2]\n", `{"a":[1,2]}`},
+	})
+}
+
 // TestTagNodeCarriesTheURI records that the expansion is on the node, so a
 // reader asks what a tag means rather than what it says.
 func TestTagNodeCarriesTheURI(t *testing.T) {
-	for _, tc := range []struct{ name, src, want string }{
-		{"shorthand", "a: !!int 12\n", "tag:yaml.org,2002:int"},
-		{"verbatim", "a: !<tag:yaml.org,2002:int> 12\n", "tag:yaml.org,2002:int"},
-		{"local", "a: !thing 12\n", "!thing"},
-		{"named handle", "%TAG !e! tag:example.com,2020:\n---\na: !e!thing 12\n", "tag:example.com,2020:thing"},
-		{"secondary repointed", "%TAG !! tag:example.com,2020:\n---\na: !!int 12\n", "tag:example.com,2020:int"},
-	} {
+	for tc := range tagNodeCarriesTheURICases() {
 		t.Run(tc.name, func(t *testing.T) {
 			file, err := parser.ParseBytes([]byte(tc.src))
 			require.NoError(t, err)
@@ -884,6 +918,21 @@ func TestTagNodeCarriesTheURI(t *testing.T) {
 			assert.Equal(t, []string{tc.want}, found)
 		})
 	}
+}
+
+// tagNodeCarriesTheURICase holds a document and the URI of the one tag it holds.
+type tagNodeCarriesTheURICase struct {
+	name, src, want string
+}
+
+func tagNodeCarriesTheURICases() iter.Seq[tagNodeCarriesTheURICase] {
+	return slices.Values([]tagNodeCarriesTheURICase{
+		{"shorthand", "a: !!int 12\n", "tag:yaml.org,2002:int"},
+		{"verbatim", "a: !<tag:yaml.org,2002:int> 12\n", "tag:yaml.org,2002:int"},
+		{"local", "a: !thing 12\n", "!thing"},
+		{"named handle", "%TAG !e! tag:example.com,2020:\n---\na: !e!thing 12\n", "tag:example.com,2020:thing"},
+		{"secondary repointed", "%TAG !! tag:example.com,2020:\n---\na: !!int 12\n", "tag:example.com,2020:int"},
+	})
 }
 
 // TestUndeclaredTagHandleIsRefused records that "!name!" needs a "%TAG" line.

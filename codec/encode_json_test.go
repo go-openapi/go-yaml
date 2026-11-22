@@ -6,6 +6,8 @@ package codec_test
 import (
 	"bytes"
 	"encoding/json"
+	"iter"
+	"slices"
 	"testing"
 	"time"
 
@@ -63,13 +65,7 @@ func TestEncoder_JSON(t *testing.T) {
 // a string as YAML spells it, so "1: a" came out {1: "a"} -- not JSON, and
 // json.Valid says so. ToJSON wrote {"1":"a"} for the same document all along.
 func TestFixedJSONStyleQuotesEveryMemberName(t *testing.T) {
-	for _, tc := range []struct{ src, want string }{
-		{"1: a\n\"x\": b\n", `{"1":"a","x":"b"}`},
-		{"1.5: a\n", `{"1.5":"a"}`},
-		{"null: a\n", `{"null":"a"}`},
-		{"true: a\n", `{"true":"a"}`},
-		{"k: !!binary aGVsbG8=\n", `{"k":"aGVsbG8="}`},
-	} {
+	for tc := range fixedJSONStyleQuotesEveryMemberNameCases() {
 		var v any
 		require.NoErrorf(t, codec.Unmarshal([]byte(tc.src), &v, codec.UseOrderedMap()), "%q", tc.src)
 
@@ -84,6 +80,21 @@ func TestFixedJSONStyleQuotesEveryMemberName(t *testing.T) {
 		require.NoErrorf(t, err, "%q", tc.src)
 		assert.JSONEqf(t, string(folded), string(out), "%q", tc.src)
 	}
+}
+
+// fixedJSONStyleQuotesEveryMemberNameCase holds a document and the JSON that codec.JSON writes for it.
+type fixedJSONStyleQuotesEveryMemberNameCase struct {
+	src, want string
+}
+
+func fixedJSONStyleQuotesEveryMemberNameCases() iter.Seq[fixedJSONStyleQuotesEveryMemberNameCase] {
+	return slices.Values([]fixedJSONStyleQuotesEveryMemberNameCase{
+		{"1: a\n\"x\": b\n", `{"1":"a","x":"b"}`},
+		{"1.5: a\n", `{"1.5":"a"}`},
+		{"null: a\n", `{"null":"a"}`},
+		{"true: a\n", `{"true":"a"}`},
+		{"k: !!binary aGVsbG8=\n", `{"k":"aGVsbG8="}`},
+	})
 }
 
 // TestJSONStyleLeavesTheYAMLSpellingAlone: the quoting is JSON's, so a YAML

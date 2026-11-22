@@ -176,11 +176,25 @@ func encodeScalarCases() iter.Seq[encodeCase] {
 }
 
 func TestEncoder_AutoInt(t *testing.T) {
-	for _, test := range []struct {
-		desc     string
-		input    any
-		expected string
-	}{
+	for test := range encoderAutoIntCases() {
+		t.Run(test.desc, func(t *testing.T) {
+			var buf bytes.Buffer
+			enc := codec.NewEncoder(&buf, codec.AutoInt())
+			require.NoError(t, enc.Encode(test.input))
+			assert.Equal(t, test.expected, buf.String())
+		})
+	}
+}
+
+// encoderAutoIntCase holds a value and the YAML it encodes to under AutoInt.
+type encoderAutoIntCase struct {
+	desc     string
+	input    any
+	expected string
+}
+
+func encoderAutoIntCases() iter.Seq[encoderAutoIntCase] {
+	return slices.Values([]encoderAutoIntCase{
 		{
 			desc: "int-convertible float64",
 			input: map[string]float64{
@@ -209,14 +223,7 @@ func TestEncoder_AutoInt(t *testing.T) {
 			},
 			expected: "key: 1.1\n",
 		},
-	} {
-		t.Run(test.desc, func(t *testing.T) {
-			var buf bytes.Buffer
-			enc := codec.NewEncoder(&buf, codec.AutoInt())
-			require.NoError(t, enc.Encode(test.input))
-			assert.Equal(t, test.expected, buf.String())
-		})
-	}
+	})
 }
 
 // TestATimeTimeInAnInterfaceSlotIsWrittenTagged covers the encoder's spelling of

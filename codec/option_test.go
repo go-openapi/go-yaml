@@ -4,6 +4,8 @@
 package codec_test
 
 import (
+	"iter"
+	"slices"
 	"testing"
 
 	"github.com/go-openapi/go-yaml/ast"
@@ -21,19 +23,7 @@ import (
 // directive in the document was the only route into 1.1 through the decoder.
 func TestWithParserOptionsReachesTheParser(t *testing.T) {
 	t.Run("the version selects the schema", func(t *testing.T) {
-		for _, tc := range []struct {
-			name    string
-			src     string
-			version parser.YAMLVersion
-			want    any
-		}{
-			// 1.1 reads the legacy booleans and 1.2's core schema does not.
-			{"1.1 reads yes", "a: yes\n", parser.YAML11, true},
-			{"1.2 reads the text", "a: yes\n", parser.YAML12, "yes"},
-			// 1.1 has no "0o" prefix, so the core spelling is a string there.
-			{"1.1 leaves 0o17 alone", "a: 0o17\n", parser.YAML11, "0o17"},
-			{"1.2 reads 0o17", "a: 0o17\n", parser.YAML12, uint64(15)},
-		} {
+		for tc := range withParserOptionsVersionCases() {
 			t.Run(tc.name, func(t *testing.T) {
 				var got map[string]any
 				require.NoError(t, codec.Unmarshal([]byte(tc.src), &got,
@@ -63,31 +53,9 @@ func TestWithParserOptionsReachesTheParser(t *testing.T) {
 		// type. It built its parser without these options, so "010" read as ten
 		// under 1.1, "<<" stayed a key under WithMergeKeys, and an alias to an
 		// anchor passed with WithAnchors failed to parse.
-		type target struct {
-			I int
-			N map[string]any
-			S string
-		}
-		for _, tc := range []struct {
-			name string
-			src  string
-			opt  parser.Option
-			want target
-		}{
-			{"1.1 reads 010 in octal", "i: 010\n", parser.WithYAMLVersion(parser.YAML11), target{I: 8}},
-			{
-				"WithMergeKeys merges",
-				"n: {<<: {a: 1}}\n", parser.WithMergeKeys(),
-				target{N: map[string]any{"a": uint64(1)}},
-			},
-			{
-				"WithAnchors resolves an alias",
-				"s: *x\n", parser.WithAnchors(map[string]ast.Node{"x": &ast.StringNode{Value: "given"}}),
-				target{S: "given"},
-			},
-		} {
+		for tc := range withParserOptionsStructCases() {
 			t.Run(tc.name, func(t *testing.T) {
-				var got target
+				var got withParserOptionsTarget
 				require.NoError(t, codec.Unmarshal([]byte(tc.src), &got, codec.WithParserOptions(tc.opt)))
 				assert.Equal(t, tc.want, got)
 			})
@@ -122,6 +90,56 @@ func TestWithParserOptionsReachesTheParser(t *testing.T) {
 			codec.AllowDuplicateMapKey(),
 			codec.WithParserOptions(parser.WithYAMLVersion(parser.YAML11))))
 		assert.Equal(t, map[string]any{"a": false}, got, "the repeat is allowed and 1.1 reads both")
+	})
+}
+
+// withParserOptionsVersionCase holds a document, a YAML version, and the value it reads as.
+type withParserOptionsVersionCase struct {
+	name    string
+	src     string
+	version parser.YAMLVersion
+	want    any
+}
+
+func withParserOptionsVersionCases() iter.Seq[withParserOptionsVersionCase] {
+	return slices.Values([]withParserOptionsVersionCase{
+		// 1.1 reads the legacy booleans and 1.2's core schema does not.
+		{"1.1 reads yes", "a: yes\n", parser.YAML11, true},
+		{"1.2 reads the text", "a: yes\n", parser.YAML12, "yes"},
+		// 1.1 has no "0o" prefix, so the core spelling is a string there.
+		{"1.1 leaves 0o17 alone", "a: 0o17\n", parser.YAML11, "0o17"},
+		{"1.2 reads 0o17", "a: 0o17\n", parser.YAML12, uint64(15)},
+	})
+}
+
+// withParserOptionsStructCase holds a document, a parser option, and the struct it decodes into.
+type withParserOptionsStructCase struct {
+	name string
+	src  string
+	opt  parser.Option
+	want withParserOptionsTarget
+}
+
+// withParserOptionsTarget is the struct a withParserOptionsStructCase decodes into.
+type withParserOptionsTarget struct {
+	I int
+	N map[string]any
+	S string
+}
+
+func withParserOptionsStructCases() iter.Seq[withParserOptionsStructCase] {
+	return slices.Values([]withParserOptionsStructCase{
+		{"1.1 reads 010 in octal", "i: 010\n", parser.WithYAMLVersion(parser.YAML11), withParserOptionsTarget{I: 8}},
+		{
+			"WithMergeKeys merges",
+			"n: {<<: {a: 1}}\n", parser.WithMergeKeys(),
+			withParserOptionsTarget{N: map[string]any{"a": uint64(1)}},
+		},
+		{
+			"WithAnchors resolves an alias",
+			"s: *x\n", parser.WithAnchors(map[string]ast.Node{"x": &ast.StringNode{Value: "given"}}),
+			withParserOptionsTarget{S: "given"},
+		},
 	})
 }
 

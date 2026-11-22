@@ -457,22 +457,10 @@ func TestAnInlineMapKeepsAKeyThatIsNotAString(t *testing.T) {
 // nested struct lost the fields it had read, a slice field came back empty and
 // a map lost the caller's entry under the failing key.
 func TestAFailedValueStandsAsFarAsItDecoded(t *testing.T) {
-	type leaf struct {
-		S string `yaml:"s"`
-		I int64  `yaml:"i"`
-	}
-	type shape struct {
-		Name   string             `yaml:"name"`
-		Leaf   leaf               `yaml:"leaf"`
-		Ptr    *leaf              `yaml:"ptr"`
-		List   []leaf             `yaml:"list"`
-		ByName map[string]leaf    `yaml:"byName"`
-		Counts map[string][]int64 `yaml:"counts"`
-	}
-	preset := func() shape {
-		return shape{
-			Leaf:   leaf{S: "pre", I: 7},
-			ByName: map[string]leaf{"a": {S: "pre"}, "z": {S: "kept"}},
+	preset := func() failedValueShape {
+		return failedValueShape{
+			Leaf:   failedValueLeaf{S: "pre", I: 7},
+			ByName: map[string]failedValueLeaf{"a": {S: "pre"}, "z": {S: "kept"}},
 			Counts: map[string][]int64{"a": {9}, "z": {8}},
 		}
 	}
@@ -481,25 +469,7 @@ func TestAFailedValueStandsAsFarAsItDecoded(t *testing.T) {
 		// A custom unmarshaler turns the walk off, and no field holds a chan int.
 		"tree": {codec.CustomUnmarshaler[chan int](func(*chan int, []byte) error { return nil })},
 	}
-	for _, tc := range []struct {
-		name, src string
-		want      func(*shape)
-	}{
-		{"a nested struct", "leaf: {s: new, i: x}\nname: after\n", func(v *shape) {
-			v.Leaf.S, v.Name = "new", "after"
-		}},
-		{"a pointer", "ptr: {s: new, i: x}\n", func(v *shape) { v.Ptr = &leaf{S: "new"} }},
-		{"a slice element", "list: [{s: a}, {i: x}, {s: c}]\n", func(v *shape) {
-			v.List = []leaf{{S: "a"}, {}, {S: "c"}}
-		}},
-		{"a map value", "byName: {a: {s: new, i: x}, b: {s: b}}\n", func(v *shape) {
-			v.ByName = map[string]leaf{"a": {S: "new"}, "b": {S: "b"}, "z": {S: "kept"}}
-		}},
-		{"a slice in a map", "counts: {a: [1, x, 3]}\n", func(v *shape) {
-			v.Counts = map[string][]int64{"a": {1, 0, 3}, "z": {8}}
-		}},
-		{"a scalar field", "leaf: {i: x, s: new}\n", func(v *shape) { v.Leaf.S = "new" }},
-	} {
+	for tc := range aFailedValueStandsAsFarAsItDecodedCases() {
 		for path, opts := range paths {
 			t.Run(path+"/"+tc.name, func(t *testing.T) {
 				want := preset()
@@ -512,6 +482,46 @@ func TestAFailedValueStandsAsFarAsItDecoded(t *testing.T) {
 			})
 		}
 	}
+}
+
+// failedValueLeaf and failedValueShape are the target of TestAFailedValueStandsAsFarAsItDecoded.
+type failedValueLeaf struct {
+	S string `yaml:"s"`
+	I int64  `yaml:"i"`
+}
+
+type failedValueShape struct {
+	Name   string                     `yaml:"name"`
+	Leaf   failedValueLeaf            `yaml:"leaf"`
+	Ptr    *failedValueLeaf           `yaml:"ptr"`
+	List   []failedValueLeaf          `yaml:"list"`
+	ByName map[string]failedValueLeaf `yaml:"byName"`
+	Counts map[string][]int64         `yaml:"counts"`
+}
+
+// aFailedValueStandsAsFarAsItDecodedCase holds a document with one value that does not fit, and the edit it makes to the preset.
+type aFailedValueStandsAsFarAsItDecodedCase struct {
+	name, src string
+	want      func(*failedValueShape)
+}
+
+func aFailedValueStandsAsFarAsItDecodedCases() iter.Seq[aFailedValueStandsAsFarAsItDecodedCase] {
+	return slices.Values([]aFailedValueStandsAsFarAsItDecodedCase{
+		{"a nested struct", "leaf: {s: new, i: x}\nname: after\n", func(v *failedValueShape) {
+			v.Leaf.S, v.Name = "new", "after"
+		}},
+		{"a pointer", "ptr: {s: new, i: x}\n", func(v *failedValueShape) { v.Ptr = &failedValueLeaf{S: "new"} }},
+		{"a slice element", "list: [{s: a}, {i: x}, {s: c}]\n", func(v *failedValueShape) {
+			v.List = []failedValueLeaf{{S: "a"}, {}, {S: "c"}}
+		}},
+		{"a map value", "byName: {a: {s: new, i: x}, b: {s: b}}\n", func(v *failedValueShape) {
+			v.ByName = map[string]failedValueLeaf{"a": {S: "new"}, "b": {S: "b"}, "z": {S: "kept"}}
+		}},
+		{"a slice in a map", "counts: {a: [1, x, 3]}\n", func(v *failedValueShape) {
+			v.Counts = map[string][]int64{"a": {1, 0, 3}, "z": {8}}
+		}},
+		{"a scalar field", "leaf: {i: x, s: new}\n", func(v *failedValueShape) { v.Leaf.S = "new" }},
+	})
 }
 
 type (
@@ -778,15 +788,30 @@ func TestUseInferredNamesTakesTheGoNameVerbatim(t *testing.T) {
 // too, so "unnamed" and "Unnamed" would both land in the same place and the
 // later one would win.
 func TestTheTwoDecodeOptionsAreIndependent(t *testing.T) {
-	for _, c := range []struct {
-		name        string
-		jsonTags    bool
-		inferred    bool
-		src         string
-		wantNamed   string
-		wantUnnamed string
-		why         string
-	}{
+	for c := range theTwoDecodeOptionsAreIndependentCases() {
+		t.Run(c.name, func(t *testing.T) {
+			var v jsonAndUntagged
+			require.NoError(t, codec.Unmarshal([]byte(c.src), &v,
+				codec.UseJSONTags(c.jsonTags), codec.UseInferredNames(c.inferred)))
+			assert.Equal(t, c.wantNamed, v.Named, c.why)
+			assert.Equal(t, c.wantUnnamed, v.Unnamed, c.why)
+		})
+	}
+}
+
+// theTwoDecodeOptionsAreIndependentCase holds a setting of UseJSONTags and UseInferredNames, its document, and the two fields it fills.
+type theTwoDecodeOptionsAreIndependentCase struct {
+	name        string
+	jsonTags    bool
+	inferred    bool
+	src         string
+	wantNamed   string
+	wantUnnamed string
+	why         string
+}
+
+func theTwoDecodeOptionsAreIndependentCases() iter.Seq[theTwoDecodeOptionsAreIndependentCase] {
+	return slices.Values([]theTwoDecodeOptionsAreIndependentCase{
 		{
 			name: "neither", jsonTags: false, inferred: false,
 			src:       "named: G\nunnamed: L\n",
@@ -811,15 +836,7 @@ func TestTheTwoDecodeOptionsAreIndependent(t *testing.T) {
 			wantNamed: "J", wantUnnamed: "V",
 			why: "the json tag names one, the verbatim Go name the other",
 		},
-	} {
-		t.Run(c.name, func(t *testing.T) {
-			var v jsonAndUntagged
-			require.NoError(t, codec.Unmarshal([]byte(c.src), &v,
-				codec.UseJSONTags(c.jsonTags), codec.UseInferredNames(c.inferred)))
-			assert.Equal(t, c.wantNamed, v.Named, c.why)
-			assert.Equal(t, c.wantUnnamed, v.Unnamed, c.why)
-		})
-	}
+	})
 }
 
 // TestUnderJSONTagsBothSpellingsOfAGoNameRead records what case-insensitive
@@ -1251,12 +1268,30 @@ type (
 // walk decoder fills; the tree decoder still hands the whole mapping to each
 // embedded struct.
 func TestConflictsResolveAsEncodingJSONDoes(t *testing.T) {
-	for _, c := range []struct {
-		name string
-		src  string
-		jsrc string
-		mk   func() any
-	}{
+	for c := range conflictsResolveAsEncodingJSONDoesCases() {
+		t.Run(c.name, func(t *testing.T) {
+			ours := c.mk()
+			require.NoError(t, codec.Unmarshal([]byte(c.src), ours,
+				codec.UseJSONTags(true), codec.UseInferredNames(true)))
+
+			theirs := c.mk()
+			require.NoError(t, json.Unmarshal([]byte(c.jsrc), theirs))
+
+			assert.Equal(t, theirs, ours)
+		})
+	}
+}
+
+// conflictsResolveAsEncodingJSONDoesCase holds a YAML document, its JSON twin, and the conflicting shape both decode into.
+type conflictsResolveAsEncodingJSONDoesCase struct {
+	name string
+	src  string
+	jsrc string
+	mk   func() any
+}
+
+func conflictsResolveAsEncodingJSONDoesCases() iter.Seq[conflictsResolveAsEncodingJSONDoesCase] {
+	return slices.Values([]conflictsResolveAsEncodingJSONDoesCase{
 		{
 			name: "an outer field shadows an embedded one",
 			src:  "name: N\n", jsrc: `{"name":"N"}`,
@@ -1282,18 +1317,7 @@ func TestConflictsResolveAsEncodingJSONDoes(t *testing.T) {
 			src:  "Name: V\n", jsrc: `{"Name":"V"}`,
 			mk: func() any { return &JOneTagged{} },
 		},
-	} {
-		t.Run(c.name, func(t *testing.T) {
-			ours := c.mk()
-			require.NoError(t, codec.Unmarshal([]byte(c.src), ours,
-				codec.UseJSONTags(true), codec.UseInferredNames(true)))
-
-			theirs := c.mk()
-			require.NoError(t, json.Unmarshal([]byte(c.jsrc), theirs))
-
-			assert.Equal(t, theirs, ours)
-		})
-	}
+	})
 }
 
 // TestAConflictAYAMLTagTakesPartInIsRefused holds the one place both references
@@ -1653,11 +1677,6 @@ func TestAFoldedKeyIsNotUnknown(t *testing.T) {
 // either reaches a field called "k" or "s". strings.ToUpper leaves the Kelvin
 // sign standing on its own, so it would miss the field encoding/json finds.
 func TestTheFoldMatchesEncodingJSONsOwn(t *testing.T) {
-	type target struct {
-		K string `json:"k"`
-		S string `json:"s"`
-	}
-
 	const (
 		kelvin  = "\u212a" // KELVIN SIGN
 		longEss = "\u017f" // LATIN SMALL LETTER LONG S
@@ -1665,16 +1684,9 @@ func TestTheFoldMatchesEncodingJSONsOwn(t *testing.T) {
 
 	require.Equal(t, kelvin, strings.ToUpper(kelvin), "ToUpper leaves the Kelvin sign alone")
 
-	for _, c := range []struct {
-		name    string
-		key     string
-		reaches func(target) string
-	}{
-		{"the Kelvin sign reaches k", kelvin, func(v target) string { return v.K }},
-		{"the long s reaches s", longEss, func(v target) string { return v.S }},
-	} {
+	for c := range theFoldMatchesEncodingJSONsOwnCases(kelvin, longEss) {
 		t.Run(c.name, func(t *testing.T) {
-			var ours, theirs target
+			var ours, theirs foldTarget
 			require.NoError(t, codec.Unmarshal(
 				[]byte(c.key+": V\n"), &ours, codec.UseJSONTags(true)))
 			require.NoError(t, json.Unmarshal([]byte(`{"`+c.key+`":"V"}`), &theirs))
@@ -1683,6 +1695,26 @@ func TestTheFoldMatchesEncodingJSONsOwn(t *testing.T) {
 			assert.Equal(t, "V", c.reaches(ours))
 		})
 	}
+}
+
+// foldTarget is the target of TestTheFoldMatchesEncodingJSONsOwn.
+type foldTarget struct {
+	K string `json:"k"`
+	S string `json:"s"`
+}
+
+// theFoldMatchesEncodingJSONsOwnCase holds a key that folds to a field name only under Unicode case folding, and the field it reaches.
+type theFoldMatchesEncodingJSONsOwnCase struct {
+	name    string
+	key     string
+	reaches func(foldTarget) string
+}
+
+func theFoldMatchesEncodingJSONsOwnCases(kelvin, longEss string) iter.Seq[theFoldMatchesEncodingJSONsOwnCase] {
+	return slices.Values([]theFoldMatchesEncodingJSONsOwnCase{
+		{"the Kelvin sign reaches k", kelvin, func(v foldTarget) string { return v.K }},
+		{"the long s reaches s", longEss, func(v foldTarget) string { return v.S }},
+	})
 }
 
 // decodeStructCases covers structs and ordered maps as targets, field tags, and anchors and aliases.

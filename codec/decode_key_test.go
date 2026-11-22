@@ -6,7 +6,9 @@ package codec_test
 import (
 	"errors"
 	"fmt"
+	"iter"
 	"math"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -36,21 +38,27 @@ a: c
 }
 
 func TestDecodeError(t *testing.T) {
-	tests := []struct {
-		name   string
-		source string
-	}{
+	for tc := range decodeErrorCases() {
+		t.Run(tc.name, func(t *testing.T) {
+			var v any
+			require.Error(t, codec.Unmarshal([]byte(tc.source), &v))
+		})
+	}
+}
+
+// decodeErrorCase holds a document that fails to decode.
+type decodeErrorCase struct {
+	name   string
+	source string
+}
+
+func decodeErrorCases() iter.Seq[decodeErrorCase] {
+	return slices.Values([]decodeErrorCase{
 		{
 			name:   "duplicated map key name with anchor-alias",
 			source: "&0: *0\n*0:\n*0:",
 		},
-	}
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			var v any
-			require.Error(t, codec.Unmarshal([]byte(test.source), &v))
-		})
-	}
+	})
 }
 
 // The explicit-key documents that are YAML 1.2, pinned so that closing the ones
@@ -75,14 +83,38 @@ func TestDecodeError(t *testing.T) {
 // Each of these was checked against grammar.NewRecognizer and read back through
 // the reference parser before being written down.
 func TestAnExplicitKeyReadsWhereTheGrammarAllowsIt(t *testing.T) {
-	for _, tc := range []struct {
-		name string
-		src  string
-		want any
-		// parseOnly says the document parses and does not decode, which is
-		// every shape keying on a collection.
-		parseOnly bool
-	}{
+	for tc := range anExplicitKeyReadsWhereTheGrammarAllowsItCases() {
+		t.Run(tc.name, func(t *testing.T) {
+			if tc.parseOnly {
+				_, err := parser.ParseBytes([]byte(tc.src))
+				require.NoErrorf(t, err, "%q parses", tc.src)
+
+				var got any
+				assert.Errorf(t, codec.Unmarshal([]byte(tc.src), &got),
+					"%q keys on a collection and does not decode", tc.src)
+
+				return
+			}
+
+			var got any
+			require.NoErrorf(t, codec.Unmarshal([]byte(tc.src), &got), "%q", tc.src)
+			assert.Equalf(t, tc.want, got, "%q", tc.src)
+		})
+	}
+}
+
+// anExplicitKeyReadsWhereTheGrammarAllowsItCase holds an explicit-key document and the value it decodes to, or only that it parses.
+type anExplicitKeyReadsWhereTheGrammarAllowsItCase struct {
+	name string
+	src  string
+	want any
+	// parseOnly says the document parses and does not decode, which is
+	// every shape keying on a collection.
+	parseOnly bool
+}
+
+func anExplicitKeyReadsWhereTheGrammarAllowsItCases() iter.Seq[anExplicitKeyReadsWhereTheGrammarAllowsItCase] {
+	return slices.Values([]anExplicitKeyReadsWhereTheGrammarAllowsItCase{
 		{
 			name: "the ':' at the mapping's own indent",
 			src:  "? l\n: v\n",
@@ -142,24 +174,7 @@ func TestAnExplicitKeyReadsWhereTheGrammarAllowsIt(t *testing.T) {
 			src:       "? - a\n  - b\n: v\n",
 			parseOnly: true,
 		},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			if tc.parseOnly {
-				_, err := parser.ParseBytes([]byte(tc.src))
-				require.NoErrorf(t, err, "%q parses", tc.src)
-
-				var got any
-				assert.Errorf(t, codec.Unmarshal([]byte(tc.src), &got),
-					"%q keys on a collection and does not decode", tc.src)
-
-				return
-			}
-
-			var got any
-			require.NoErrorf(t, codec.Unmarshal([]byte(tc.src), &got), "%q", tc.src)
-			assert.Equalf(t, tc.want, got, "%q", tc.src)
-		})
-	}
+	})
 }
 
 // TestACollectionKeyIsRefusedNotPanicked records that a sequence or a mapping
@@ -338,48 +353,10 @@ func TestANullKeyIsTheWordNull(t *testing.T) {
 // tree's map[string]T refused it, through a check of its own; the walk's map and
 // both struct paths wrote the second over the first.
 func TestAReaderKeyedByNameRefusesTwoKeysOfOneName(t *testing.T) {
-	type leaf struct {
-		One any `yaml:"1"`
-	}
-	type inline struct {
-		Rest map[string]any `yaml:",inline"`
-	}
-	// A custom unmarshaler turns the walk off, and no field holds a chan int.
-	tree := codec.CustomUnmarshaler[chan int](func(*chan int, []byte) error { return nil })
 	const src = "k: {1: x, \"1\": y}\n"
 
-	byName := map[string]struct {
-		into func() any
-		opts []codec.DecodeOption
-		last func(v any) any
-	}{
-		"a struct, walked": {
-			into: func() any { return new(struct{ K leaf }) },
-			last: func(v any) any { return v.(*struct{ K leaf }).K.One },
-		},
-		"a struct, through the tree": {
-			into: func() any { return new(struct{ K leaf }) }, opts: []codec.DecodeOption{tree},
-			last: func(v any) any { return v.(*struct{ K leaf }).K.One },
-		},
-		"a map[string]any, walked": {
-			into: func() any { return new(struct{ K map[string]any }) },
-			last: func(v any) any { return v.(*struct{ K map[string]any }).K["1"] },
-		},
-		"a map[string]any, through the tree": {
-			into: func() any { return new(struct{ K map[string]any }) }, opts: []codec.DecodeOption{tree},
-			last: func(v any) any { return v.(*struct{ K map[string]any }).K["1"] },
-		},
-		"an inline map": {
-			into: func() any { return new(struct{ K inline }) },
-			last: func(v any) any { return v.(*struct{ K inline }).K.Rest["1"] },
-		},
-		"an any under UseStringKeys": {
-			into: func() any { return new(any) }, opts: []codec.DecodeOption{codec.UseStringKeys()},
-			last: func(v any) any { return (*v.(*any)).(map[string]any)["k"].(map[string]any)["1"] },
-		},
-	}
-	for name, r := range byName {
-		t.Run(name, func(t *testing.T) {
+	for r := range aReaderKeyedByNameRefusesTwoKeysOfOneNameCases() {
+		t.Run(r.name, func(t *testing.T) {
 			err := codec.NewDecoder(strings.NewReader(src), r.opts...).Decode(r.into())
 			require.ErrorIs(t, err, yamlerrors.ErrDuplicateKey)
 			assert.Contains(t, err.Error(), `two keys name the entry "1"`)
@@ -403,6 +380,58 @@ func TestAReaderKeyedByNameRefusesTwoKeysOfOneName(t *testing.T) {
 	})
 }
 
+// aReaderKeyedByNameRefusesTwoKeysOfOneNameCase holds a reader keyed by name, its options, and how to read the entry that stands.
+type aReaderKeyedByNameRefusesTwoKeysOfOneNameCase struct {
+	name string
+	into func() any
+	opts []codec.DecodeOption
+	last func(v any) any
+}
+
+func aReaderKeyedByNameRefusesTwoKeysOfOneNameCases() iter.Seq[aReaderKeyedByNameRefusesTwoKeysOfOneNameCase] {
+	type leaf struct {
+		One any `yaml:"1"`
+	}
+	type inline struct {
+		Rest map[string]any `yaml:",inline"`
+	}
+	// A custom unmarshaler turns the walk off, and no field holds a chan int.
+	tree := codec.CustomUnmarshaler[chan int](func(*chan int, []byte) error { return nil })
+
+	return slices.Values([]aReaderKeyedByNameRefusesTwoKeysOfOneNameCase{
+		{
+			name: "a map[string]any, through the tree",
+			into: func() any { return new(struct{ K map[string]any }) }, opts: []codec.DecodeOption{tree},
+			last: func(v any) any { return v.(*struct{ K map[string]any }).K["1"] },
+		},
+		{
+			name: "a map[string]any, walked",
+			into: func() any { return new(struct{ K map[string]any }) },
+			last: func(v any) any { return v.(*struct{ K map[string]any }).K["1"] },
+		},
+		{
+			name: "a struct, through the tree",
+			into: func() any { return new(struct{ K leaf }) }, opts: []codec.DecodeOption{tree},
+			last: func(v any) any { return v.(*struct{ K leaf }).K.One },
+		},
+		{
+			name: "a struct, walked",
+			into: func() any { return new(struct{ K leaf }) },
+			last: func(v any) any { return v.(*struct{ K leaf }).K.One },
+		},
+		{
+			name: "an any under UseStringKeys",
+			into: func() any { return new(any) }, opts: []codec.DecodeOption{codec.UseStringKeys()},
+			last: func(v any) any { return (*v.(*any)).(map[string]any)["k"].(map[string]any)["1"] },
+		},
+		{
+			name: "an inline map",
+			into: func() any { return new(struct{ K inline }) },
+			last: func(v any) any { return v.(*struct{ K inline }).K.Rest["1"] },
+		},
+	})
+}
+
 // TestADuplicateKeyIsReportedAtTheLoad covers where a repeated key is refused.
 //
 // §3.2.1.1 makes it an error, and the parse records it rather than refusing: a
@@ -412,16 +441,7 @@ func TestAReaderKeyedByNameRefusesTwoKeysOfOneName(t *testing.T) {
 // The two documents below were parser.TestSyntaxError cases until 2026-09-07,
 // and the message and the line it is drawn under are unchanged.
 func TestADuplicateKeyIsReportedAtTheLoad(t *testing.T) {
-	for _, tc := range []struct{ src, want string }{
-		{
-			src:  "\nfoo:\n  bar:\n    foo: 2\n  baz:\n    foo: 3\nfoo: 2\n",
-			want: `[7:1] mapping key "foo" already defined at [2:1]`,
-		},
-		{
-			src:  "\nfoo:\n  bar:\n    foo: 2\n  baz:\n    foo: 3\n    foo: 4\n",
-			want: `[7:5] mapping key "foo" already defined at [6:5]`,
-		},
-	} {
+	for tc := range aDuplicateKeyIsReportedAtTheLoadCases() {
 		t.Run(tc.want, func(t *testing.T) {
 			// The parse reads it.
 			_, err := parser.ParseBytes([]byte(tc.src))
@@ -440,6 +460,24 @@ func TestADuplicateKeyIsReportedAtTheLoad(t *testing.T) {
 	}
 }
 
+// aDuplicateKeyIsReportedAtTheLoadCase holds a document that repeats a key and the refusal its load returns.
+type aDuplicateKeyIsReportedAtTheLoadCase struct {
+	src, want string
+}
+
+func aDuplicateKeyIsReportedAtTheLoadCases() iter.Seq[aDuplicateKeyIsReportedAtTheLoadCase] {
+	return slices.Values([]aDuplicateKeyIsReportedAtTheLoadCase{
+		{
+			src:  "\nfoo:\n  bar:\n    foo: 2\n  baz:\n    foo: 3\nfoo: 2\n",
+			want: `[7:1] mapping key "foo" already defined at [2:1]`,
+		},
+		{
+			src:  "\nfoo:\n  bar:\n    foo: 2\n  baz:\n    foo: 3\n    foo: 4\n",
+			want: `[7:5] mapping key "foo" already defined at [6:5]`,
+		},
+	})
+}
+
 // TestADuplicateKeyIsPerTypeAtTheLoad is the identity half, measured through
 // every path that reads a document.
 //
@@ -450,27 +488,8 @@ func TestADuplicateKeyIsReportedAtTheLoad(t *testing.T) {
 // refuses it as ErrNotJSON rather than writing an object with the member twice,
 // which is defect 37.
 func TestADuplicateKeyIsPerTypeAtTheLoad(t *testing.T) {
-	for name, tc := range map[string]struct {
-		src          string
-		duplicate    bool
-		jsonCollides bool
-	}{
-		// One node written two ways is one key.
-		"an integer in two bases":  {src: "0x10: a\n16: b\n", duplicate: true},
-		"an integer with zeros":    {src: "7: a\n007: b\n", duplicate: true},
-		"a null in two spellings":  {src: "~: a\nnull: b\n", duplicate: true},
-		"a boolean in two cases":   {src: "true: a\nTrue: b\n", duplicate: true},
-		"a flow key with no value": {src: "{a, a: 1}\n", duplicate: true},
-
-		// Two nodes are two keys.
-		"an integer and a float": {src: "1: a\n1.0: b\n"},
-		"plain siblings":         {src: "a: 1\nb: 2\n"},
-
-		// Two keys to YAML, one member name to JSON.
-		"a number and a string":   {src: "1: a\n\"1\": b\n", jsonCollides: true},
-		"a null and its spelling": {src: "~: a\n\"null\": b\n", jsonCollides: true},
-	} {
-		t.Run(name, func(t *testing.T) {
+	for tc := range aDuplicateKeyIsPerTypeAtTheLoadCases() {
+		t.Run(tc.name, func(t *testing.T) {
 			var into any
 			err := codec.Unmarshal([]byte(tc.src), &into)
 
@@ -505,6 +524,33 @@ func TestADuplicateKeyIsPerTypeAtTheLoad(t *testing.T) {
 			assert.NoError(t, tolerated)
 		})
 	}
+}
+
+// aDuplicateKeyIsPerTypeAtTheLoadCase holds a document with two keys, whether YAML reads them as one, and whether JSON does.
+type aDuplicateKeyIsPerTypeAtTheLoadCase struct {
+	name         string
+	src          string
+	duplicate    bool
+	jsonCollides bool
+}
+
+func aDuplicateKeyIsPerTypeAtTheLoadCases() iter.Seq[aDuplicateKeyIsPerTypeAtTheLoadCase] {
+	return slices.Values([]aDuplicateKeyIsPerTypeAtTheLoadCase{
+		// One node written two ways is one key.
+		{name: "an integer in two bases", src: "0x10: a\n16: b\n", duplicate: true},
+		{name: "an integer with zeros", src: "7: a\n007: b\n", duplicate: true},
+		{name: "a null in two spellings", src: "~: a\nnull: b\n", duplicate: true},
+		{name: "a boolean in two cases", src: "true: a\nTrue: b\n", duplicate: true},
+		{name: "a flow key with no value", src: "{a, a: 1}\n", duplicate: true},
+
+		// Two nodes are two keys.
+		{name: "an integer and a float", src: "1: a\n1.0: b\n"},
+		{name: "plain siblings", src: "a: 1\nb: 2\n"},
+
+		// Two keys to YAML, one member name to JSON.
+		{name: "a number and a string", src: "1: a\n\"1\": b\n", jsonCollides: true},
+		{name: "a null and its spelling", src: "~: a\n\"null\": b\n", jsonCollides: true},
+	})
 }
 
 // TestAJSONMemberCollisionIsFoundPastTheIndex reaches the other half of the key
@@ -978,21 +1024,7 @@ func TestTwoCollectionKeysAreTwoKeys(t *testing.T) {
 		//
 		// Both positions are measured, not chosen: the repeat's own token and
 		// the token of the entry that first wrote the key.
-		for _, tc := range []struct{ src, says string }{
-			{"{{a: 0}: 1, {a: 0}: 2}\n", `[1:13] mapping key "{a: 0}" already defined at [1:2]`},
-			{"{[a]: 1, [a]: 2}\n", `[1:10] mapping key "[a]" already defined at [1:2]`},
-			{"{[\"\"]: 1, [\"\"]: 2}\n", `[1:11] mapping key "[\"\"]" already defined at [1:2]`},
-			{"{[a, b]: 1, [a, b]: 2}\n", `[1:13] mapping key "[a, b]" already defined at [1:2]`},
-			{"? [a]\n: 1\n? [a]\n: 2\n", `[3:1] mapping key "[a]" already defined at [1:1]`},
-			{"? {a: 0}\n: 1\n? {a: 0}\n: 2\n", `[3:1] mapping key "{a: 0}" already defined at [1:1]`},
-			{"[a]: 1\n[a]: 2\n", `[2:1] mapping key "[a]" already defined at [1:1]`},
-			{"? [a]\n: 1\n[a]: 2\n", `[3:1] mapping key "[a]" already defined at [1:1]`},
-
-			// The scalar spellings, so a change that moves a collection key's
-			// position cannot quietly move theirs too.
-			{"a: 1\na: 2\n", `[2:1] mapping key "a" already defined at [1:1]`},
-			{"{a: 1, a: 2}\n", `[1:8] mapping key "a" already defined at [1:2]`},
-		} {
+		for tc := range twoCollectionKeysRefusalCases() {
 			var got any
 			err := codec.Unmarshal([]byte(tc.src), &got, codec.UseOrderedMap())
 			require.Errorf(t, err, "%q read %v", tc.src, got)
@@ -1007,5 +1039,28 @@ func TestTwoCollectionKeysAreTwoKeys(t *testing.T) {
 				codec.Unmarshal([]byte(src), &got, codec.UseOrderedMap()), "%q", src)
 			assert.Equalf(t, 1, got.Len(), "%q", src)
 		}
+	})
+}
+
+// twoCollectionKeysRefusalCase holds a document that repeats a key and the refusal naming both positions.
+type twoCollectionKeysRefusalCase struct {
+	src, says string
+}
+
+func twoCollectionKeysRefusalCases() iter.Seq[twoCollectionKeysRefusalCase] {
+	return slices.Values([]twoCollectionKeysRefusalCase{
+		{"{{a: 0}: 1, {a: 0}: 2}\n", `[1:13] mapping key "{a: 0}" already defined at [1:2]`},
+		{"{[a]: 1, [a]: 2}\n", `[1:10] mapping key "[a]" already defined at [1:2]`},
+		{"{[\"\"]: 1, [\"\"]: 2}\n", `[1:11] mapping key "[\"\"]" already defined at [1:2]`},
+		{"{[a, b]: 1, [a, b]: 2}\n", `[1:13] mapping key "[a, b]" already defined at [1:2]`},
+		{"? [a]\n: 1\n? [a]\n: 2\n", `[3:1] mapping key "[a]" already defined at [1:1]`},
+		{"? {a: 0}\n: 1\n? {a: 0}\n: 2\n", `[3:1] mapping key "{a: 0}" already defined at [1:1]`},
+		{"[a]: 1\n[a]: 2\n", `[2:1] mapping key "[a]" already defined at [1:1]`},
+		{"? [a]\n: 1\n[a]: 2\n", `[3:1] mapping key "[a]" already defined at [1:1]`},
+
+		// The scalar spellings, so a change that moves a collection key's
+		// position cannot quietly move theirs too.
+		{"a: 1\na: 2\n", `[2:1] mapping key "a" already defined at [1:1]`},
+		{"{a: 1, a: 2}\n", `[1:8] mapping key "a" already defined at [1:2]`},
 	})
 }

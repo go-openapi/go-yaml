@@ -7,6 +7,8 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"iter"
+	"slices"
 	"strings"
 	"testing"
 
@@ -111,13 +113,7 @@ items:
 // what the same documents mean as written.
 func TestMergeWrittenInPlaceConvertsToJSON(t *testing.T) {
 	t.Run("the shapes that were broken", func(t *testing.T) {
-		for _, tc := range []struct{ src, writes string }{
-			{src: "<<: {a: 1}\n", writes: `{"a":1}`},
-			{src: "z: 9\n<<: {a: 1}\n", writes: `{"z":9,"a":1}`},
-			{src: "<<: [{a: 1}, {b: 2}]\n", writes: `{"a":1,"b":2}`},
-			{src: "z: 9\n<<: [{a: 1}, {b: 2}]\n", writes: `{"z":9,"a":1,"b":2}`},
-			{src: "b: &b {q: 1}\n<<: [*b, {a: 1}]\n", writes: `{"b":{"q":1},"q":1,"a":1}`},
-		} {
+		for tc := range mergeWrittenInPlaceBrokenCases() {
 			out, err := codec.ToJSON([]byte(underEleven(tc.src)))
 			require.NoError(t, err, "%q", tc.src)
 			assert.Equal(t, tc.writes, string(out), "%q", tc.src)
@@ -126,11 +122,7 @@ func TestMergeWrittenInPlaceConvertsToJSON(t *testing.T) {
 	})
 
 	t.Run("the neighbors that were always right", func(t *testing.T) {
-		for _, tc := range []struct{ src, writes string }{
-			{src: "b: &b {q: 1}\n<<: *b\n", writes: `{"b":{"q":1},"q":1}`},
-			{src: "b: &b {q: 1}\nc: &c {r: 1}\n<<: [*b, *c]\n", writes: `{"b":{"q":1},"c":{"r":1},"q":1,"r":1}`},
-			{src: "z: 9\n<<: [{a: 1}]\n", writes: `{"z":9,"a":1}`},
-		} {
+		for tc := range mergeWrittenInPlaceNeighborCases() {
 			out, err := codec.ToJSON([]byte(underEleven(tc.src)))
 			require.NoError(t, err, "%q", tc.src)
 			assert.Equal(t, tc.writes, string(out), "%q", tc.src)
@@ -140,10 +132,7 @@ func TestMergeWrittenInPlaceConvertsToJSON(t *testing.T) {
 	t.Run("and the mapping's own key still wins", func(t *testing.T) {
 		// 1.1's merge rule: what the mapping writes itself beats what a "<<"
 		// brings, and an earlier "<<" beats a later one.
-		for _, tc := range []struct{ src, writes string }{
-			{src: "a: 1\n<<: {a: 9, b: 2}\n", writes: `{"a":1,"b":2}`},
-			{src: "<<: [{a: 1}, {a: 9, b: 2}]\n", writes: `{"a":1,"b":2}`},
-		} {
+		for tc := range mergeWrittenInPlaceOwnKeyCases() {
 			out, err := codec.ToJSON([]byte(underEleven(tc.src)))
 			require.NoError(t, err, "%q", tc.src)
 			assert.Equal(t, tc.writes, string(out), "%q", tc.src)
@@ -178,6 +167,36 @@ func TestMergeWrittenInPlaceConvertsToJSON(t *testing.T) {
 	})
 }
 
+// mergeWrittenInPlaceCase holds a document with a merge and the JSON ToJSON writes for it.
+type mergeWrittenInPlaceCase struct {
+	src, writes string
+}
+
+func mergeWrittenInPlaceBrokenCases() iter.Seq[mergeWrittenInPlaceCase] {
+	return slices.Values([]mergeWrittenInPlaceCase{
+		{src: "<<: {a: 1}\n", writes: `{"a":1}`},
+		{src: "z: 9\n<<: {a: 1}\n", writes: `{"z":9,"a":1}`},
+		{src: "<<: [{a: 1}, {b: 2}]\n", writes: `{"a":1,"b":2}`},
+		{src: "z: 9\n<<: [{a: 1}, {b: 2}]\n", writes: `{"z":9,"a":1,"b":2}`},
+		{src: "b: &b {q: 1}\n<<: [*b, {a: 1}]\n", writes: `{"b":{"q":1},"q":1,"a":1}`},
+	})
+}
+
+func mergeWrittenInPlaceNeighborCases() iter.Seq[mergeWrittenInPlaceCase] {
+	return slices.Values([]mergeWrittenInPlaceCase{
+		{src: "b: &b {q: 1}\n<<: *b\n", writes: `{"b":{"q":1},"q":1}`},
+		{src: "b: &b {q: 1}\nc: &c {r: 1}\n<<: [*b, *c]\n", writes: `{"b":{"q":1},"c":{"r":1},"q":1,"r":1}`},
+		{src: "z: 9\n<<: [{a: 1}]\n", writes: `{"z":9,"a":1}`},
+	})
+}
+
+func mergeWrittenInPlaceOwnKeyCases() iter.Seq[mergeWrittenInPlaceCase] {
+	return slices.Values([]mergeWrittenInPlaceCase{
+		{src: "a: 1\n<<: {a: 9, b: 2}\n", writes: `{"a":1,"b":2}`},
+		{src: "<<: [{a: 1}, {a: 9, b: 2}]\n", writes: `{"a":1,"b":2}`},
+	})
+}
+
 // TestFixedATypedMapMergesLikeEveryOtherDestination: a "<<" read into a
 // map[string]any was wrong two ways, where the same document into an `any` and
 // into a struct was right both times.
@@ -209,14 +228,7 @@ func TestMergeWrittenInPlaceConvertsToJSON(t *testing.T) {
 // with.
 func TestFixedATypedMapMergesLikeEveryOtherDestination(t *testing.T) {
 	t.Run("a merge sequence sharing a key reads, and the earlier mapping wins", func(t *testing.T) {
-		for _, tc := range []struct {
-			src  string
-			want map[string]any
-		}{
-			{"<<: [{a: 1}, {a: 9}]\n", map[string]any{"a": uint64(1)}},
-			{"<<: [{a: 1}, {a: 9, b: 2}]\n", map[string]any{"a": uint64(1), "b": uint64(2)}},
-			{"a: 5\n<<: [{a: 1}, {a: 9}]\n", map[string]any{"a": uint64(5)}},
-		} {
+		for tc := range fixedATypedMapMergesLikeEveryOtherDestinationCases() {
 			var typed map[string]any
 			require.NoErrorf(t, codec.Unmarshal([]byte(underEleven(tc.src)), &typed), "%q", tc.src)
 			assert.Equalf(t, tc.want, typed, "%q", tc.src)
@@ -287,6 +299,20 @@ func TestFixedATypedMapMergesLikeEveryOtherDestination(t *testing.T) {
 	})
 }
 
+// fixedATypedMapMergesLikeEveryOtherDestinationCase holds a merge sequence sharing a key and the map it decodes to.
+type fixedATypedMapMergesLikeEveryOtherDestinationCase struct {
+	src  string
+	want map[string]any
+}
+
+func fixedATypedMapMergesLikeEveryOtherDestinationCases() iter.Seq[fixedATypedMapMergesLikeEveryOtherDestinationCase] {
+	return slices.Values([]fixedATypedMapMergesLikeEveryOtherDestinationCase{
+		{"<<: [{a: 1}, {a: 9}]\n", map[string]any{"a": uint64(1)}},
+		{"<<: [{a: 1}, {a: 9, b: 2}]\n", map[string]any{"a": uint64(1), "b": uint64(2)}},
+		{"a: 5\n<<: [{a: 1}, {a: 9}]\n", map[string]any{"a": uint64(5)}},
+	})
+}
+
 // underEleven is src read under YAML 1.1, where "<<" is the merge key.
 //
 // The merge key is tag:yaml.org,2002:merge, a 1.1 type, so the version decides
@@ -313,11 +339,46 @@ func underEleven(src string) string { return "%YAML 1.1\n---\n" + src }
 // 1.0.0b1 is no oracle here: it does not resolve a merge at all and writes the
 // "<<" out as a member name of its own.
 func TestAMergeResolvesTheSameWayOnEveryPath(t *testing.T) {
-	for _, tc := range []struct {
-		name, src string
-		want      map[string]any
-		order     []string
-	}{
+	for tc := range aMergeResolvesTheSameWayOnEveryPathCases() {
+		t.Run(tc.name, func(t *testing.T) {
+			src := underEleven(tc.src)
+
+			var walked any
+			require.NoErrorf(t, codec.Unmarshal([]byte(src), &walked), "%q", src)
+			assert.Equal(t, tc.want, walked.(map[string]any)["m"], "into an any")
+
+			var typed map[string]any
+			require.NoErrorf(t, codec.Unmarshal([]byte(src), &typed), "%q", src)
+			assert.Equal(t, tc.want, typed["m"], "into a map[string]any")
+
+			var ordered any
+			require.NoErrorf(t,
+				codec.Unmarshal([]byte(src), &ordered, codec.UseOrderedMap()), "%q", src)
+			assert.Equal(t, tc.order, orderedKeysOf(t, ordered, "m"),
+				"UseOrderedMap: the mapping's own keys in document order, then the merged ones")
+
+			t.Run("and under 1.2 the same document merges nothing", func(t *testing.T) {
+				// Every one of these mappings holds a "<<" of its own, so under
+				// the core schema every one keeps it as an ordinary key.
+				var core any
+				require.NoErrorf(t, codec.Unmarshal([]byte(tc.src), &core), "%q", tc.src)
+				entries, ok := core.(map[string]any)["m"].(map[string]any)
+				require.Truef(t, ok, "%q read %#v", tc.src, core)
+				assert.Containsf(t, entries, "<<", "%q kept no key named << : %v", tc.src, entries)
+			})
+		})
+	}
+}
+
+// aMergeResolvesTheSameWayOnEveryPathCase holds a document with a merge, the mapping m decodes to and its keys in order.
+type aMergeResolvesTheSameWayOnEveryPathCase struct {
+	name, src string
+	want      map[string]any
+	order     []string
+}
+
+func aMergeResolvesTheSameWayOnEveryPathCases() iter.Seq[aMergeResolvesTheSameWayOnEveryPathCase] {
+	return slices.Values([]aMergeResolvesTheSameWayOnEveryPathCase{
 		{
 			name:  "the mapping's own key wins over a later <<",
 			src:   "m:\n  x: 9\n  <<: &a {x: 1}\n",
@@ -357,35 +418,7 @@ func TestAMergeResolvesTheSameWayOnEveryPath(t *testing.T) {
 			want:  map[string]any{"x": uint64(1), "w": uint64(2)},
 			order: []string{"w", "x"},
 		},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			src := underEleven(tc.src)
-
-			var walked any
-			require.NoErrorf(t, codec.Unmarshal([]byte(src), &walked), "%q", src)
-			assert.Equal(t, tc.want, walked.(map[string]any)["m"], "into an any")
-
-			var typed map[string]any
-			require.NoErrorf(t, codec.Unmarshal([]byte(src), &typed), "%q", src)
-			assert.Equal(t, tc.want, typed["m"], "into a map[string]any")
-
-			var ordered any
-			require.NoErrorf(t,
-				codec.Unmarshal([]byte(src), &ordered, codec.UseOrderedMap()), "%q", src)
-			assert.Equal(t, tc.order, orderedKeysOf(t, ordered, "m"),
-				"UseOrderedMap: the mapping's own keys in document order, then the merged ones")
-
-			t.Run("and under 1.2 the same document merges nothing", func(t *testing.T) {
-				// Every one of these mappings holds a "<<" of its own, so under
-				// the core schema every one keeps it as an ordinary key.
-				var core any
-				require.NoErrorf(t, codec.Unmarshal([]byte(tc.src), &core), "%q", tc.src)
-				entries, ok := core.(map[string]any)["m"].(map[string]any)
-				require.Truef(t, ok, "%q read %#v", tc.src, core)
-				assert.Containsf(t, entries, "<<", "%q kept no key named << : %v", tc.src, entries)
-			})
-		})
-	}
+	})
 }
 
 // TestAMergedKeyIsWrittenOnceIntoAMapSlice is the half a map cannot show.
@@ -459,14 +492,7 @@ func orderedKeysOf(t *testing.T, doc any, key string) []string {
 // lines away from the merge. It reads through setToOrderedMapValue now, so both
 // destinations answer from one implementation.
 func TestFixedATypedMapSliceMergesLikeTheOrderedAny(t *testing.T) {
-	for _, tc := range []struct {
-		src  string
-		want any
-	}{
-		{"m:\n  x: 9\n  <<: &a {x: 1}\n", uint64(9)},
-		{"m:\n  <<: &a {x: 1}\n  x: 9\n", uint64(9)},
-		{"a: &a {x: 1}\nb: &b {x: 2}\nm:\n  <<: [*a, *b]\n", uint64(1)},
-	} {
+	for tc := range fixedATypedMapSliceMergesLikeTheOrderedAnyCases() {
 		src := underEleven(tc.src)
 
 		var typed struct {
@@ -480,6 +506,20 @@ func TestFixedATypedMapSliceMergesLikeTheOrderedAny(t *testing.T) {
 		require.NoErrorf(t, codec.Unmarshal([]byte(src), &walked, codec.UseOrderedMap()), "%q", src)
 		assert.Equalf(t, typed.M, mapSliceAt(t, walked, "m"), "%q: the two destinations disagree", src)
 	}
+}
+
+// fixedATypedMapSliceMergesLikeTheOrderedAnyCase holds a document with a merge and the value its one key in m decodes to.
+type fixedATypedMapSliceMergesLikeTheOrderedAnyCase struct {
+	src  string
+	want any
+}
+
+func fixedATypedMapSliceMergesLikeTheOrderedAnyCases() iter.Seq[fixedATypedMapSliceMergesLikeTheOrderedAnyCase] {
+	return slices.Values([]fixedATypedMapSliceMergesLikeTheOrderedAnyCase{
+		{"m:\n  x: 9\n  <<: &a {x: 1}\n", uint64(9)},
+		{"m:\n  <<: &a {x: 1}\n  x: 9\n", uint64(9)},
+		{"a: &a {x: 1}\nb: &b {x: 2}\nm:\n  <<: [*a, *b]\n", uint64(1)},
+	})
 }
 
 // TestAMergeWritesOverTheCallersMapEntries holds both decode paths to the
@@ -522,11 +562,7 @@ func TestAMergeSequenceReadsEachMappingWhole(t *testing.T) {
 	// A custom unmarshaler turns the walk off, and no field holds a chan int.
 	tree := codec.CustomUnmarshaler[chan int](func(*chan int, []byte) error { return nil })
 
-	for _, c := range []struct{ defs, seq, want string }{
-		{"a: &a {<<: {k: zero}, k: own}\n", "[*a]", "own"},
-		{"a: &a {<<: {k: zero}}\nb: &b {k: bee}\n", "[*a, *b]", "zero"},
-		{"a: &a {<<: {k: zero}, k: own}\n", "[{k: first}, *a]", "first"},
-	} {
+	for c := range aMergeSequenceReadsEachMappingWholeCases() {
 		src := "%YAML 1.1\n---\n" + c.defs + "leaf: {<<: " + c.seq + "}\npair: [<<: " + c.seq + "]\n"
 		decode := func(t *testing.T, v any, opts ...codec.DecodeOption) {
 			t.Helper()
@@ -596,6 +632,19 @@ func TestAMergeSequenceReadsEachMappingWhole(t *testing.T) {
 	}
 }
 
+// aMergeSequenceReadsEachMappingWholeCase holds the anchored mappings, the merge sequence over them, and the k it reads.
+type aMergeSequenceReadsEachMappingWholeCase struct {
+	defs, seq, want string
+}
+
+func aMergeSequenceReadsEachMappingWholeCases() iter.Seq[aMergeSequenceReadsEachMappingWholeCase] {
+	return slices.Values([]aMergeSequenceReadsEachMappingWholeCase{
+		{"a: &a {<<: {k: zero}, k: own}\n", "[*a]", "own"},
+		{"a: &a {<<: {k: zero}}\nb: &b {k: bee}\n", "[*a, *b]", "zero"},
+		{"a: &a {<<: {k: zero}, k: own}\n", "[{k: first}, *a]", "first"},
+	})
+}
+
 // TestAnAnchoredMergeKeyMergesOnEveryReader reads "<<" under an anchor written as its key, plain and tagged, in block
 // and flow, on the walk, the tree, the typed walk and ToJSON. Each merges. The walk hands the anchor over before the
 // "<<" under it: the value walk wrote "<<" as a key, and ToJSON named the entry after a tagged "!!merge <<" and
@@ -610,16 +659,8 @@ func TestAnAnchoredMergeKeyMergesOnEveryReader(t *testing.T) {
 		C inner `yaml:"c"`
 	}
 
-	for name, tc := range map[string]struct {
-		src  string
-		want map[string]any
-	}{
-		"anchored":                 {"%YAML 1.1\n---\nx: &x {k: 1}\nc:\n  &a <<: *x\n  own: 2\n", map[string]any{"k": uint64(1), "own": uint64(2)}},
-		"anchored and tagged":      {"x: &x {k: 1}\nc:\n  &a !!merge <<: *x\n  own: 2\n", map[string]any{"k": uint64(1), "own": uint64(2)}},
-		"anchored in flow":         {"%YAML 1.1\n---\nx: &x {k: 1}\nc: {&a <<: *x, own: 2}\n", map[string]any{"k": uint64(1), "own": uint64(2)}},
-		"anchored over a sequence": {"%YAML 1.1\n---\nx: &x {k: 1}\nc:\n  &a <<: [*x, {z: 3}]\n  own: 2\n", map[string]any{"k": uint64(1), "own": uint64(2), "z": uint64(3)}},
-	} {
-		t.Run(name, func(t *testing.T) {
+	for tc := range anAnchoredMergeKeyMergesOnEveryReaderCases() {
+		t.Run(tc.name, func(t *testing.T) {
 			// Into an any, which the walk fills. A map destination takes the tree.
 			var walked any
 			require.NoError(t, codec.Unmarshal([]byte(tc.src), &walked))
@@ -646,4 +687,20 @@ func TestAnAnchoredMergeKeyMergesOnEveryReader(t *testing.T) {
 			assert.NotContains(t, string(out), "<<", "ToJSON: %s", out)
 		})
 	}
+}
+
+// anAnchoredMergeKeyMergesOnEveryReaderCase holds a document with an anchored "<<" and the mapping c decodes to.
+type anAnchoredMergeKeyMergesOnEveryReaderCase struct {
+	name string
+	src  string
+	want map[string]any
+}
+
+func anAnchoredMergeKeyMergesOnEveryReaderCases() iter.Seq[anAnchoredMergeKeyMergesOnEveryReaderCase] {
+	return slices.Values([]anAnchoredMergeKeyMergesOnEveryReaderCase{
+		{"anchored", "%YAML 1.1\n---\nx: &x {k: 1}\nc:\n  &a <<: *x\n  own: 2\n", map[string]any{"k": uint64(1), "own": uint64(2)}},
+		{"anchored and tagged", "x: &x {k: 1}\nc:\n  &a !!merge <<: *x\n  own: 2\n", map[string]any{"k": uint64(1), "own": uint64(2)}},
+		{"anchored in flow", "%YAML 1.1\n---\nx: &x {k: 1}\nc: {&a <<: *x, own: 2}\n", map[string]any{"k": uint64(1), "own": uint64(2)}},
+		{"anchored over a sequence", "%YAML 1.1\n---\nx: &x {k: 1}\nc:\n  &a <<: [*x, {z: 3}]\n  own: 2\n", map[string]any{"k": uint64(1), "own": uint64(2), "z": uint64(3)}},
+	})
 }

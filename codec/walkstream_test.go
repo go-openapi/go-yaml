@@ -7,7 +7,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"iter"
 	"runtime"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -149,33 +151,9 @@ func TestADecoderReportsABrokenDocumentOnItsOwnDecode(t *testing.T) {
 // document to the tree before the parse failed, read the drained reader again
 // as an empty source and returned io.EOF.
 func TestADecoderKeepsTheErrorThatStoppedItsStream(t *testing.T) {
-	// The walk cannot set an embedded pointer to an unexported struct, so it
-	// hands the decode to the tree at the first key the embedding holds.
-	type hidden struct {
-		A []int `yaml:"a"`
-	}
-	type small struct {
-		*hidden `yaml:",inline"`
-	}
-	type walked struct {
-		A []int `yaml:"a"`
-		B []int `yaml:"b"`
-	}
-	// A custom unmarshaler turns the walk off, and no field holds a chan int.
-	tree := codec.CustomUnmarshaler[chan int](func(*chan int, []byte) error { return nil })
-
-	routes := map[string]struct {
-		into func() any
-		opts []codec.DecodeOption
-	}{
-		"a walk that falls back first": {into: func() any { return new(small) }},
-		"a walk":                       {into: func() any { return new(walked) }},
-		"an any":                       {into: func() any { return new(any) }},
-		"the tree":                     {into: func() any { return new(walked) }, opts: []codec.DecodeOption{tree}},
-	}
 	for _, src := range []string{"a: [\n", "a: *missing\n", "a: [1]\n---\nb: [\n"} {
-		for name, route := range routes {
-			t.Run(name+"/"+src, func(t *testing.T) {
+		for route := range aDecoderKeepsTheErrorThatStoppedItsStreamCases() {
+			t.Run(route.name+"/"+src, func(t *testing.T) {
 				dec := codec.NewDecoder(strings.NewReader(src), route.opts...)
 
 				var stop error
@@ -195,6 +173,37 @@ func TestADecoderKeepsTheErrorThatStoppedItsStream(t *testing.T) {
 			})
 		}
 	}
+}
+
+// aDecoderKeepsTheErrorThatStoppedItsStreamCase holds a decode route: the destination it fills and its options.
+type aDecoderKeepsTheErrorThatStoppedItsStreamCase struct {
+	name string
+	into func() any
+	opts []codec.DecodeOption
+}
+
+func aDecoderKeepsTheErrorThatStoppedItsStreamCases() iter.Seq[aDecoderKeepsTheErrorThatStoppedItsStreamCase] {
+	// The walk cannot set an embedded pointer to an unexported struct, so it
+	// hands the decode to the tree at the first key the embedding holds.
+	type hidden struct {
+		A []int `yaml:"a"`
+	}
+	type small struct {
+		*hidden `yaml:",inline"`
+	}
+	type walked struct {
+		A []int `yaml:"a"`
+		B []int `yaml:"b"`
+	}
+	// A custom unmarshaler turns the walk off, and no field holds a chan int.
+	tree := codec.CustomUnmarshaler[chan int](func(*chan int, []byte) error { return nil })
+
+	return slices.Values([]aDecoderKeepsTheErrorThatStoppedItsStreamCase{
+		{name: "a walk", into: func() any { return new(walked) }},
+		{name: "a walk that falls back first", into: func() any { return new(small) }},
+		{name: "an any", into: func() any { return new(any) }},
+		{name: "the tree", into: func() any { return new(walked) }, opts: []codec.DecodeOption{tree}},
+	})
 }
 
 // TestADecoderSwitchesToTheTreeForADestinationTheWalkCannotFill checks that a
@@ -286,22 +295,10 @@ func TestATypeErrorFailsOnlyItsOwnDocument(t *testing.T) {
 // from the switch on.
 func TestAParseErrorStopsTheStreamAtTheBrokenDocument(t *testing.T) {
 	const src = "a: 1\n---\nb: 2\n---\nc: [1, 2\n---\nd: 4\n"
-	anyTarget := func() any { var v any; return &v }
-	mapTarget := func() any { var v map[string]any; return &v }
-
-	paths := map[string]struct {
-		targets []func() any
-		opts    []codec.DecodeOption
-	}{
-		"walk":                   {targets: []func() any{anyTarget, anyTarget, anyTarget, anyTarget}},
-		"tree, a map":            {targets: []func() any{mapTarget, mapTarget, mapTarget, mapTarget}},
-		"tree, UseOrderedMap":    {targets: []func() any{anyTarget, anyTarget, anyTarget, anyTarget}, opts: []codec.DecodeOption{codec.UseOrderedMap()}},
-		"walk, then to the tree": {targets: []func() any{anyTarget, mapTarget, mapTarget, mapTarget}},
-	}
 
 	var syntaxErrors []string
-	for name, path := range paths {
-		t.Run(name, func(t *testing.T) {
+	for path := range aParseErrorStopsTheStreamAtTheBrokenDocumentCases() {
+		t.Run(path.name, func(t *testing.T) {
 			dec := codec.NewDecoder(strings.NewReader(src), path.opts...)
 
 			for i, want := range []string{"a", "b"} {
@@ -321,6 +318,25 @@ func TestAParseErrorStopsTheStreamAtTheBrokenDocument(t *testing.T) {
 	for _, e := range syntaxErrors[1:] {
 		assert.Equal(t, syntaxErrors[0], e)
 	}
+}
+
+// aParseErrorStopsTheStreamAtTheBrokenDocumentCase holds a decode path: the destination of each document and the options.
+type aParseErrorStopsTheStreamAtTheBrokenDocumentCase struct {
+	name    string
+	targets []func() any
+	opts    []codec.DecodeOption
+}
+
+func aParseErrorStopsTheStreamAtTheBrokenDocumentCases() iter.Seq[aParseErrorStopsTheStreamAtTheBrokenDocumentCase] {
+	anyTarget := func() any { var v any; return &v }
+	mapTarget := func() any { var v map[string]any; return &v }
+
+	return slices.Values([]aParseErrorStopsTheStreamAtTheBrokenDocumentCase{
+		{name: "tree, UseOrderedMap", targets: []func() any{anyTarget, anyTarget, anyTarget, anyTarget}, opts: []codec.DecodeOption{codec.UseOrderedMap()}},
+		{name: "tree, a map", targets: []func() any{mapTarget, mapTarget, mapTarget, mapTarget}},
+		{name: "walk", targets: []func() any{anyTarget, anyTarget, anyTarget, anyTarget}},
+		{name: "walk, then to the tree", targets: []func() any{anyTarget, mapTarget, mapTarget, mapTarget}},
+	})
 }
 
 // TestUnmarshalFillsTheFirstDocumentOfABrokenStream reads a stream whose second document does not parse with
@@ -368,40 +384,9 @@ func TestADocumentErrorFailsOnlyItsOwnDocument(t *testing.T) {
 	// A custom unmarshaler turns the walk off, and no field holds a chan int.
 	tree := codec.CustomUnmarshaler[chan int](func(*chan int, []byte) error { return nil })
 
-	// Each alias of the chain names the one before nine times: 9^9 values out
-	// of a few hundred bytes.
-	var laughs strings.Builder
-	laughs.WriteString("x:\n  l0: &l0 [lol, lol, lol, lol, lol, lol, lol, lol, lol]\n")
-	for i := 1; i < 10; i++ {
-		fmt.Fprintf(&laughs, "  l%d: &l%d [*l%d, *l%d, *l%d, *l%d, *l%d, *l%d, *l%d, *l%d, *l%d]\n",
-			i, i, i-1, i-1, i-1, i-1, i-1, i-1, i-1, i-1, i-1)
-	}
-
-	docs := map[string]struct {
-		src    string
-		kind   error
-		spent  bool
-		strict bool
-	}{
-		"a repeat in a struct field":   {src: "a: {s: x, s: y}\nb: after\n", kind: yamlerrors.ErrDuplicateKey},
-		"a repeat in the root mapping": {src: "a: {s: x}\na: {s: y}\n", kind: yamlerrors.ErrDuplicateKey},
-		"a repeat in a slice element":  {src: "l: [{s: x, s: y}]\nb: after\n", kind: yamlerrors.ErrDuplicateKey},
-		"a repeat in a map value":      {src: "m: {k: {s: x, s: y}}\nb: after\n", kind: yamlerrors.ErrDuplicateKey},
-		"a repeat in an any":           {src: "x: {s: x, s: y}\nb: after\n", kind: yamlerrors.ErrDuplicateKey},
-		"an unknown field in a struct field": {
-			src: "a: {s: x, t: y}\nb: after\n", kind: yamlerrors.ErrUnknownField, strict: true,
-		},
-		"an unknown field in a slice element": {
-			src: "l: [{s: x, t: y}]\nb: after\n", kind: yamlerrors.ErrUnknownField, strict: true,
-		},
-		"an unknown field in the root mapping": {
-			src: "t: y\n", kind: yamlerrors.ErrUnknownField, strict: true,
-		},
-		"the alias budget": {src: laughs.String() + "b: after\n", kind: yamlerrors.ErrExcessiveAliasing, spent: true},
-	}
-	for name, first := range docs {
+	for first := range aDocumentErrorFailsOnlyItsOwnDocumentCases() {
 		for path, opts := range map[string][]codec.DecodeOption{"walk": nil, "tree": {tree}} {
-			t.Run(name+"/"+path, func(t *testing.T) {
+			t.Run(first.name+"/"+path, func(t *testing.T) {
 				if first.strict {
 					opts = append([]codec.DecodeOption{codec.DisallowUnknownField()}, opts...)
 				}
@@ -423,4 +408,46 @@ func TestADocumentErrorFailsOnlyItsOwnDocument(t *testing.T) {
 			})
 		}
 	}
+}
+
+// aDocumentErrorFailsOnlyItsOwnDocumentCase holds a first document that stops decoding, the error kind, and whether it
+// spends the alias budget or needs DisallowUnknownField.
+type aDocumentErrorFailsOnlyItsOwnDocumentCase struct {
+	name   string
+	src    string
+	kind   error
+	spent  bool
+	strict bool
+}
+
+func aDocumentErrorFailsOnlyItsOwnDocumentCases() iter.Seq[aDocumentErrorFailsOnlyItsOwnDocumentCase] {
+	// Each alias of the chain names the one before nine times: 9^9 values out
+	// of a few hundred bytes.
+	var laughs strings.Builder
+	laughs.WriteString("x:\n  l0: &l0 [lol, lol, lol, lol, lol, lol, lol, lol, lol]\n")
+	for i := 1; i < 10; i++ {
+		fmt.Fprintf(&laughs, "  l%d: &l%d [*l%d, *l%d, *l%d, *l%d, *l%d, *l%d, *l%d, *l%d, *l%d]\n",
+			i, i, i-1, i-1, i-1, i-1, i-1, i-1, i-1, i-1, i-1)
+	}
+
+	return slices.Values([]aDocumentErrorFailsOnlyItsOwnDocumentCase{
+		{name: "a repeat in a map value", src: "m: {k: {s: x, s: y}}\nb: after\n", kind: yamlerrors.ErrDuplicateKey},
+		{name: "a repeat in a slice element", src: "l: [{s: x, s: y}]\nb: after\n", kind: yamlerrors.ErrDuplicateKey},
+		{name: "a repeat in a struct field", src: "a: {s: x, s: y}\nb: after\n", kind: yamlerrors.ErrDuplicateKey},
+		{name: "a repeat in an any", src: "x: {s: x, s: y}\nb: after\n", kind: yamlerrors.ErrDuplicateKey},
+		{name: "a repeat in the root mapping", src: "a: {s: x}\na: {s: y}\n", kind: yamlerrors.ErrDuplicateKey},
+		{
+			name: "an unknown field in a slice element",
+			src:  "l: [{s: x, t: y}]\nb: after\n", kind: yamlerrors.ErrUnknownField, strict: true,
+		},
+		{
+			name: "an unknown field in a struct field",
+			src:  "a: {s: x, t: y}\nb: after\n", kind: yamlerrors.ErrUnknownField, strict: true,
+		},
+		{
+			name: "an unknown field in the root mapping",
+			src:  "t: y\n", kind: yamlerrors.ErrUnknownField, strict: true,
+		},
+		{name: "the alias budget", src: laughs.String() + "b: after\n", kind: yamlerrors.ErrExcessiveAliasing, spent: true},
+	})
 }

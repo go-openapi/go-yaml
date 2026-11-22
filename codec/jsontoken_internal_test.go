@@ -5,6 +5,8 @@ package codec
 
 import (
 	"encoding/json"
+	"iter"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -224,15 +226,7 @@ func TestJSONTokensAllocateNothingPerValue(t *testing.T) {
 		return tokens - walk
 	}
 
-	for _, gen := range []struct {
-		name string
-		doc  func(int) string
-	}{
-		{"flat mapping", corpus.FlatMap},
-		{"flat sequence", corpus.FlatSequence},
-		{"nested mappings", corpus.NestedDoc},
-		{"numbers, bools and nulls", scalarSequence},
-	} {
+	for gen := range jsonTokensAllocateNothingPerValueCases() {
 		t.Run(gen.name, func(t *testing.T) {
 			small := overWalk([]byte(gen.doc(10)))
 			large := overWalk([]byte(gen.doc(2000)))
@@ -244,6 +238,21 @@ func TestJSONTokensAllocateNothingPerValue(t *testing.T) {
 				"the token walk allocates %.0f more at 2000 than at 10", large-small)
 		})
 	}
+}
+
+// jsonTokensAllocateNothingPerValueCase holds a generator of documents of n values.
+type jsonTokensAllocateNothingPerValueCase struct {
+	name string
+	doc  func(int) string
+}
+
+func jsonTokensAllocateNothingPerValueCases() iter.Seq[jsonTokensAllocateNothingPerValueCase] {
+	return slices.Values([]jsonTokensAllocateNothingPerValueCase{
+		{"flat mapping", corpus.FlatMap},
+		{"flat sequence", corpus.FlatSequence},
+		{"nested mappings", corpus.NestedDoc},
+		{"numbers, bools and nulls", scalarSequence},
+	})
 }
 
 // scalarSequence is a block sequence of n entries cycling through an integer, a

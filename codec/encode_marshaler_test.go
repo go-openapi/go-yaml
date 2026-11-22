@@ -122,11 +122,24 @@ func TestEncoder_CustomMarshaler(t *testing.T) {
 }
 
 func TestEncoder_UnmarshallableTypes(t *testing.T) {
-	for _, test := range []struct {
-		desc        string
-		input       any
-		expectedErr string
-	}{
+	for test := range encoderUnmarshallableTypesCases() {
+		t.Run(test.desc, func(t *testing.T) {
+			var buf bytes.Buffer
+			err := codec.NewEncoder(&buf).Encode(test.input)
+			assert.EqualError(t, err, test.expectedErr)
+		})
+	}
+}
+
+// encoderUnmarshallableTypesCase holds a value the encoder cannot write, and the error it returns.
+type encoderUnmarshallableTypesCase struct {
+	desc        string
+	input       any
+	expectedErr string
+}
+
+func encoderUnmarshallableTypesCases() iter.Seq[encoderUnmarshallableTypesCase] {
+	return slices.Values([]encoderUnmarshallableTypesCase{
 		{
 			desc:        "channel",
 			input:       make(chan int),
@@ -183,13 +196,7 @@ func TestEncoder_UnmarshallableTypes(t *testing.T) {
 			}{},
 			expectedErr: "unknown value type unsafe.Pointer",
 		},
-	} {
-		t.Run(test.desc, func(t *testing.T) {
-			var buf bytes.Buffer
-			err := codec.NewEncoder(&buf).Encode(test.input)
-			assert.EqualError(t, err, test.expectedErr)
-		})
-	}
+	})
 }
 
 type tMarshal []string

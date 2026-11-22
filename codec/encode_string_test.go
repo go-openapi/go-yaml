@@ -266,26 +266,7 @@ func encodeMultiLineCases() iter.Seq[encodeCase] {
 
 func TestEncodeWithNestedYAML(t *testing.T) {
 	// Represents objects containing stringified YAML, and special chars
-	tests := []struct {
-		value any
-		// If true, expects a different result between when using forced literal style or not
-		expectDifferent bool
-	}{
-		{
-			value:           map[string]any{"v": "# comment\nname: hello\npassword: hello123\nspecial: \":ghost:\"\ntext: |\n  nested multiline!"},
-			expectDifferent: true,
-		},
-		{
-			value:           map[string]any{"v": "# comment\nusername: hello\npassword: hello123"},
-			expectDifferent: true,
-		},
-		{
-			value:           map[string]any{"v": "# comment\n"},
-			expectDifferent: true,
-		},
-	}
-
-	for _, test := range tests {
+	for test := range encodeWithNestedYAMLCases() {
 		yamlBytesForced, err := codec.Marshal(test.value, codec.UseLiteralStyleIfMultiline(true))
 		require.NoError(t, err)
 
@@ -306,6 +287,30 @@ func TestEncodeWithNestedYAML(t *testing.T) {
 	}
 }
 
+// encodeWithNestedYAMLCase holds a value holding stringified YAML, and whether forcing literal style changes its encoding.
+type encodeWithNestedYAMLCase struct {
+	value any
+	// If true, expects a different result between when using forced literal style or not
+	expectDifferent bool
+}
+
+func encodeWithNestedYAMLCases() iter.Seq[encodeWithNestedYAMLCase] {
+	return slices.Values([]encodeWithNestedYAMLCase{
+		{
+			value:           map[string]any{"v": "# comment\nname: hello\npassword: hello123\nspecial: \":ghost:\"\ntext: |\n  nested multiline!"},
+			expectDifferent: true,
+		},
+		{
+			value:           map[string]any{"v": "# comment\nusername: hello\npassword: hello123"},
+			expectDifferent: true,
+		},
+		{
+			value:           map[string]any{"v": "# comment\n"},
+			expectDifferent: true,
+		},
+	})
+}
+
 // TestIssue356 covers a block scalar inside a sequence, whose content used to
 // come back mangled.
 //
@@ -315,43 +320,8 @@ func TestEncodeWithNestedYAML(t *testing.T) {
 // every line of it, including the blank one, at the relative indentation that
 // makes it one value rather than a nested mapping.
 func TestIssue356(t *testing.T) {
-	const scalar = `
-
-  key:
-    nest1: something
-    nest2:
-      nest2a: b`
-
-	tests := map[string]struct {
-		in   string
-		want string
-	}{
-		"content on first line": {
-			in: `args:
-  - |
-
-    key:
-      nest1: something
-      nest2:
-        nest2a: b
-`,
-			want: "args:\n- |" + scalar + "\n",
-		},
-		"empty first line": {
-			in: `args:
-  - |
-
-    key:
-      nest1: something
-      nest2:
-        nest2a: b
-`,
-			want: "args:\n- |" + scalar + "\n",
-		},
-	}
-
-	for name, test := range tests {
-		t.Run(name, func(t *testing.T) {
+	for test := range issue356Cases() {
+		t.Run(test.name, func(t *testing.T) {
 			f, err := parser.ParseBytes([]byte(test.in))
 			require.NoError(t, err)
 			got := f.String()
@@ -365,13 +335,70 @@ func TestIssue356(t *testing.T) {
 	}
 }
 
+// issue356Case holds a document with a block scalar in a sequence, and the text it renders to.
+type issue356Case struct {
+	name string
+	in   string
+	want string
+}
+
+func issue356Cases() iter.Seq[issue356Case] {
+	const scalar = `
+
+  key:
+    nest1: something
+    nest2:
+      nest2a: b`
+
+	return slices.Values([]issue356Case{
+		{
+			name: "content on first line",
+			in: `args:
+  - |
+
+    key:
+      nest1: something
+      nest2:
+        nest2a: b
+`,
+			want: "args:\n- |" + scalar + "\n",
+		},
+		{
+			name: "empty first line",
+			in: `args:
+  - |
+
+    key:
+      nest1: something
+      nest2:
+        nest2a: b
+`,
+			want: "args:\n- |" + scalar + "\n",
+		},
+	})
+}
+
 func TestMarshalIndentWithMultipleText(t *testing.T) {
-	tests := []struct {
-		name   string
-		input  map[string]any
-		indent codec.EncodeOption
-		want   string
-	}{
+	for tt := range marshalIndentWithMultipleTextCases() {
+		t.Run(tt.name, func(t *testing.T) {
+			b, err := codec.Marshal(tt.input, tt.indent)
+			require.NoError(t, err)
+			got := string(b)
+			require.Equal(t, tt.want, got)
+		})
+	}
+}
+
+// marshalIndentWithMultipleTextCase holds a value, an indent option, and the YAML it encodes to.
+type marshalIndentWithMultipleTextCase struct {
+	name   string
+	input  map[string]any
+	indent codec.EncodeOption
+	want   string
+}
+
+func marshalIndentWithMultipleTextCases() iter.Seq[marshalIndentWithMultipleTextCase] {
+	return slices.Values([]marshalIndentWithMultipleTextCase{
 		{
 			name: "depth1",
 			input: map[string]any{
@@ -443,16 +470,7 @@ line3`},
      c: 2
 `,
 		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			b, err := codec.Marshal(tt.input, tt.indent)
-			require.NoError(t, err)
-			got := string(b)
-			require.Equal(t, tt.want, got)
-		})
-	}
+	})
 }
 
 // TestMarshalStringHoldingCarriageReturn checks that a string holding a
@@ -463,22 +481,7 @@ line3`},
 // spelling -- only a double-quoted scalar, where "\r" is an escape, carries
 // one. Marshal wrote a literal block for these and dropped every CR.
 func TestMarshalStringHoldingCarriageReturn(t *testing.T) {
-	tests := []struct {
-		name string
-		in   string
-		want string
-	}{
-		{name: "CRLF throughout", in: "a\r\nb\r\n", want: "\"a\\r\\nb\\r\\n\"\n"},
-		{name: "a lone CR", in: "a\rb", want: "\"a\\rb\"\n"},
-		{name: "one CRLF at the end", in: "x\r\n", want: "\"x\\r\\n\"\n"},
-		{name: "a CR and nothing else", in: "\r", want: "\"\\r\"\n"},
-		{name: "CR and LF mixed", in: "a\r\nb\nc", want: "\"a\\r\\nb\\nc\"\n"},
-
-		// A value holding only line feeds keeps the block scalar it always had.
-		{name: "LF throughout", in: "a\nb\n", want: "|\n  a\n  b\n"},
-	}
-
-	for _, test := range tests {
+	for test := range marshalStringHoldingCarriageReturnCases() {
 		t.Run(test.name, func(t *testing.T) {
 			out, err := codec.Marshal(test.in)
 			require.NoError(t, err)
@@ -489,6 +492,26 @@ func TestMarshalStringHoldingCarriageReturn(t *testing.T) {
 			require.Equal(t, test.in, back)
 		})
 	}
+}
+
+// marshalStringHoldingCarriageReturnCase holds a string and the YAML it encodes to.
+type marshalStringHoldingCarriageReturnCase struct {
+	name string
+	in   string
+	want string
+}
+
+func marshalStringHoldingCarriageReturnCases() iter.Seq[marshalStringHoldingCarriageReturnCase] {
+	return slices.Values([]marshalStringHoldingCarriageReturnCase{
+		{name: "CRLF throughout", in: "a\r\nb\r\n", want: "\"a\\r\\nb\\r\\n\"\n"},
+		{name: "a lone CR", in: "a\rb", want: "\"a\\rb\"\n"},
+		{name: "one CRLF at the end", in: "x\r\n", want: "\"x\\r\\n\"\n"},
+		{name: "a CR and nothing else", in: "\r", want: "\"\\r\"\n"},
+		{name: "CR and LF mixed", in: "a\r\nb\nc", want: "\"a\\r\\nb\\nc\"\n"},
+
+		// A value holding only line feeds keeps the block scalar it always had.
+		{name: "LF throughout", in: "a\nb\n", want: "|\n  a\n  b\n"},
+	})
 }
 
 // TestMarshalCarriageReturnUnderLiteralStyle checks the same for the option
@@ -611,13 +634,7 @@ func TestAStringSpellingAnInfinityIsQuoted(t *testing.T) {
 	})
 
 	t.Run("the float still writes the bare spelling", func(t *testing.T) {
-		for _, tc := range []struct {
-			value float64
-			wants string
-		}{
-			{math.Inf(1), "a: .inf\n"},
-			{math.Inf(-1), "a: -.inf\n"},
-		} {
+		for tc := range aStringSpellingAnInfinityIsQuotedFloatCases() {
 			out, err := codec.Marshal(map[string]float64{"a": tc.value})
 			require.NoError(t, err)
 			assert.Equal(t, tc.wants, string(out))
@@ -630,6 +647,19 @@ func TestAStringSpellingAnInfinityIsQuoted(t *testing.T) {
 		out, err := codec.Marshal(map[string]float64{"a": math.NaN()})
 		require.NoError(t, err)
 		assert.Equal(t, "a: .nan\n", string(out))
+	})
+}
+
+// aStringSpellingAnInfinityIsQuotedFloatCase holds a float and the YAML it encodes to.
+type aStringSpellingAnInfinityIsQuotedFloatCase struct {
+	value float64
+	wants string
+}
+
+func aStringSpellingAnInfinityIsQuotedFloatCases() iter.Seq[aStringSpellingAnInfinityIsQuotedFloatCase] {
+	return slices.Values([]aStringSpellingAnInfinityIsQuotedFloatCase{
+		{math.Inf(1), "a: .inf\n"},
+		{math.Inf(-1), "a: -.inf\n"},
 	})
 }
 

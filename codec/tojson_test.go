@@ -8,9 +8,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"iter"
 	"math"
 	"math/big"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -569,16 +571,7 @@ func jsonSources(t *testing.T) []jsonSource {
 		srcs = append(srcs, jsonSource{name: "suite/" + s.Name, text: string(s.InYAML)})
 	}
 
-	for _, c := range []struct {
-		name string
-		gen  func(int) string
-	}{
-		{"flat-map", corpus.FlatMap},
-		{"flat-sequence", corpus.FlatSequence},
-		{"nested-doc", corpus.NestedDoc},
-		{"anchored", corpus.Anchored},
-		{"block-scalars", corpus.BlockScalars},
-	} {
+	for c := range jsonSourceGeneratorCases() {
 		for _, n := range []int{1, 10, 200} {
 			srcs = append(srcs, jsonSource{
 				name: fmt.Sprintf("corpus/%s-%d", c.name, n),
@@ -594,6 +587,22 @@ func jsonSources(t *testing.T) []jsonSource {
 	}
 
 	return srcs
+}
+
+// jsonSourceGeneratorCase holds a corpus generator and the name its documents go by.
+type jsonSourceGeneratorCase struct {
+	name string
+	gen  func(int) string
+}
+
+func jsonSourceGeneratorCases() iter.Seq[jsonSourceGeneratorCase] {
+	return slices.Values([]jsonSourceGeneratorCase{
+		{"flat-map", corpus.FlatMap},
+		{"flat-sequence", corpus.FlatSequence},
+		{"nested-doc", corpus.NestedDoc},
+		{"anchored", corpus.Anchored},
+		{"block-scalars", corpus.BlockScalars},
+	})
 }
 
 // firstLine keeps a log line to the parser's own words, since an error here
@@ -670,7 +679,22 @@ func directiveNamedLikeAnAnchorInText(src string) bool {
 // and converts back to YAML should still hold one, since a bare "1" reads as an
 // integer.
 func TestToJSONSpelling(t *testing.T) {
-	for _, tc := range []struct{ src, want string }{
+	for tc := range toJSONSpellingCases() {
+		t.Run(tc.src, func(t *testing.T) {
+			got, err := codec.ToJSON([]byte(tc.src))
+			require.NoError(t, err)
+			assert.Equal(t, tc.want, string(got))
+		})
+	}
+}
+
+// toJSONSpellingCase holds a document and the JSON text it converts to.
+type toJSONSpellingCase struct {
+	src, want string
+}
+
+func toJSONSpellingCases() iter.Seq[toJSONSpellingCase] {
+	return slices.Values([]toJSONSpellingCase{
 		{"a: 1.0\n", `{"a":1.0}`},
 		{"a: 1e3\n", `{"a":1e3}`},
 		{"a: 1.230\n", `{"a":1.230}`},
@@ -716,13 +740,7 @@ func TestToJSONSpelling(t *testing.T) {
 		{"a: \"07\"\n", `{"a":"07"}`},
 		{"a: yes\n", `{"a":"yes"}`},
 		{"a: |\n  x\n", `{"a":"x\n"}`},
-	} {
-		t.Run(tc.src, func(t *testing.T) {
-			got, err := codec.ToJSON([]byte(tc.src))
-			require.NoError(t, err)
-			assert.Equal(t, tc.want, string(got))
-		})
-	}
+	})
 }
 
 // TestToJSONRefusesWhatJSONCannotSpell records the documents ToJSON stops on
@@ -785,7 +803,22 @@ func TestToJSONRefusesWhatJSONCannotSpell(t *testing.T) {
 // {"b":2} where the decoder reads null. Which document a node belongs to is
 // parser.Step.Document's to say, and the writer reads it.
 func TestToJSONConvertsTheFirstDocument(t *testing.T) {
-	for _, tc := range []struct{ name, src, writes string }{
+	for tc := range toJSONConvertsTheFirstDocumentCases() {
+		t.Run(tc.name, func(t *testing.T) {
+			out, err := codec.ToJSON([]byte(tc.src))
+			require.NoErrorf(t, err, "%q", tc.src)
+			assert.Equal(t, tc.writes, string(out), "%q", tc.src)
+		})
+	}
+}
+
+// toJSONConvertsTheFirstDocumentCase holds a stream and the JSON its first document converts to.
+type toJSONConvertsTheFirstDocumentCase struct {
+	name, src, writes string
+}
+
+func toJSONConvertsTheFirstDocumentCases() iter.Seq[toJSONConvertsTheFirstDocumentCase] {
+	return slices.Values([]toJSONConvertsTheFirstDocumentCase{
 		{
 			name:   "an empty first document is a null, not a skip",
 			src:    "---\n---\nb: 2\n",
@@ -872,29 +905,14 @@ func TestToJSONConvertsTheFirstDocument(t *testing.T) {
 			src:    "%YAML 1.1\n---\na: yes\n---\nb: yes\n",
 			writes: `{"a":true}`,
 		},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			out, err := codec.ToJSON([]byte(tc.src))
-			require.NoErrorf(t, err, "%q", tc.src)
-			assert.Equal(t, tc.writes, string(out), "%q", tc.src)
-		})
-	}
+	})
 }
 
 // TestToJSONReadsThePastTheFirstDocument is the other half of the contract: the
 // rest of the stream is converted and thrown away, so a document JSON has no
 // spelling for is refused wherever it stands rather than half-answered.
 func TestToJSONReadsThePastTheFirstDocument(t *testing.T) {
-	for _, tc := range []struct{ src, says string }{
-		{src: "a: 1\n---\nb: .inf\n", says: "JSON has no number for .inf"},
-		{src: "a: 1\n---\nb: *nope\n", says: `could not find alias "nope"`},
-		{src: "a: 1\n---\n&x [ *x ]\n", says: "a cycle cannot be written as JSON"},
-
-		// And it still reads past a first document that wrote nothing, which is
-		// the case the skip used to hide.
-		{src: "---\n---\nb: .inf\n", says: "JSON has no number for .inf"},
-		{src: "---\n---\n[a]: 1\n", says: "a sequence cannot be a JSON key"},
-	} {
+	for tc := range toJSONReadsThePastTheFirstDocumentCases() {
 		t.Run(tc.says, func(t *testing.T) {
 			_, err := codec.ToJSON([]byte(tc.src))
 			require.Errorf(t, err, "%q", tc.src)
@@ -909,6 +927,24 @@ func TestToJSONReadsThePastTheFirstDocument(t *testing.T) {
 	})
 }
 
+// toJSONReadsThePastTheFirstDocumentCase holds a stream with a later document JSON cannot hold, and the error it gives.
+type toJSONReadsThePastTheFirstDocumentCase struct {
+	src, says string
+}
+
+func toJSONReadsThePastTheFirstDocumentCases() iter.Seq[toJSONReadsThePastTheFirstDocumentCase] {
+	return slices.Values([]toJSONReadsThePastTheFirstDocumentCase{
+		{src: "a: 1\n---\nb: .inf\n", says: "JSON has no number for .inf"},
+		{src: "a: 1\n---\nb: *nope\n", says: `could not find alias "nope"`},
+		{src: "a: 1\n---\n&x [ *x ]\n", says: "a cycle cannot be written as JSON"},
+
+		// And it still reads past a first document that wrote nothing, which is
+		// the case the skip used to hide.
+		{src: "---\n---\nb: .inf\n", says: "JSON has no number for .inf"},
+		{src: "---\n---\n[a]: 1\n", says: "a sequence cannot be a JSON key"},
+	})
+}
+
 // TestToJSONReadsTheTagsItKnows records what each tag of the YAML type
 // repository converts to, and that a tag it does not know is transparent.
 //
@@ -917,7 +953,23 @@ func TestToJSONReadsThePastTheFirstDocument(t *testing.T) {
 // for an ast.MergeKeyNode and the key arrived wrapped in a tag, so the "<<"
 // was written as a key with no value and the JSON did not parse.
 func TestToJSONReadsTheTagsItKnows(t *testing.T) {
-	for _, tc := range []struct{ name, src, want string }{
+	for tc := range toJSONReadsTheTagsItKnowsCases() {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := codec.ToJSON([]byte(tc.src))
+			require.NoError(t, err)
+			require.Truef(t, json.Valid(got), "wrote %s, which is not JSON", got)
+			assert.Equal(t, tc.want, string(got))
+		})
+	}
+}
+
+// toJSONReadsTheTagsItKnowsCase holds a tagged document and the JSON it converts to.
+type toJSONReadsTheTagsItKnowsCase struct {
+	name, src, want string
+}
+
+func toJSONReadsTheTagsItKnowsCases() iter.Seq[toJSONReadsTheTagsItKnowsCase] {
+	return slices.Values([]toJSONReadsTheTagsItKnowsCase{
 		{"str", "a: !!str 12\n", `{"a":"12"}`},
 		{"int", `a: !!int "12"` + "\n", `{"a":12}`},
 		{"float", "a: !!float 12\n", `{"a":12.0}`},
@@ -964,14 +1016,7 @@ func TestToJSONReadsTheTagsItKnows(t *testing.T) {
 		// The merge tag written out reads as the "<<" it stands on.
 		{"merge", "b: &b {x: 1}\na:\n  !!merge <<: *b\n", `{"b":{"x":1},"a":{"x":1}}`},
 		{"merge overridden", "b: &b {x: 1}\na:\n  !!merge <<: *b\n  x: 9\n", `{"b":{"x":1},"a":{"x":9}}`},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			got, err := codec.ToJSON([]byte(tc.src))
-			require.NoError(t, err)
-			require.Truef(t, json.Valid(got), "wrote %s, which is not JSON", got)
-			assert.Equal(t, tc.want, string(got))
-		})
-	}
+	})
 }
 
 // TestAFloatPastTheExponentBoundIsAnInfinityOrZero covers a float whose
@@ -1112,15 +1157,24 @@ func TestFixedBothConvertersTakeTheFirstDocument(t *testing.T) {
 	})
 
 	t.Run("a first document with content is taken by both", func(t *testing.T) {
-		for _, tc := range []struct{ src, writes string }{
-			{src: "a: 1\n---\nb: 2\n", writes: `{"a":1}`},
-			{src: "a: 1\n...\n---\nb: 2\n", writes: `{"a":1}`},
-			{src: "1\n---\n2\n---\n3\n", writes: "1"},
-		} {
+		for tc := range fixedBothConvertersTakeTheFirstDocumentCases() {
 			out, err := codec.ToJSON([]byte(tc.src))
 			require.NoErrorf(t, err, "%q", tc.src)
 			assert.Equalf(t, tc.writes, string(out), "%q", tc.src)
 		}
+	})
+}
+
+// fixedBothConvertersTakeTheFirstDocumentCase holds a stream whose first document has content, and the JSON it converts to.
+type fixedBothConvertersTakeTheFirstDocumentCase struct {
+	src, writes string
+}
+
+func fixedBothConvertersTakeTheFirstDocumentCases() iter.Seq[fixedBothConvertersTakeTheFirstDocumentCase] {
+	return slices.Values([]fixedBothConvertersTakeTheFirstDocumentCase{
+		{src: "a: 1\n---\nb: 2\n", writes: `{"a":1}`},
+		{src: "a: 1\n...\n---\nb: 2\n", writes: `{"a":1}`},
+		{src: "1\n---\n2\n---\n3\n", writes: "1"},
 	})
 }
 
@@ -1151,10 +1205,38 @@ func throughValues(t *testing.T, src string) string {
 // float64(1) and int(1) alike, so "1: a" beside "1.0: b" came out of ToJSON as
 // {"1":"a","1":"b"} -- one name twice, which reads back with one of them gone.
 func TestAKeyIsNamedByItsType(t *testing.T) {
-	for _, tc := range []struct {
-		src  string
-		want map[string]any
-	}{
+	for tc := range aKeyIsNamedByItsTypeCases() {
+		t.Run(tc.src, func(t *testing.T) {
+			var decoded map[string]any
+			require.NoError(t, codec.Unmarshal([]byte(tc.src), &decoded))
+			assert.Equal(t, tc.want, decoded, "the decoder")
+
+			var stringKeyed map[string]any
+			require.NoError(t, codec.Unmarshal([]byte(tc.src), &stringKeyed, codec.UseStringKeys()))
+			assert.Equal(t, tc.want, stringKeyed, "UseStringKeys")
+
+			converted, err := codec.ToJSON([]byte(tc.src))
+			require.NoError(t, err)
+
+			var fromJSON map[string]any
+			require.NoError(t, json.Unmarshal(converted, &fromJSON))
+			assert.Equal(t, tc.want, fromJSON, "ToJSON wrote %s", converted)
+
+			// What it wrote holds as many names as the document wrote keys.
+			// JSON with one name twice reads back with one of them gone.
+			assert.Len(t, fromJSON, len(tc.want), "ToJSON wrote %s", converted)
+		})
+	}
+}
+
+// aKeyIsNamedByItsTypeCase holds a document and the string-keyed map every path reads it as.
+type aKeyIsNamedByItsTypeCase struct {
+	src  string
+	want map[string]any
+}
+
+func aKeyIsNamedByItsTypeCases() iter.Seq[aKeyIsNamedByItsTypeCase] {
+	return slices.Values([]aKeyIsNamedByItsTypeCase{
 		// The two keys that started this.
 		{src: "1: a\n1.0: b\n", want: map[string]any{"1": "a", "1.0": "b"}},
 
@@ -1189,28 +1271,7 @@ func TestAKeyIsNamedByItsType(t *testing.T) {
 
 		// A key written empty is a null, and a quoted empty key is not.
 		{src: "\"\": a\nnull: b\n", want: map[string]any{"": "a", "null": "b"}},
-	} {
-		t.Run(tc.src, func(t *testing.T) {
-			var decoded map[string]any
-			require.NoError(t, codec.Unmarshal([]byte(tc.src), &decoded))
-			assert.Equal(t, tc.want, decoded, "the decoder")
-
-			var stringKeyed map[string]any
-			require.NoError(t, codec.Unmarshal([]byte(tc.src), &stringKeyed, codec.UseStringKeys()))
-			assert.Equal(t, tc.want, stringKeyed, "UseStringKeys")
-
-			converted, err := codec.ToJSON([]byte(tc.src))
-			require.NoError(t, err)
-
-			var fromJSON map[string]any
-			require.NoError(t, json.Unmarshal(converted, &fromJSON))
-			assert.Equal(t, tc.want, fromJSON, "ToJSON wrote %s", converted)
-
-			// What it wrote holds as many names as the document wrote keys.
-			// JSON with one name twice reads back with one of them gone.
-			assert.Len(t, fromJSON, len(tc.want), "ToJSON wrote %s", converted)
-		})
-	}
+	})
 }
 
 // TestAnInfinityKeyTakesYAMLsSpelling covers the floats that are not finite.
@@ -1313,28 +1374,8 @@ func TestAnInfinityKeyTakesYAMLsSpelling(t *testing.T) {
 
 // TestFixedATypedKeyKeepsItsOwnNamespace pins all five.
 func TestFixedATypedKeyKeepsItsOwnNamespace(t *testing.T) {
-	for name, tc := range map[string]struct {
-		src string
-		// merged is the one name the two keys land on wherever a destination
-		// names a key by the canonical spelling of its type.
-		merged string
-		// resolved is what the plain key resolves to, which a MapSlice keeps
-		// and a Go map cannot.
-		resolved any
-	}{
-		"an integer and a string": {src: "1: x\n\"1\": y\n", merged: "1", resolved: uint64(1)},
-		"a boolean and a string":  {src: "true: x\n\"true\": y\n", merged: "true", resolved: true},
-		"a null and a string":     {src: "~: x\n\"null\": y\n", merged: "null", resolved: nil},
-		"a float and a string":    {src: "1.0: x\n\"1.0\": y\n", merged: "1.0", resolved: float64(1)},
-		// The one that shows what the rule is. "0x1f" and "31" share not one
-		// character, and the walk merges them: a key is named by the canonical
-		// spelling of what it resolved to, and 0x1f resolves to the integer 31.
-		"a hexadecimal integer and the decimal string": {src: "0x1f: x\n\"31\": y\n", merged: "31", resolved: uint64(31)},
-		// The empty key reaches it too, since it resolves to null and null's
-		// canonical spelling is "null".
-		"an empty key and the string \"null\"": {src: ": x\n\"null\": y\n", merged: "null", resolved: nil},
-	} {
-		t.Run(name, func(t *testing.T) {
+	for tc := range fixedATypedKeyKeepsItsOwnNamespaceCases() {
+		t.Run(tc.name, func(t *testing.T) {
 			t.Run("a map[any]any keeps both, and is the only one that does", func(t *testing.T) {
 				var got map[any]any
 				require.NoError(t, codec.Unmarshal([]byte(tc.src), &got))
@@ -1374,6 +1415,34 @@ func TestFixedATypedKeyKeepsItsOwnNamespace(t *testing.T) {
 	}
 }
 
+// fixedATypedKeyKeepsItsOwnNamespaceCase holds two keys that name themselves alike, the name, and what the plain key resolves to.
+type fixedATypedKeyKeepsItsOwnNamespaceCase struct {
+	name string
+	src  string
+	// merged is the one name the two keys land on wherever a destination
+	// names a key by the canonical spelling of its type.
+	merged string
+	// resolved is what the plain key resolves to, which a MapSlice keeps
+	// and a Go map cannot.
+	resolved any
+}
+
+func fixedATypedKeyKeepsItsOwnNamespaceCases() iter.Seq[fixedATypedKeyKeepsItsOwnNamespaceCase] {
+	return slices.Values([]fixedATypedKeyKeepsItsOwnNamespaceCase{
+		{name: "a boolean and a string", src: "true: x\n\"true\": y\n", merged: "true", resolved: true},
+		{name: "a float and a string", src: "1.0: x\n\"1.0\": y\n", merged: "1.0", resolved: float64(1)},
+		// The one that shows what the rule is. "0x1f" and "31" share not one
+		// character, and the walk merges them: a key is named by the canonical
+		// spelling of what it resolved to, and 0x1f resolves to the integer 31.
+		{name: "a hexadecimal integer and the decimal string", src: "0x1f: x\n\"31\": y\n", merged: "31", resolved: uint64(31)},
+		{name: "a null and a string", src: "~: x\n\"null\": y\n", merged: "null", resolved: nil},
+		// The empty key reaches it too, since it resolves to null and null's
+		// canonical spelling is "null".
+		{name: "an empty key and the string \"null\"", src: ": x\n\"null\": y\n", merged: "null", resolved: nil},
+		{name: "an integer and a string", src: "1: x\n\"1\": y\n", merged: "1", resolved: uint64(1)},
+	})
+}
+
 // TestFixedAnAnchoredFloatKeyIsNamedByYAMLOnBothPaths: an anchor no longer
 // changes the name a float key gets.
 //
@@ -1397,14 +1466,7 @@ func TestFixedATypedKeyKeepsItsOwnNamespace(t *testing.T) {
 // happened to them, and the difference-keyed differOnlyByAFloatKeySpelling.
 func TestFixedAnAnchoredFloatKeyIsNamedByYAMLOnBothPaths(t *testing.T) {
 	t.Run("an anchor leaves the name alone", func(t *testing.T) {
-		for _, tc := range []struct {
-			src, name string
-			resolved  float64
-		}{
-			{"&a .inf: c\n", ".inf", math.Inf(1)},
-			{"&a 1e3: c\n", "1000.0", 1000},
-			{"&a 1.0: c\n", "1.0", 1},
-		} {
+		for tc := range anchoredFloatKeyLeftAloneCases() {
 			// A string-keyed destination names the key, and the name is the
 			// one being pinned here: the anchor does not change it.
 			var typed map[string]any
@@ -1445,13 +1507,7 @@ func TestFixedAnAnchoredFloatKeyIsNamedByYAMLOnBothPaths(t *testing.T) {
 	// naming a tagged key wants the tag resolved rather than stripped.
 
 	t.Run("a string-keyed destination names every one of them the same way", func(t *testing.T) {
-		for _, tc := range []struct{ src, name string }{
-			{".inf: c\n", ".inf"},
-			{".nan: c\n", ".nan"},
-			{"&a 1: c\n", "1"},
-			{"&a true: c\n", "true"},
-			{"&a x: c\n", "x"},
-		} {
+		for tc := range anchoredFloatKeyStringKeyedCases() {
 			var typed map[string]any
 			require.NoErrorf(t, codec.Unmarshal([]byte(tc.src), &typed), "%q", tc.src)
 			assert.Equalf(t, map[string]any{tc.name: "c"}, typed, "%q", tc.src)
@@ -1462,6 +1518,35 @@ func TestFixedAnAnchoredFloatKeyIsNamedByYAMLOnBothPaths(t *testing.T) {
 		var walked any
 		require.NoError(t, codec.Unmarshal([]byte("&a x: c\n"), &walked))
 		assert.Equal(t, map[string]any{"x": "c"}, walked)
+	})
+}
+
+// anchoredFloatKeyLeftAloneCase holds an anchored float key, its name, and the float it resolves to.
+type anchoredFloatKeyLeftAloneCase struct {
+	src, name string
+	resolved  float64
+}
+
+func anchoredFloatKeyLeftAloneCases() iter.Seq[anchoredFloatKeyLeftAloneCase] {
+	return slices.Values([]anchoredFloatKeyLeftAloneCase{
+		{"&a .inf: c\n", ".inf", math.Inf(1)},
+		{"&a 1e3: c\n", "1000.0", 1000},
+		{"&a 1.0: c\n", "1.0", 1},
+	})
+}
+
+// anchoredFloatKeyStringKeyedCase holds a document and the name a string-keyed map gives its key.
+type anchoredFloatKeyStringKeyedCase struct {
+	src, name string
+}
+
+func anchoredFloatKeyStringKeyedCases() iter.Seq[anchoredFloatKeyStringKeyedCase] {
+	return slices.Values([]anchoredFloatKeyStringKeyedCase{
+		{".inf: c\n", ".inf"},
+		{".nan: c\n", ".nan"},
+		{"&a 1: c\n", "1"},
+		{"&a true: c\n", "true"},
+		{"&a x: c\n", "x"},
 	})
 }
 
@@ -1512,14 +1597,7 @@ func TestToJSONNamesAFloatKeyTheSameBothWays(t *testing.T) {
 		// moved. The long digits are the case the value path exists for: read
 		// into a float64 and written back they would lose their tail, and a key
 		// keeps them because token.KeyName does.
-		for _, tc := range []struct{ src, folds string }{
-			{src: "1.5: x\n", folds: `{"1.5":"x"}`},
-			{src: "? 1.5\n: x\n", folds: `{"1.5":"x"}`},
-			{
-				src:   "? 0.000000000000000000000000000000000022811873366677198\n: x\n",
-				folds: `{"2.2811873366677198e-35":"x"}`,
-			},
-		} {
+		for tc := range toJSONNamesAFloatKeyUnchangedCases() {
 			out, err := codec.ToJSON([]byte(tc.src))
 			require.NoErrorf(t, err, "%q", tc.src)
 			assert.Equal(t, tc.folds, string(out), "%q", tc.src)
@@ -1535,18 +1613,43 @@ func TestToJSONNamesAFloatKeyTheSameBothWays(t *testing.T) {
 	})
 
 	t.Run("and every other scalar kind is named the same both ways", func(t *testing.T) {
-		for _, tc := range []struct{ long, short, folds string }{
-			{long: "? 007\n: x\n", short: "007: x\n", folds: `{"7":"x"}`},
-			{long: "? 0x1f\n: x\n", short: "0x1f: x\n", folds: `{"31":"x"}`},
-			{long: "? ~\n: x\n", short: "~: x\n", folds: `{"null":"x"}`},
-			{long: "? true\n: x\n", short: "true: x\n", folds: `{"true":"x"}`},
-		} {
+		for tc := range toJSONNamesEveryScalarKindCases() {
 			for _, src := range []string{tc.long, tc.short} {
 				out, err := codec.ToJSON([]byte(src))
 				require.NoErrorf(t, err, "%q", src)
 				assert.Equalf(t, tc.folds, string(out), "%q", src)
 			}
 		}
+	})
+}
+
+// toJSONNamesAFloatKeyUnchangedCase holds a float key JSON spells the same way, and the JSON it converts to.
+type toJSONNamesAFloatKeyUnchangedCase struct {
+	src, folds string
+}
+
+func toJSONNamesAFloatKeyUnchangedCases() iter.Seq[toJSONNamesAFloatKeyUnchangedCase] {
+	return slices.Values([]toJSONNamesAFloatKeyUnchangedCase{
+		{src: "1.5: x\n", folds: `{"1.5":"x"}`},
+		{src: "? 1.5\n: x\n", folds: `{"1.5":"x"}`},
+		{
+			src:   "? 0.000000000000000000000000000000000022811873366677198\n: x\n",
+			folds: `{"2.2811873366677198e-35":"x"}`,
+		},
+	})
+}
+
+// toJSONNamesEveryScalarKindCase holds a key written under a "?" and bare, and the JSON both convert to.
+type toJSONNamesEveryScalarKindCase struct {
+	long, short, folds string
+}
+
+func toJSONNamesEveryScalarKindCases() iter.Seq[toJSONNamesEveryScalarKindCase] {
+	return slices.Values([]toJSONNamesEveryScalarKindCase{
+		{long: "? 007\n: x\n", short: "007: x\n", folds: `{"7":"x"}`},
+		{long: "? 0x1f\n: x\n", short: "0x1f: x\n", folds: `{"31":"x"}`},
+		{long: "? ~\n: x\n", short: "~: x\n", folds: `{"null":"x"}`},
+		{long: "? true\n: x\n", short: "true: x\n", folds: `{"true":"x"}`},
 	})
 }
 
@@ -1578,12 +1681,7 @@ func TestToJSONNamesAFloatKeyTheSameBothWays(t *testing.T) {
 // answer.
 func TestToJSONWritesATimestampAsTheInstantItNames(t *testing.T) {
 	t.Run("every spelling converts to the instant", func(t *testing.T) {
-		for _, tc := range []struct{ src, writes string }{
-			{src: "a: !!timestamp 2001-12-14\n", writes: `{"a":"2001-12-14T00:00:00Z"}`},
-			{src: "a: !!timestamp 2001-12-14t21:59:43.1Z\n", writes: `{"a":"2001-12-14T21:59:43.1Z"}`},
-			{src: "a: !!timestamp 2001-12-14T21:59:43.1Z\n", writes: `{"a":"2001-12-14T21:59:43.1Z"}`},
-			{src: "a: !!timestamp 2001-12-14 21:59:43.1\n", writes: `{"a":"2001-12-14T21:59:43.1Z"}`},
-		} {
+		for tc := range toJSONTimestampSpellingCases() {
 			out, err := codec.ToJSON([]byte(tc.src))
 			require.NoErrorf(t, err, "%q", tc.src)
 			assert.Equal(t, tc.writes, string(out), "%q", tc.src)
@@ -1638,18 +1736,7 @@ func TestToJSONWritesATimestampAsTheInstantItNames(t *testing.T) {
 		// codec.Base64 holding that same text -- so the key is the same string
 		// whichever path wrote it. It did not agree while the decoder resolved
 		// the tag to []byte and ToJSON wrote the bytes as a JSON array.
-		for _, tc := range []struct{ src, folds, values string }{
-			{
-				src:    "!!timestamp 2001-12-14: x\n",
-				folds:  `{"2001-12-14T00:00:00Z":"x"}`,
-				values: `{"2001-12-14T00:00:00Z": "x"}`,
-			},
-			{
-				src:    "!!binary aGVsbG8=: x\n",
-				folds:  `{"aGVsbG8=":"x"}`,
-				values: `{"aGVsbG8=": "x"}`,
-			},
-		} {
+		for tc := range toJSONTimestampKeyCases() {
 			out, err := codec.ToJSON([]byte(tc.src))
 			require.NoErrorf(t, err, "%q", tc.src)
 			assert.Equal(t, tc.folds, string(out), "%q", tc.src)
@@ -1660,5 +1747,39 @@ func TestToJSONWritesATimestampAsTheInstantItNames(t *testing.T) {
 			require.NoErrorf(t, err, "%q", tc.src)
 			assert.Equal(t, tc.values+"\n", string(through), "%q", tc.src)
 		}
+	})
+}
+
+// toJSONTimestampSpellingCase holds a spelling of a timestamp and the JSON it converts to.
+type toJSONTimestampSpellingCase struct {
+	src, writes string
+}
+
+func toJSONTimestampSpellingCases() iter.Seq[toJSONTimestampSpellingCase] {
+	return slices.Values([]toJSONTimestampSpellingCase{
+		{src: "a: !!timestamp 2001-12-14\n", writes: `{"a":"2001-12-14T00:00:00Z"}`},
+		{src: "a: !!timestamp 2001-12-14t21:59:43.1Z\n", writes: `{"a":"2001-12-14T21:59:43.1Z"}`},
+		{src: "a: !!timestamp 2001-12-14T21:59:43.1Z\n", writes: `{"a":"2001-12-14T21:59:43.1Z"}`},
+		{src: "a: !!timestamp 2001-12-14 21:59:43.1\n", writes: `{"a":"2001-12-14T21:59:43.1Z"}`},
+	})
+}
+
+// toJSONTimestampKeyCase holds a tagged key, the JSON ToJSON writes, and the JSON the value converter writes.
+type toJSONTimestampKeyCase struct {
+	src, folds, values string
+}
+
+func toJSONTimestampKeyCases() iter.Seq[toJSONTimestampKeyCase] {
+	return slices.Values([]toJSONTimestampKeyCase{
+		{
+			src:    "!!timestamp 2001-12-14: x\n",
+			folds:  `{"2001-12-14T00:00:00Z":"x"}`,
+			values: `{"2001-12-14T00:00:00Z": "x"}`,
+		},
+		{
+			src:    "!!binary aGVsbG8=: x\n",
+			folds:  `{"aGVsbG8=":"x"}`,
+			values: `{"aGVsbG8=": "x"}`,
+		},
 	})
 }

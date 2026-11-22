@@ -8,6 +8,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"iter"
+	"slices"
 	"strings"
 	"testing"
 
@@ -311,15 +313,7 @@ a: &a
 func TestAliasInsideItsOwnAnchor(t *testing.T) {
 	t.Parallel()
 
-	for _, tc := range []struct {
-		name string
-		src  string
-		want string
-	}{
-		{name: "directly", src: "a: &x\n  b: *x\n", want: `alias "x" stands inside its own anchor`},
-		{name: "through another anchor", src: "a: &p\n  q: &r\n    s: *p\n", want: `alias "p" stands inside its own anchor`},
-		{name: "in a sequence", src: "a: &x\n  - *x\n", want: `alias "x" stands inside its own anchor`},
-	} {
+	for tc := range aliasInsideItsOwnAnchorCases() {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
@@ -339,6 +333,21 @@ func TestAliasInsideItsOwnAnchor(t *testing.T) {
 			"a": map[string]any{"b": uint64(1)},
 			"c": map[string]any{"b": uint64(1)},
 		}, v)
+	})
+}
+
+// aliasInsideItsOwnAnchorCase holds a document with a cycle and the error its decode returns.
+type aliasInsideItsOwnAnchorCase struct {
+	name string
+	src  string
+	want string
+}
+
+func aliasInsideItsOwnAnchorCases() iter.Seq[aliasInsideItsOwnAnchorCase] {
+	return slices.Values([]aliasInsideItsOwnAnchorCase{
+		{name: "directly", src: "a: &x\n  b: *x\n", want: `alias "x" stands inside its own anchor`},
+		{name: "through another anchor", src: "a: &p\n  q: &r\n    s: *p\n", want: `alias "p" stands inside its own anchor`},
+		{name: "in a sequence", src: "a: &x\n  - *x\n", want: `alias "x" stands inside its own anchor`},
 	})
 }
 
@@ -463,22 +472,7 @@ func treeRead(t *testing.T, src string) any {
 // the tree to one reading on both sides of that line.
 func TestFixedTheWalkKeepsAnAnchorOnATaggedFlowKeyAlone(t *testing.T) {
 	t.Run("the walk and ToJSON keep the anchor, as the tree does", func(t *testing.T) {
-		for _, tc := range []struct{ src, walked, writes, tree string }{
-			// The "!!null" key is the nil interface and not the text "null":
-			// a MapItem.Key carries what the key resolves to.
-			{
-				src:    "{!!null &a1 null, k: *a1}\n",
-				walked: `map[interface {}]interface {}{interface {}(nil):interface {}(nil), "k":interface {}(nil)}`,
-				writes: `{"null":null,"k":null}`,
-				tree:   `codec.MapSlice{items:[]codec.MapItem{codec.MapItem{Key:interface {}(nil), Value:interface {}(nil)}, codec.MapItem{Key:"k", Value:interface {}(nil)}}}`,
-			},
-			{
-				src:    "{!!str &a1 x, k: *a1}\n",
-				walked: `map[string]interface {}{"k":"x", "x":interface {}(nil)}`,
-				writes: `{"x":null,"k":"x"}`,
-				tree:   `codec.MapSlice{items:[]codec.MapItem{codec.MapItem{Key:"x", Value:interface {}(nil)}, codec.MapItem{Key:"k", Value:"x"}}}`,
-			},
-		} {
+		for tc := range walkKeepsTaggedFlowKeyAnchorCases() {
 			var got any
 			require.NoErrorf(t, codec.Unmarshal([]byte(tc.src), &got), "the walk: %q", tc.src)
 			assert.Equalf(t, tc.walked, fmt.Sprintf("%#v", got), "the walk: %q", tc.src)
@@ -505,16 +499,7 @@ func TestFixedTheWalkKeepsAnAnchorOnATaggedFlowKeyAlone(t *testing.T) {
 	})
 
 	t.Run("changing any one of the three makes the walk agree", func(t *testing.T) {
-		for _, tc := range []struct{ src, writes string }{
-			// The anchor before the tag.
-			{src: "{&a1 !!null null, k: *a1}\n", writes: `{"null":null,"k":null}`},
-			// The entry carries a value.
-			{src: "{!!str &a1 x: 1, k: *a1}\n", writes: `{"x":1,"k":"x"}`},
-			// A sequence rather than a mapping.
-			{src: "[!!null &a1 null, *a1]\n", writes: `[null,null]`},
-			// A block mapping.
-			{src: "a: !!null &a1 null\nk: *a1\n", writes: `{"a":null,"k":null}`},
-		} {
+		for tc := range walkAgreesOnFlowKeyVariantCases() {
 			out, err := codec.ToJSON([]byte(tc.src))
 			require.NoErrorf(t, err, "%q", tc.src)
 			assert.Equal(t, tc.writes, string(out), "%q", tc.src)
@@ -523,6 +508,48 @@ func TestFixedTheWalkKeepsAnAnchorOnATaggedFlowKeyAlone(t *testing.T) {
 			require.NoErrorf(t, codec.Unmarshal([]byte(tc.src), &got), "%q", tc.src)
 			assert.NotNilf(t, got, "%q", tc.src)
 		}
+	})
+}
+
+// walkKeepsTaggedFlowKeyAnchorCase holds a document and how the walk, ToJSON and the tree each read it.
+type walkKeepsTaggedFlowKeyAnchorCase struct {
+	src, walked, writes, tree string
+}
+
+func walkKeepsTaggedFlowKeyAnchorCases() iter.Seq[walkKeepsTaggedFlowKeyAnchorCase] {
+	return slices.Values([]walkKeepsTaggedFlowKeyAnchorCase{
+		// The "!!null" key is the nil interface and not the text "null":
+		// a MapItem.Key carries what the key resolves to.
+		{
+			src:    "{!!null &a1 null, k: *a1}\n",
+			walked: `map[interface {}]interface {}{interface {}(nil):interface {}(nil), "k":interface {}(nil)}`,
+			writes: `{"null":null,"k":null}`,
+			tree:   `codec.MapSlice{items:[]codec.MapItem{codec.MapItem{Key:interface {}(nil), Value:interface {}(nil)}, codec.MapItem{Key:"k", Value:interface {}(nil)}}}`,
+		},
+		{
+			src:    "{!!str &a1 x, k: *a1}\n",
+			walked: `map[string]interface {}{"k":"x", "x":interface {}(nil)}`,
+			writes: `{"x":null,"k":"x"}`,
+			tree:   `codec.MapSlice{items:[]codec.MapItem{codec.MapItem{Key:"x", Value:interface {}(nil)}, codec.MapItem{Key:"k", Value:"x"}}}`,
+		},
+	})
+}
+
+// walkAgreesOnFlowKeyVariantCase holds a document that changes one of the three conditions and the JSON ToJSON writes for it.
+type walkAgreesOnFlowKeyVariantCase struct {
+	src, writes string
+}
+
+func walkAgreesOnFlowKeyVariantCases() iter.Seq[walkAgreesOnFlowKeyVariantCase] {
+	return slices.Values([]walkAgreesOnFlowKeyVariantCase{
+		// The anchor before the tag.
+		{src: "{&a1 !!null null, k: *a1}\n", writes: `{"null":null,"k":null}`},
+		// The entry carries a value.
+		{src: "{!!str &a1 x: 1, k: *a1}\n", writes: `{"x":1,"k":"x"}`},
+		// A sequence rather than a mapping.
+		{src: "[!!null &a1 null, *a1]\n", writes: `[null,null]`},
+		// A block mapping.
+		{src: "a: !!null &a1 null\nk: *a1\n", writes: `{"a":null,"k":null}`},
 	})
 }
 
@@ -547,17 +574,7 @@ func TestAnAnchoredNullDecodesAsTheNullItNames(t *testing.T) {
 	// A custom unmarshaler turns the walk off, and no field holds a chan int.
 	tree := codec.CustomUnmarshaler[chan int](func(*chan int, []byte) error { return nil })
 
-	for _, tc := range []struct{ plain, anchored string }{
-		{"leaf:\n", "leaf: &a\n"},
-		{"leaf: ~\n", "leaf: &a ~\n"},
-		{"ptr:\n", "ptr: &a\n"},
-		{"ptrs: [~]\n", "ptrs: [&a ~]\n"},
-		{"leafs: [~]\n", "leafs: [&a ~]\n"},
-		{"arr: [~]\n", "arr: [&a ~]\n"},
-		{"byPtr: {k: ~}\n", "byPtr: {k: &a ~}\n"},
-		{"by: {k: ~}\n", "by: {k: &a ~}\n"},
-		{"ptr: &a ~\nleaf: *a\n", "ptr: &a ~\nleaf: *a\n"},
-	} {
+	for tc := range anAnchoredNullDecodesAsTheNullItNamesCases() {
 		t.Run(tc.anchored, func(t *testing.T) {
 			preset := shape{Leaf: leaf{S: "preset"}}
 
@@ -570,6 +587,25 @@ func TestAnAnchoredNullDecodesAsTheNullItNames(t *testing.T) {
 			assert.Equal(t, want, got)
 		})
 	}
+}
+
+// anAnchoredNullDecodesAsTheNullItNamesCase holds a document with a plain null and the same document with the null anchored.
+type anAnchoredNullDecodesAsTheNullItNamesCase struct {
+	plain, anchored string
+}
+
+func anAnchoredNullDecodesAsTheNullItNamesCases() iter.Seq[anAnchoredNullDecodesAsTheNullItNamesCase] {
+	return slices.Values([]anAnchoredNullDecodesAsTheNullItNamesCase{
+		{"leaf:\n", "leaf: &a\n"},
+		{"leaf: ~\n", "leaf: &a ~\n"},
+		{"ptr:\n", "ptr: &a\n"},
+		{"ptrs: [~]\n", "ptrs: [&a ~]\n"},
+		{"leafs: [~]\n", "leafs: [&a ~]\n"},
+		{"arr: [~]\n", "arr: [&a ~]\n"},
+		{"byPtr: {k: ~}\n", "byPtr: {k: &a ~}\n"},
+		{"by: {k: ~}\n", "by: {k: &a ~}\n"},
+		{"ptr: &a ~\nleaf: *a\n", "ptr: &a ~\nleaf: *a\n"},
+	})
 }
 
 // TestATaggedNullDecodesAsNull holds a node tagged "!!null" to the null it
@@ -587,17 +623,7 @@ func TestATaggedNullDecodesAsNull(t *testing.T) {
 	// A custom unmarshaler turns the walk off, and no field holds a chan int.
 	tree := codec.CustomUnmarshaler[chan int](func(*chan int, []byte) error { return nil })
 
-	for _, tc := range []struct{ plain, tagged string }{
-		{"leaf: ~\n", "leaf: !!null ~\n"},
-		{"leaf:\n", "leaf: !!null\n"},
-		{"ptr: ~\n", "ptr: !!null ~\n"},
-		{"ptrs: [~]\n", "ptrs: [!!null ~]\n"},
-		{"leafs: [~]\n", "leafs: [!!null ~]\n"},
-		{"byPtr: {k: ~}\n", "byPtr: {k: !!null ~}\n"},
-		{"by: {k: ~}\n", "by: {k: !!null}\n"},
-		{"ptr: &a ~\n", "ptr: &a !!null ~\n"},
-		{"~\n", "!!null ~\n"},
-	} {
+	for tc := range aTaggedNullDecodesAsNullCases() {
 		t.Run(tc.tagged, func(t *testing.T) {
 			preset := shape{Leaf: leaf{S: "preset"}, Ptr: &leaf{S: "preset"}}
 
@@ -610,6 +636,25 @@ func TestATaggedNullDecodesAsNull(t *testing.T) {
 			assert.Equal(t, want, got)
 		})
 	}
+}
+
+// aTaggedNullDecodesAsNullCase holds a document with a plain null and the same document with the null tagged.
+type aTaggedNullDecodesAsNullCase struct {
+	plain, tagged string
+}
+
+func aTaggedNullDecodesAsNullCases() iter.Seq[aTaggedNullDecodesAsNullCase] {
+	return slices.Values([]aTaggedNullDecodesAsNullCase{
+		{"leaf: ~\n", "leaf: !!null ~\n"},
+		{"leaf:\n", "leaf: !!null\n"},
+		{"ptr: ~\n", "ptr: !!null ~\n"},
+		{"ptrs: [~]\n", "ptrs: [!!null ~]\n"},
+		{"leafs: [~]\n", "leafs: [!!null ~]\n"},
+		{"byPtr: {k: ~}\n", "byPtr: {k: !!null ~}\n"},
+		{"by: {k: ~}\n", "by: {k: !!null}\n"},
+		{"ptr: &a ~\n", "ptr: &a !!null ~\n"},
+		{"~\n", "!!null ~\n"},
+	})
 }
 
 func TestDecodeKeepAddress(t *testing.T) {

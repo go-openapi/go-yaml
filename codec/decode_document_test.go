@@ -63,10 +63,30 @@ c: d
 }
 
 func TestSetNullValue(t *testing.T) {
-	tests := []struct {
-		name string
-		src  string
-	}{
+	for tc := range setNullValueCases() {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Run("set null", func(t *testing.T) {
+				var v any = 0x1
+				require.NoError(t, codec.Unmarshal([]byte(tc.src), &v))
+				require.Nil(t, v)
+			})
+			t.Run("invalid value", func(t *testing.T) {
+				var v *struct{}
+				require.NoError(t, codec.Unmarshal([]byte(tc.src), v))
+				require.Nil(t, v)
+			})
+		})
+	}
+}
+
+// setNullValueCase holds a document that decodes to null.
+type setNullValueCase struct {
+	name string
+	src  string
+}
+
+func setNullValueCases() iter.Seq[setNullValueCase] {
+	return slices.Values([]setNullValueCase{
 		{
 			name: "empty document",
 			src:  "",
@@ -75,21 +95,7 @@ func TestSetNullValue(t *testing.T) {
 			name: "null value",
 			src:  "null",
 		},
-	}
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			t.Run("set null", func(t *testing.T) {
-				var v any = 0x1
-				require.NoError(t, codec.Unmarshal([]byte(test.src), &v))
-				require.Nil(t, v)
-			})
-			t.Run("invalid value", func(t *testing.T) {
-				var v *struct{}
-				require.NoError(t, codec.Unmarshal([]byte(test.src), v))
-				require.Nil(t, v)
-			})
-		})
-	}
+	})
 }
 
 // A directive whose name begins with "&" or "*" was read as a node property.
@@ -119,18 +125,7 @@ func TestSetNullValue(t *testing.T) {
 // TestFixedADirectiveNamedLikeAnAnchorIsStillADirective holds the three readers
 // to the document the directive stands in front of.
 func TestFixedADirectiveNamedLikeAnAnchorIsStillADirective(t *testing.T) {
-	for _, tc := range []struct{ src, reads, writes string }{
-		{src: "%&AML 1.2\n---\n-8.5\n", reads: "-8.5", writes: "-8.5"},
-		{src: "%&AML 1.2\n---\nk: v\n", reads: `map[string]interface {}{"k":"v"}`, writes: `{"k":"v"}`},
-		{src: "%&x y\n---\n-8.5\n", reads: "-8.5", writes: "-8.5"},
-		// No parameter, so the anchor named the empty node.
-		{src: "%&AML\n---\n-8.5\n", reads: "-8.5", writes: "-8.5"},
-		// Two of them, and one standing after a "%TAG".
-		{src: "%&AML 1.2\n%&BML 2.0\n---\n-8.5\n", reads: "-8.5", writes: "-8.5"},
-		{src: "%TAG !e! tag:yaml.org,2002:\n%&AML 1.2\n---\n-8.5\n", reads: "-8.5", writes: "-8.5"},
-		// The parameter is a collection, which the walk used to hand over whole.
-		{src: "%&AML [1, 2]\n---\n-8.5\n", reads: "-8.5", writes: "-8.5"},
-	} {
+	for tc := range fixedADirectiveNamedLikeAnAnchorIsStillADirectiveCases() {
 		var walked any
 		require.NoErrorf(t, codec.Unmarshal([]byte(tc.src), &walked), "%q", tc.src)
 		assert.Equalf(t, tc.reads, fmt.Sprintf("%#v", walked), "the walk reads past the directive: %q", tc.src)
@@ -160,6 +155,26 @@ func TestFixedADirectiveNamedLikeAnAnchorIsStillADirective(t *testing.T) {
 
 			assert.Equalf(t, "-8.5", fmt.Sprintf("%#v", treeRead(t, src)), "%q", src)
 		}
+	})
+}
+
+// fixedADirectiveNamedLikeAnAnchorIsStillADirectiveCase holds a document behind an "&"-named directive and how the walk and ToJSON read it.
+type fixedADirectiveNamedLikeAnAnchorIsStillADirectiveCase struct {
+	src, reads, writes string
+}
+
+func fixedADirectiveNamedLikeAnAnchorIsStillADirectiveCases() iter.Seq[fixedADirectiveNamedLikeAnAnchorIsStillADirectiveCase] {
+	return slices.Values([]fixedADirectiveNamedLikeAnAnchorIsStillADirectiveCase{
+		{src: "%&AML 1.2\n---\n-8.5\n", reads: "-8.5", writes: "-8.5"},
+		{src: "%&AML 1.2\n---\nk: v\n", reads: `map[string]interface {}{"k":"v"}`, writes: `{"k":"v"}`},
+		{src: "%&x y\n---\n-8.5\n", reads: "-8.5", writes: "-8.5"},
+		// No parameter, so the anchor named the empty node.
+		{src: "%&AML\n---\n-8.5\n", reads: "-8.5", writes: "-8.5"},
+		// Two of them, and one standing after a "%TAG".
+		{src: "%&AML 1.2\n%&BML 2.0\n---\n-8.5\n", reads: "-8.5", writes: "-8.5"},
+		{src: "%TAG !e! tag:yaml.org,2002:\n%&AML 1.2\n---\n-8.5\n", reads: "-8.5", writes: "-8.5"},
+		// The parameter is a collection, which the walk used to hand over whole.
+		{src: "%&AML [1, 2]\n---\n-8.5\n", reads: "-8.5", writes: "-8.5"},
 	})
 }
 
@@ -220,11 +235,22 @@ func decodeStream(t *testing.T, src string, opts ...codec.DecodeOption) []any {
 // l-yaml-stream puts those in a document prefix -- so a stream of them decodes
 // to nothing.
 func TestDecodeEmptyDocumentsKeepTheirPlace(t *testing.T) {
-	tests := []struct {
-		name string
-		src  string
-		want []any
-	}{
+	for tc := range decodeEmptyDocumentsKeepTheirPlaceCases() {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Equal(t, tc.want, decodeStream(t, tc.src))
+		})
+	}
+}
+
+// decodeEmptyDocumentsKeepTheirPlaceCase holds a stream and the documents it decodes to.
+type decodeEmptyDocumentsKeepTheirPlaceCase struct {
+	name string
+	src  string
+	want []any
+}
+
+func decodeEmptyDocumentsKeepTheirPlaceCases() iter.Seq[decodeEmptyDocumentsKeepTheirPlaceCase] {
+	return slices.Values([]decodeEmptyDocumentsKeepTheirPlaceCase{
 		{
 			// The spec's own stream example, spec-example-9-6-stream.
 			name: "an empty document between two others",
@@ -244,13 +270,7 @@ func TestDecodeEmptyDocumentsKeepTheirPlace(t *testing.T) {
 		// anything.
 		{name: "two suffixes in a row", src: "a\n...\n...\n", want: []any{"a"}},
 		{name: "a suffix opening the stream", src: "...\na: 1\n", want: []any{map[string]any{"a": uint64(1)}}},
-	}
-
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			assert.Equal(t, test.want, decodeStream(t, test.src))
-		})
-	}
+	})
 }
 
 // decodeDocumentCases covers document markers, line breaks, and documents whose entries end on a null value.

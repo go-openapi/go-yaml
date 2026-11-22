@@ -7,7 +7,9 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"iter"
 	"net"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -366,16 +368,38 @@ func (v *unmarshalYAMLWithAliasMap) UnmarshalYAML(b []byte) error {
 }
 
 func TestDecoder_UnmarshalYAMLWithAlias(t *testing.T) {
-	type value struct {
-		String unmarshalYAMLWithAliasString
-		Map    unmarshalYAMLWithAliasMap
+	for test := range decoderUnmarshalYAMLWithAliasCases() {
+		t.Run(test.name, func(t *testing.T) {
+			var v unmarshalYAMLWithAliasValue
+			err := codec.Unmarshal([]byte(test.yaml), &v)
+
+			if test.err != "" {
+				require.ErrorContains(t, err, test.err)
+
+				return
+			}
+			require.NoError(t, err)
+			require.Equal(t, test.expectedValue, v)
+		})
 	}
-	tests := []struct {
-		name          string
-		yaml          string
-		expectedValue value
-		err           string
-	}{
+}
+
+// unmarshalYAMLWithAliasValue holds the two fields TestDecoder_UnmarshalYAMLWithAlias decodes.
+type unmarshalYAMLWithAliasValue struct {
+	String unmarshalYAMLWithAliasString
+	Map    unmarshalYAMLWithAliasMap
+}
+
+// decoderUnmarshalYAMLWithAliasCase holds a document with aliases, and the value or error it decodes to.
+type decoderUnmarshalYAMLWithAliasCase struct {
+	name          string
+	yaml          string
+	expectedValue unmarshalYAMLWithAliasValue
+	err           string
+}
+
+func decoderUnmarshalYAMLWithAliasCases() iter.Seq[decoderUnmarshalYAMLWithAliasCase] {
+	return slices.Values([]decoderUnmarshalYAMLWithAliasCase{
 		{
 			name: "ok",
 			// Under YAML 1.1, where "<<" is the merge key.
@@ -399,7 +423,7 @@ map:
 			// came back as an ordinary key, which was defect 64. The alias
 			// survives either way, being expanded before the fragment is
 			// handed over.
-			expectedValue: value{
+			expectedValue: unmarshalYAMLWithAliasValue{
 				String: unmarshalYAMLWithAliasString(`"hello" "world"`),
 				Map: unmarshalYAMLWithAliasMap(map[string]any{
 					"a": "b",
@@ -425,22 +449,7 @@ map:
 `,
 			err: `could not find alias "y"`,
 		},
-	}
-
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			var v value
-			err := codec.Unmarshal([]byte(test.yaml), &v)
-
-			if test.err != "" {
-				require.ErrorContains(t, err, test.err)
-
-				return
-			}
-			require.NoError(t, err)
-			require.Equal(t, test.expectedValue, v)
-		})
-	}
+	})
 }
 
 type unmarshalString string
@@ -529,16 +538,43 @@ func (u *testNodeUnmarshaler) UnmarshalYAML(node ast.Node) error {
 }
 
 func TestNodeUnmarshaler(t *testing.T) {
-	type testNodeUnmarshalerBody struct {
-		Root testNodeUnmarshaler `yaml:"root"`
-	}
+	for c := range nodeUnmarshalerCases() {
+		t.Run(c.name, func(t *testing.T) {
+			src := []byte(strings.Join(c.src, "\n"))
+			out := c.body
+			err := codec.Unmarshal(src, &out)
+			if c.expectErr != "" {
+				require.ErrorContains(t, err, c.expectErr)
+				return
+			}
 
-	cases := []struct {
-		name      string
-		expectErr string
-		src       []string
-		body      testNodeUnmarshalerBody
-	}{
+			expect := struct {
+				Root ast.Node `yaml:"root"`
+			}{}
+			require.NoError(t, codec.Unmarshal(src, &expect), "invalid test yaml")
+
+			require.NoError(t, err)
+
+			require.Equal(t, expect.Root, out.Root.received)
+		})
+	}
+}
+
+// testNodeUnmarshalerBody holds the field TestNodeUnmarshaler decodes into.
+type testNodeUnmarshalerBody struct {
+	Root testNodeUnmarshaler `yaml:"root"`
+}
+
+// nodeUnmarshalerCase holds a document, the body it decodes into, and the error the unmarshaler returns.
+type nodeUnmarshalerCase struct {
+	name      string
+	expectErr string
+	src       []string
+	body      testNodeUnmarshalerBody
+}
+
+func nodeUnmarshalerCases() iter.Seq[nodeUnmarshalerCase] {
+	return slices.Values([]nodeUnmarshalerCase{
 		{
 			name: "should pass node",
 			src: []string{
@@ -561,28 +597,7 @@ func TestNodeUnmarshaler(t *testing.T) {
 				"  fizz: buzz",
 			},
 		},
-	}
-
-	for _, c := range cases {
-		t.Run(c.name, func(t *testing.T) {
-			src := []byte(strings.Join(c.src, "\n"))
-			out := c.body
-			err := codec.Unmarshal(src, &out)
-			if c.expectErr != "" {
-				require.ErrorContains(t, err, c.expectErr)
-				return
-			}
-
-			expect := struct {
-				Root ast.Node `yaml:"root"`
-			}{}
-			require.NoError(t, codec.Unmarshal(src, &expect), "invalid test yaml")
-
-			require.NoError(t, err)
-
-			require.Equal(t, expect.Root, out.Root.received)
-		})
-	}
+	})
 }
 
 func TestMapKeyCustomUnmarshaler(t *testing.T) {
@@ -818,11 +833,29 @@ func (r *recordedBytes) UnmarshalYAML(b []byte) error {
 // is what has to survive, and this is where that is checked; the tests above
 // pin the exact text.
 func TestBytesUnmarshalerReceivesAValueThatReadsBack(t *testing.T) {
-	for _, test := range []struct {
-		name string
-		yaml string
-		want any
-	}{
+	for test := range bytesUnmarshalerReceivesAValueThatReadsBackCases() {
+		t.Run(test.name, func(t *testing.T) {
+			var v struct {
+				Foo recordedBytes `yaml:"foo"`
+			}
+			require.NoError(t, codec.Unmarshal([]byte(test.yaml), &v))
+
+			var got any
+			require.NoErrorf(t, codec.Unmarshal([]byte(v.Foo.raw), &got), "the bytes handed over do not parse: %q", v.Foo.raw)
+			require.Equalf(t, test.want, got, "handed over %q", v.Foo.raw)
+		})
+	}
+}
+
+// bytesUnmarshalerReceivesAValueThatReadsBackCase holds a document, and the value the bytes handed for foo read back as.
+type bytesUnmarshalerReceivesAValueThatReadsBackCase struct {
+	name string
+	yaml string
+	want any
+}
+
+func bytesUnmarshalerReceivesAValueThatReadsBackCases() iter.Seq[bytesUnmarshalerReceivesAValueThatReadsBackCase] {
+	return slices.Values([]bytesUnmarshalerReceivesAValueThatReadsBackCase{
 		{
 			name: "a block scalar keeps its last line",
 			yaml: "foo: |\n  a\n  b\n",
@@ -868,18 +901,7 @@ func TestBytesUnmarshalerReceivesAValueThatReadsBack(t *testing.T) {
 			yaml: "foo: \"a\\tb\"\n",
 			want: "a\tb",
 		},
-	} {
-		t.Run(test.name, func(t *testing.T) {
-			var v struct {
-				Foo recordedBytes `yaml:"foo"`
-			}
-			require.NoError(t, codec.Unmarshal([]byte(test.yaml), &v))
-
-			var got any
-			require.NoErrorf(t, codec.Unmarshal([]byte(v.Foo.raw), &got), "the bytes handed over do not parse: %q", v.Foo.raw)
-			require.Equalf(t, test.want, got, "handed over %q", v.Foo.raw)
-		})
-	}
+	})
 }
 
 // fragment keeps the bytes a bytes unmarshaler is handed, and what a fresh

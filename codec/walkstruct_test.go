@@ -6,6 +6,8 @@ package codec_test
 import (
 	"bytes"
 	"encoding/json"
+	"iter"
+	"slices"
 	"testing"
 	"time"
 
@@ -148,18 +150,6 @@ func agShapes() []agShape {
 	}
 }
 
-// agModes are the four combinations of the two decode options.
-var agModes = []struct {
-	name     string
-	jsonTags bool
-	inferred bool
-}{
-	{"neither", false, false},
-	{"json tags", true, false},
-	{"inferred names", false, true},
-	{"both", true, true},
-}
-
 // agDecode reads src into a fresh value of the shape, through the walk or
 // through the tree.
 //
@@ -191,7 +181,7 @@ func agDecode(c agShape, tree bool, jsonTags, inferred bool) (any, error) {
 // by index path and the tree handed the whole mapping to each embedded struct,
 // so a name reaching two fields filled one on the walk and both on the tree.
 func TestBothDecodePathsAgreeUnderEveryMode(t *testing.T) {
-	for _, mode := range agModes {
+	for mode := range bothDecodePathsAgreeUnderEveryModeCases() {
 		t.Run(mode.name, func(t *testing.T) {
 			for _, c := range agShapes() {
 				t.Run(c.name, func(t *testing.T) {
@@ -208,6 +198,22 @@ func TestBothDecodePathsAgreeUnderEveryMode(t *testing.T) {
 			}
 		})
 	}
+}
+
+// bothDecodePathsAgreeUnderEveryModeCase holds one of the four combinations of the two decode options.
+type bothDecodePathsAgreeUnderEveryModeCase struct {
+	name     string
+	jsonTags bool
+	inferred bool
+}
+
+func bothDecodePathsAgreeUnderEveryModeCases() iter.Seq[bothDecodePathsAgreeUnderEveryModeCase] {
+	return slices.Values([]bothDecodePathsAgreeUnderEveryModeCase{
+		{"neither", false, false},
+		{"json tags", true, false},
+		{"inferred names", false, true},
+		{"both", true, true},
+	})
 }
 
 // TestTheJSONModeReadsWhatEncodingJSONReads holds the pair of options to their

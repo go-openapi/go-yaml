@@ -5,6 +5,8 @@ package codec
 
 import (
 	"bytes"
+	"iter"
+	"slices"
 	"strings"
 	"testing"
 	"unsafe"
@@ -167,13 +169,7 @@ func TestNoDecodedStringReadsTheDocument(t *testing.T) {
 			assert.Empty(t, pinnedStrings(v, []byte(src.text)), "%s: walk left strings reading the document", src.name)
 		}
 
-		for _, mode := range []struct {
-			name string
-			opts []DecodeOption
-		}{
-			{"tree", []DecodeOption{CustomUnmarshaler[chan int](func(*chan int, []byte) error { return nil })}},
-			{"ordered", []DecodeOption{UseOrderedMap()}},
-		} {
+		for mode := range noDecodedStringReadsTheDocumentCases() {
 			dec := NewDecoder(bytes.NewReader([]byte(src.text)), mode.opts...)
 			var v any
 			if err := dec.Decode(&v); err != nil {
@@ -182,4 +178,17 @@ func TestNoDecodedStringReadsTheDocument(t *testing.T) {
 			assert.Empty(t, pinnedStrings(v, dec.src), "%s: %s left strings reading the document", src.name, mode.name)
 		}
 	}
+}
+
+// noDecodedStringReadsTheDocumentCase holds a decode mode and the options that select it.
+type noDecodedStringReadsTheDocumentCase struct {
+	name string
+	opts []DecodeOption
+}
+
+func noDecodedStringReadsTheDocumentCases() iter.Seq[noDecodedStringReadsTheDocumentCase] {
+	return slices.Values([]noDecodedStringReadsTheDocumentCase{
+		{"tree", []DecodeOption{CustomUnmarshaler[chan int](func(*chan int, []byte) error { return nil })}},
+		{"ordered", []DecodeOption{UseOrderedMap()}},
+	})
 }
