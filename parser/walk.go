@@ -8,6 +8,7 @@ import (
 
 	"github.com/go-openapi/go-yaml/ast"
 	"github.com/go-openapi/go-yaml/parser/key"
+	"github.com/go-openapi/go-yaml/token"
 )
 
 // Kind names what encloses a node handed to a [Visitor]: a collection, or the anchor, tag or "?" written on the node.
@@ -91,6 +92,9 @@ type Cursor interface {
 	// "%YAML 1.2" over "---" over "a: 1" puts the mapping at Document 1, and two directive lines put it at 2.
 	// To find the nth document a reader sees, skip the documents whose node is an [ast.DirectiveNode].
 	Document() int
+	// Schema returns the schema the node's document resolves plain scalars under: the one its "%YAML" line
+	// declares, or the one [WithYAMLVersion] sets where it declares none.
+	Schema() token.Schema
 }
 
 // Closing answers what only a node the walk has finished reading can answer.
@@ -241,6 +245,8 @@ type walkState struct {
 	// keyBase is -1 outside a mapping's own Leave.
 	keys    *key.Ledger
 	keyBase int
+	// schema answers Schema, from the version in force where the parse stands.
+	schema func() token.Schema
 }
 
 // walkState answers the [Cursor] for the node it is handing over.
@@ -261,6 +267,8 @@ func (w *walkState) IsRoot() bool { return len(w.in) == 0 }
 func (w *walkState) IsKey() bool { return w.curKey }
 
 func (w *walkState) Document() int { return w.document }
+
+func (w *walkState) Schema() token.Schema { return w.schema() }
 
 func (w *walkState) HoldsKey(name string) bool {
 	if w.keys == nil || w.keyBase < 0 {
@@ -321,7 +329,7 @@ func (p *Parser) Walk(src []byte, v Visitor) (*ast.File, error) {
 		return nil, ErrParserReused
 	}
 	p.used = true
-	p.walk = &walkState{visitor: v, keys: &p.keys, keyBase: -1}
+	p.walk = &walkState{visitor: v, keys: &p.keys, keyBase: -1, schema: p.schemaInForce}
 	p.walk.documents, _ = v.(DocumentVisitor)
 	defer func() { p.walk = nil }()
 

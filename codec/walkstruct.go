@@ -880,6 +880,8 @@ func (b *typedBuilder) mergeEntry(i int, keyNode, value ast.Node, alias *ast.Ali
 // reads IsKey and IsRoot. None of the nodes is a document's root.
 type replayCursor struct {
 	key bool
+	// schema is the schema of the document the replayed node was recorded in.
+	schema token.Schema
 }
 
 func (c replayCursor) Depth() int           { return 1 }
@@ -887,6 +889,7 @@ func (c replayCursor) In() parser.Kind      { return parser.KindNone }
 func (c replayCursor) IsRoot() bool         { return false }
 func (c replayCursor) IsKey() bool          { return c.key }
 func (c replayCursor) Document() int        { return 0 }
+func (c replayCursor) Schema() token.Schema { return c.schema }
 func (c replayCursor) HoldsKey(string) bool { return false }
 
 func (b *typedBuilder) openMapping(dst reflect.Value, wanted bool) error {
