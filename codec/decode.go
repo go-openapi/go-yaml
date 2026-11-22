@@ -1203,10 +1203,10 @@ func (d *Decoder) decodeValue(dst reflect.Value, src ast.Node) error {
 	valueType := dst.Type()
 	switch valueType.Kind() {
 	case reflect.Pointer:
-		if dst.IsNil() {
-			return nil
-		}
-		if src.Type() == ast.NullType {
+		// A nil pointer is filled with a new value, as at the root of "var p *int; Unmarshal(src, &p)". A field never
+		// reaches here nil: createDecodedNewValue allocates it first. ast.IsNull also reads a null under a tag, such
+		// as "!!null null", which src.Type() does not.
+		if ast.IsNull(src) {
 			// Set the pointer to nil.
 			dst.Set(reflect.Zero(valueType))
 			return nil
@@ -1219,9 +1219,10 @@ func (d *Decoder) decodeValue(dst reflect.Value, src ast.Node) error {
 		}
 		// Keep the decoded value, error or not. See createDecodedNewValue.
 		dst.Set(castedValue)
-		if decodeErr != nil {
-			return decodeErr
-		}
+
+		// The value is written. Falling out of the switch decoded the node again, into the pointer type itself, and
+		// returned a type mismatch beside the value.
+		return decodeErr
 	case reflect.Interface:
 		if dst.Type() == reflect.TypeFor[ast.Node]() {
 			dst.Set(reflect.ValueOf(src))
@@ -1238,6 +1239,12 @@ func (d *Decoder) decodeValue(dst reflect.Value, src ast.Node) error {
 			dst.Set(reflect.Zero(valueType))
 		}
 	case reflect.Map:
+		if ast.IsNull(src) {
+			// A null leaves the map as it stands, as for a field. Only a root map reaches here with one:
+			// createDecodedNewValue reads a field's null first.
+			return nil
+		}
+
 		return d.decodeMap(dst, src)
 	case reflect.Array:
 		return d.decodeArray(dst, src)
@@ -1260,6 +1267,9 @@ func (d *Decoder) decodeValue(dst reflect.Value, src ast.Node) error {
 			return err
 		}
 		switch vv := v.(type) {
+		case nil:
+			// A null writes nothing, as for a field, and the value keeps what it holds.
+			return nil
 		case int64:
 			if !dst.OverflowInt(vv) {
 				dst.SetInt(vv)
@@ -1298,6 +1308,9 @@ func (d *Decoder) decodeValue(dst reflect.Value, src ast.Node) error {
 			return err
 		}
 		switch vv := v.(type) {
+		case nil:
+			// A null writes nothing, as for a field, and the value keeps what it holds.
+			return nil
 		case int64:
 			if 0 <= vv && !dst.OverflowUint(uint64(vv)) {
 				dst.SetUint(uint64(vv))
