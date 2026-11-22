@@ -2319,19 +2319,29 @@ func (d *Decoder) finishStruct(
 	return d.validateStruct(dst, src, fields, ignoreMergeKey)
 }
 
-// refuseUnknownFields returns an error for the first of unknownFields whose
-// name carries none of the allowed field prefixes.
+// refuseUnknownFields returns an error for the unknown field written first in the document, among those whose name
+// carries none of the allowed field prefixes. The typed walk reports the same field.
 func (d *Decoder) refuseUnknownFields(unknownFields map[string]ast.Node) error {
+	var (
+		first     string
+		firstNode ast.Node
+	)
 	for key, node := range unknownFields {
 		allowed := slices.ContainsFunc(d.allowedFieldPrefixes, func(prefix string) bool {
 			return strings.HasPrefix(key, prefix)
 		})
-		if !allowed {
-			return yamlerrors.NewUnknownField(fmt.Sprintf(`unknown field "%s"`, key), node.GetToken())
+		if allowed {
+			continue
+		}
+		if firstNode == nil || node.GetToken().Position.Offset() < firstNode.GetToken().Position.Offset() {
+			first, firstNode = key, node
 		}
 	}
+	if firstNode == nil {
+		return nil
+	}
 
-	return nil
+	return yamlerrors.NewUnknownField(fmt.Sprintf(`unknown field "%s"`, first), firstNode.GetToken())
 }
 
 // validateStruct runs the validator of the decoder on dst, once src is decoded into it.
