@@ -1595,6 +1595,12 @@ var timestampFormats = []string{
 }
 
 func isTimestamp(value string) bool {
+	// Every layout opens with a digit field, which time.Parse requires a digit to fill. Text starting with anything else
+	// matches none, and testing it first spares a time.ParseError for each layout: in a FromJSON of citm_catalog, those
+	// errors were 34% of the bytes allocated.
+	if value == "" || value[0] < '0' || value[0] > '9' {
+		return false
+	}
 	for _, format := range timestampFormats {
 		if _, err := time.Parse(format, value); err == nil {
 			return true

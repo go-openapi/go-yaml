@@ -333,6 +333,11 @@ var TimestampFormats = []string{
 
 // ParseTimestamp reads text as one of [TimestampFormats].
 func ParseTimestamp(text string) (time.Time, bool) {
+	// Every layout opens with the year, which time.Parse requires digits to fill, so text starting with anything else
+	// matches none. Testing it first spares a time.ParseError for each layout.
+	if text == "" || text[0] < '0' || text[0] > '9' {
+		return time.Time{}, false
+	}
 	for _, format := range TimestampFormats {
 		if t, err := time.Parse(format, text); err == nil {
 			return t, true
