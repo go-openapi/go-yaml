@@ -6,7 +6,9 @@ package codec_test
 import (
 	"bytes"
 	"encoding/json"
+	"iter"
 	"reflect"
+	"slices"
 	"testing"
 	"time"
 
@@ -198,6 +200,64 @@ func TestBinaryTagReadsIntoAByteSlice(t *testing.T) {
 		require.NoError(t, codec.Unmarshal([]byte(src), &walked))
 		require.NoError(t, codec.Unmarshal([]byte(src), &treed, codec.UseOrderedMap()))
 		assert.Equal(t, treed, walked)
+	})
+}
+
+// TestBinaryTagReadsIntoAByteArray: "!!binary" fills a byte array whose length matches the decoded bytes, on both
+// decode paths, and a length the array does not have is an error. A sequence of numbers still fills an array.
+func TestBinaryTagReadsIntoAByteArray(t *testing.T) {
+	type box struct {
+		B [5]byte `yaml:"b"`
+	}
+
+	for path := range decodePaths() {
+		t.Run(path.name, func(t *testing.T) {
+			t.Run("into a field", func(t *testing.T) {
+				var got box
+				require.NoError(t, codec.Unmarshal([]byte("b: !!binary aGVsbG8=\n"), &got, path.opts...))
+				assert.Equal(t, [5]byte{'h', 'e', 'l', 'l', 'o'}, got.B)
+			})
+
+			t.Run("into a bare array", func(t *testing.T) {
+				var got [5]byte
+				require.NoError(t, codec.Unmarshal([]byte("!!binary aGVsbG8=\n"), &got, path.opts...))
+				assert.Equal(t, [5]byte{'h', 'e', 'l', 'l', 'o'}, got)
+			})
+
+			t.Run("into the arrays of a sequence", func(t *testing.T) {
+				var got [][5]byte
+				require.NoError(t, codec.Unmarshal([]byte("- !!binary aGVsbG8=\n- !!binary d29ybGQ=\n"), &got, path.opts...))
+				assert.Equal(t, [][5]byte{{'h', 'e', 'l', 'l', 'o'}, {'w', 'o', 'r', 'l', 'd'}}, got)
+			})
+
+			t.Run("a sequence of numbers still fills an array", func(t *testing.T) {
+				var got [2]byte
+				require.NoError(t, codec.Unmarshal([]byte("[104, 101]\n"), &got, path.opts...))
+				assert.Equal(t, [2]byte{104, 101}, got)
+			})
+
+			t.Run("a length the array does not have is an error", func(t *testing.T) {
+				var got box
+				err := codec.Unmarshal([]byte("b: !!binary aGk=\n"), &got, path.opts...)
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), "a 5 byte array cannot hold the 2 bytes")
+				assert.Equal(t, [5]byte{}, got.B)
+			})
+		})
+	}
+}
+
+// decodePath names a decode path and the options that select it.
+type decodePath struct {
+	name string
+	opts []codec.DecodeOption
+}
+
+// decodePaths returns the walking reader and the tree decoder, which UseOrderedMap selects.
+func decodePaths() iter.Seq[decodePath] {
+	return slices.Values([]decodePath{
+		{name: "walk"},
+		{name: "tree", opts: []codec.DecodeOption{codec.UseOrderedMap()}},
 	})
 }
 
