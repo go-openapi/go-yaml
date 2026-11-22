@@ -1756,14 +1756,11 @@ func (d *Decoder) castToTime(src ast.Node) (time.Time, error) {
 	if !ok {
 		return time.Time{}, yamlerrors.NewTypeMismatch(reflect.TypeFor[time.Time](), reflect.TypeOf(v), src.GetToken())
 	}
-	if t, ok := ast.ParseTimestamp(s); ok {
+	if t, ok := token.ParseTimestamp(s); ok {
 		return t, nil
 	}
 
-	// Return an error instead of the zero time. Before, a text read by no format
-	// came back as 0001-01-01 with no error. So a document holding
-	// "2001-12-14 21:59:43.10 -5" decoded to a date nobody wrote.
-	// The timestamp expression allows that text, and the layouts above do not match it.
+	// Return an error instead of the zero time, so a text that is no timestamp does not decode to 0001-01-01.
 	return time.Time{}, yamlerrors.NewSyntax(
 		fmt.Sprintf("cannot read %q as a timestamp", s), src.GetToken())
 }

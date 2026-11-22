@@ -159,7 +159,7 @@ func (p *Parser) parseScalarValue(ctx context, tk *group.TapeToken) (ast.ScalarN
 // parseTagValue marks the scalar its tag stands on, and the isTagged check leaves that scalar alone.
 // A tag on a collection marks no scalar, so a timestamp inside a tagged collection still resolves.
 //
-// ast.ParseTimestamp defines which spellings are timestamps.
+// token.ParseTimestamp defines which spellings are timestamps.
 func (p *Parser) resolveTimestamp(ctx context, tk *group.TapeToken, node ast.ScalarNode) ast.Node {
 	if tk.Type() != token.StringType || p.descent.inBlockScalar() || p.descent.isTagged(tk.RawToken()) ||
 		p.schemaInForce() != token.Schema11 {
@@ -169,7 +169,7 @@ func (p *Parser) resolveTimestamp(ctx context, tk *group.TapeToken, node ast.Sca
 	if !isString {
 		return node
 	}
-	if _, isTimestamp := ast.ParseTimestamp(text.Value); !isTimestamp {
+	if _, isTimestamp := token.ParseTimestamp(text.Value); !isTimestamp {
 		return node
 	}
 

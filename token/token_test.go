@@ -149,6 +149,8 @@ func TestIsNeedQuoted(t *testing.T) {
 		"... x",
 		"---\tx",
 		"...\tx",
+		// The spaced example of https://yaml.org/type/timestamp.html, a timestamp under YAML 1.1.
+		"2001-12-14 21:59:43.10 -5",
 	}
 	for _, test := range needQuotedTests {
 		assert.Truef(t, token.IsNeedQuoted(test), "expected %q to need quoting", test)
@@ -156,9 +158,8 @@ func TestIsNeedQuoted(t *testing.T) {
 
 	notNeedQuotedTests := []string{
 		"Hello World",
-		// time.Parse cannot handle: "2001-12-14 21:59:43.10 -5" from the examples.
-		// https://yaml.org/type/timestamp.html
-		"2001-12-14 21:59:43.10 -5",
+		// A date alone takes two-digit month and day fields: https://yaml.org/type/timestamp.html
+		"2001-1-2",
 	}
 	for _, test := range notNeedQuotedTests {
 		assert.Falsef(t, token.IsNeedQuoted(test), "expected %q not to need quoting", test)

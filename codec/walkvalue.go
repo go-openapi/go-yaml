@@ -747,7 +747,7 @@ func (b *valueBuilder) taggedWalkValue(n *ast.TagNode, value any) (any, error) {
 		// agree, and they parted on "!!float -0" once already.
 		return Base64(res.Text), nil
 	case token.TimestampTag:
-		t, _ := ast.ParseTimestamp(res.Text)
+		t, _ := token.ParseTimestamp(res.Text)
 
 		return t, nil
 	case token.OrderedMapTag:

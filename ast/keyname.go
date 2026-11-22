@@ -202,7 +202,7 @@ func TaggedKeyName(n *TagNode) (string, token.KeyKind, bool) {
 		// Named in RFC 3339 in the zone the document wrote, which is how
 		// ToJSON writes a timestamp, so a string-keyed map and the JSON name
 		// the entry alike. [CanonicalKeyName] compares it in UTC.
-		stamp, ok := ParseTimestamp(res.Text)
+		stamp, ok := token.ParseTimestamp(res.Text)
 		if !ok {
 			return "", token.KeyOther, false
 		}

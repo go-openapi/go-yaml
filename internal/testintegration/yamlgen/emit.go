@@ -1072,11 +1072,7 @@ func (e *emitter) simpleScalar(v Value, flow bool, tag string) string {
 
 // timeLayouts is the Go reference layout for each [TimeForm].
 //
-// Each was read back through codec.Unmarshal into a time.Time before it was
-// offered, since the layouts the library tries are its own table rather than
-// the 2005 type's regular expression: "2001-12-14 21:59:43.10 -5" matches that
-// expression and no Go layout, and codec.TestTimestampFormats records it as
-// refused.
+// Each layout pads every field, so each one writes a text that token.ParseTimestamp accepts.
 var timeLayouts = map[TimeForm]string{
 	TimeISO:        "2006-01-02T15:04:05.99Z07:00",
 	TimeDate:       "2006-01-02",

@@ -10,7 +10,6 @@ import (
 	"math/big"
 	"strconv"
 	"strings"
-	"time"
 	"unicode/utf8"
 	"unsafe"
 )
@@ -1581,32 +1580,29 @@ func toNumber(value string) (*NumberValue, error) {
 	}, nil
 }
 
-// This is a subset of the formats permitted by the regular expression
-// defined at http://yaml.org/type/timestamp.html. Note that time.Parse
-// cannot handle: "2001-12-14 21:59:43.10 -5" from the examples.
-var timestampFormats = []string{
-	time.RFC3339Nano,
-	"2006-01-02t15:04:05.999999999Z07:00", // RFC3339Nano with lower-case "t".
-	time.DateTime,
-	time.DateOnly,
+// isTimestamp reports whether value reads as a timestamp, or as a clock time such as "12:30".
+//
+// A clock time is no timestamp, and YAML 1.1 reads it as a base 60 integer. It is quoted to keep the
+// quoting go.yaml.in/yaml/v3 applies.
+func isTimestamp(value string) bool {
+	if _, ok := ParseTimestamp(value); ok {
+		return true
+	}
 
-	// Not in examples, but to preserve backward compatibility by quoting time values.
-	"15:4",
+	return isClockTime(value)
 }
 
-func isTimestamp(value string) bool {
-	// Every layout opens with a digit field, which time.Parse requires a digit to fill. Text starting with anything else
-	// matches none, and testing it first spares a time.ParseError for each layout: in a FromJSON of citm_catalog, those
-	// errors were 34% of the bytes allocated.
-	if value == "" || value[0] < '0' || value[0] > '9' {
+// isClockTime reports whether value is an hour of one or two digits below 24, a colon,
+// and a minute of one or two digits below 60.
+func isClockTime(value string) bool {
+	c := timestampCursor{text: value}
+	hour, hourDigits := c.number(2)
+	if hourDigits == 0 || hour > 23 || !c.skip(':') {
 		return false
 	}
-	for _, format := range timestampFormats {
-		if _, err := time.Parse(format, value); err == nil {
-			return true
-		}
-	}
-	return false
+	minute, minuteDigits := c.number(2)
+
+	return minuteDigits > 0 && minute < 60 && c.done()
 }
 
 // NeedsQuotedSpelling reports whether value holds a character that only a

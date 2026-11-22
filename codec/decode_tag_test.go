@@ -353,12 +353,10 @@ func TestABinaryTagReadsAsTheTextItCarries(t *testing.T) {
 	})
 }
 
-// TestTimestampFormats records which of the shapes yaml.org/type/timestamp.html
-// allows decode into a time.Time, and that the rest are refused.
+// TestTimestampFormats records which texts decode into a time.Time, and that the rest return an error.
 //
-// Refused is the point. A text no layout read came back as the zero time with
-// no error, so "2001-12-14 21:59:43.10 -5" -- which that expression allows --
-// decoded to 0001-01-01 and nothing said so.
+// The texts accepted are the ones the expression at yaml.org/type/timestamp.html accepts.
+// An error is the point of the refused cases: a text no format read used to come back as the zero time, with no error.
 //
 // Nothing here is reached by resolution: YAML 1.2's core schema resolves null,
 // bool, int, float and str and no timestamp, so a document gets a time.Time by
@@ -397,12 +395,18 @@ func timestampFormatsCases() iter.Seq[timestampFormatsCase] {
 		{"2001-12-15T02:59:43.1Z", "2001-12-15T02:59:43.1Z"},
 		{"2001-12-14 21:59:43.10", "2001-12-14T21:59:43.1Z"},
 		{"2002-12-14", "2002-12-14T00:00:00Z"},
+		{"2001-01-02", "2001-01-02T00:00:00Z"},
+		{"2001-12-14 21:59:43.10 -5", "2001-12-14T21:59:43.1-05:00"},
+		{"2001-12-14 21:59:43.10 -05", "2001-12-14T21:59:43.1-05:00"},
+		{"2015-02-03T03:04:05Z", "2015-02-03T03:04:05Z"},
+		{"2015-2-3T3:04:05Z", "2015-02-03T03:04:05Z"},
+		{"2001-12-14T21:59:43.Z", "2001-12-14T21:59:43Z"},
 
-		// ⚠️ Allowed by the expression and refused here: it writes the zone as
-		// "[-+][0-9][0-9]?(:[0-9][0-9])?", and Go's reference layouts spell
-		// neither "-5" nor "-05". Refused rather than read as something else.
-		{"2001-12-14 21:59:43.10 -5", ""},
-		{"2001-12-14 21:59:43.10 -05", ""},
+		// go.yaml.in/yaml/v3 reads these two, and the expression does not. A date alone takes two-digit month and day
+		// fields, and a minute or a second takes two digits. v3's layouts use Go's one-or-two-digit fields "1", "2",
+		// "4" and "5", so they accept more than the expression its comment cites.
+		{"2001-1-2", ""},
+		{"2015-2-3T3:4:5Z", ""},
 
 		{"not a date", ""},
 		{"", "0001-01-01T00:00:00Z"},

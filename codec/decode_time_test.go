@@ -26,8 +26,8 @@ func decodeTimeCases() iter.Seq[decodeCase] {
 		},
 		{
 			name: "timestamp/single-digit-fields",
-			// RFC3339 with short dates.
-			source: "v: 2015-2-3T3:4:5Z",
+			// With a time, the month, day and hour may take one digit. The minute and second take two.
+			source: "v: 2015-2-3T3:04:05Z",
 			value:  map[string]time.Time{"v": time.Date(2015, 2, 3, 3, 4, 5, 0, time.UTC)},
 		},
 		{

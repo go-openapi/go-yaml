@@ -6,7 +6,6 @@ package ast
 import (
 	"encoding/base64"
 	"strings"
-	"time"
 
 	"github.com/go-openapi/go-yaml/token"
 )
@@ -204,7 +203,7 @@ func readsAs(tag token.ReservedTagKeyword, text string, schema token.Schema) boo
 
 		return err == nil
 	case token.TimestampTag:
-		_, ok := ParseTimestamp(text)
+		_, ok := token.ParseTimestamp(text)
 
 		return ok
 	default:
@@ -308,43 +307,6 @@ func readsAsFloat(text string, schema token.Schema) bool {
 	_, big := token.ParseBigFloat(text, base)
 
 	return big
-}
-
-// TimestampFormats are the layouts a "!!timestamp" scalar is read with.
-//
-// A subset of what http://yaml.org/type/timestamp.html allows, and the gaps are
-// worth naming. The expression writes the zone as "[-+][0-9][0-9]?(:[0-9][0-9])?",
-// so "-5" and "-05" are as good as "-05:00", and Go's reference layouts spell
-// none of the short ones. It also allows any run of spaces or tabs between the
-// date and the time and before the zone, where a layout carries exactly one
-// space.
-//
-// YAML 1.2's core schema resolves null, bool, int, float and str and no
-// timestamp, so nothing here is reached by resolution: a document gets a
-// time.Time by being decoded into one, or by writing "!!timestamp".
-var TimestampFormats = []string{
-	"2006-1-2T15:4:5.999999999Z07:00", // RCF3339Nano with short date fields.
-	"2006-1-2t15:4:5.999999999Z07:00", // RFC3339Nano with short date fields and lower-case "t".
-	"2006-1-2 15:4:5.999999999Z07:00", // space separated, with a zone
-	"2006-1-2 15:4:5.999999999 Z07:00",
-	"2006-1-2 15:4:5.999999999", // space separated with no time zone
-	"2006-1-2",                  // date only
-}
-
-// ParseTimestamp reads text as one of [TimestampFormats].
-func ParseTimestamp(text string) (time.Time, bool) {
-	// Every layout opens with the year, which time.Parse requires digits to fill, so text starting with anything else
-	// matches none. Testing it first spares a time.ParseError for each layout.
-	if text == "" || text[0] < '0' || text[0] > '9' {
-		return time.Time{}, false
-	}
-	for _, format := range TimestampFormats {
-		if t, err := time.Parse(format, text); err == nil {
-			return t, true
-		}
-	}
-
-	return time.Time{}, false
 }
 
 // standsOnItsKind reports whether node is the collection kind tag names.

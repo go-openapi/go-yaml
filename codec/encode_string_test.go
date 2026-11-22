@@ -75,6 +75,29 @@ func TestMarshalQuotesAStringThatStartsOrEndsWithATab(t *testing.T) {
 
 // TestMarshalWritesAKeyHoldingALineBreak marshals map keys holding line breaks. An implicit key cannot span lines, so
 // the key is double-quoted; written as a "|" block, it did not parse.
+// TestMarshalAStringSpelledAsATimestampReadsBackAsAString marshals strings that look like timestamps,
+// and reads each back under YAML 1.1 into an any. A 1.1 reader resolves a plain timestamp to a time.Time,
+// so the encoder quotes each string the yaml.org expression accepts, and leaves the rest plain.
+func TestMarshalAStringSpelledAsATimestampReadsBackAsAString(t *testing.T) {
+	for _, s := range []string{
+		"2002-12-14",
+		"2001-1-2",
+		"2001-12-14 21:59:43.10 -5",
+		"2001-12-14t21:59:43.10-05:00",
+		"2015-2-3T3:04:05Z",
+		"2015-2-3T3:4:5Z",
+	} {
+		t.Run(s, func(t *testing.T) {
+			out, err := codec.Marshal(map[string]string{"a": s})
+			require.NoError(t, err)
+
+			var got any
+			require.NoError(t, codec.Unmarshal(append([]byte("%YAML 1.1\n---\n"), out...), &got))
+			assert.Equal(t, map[string]any{"a": s}, got, "written as %q", out)
+		})
+	}
+}
+
 func TestMarshalWritesAKeyHoldingALineBreak(t *testing.T) {
 	for _, k := range []string{"a\nb", "a\n", "\n"} {
 		out, err := codec.Marshal(map[string]any{k: 1, "nested": map[string]int{k: 2}, "seq": []map[string]int{{k: 3}}})

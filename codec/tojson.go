@@ -257,7 +257,7 @@ func (w *tagReader) taggedValue(t *ast.TagNode, key bool) (JSONToken, bool) {
 		// was therefore the one inconsistency inside this library.
 		//
 		// Resolve has read the timestamp already, so this cannot fail.
-		stamp, _ := ast.ParseTimestamp(res.Text)
+		stamp, _ := token.ParseTimestamp(res.Text)
 
 		return JSONToken{Kind: JSONString, Value: stamp.Format(time.RFC3339Nano)}, true
 	default:
