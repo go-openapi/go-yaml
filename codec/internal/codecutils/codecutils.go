@@ -18,31 +18,31 @@ import (
 	"github.com/go-openapi/go-yaml/token"
 )
 
-// aliasBudgetFloor is the budget of an empty document, which AliasBudget adds 32 a byte to.
+// aliasBudgetFloor sets the budget of an empty document. AliasBudget adds 32 to it for each byte.
 const aliasBudgetFloor = 1024
 
 // AliasBudget bounds what a decode may build from a document of n bytes.
 //
-// An alias names a node and the value it stands for is built again wherever the
-// alias appears, so a chain of them multiplies rather than adds: 259 bytes of
-// YAML name 100,000 values and 423 bytes name 387 million. maxDecodeDepth does
-// not see it -- nine levels of aliases is nine deep and as wide as it likes.
+// A decode builds the value of an alias again wherever the alias appears.
+// A chain of aliases therefore multiplies the values built:
+// 259 bytes of YAML name 100,000 values, and 423 bytes name 387 million.
+// maxDecodeDepth does not catch this: nine levels of aliases are nine deep, however wide they grow.
 //
-// Reading a document that holds no alias costs well under one step a byte, and
-// the widest of the measured workloads reaches 0.19, so 32 a byte leaves a
-// document written by a person alone and closes early on one written to exhaust
-// memory.
+// A document with no alias costs well under one step a byte, and the widest measured workload costs 0.19.
+// A budget of 32 a byte never stops a document a person wrote,
+// and it stops a document written to exhaust memory early.
 //
-// It counts what a decode builds and not what an alias builds, because an alias
-// is the only thing that can build more than the document holds. Reading into an
-// interface hands the same value to every alias of one anchor and so builds
-// nothing extra, which is why that path does not reach this and why it reads a
-// 423-byte document naming 387 million values in no time at all.
+// The budget counts every value built by a decode, not only the values of aliases.
+// Only an alias can make a decode build more than the document holds, so the total is enough.
+// A decode into an interface gives every alias of one anchor the same value and builds nothing extra.
+// That path never exhausts the budget, and it reads the 423-byte document instantly.
 func AliasBudget(n int) int {
 	return aliasBudgetFloor + 32*n
 }
 
-// CastToFloatValue is castToFloat without a decoder, for the walking builder.
+// CastToFloatValue converts the value a "!!float" node decoded to a float64.
+//
+// A *big.Float or a string that float64 cannot hold keeps its width, and any other value is returned as it is.
 func CastToFloatValue(v any) any {
 	switch vv := v.(type) {
 	case int:
@@ -78,10 +78,9 @@ func CastToFloatValue(v any) any {
 			return f
 		}
 
-		// The number outgrew float64 in one direction or the other, so it keeps
-		// the width it was read at, as castToInteger keeps a big.Int and as the
-		// same number untagged already does. Narrowed, "!!float 1e+310" came
-		// back as +Inf and "!!float 1e-400" as zero.
+		// The number is outside float64's range in one direction or the other, so it keeps the width it was read at.
+		// The codec's taggedInteger keeps a big.Int the same way, and so does the same number without a tag.
+		// Narrowed, "!!float 1e+310" came back as +Inf and "!!float 1e-400" as zero.
 		return vv
 	case string:
 		// The text came from a node "!!float" stands over, which the resolver
@@ -91,10 +90,9 @@ func CastToFloatValue(v any) any {
 		if err == nil && (f != 0 || spellsZero(vv)) {
 			return f
 		}
-		// Outside float64's range in one direction or the other. strconv
-		// reports ErrRange and an infinity for an overflow, and a plain zero
-		// with no error at all for an underflow, so the two are told apart by
-		// the digits.
+		// The text is outside float64's range in one direction or the other.
+		// strconv returns ErrRange and an infinity for an overflow, but a plain zero and no error for an underflow.
+		// token.ParseBigFloat reads the digits instead, and handles both.
 		if b, ok := token.ParseBigFloat(vv, token.ScalarType(vv, token.Schema12)); ok {
 			return b
 		}
@@ -104,9 +102,9 @@ func CastToFloatValue(v any) any {
 	return 0
 }
 
-// spellsZero reports whether text writes the number zero, which is what tells
-// nought from a number too small for a float64: strconv.ParseFloat returns zero
-// and no error for both.
+// spellsZero reports whether text writes the number zero.
+// strconv.ParseFloat returns zero and no error both for zero and for a number too small for a float64.
+// The text tells the two apart.
 func spellsZero(text string) bool {
 	for _, r := range text {
 		if r >= '1' && r <= '9' {
@@ -140,11 +138,11 @@ func IsPointer(rv reflect.Value) bool {
 
 // HashableKey reports whether a decoded key can stand as a Go map key.
 //
-// reflect.Type.Comparable and not a switch on the kind: a slice, a map and a
-// func are the kinds Go cannot hash, but a struct or an array holding one of
-// them cannot be hashed either, and the kind alone reads "struct". A MapSlice
-// is such a struct, so a mapping keyed on a mapping read under UseOrderedMap
-// passed the switch and panicked comparing two of them.
+// HashableKey asks reflect.Type.Comparable instead of switching on the kind.
+// Go cannot hash a slice, a map or a func, nor a struct or an array that holds one.
+// The kind of such a struct is only "struct", so a switch on the kind lets it through.
+// A MapSlice is such a struct: under UseOrderedMap, a mapping used as a key passed the switch,
+// and comparing two of them panicked.
 func HashableKey(key any) bool {
 	if key == nil {
 		return true
@@ -154,9 +152,10 @@ func HashableKey(key any) bool {
 }
 
 // NumberKey returns the kind and the canonical name a Go number is keyed by in
-// YAML, and whether v is a number at all. The names are the ones the parser
-// gives the same number written in a document: [token.KeyNameOfFloat] and
-// [token.KeyNameOfBigFloat] for a float, the decimal digits for an integer.
+// YAML, and whether v is a number at all.
+//
+// The names match the ones given by the parser to the same number in a document:
+// [token.KeyNameOfFloat] and [token.KeyNameOfBigFloat] for a float, and the decimal digits for an integer.
 func NumberKey(v any) (token.KeyKind, string, bool) {
 	switch n := v.(type) {
 	case *big.Int:
@@ -225,10 +224,10 @@ func IsBigNumber(v reflect.Value) bool {
 	}
 }
 
+// IsFloatKind reports whether k is float32 or float64.
 func IsFloatKind(k reflect.Kind) bool { return k == reflect.Float32 || k == reflect.Float64 }
 
-// ConvertBigNumber converts a number the AST read into a [big.Int] or a
-// [big.Float], which it does for one no native type holds.
+// ConvertBigNumber converts a number that no native type holds into a [big.Int] or a [big.Float].
 //
 // A float destination takes the nearest float64, and is refused where the
 // number reaches past what one holds. strconv.ParseFloat answers the same
@@ -287,8 +286,8 @@ func outOfFloatRange(f float64, text string) bool {
 
 // ConvertToKind converts v to typ, a type that is not a string kind.
 //
-// A string converts to a float kind when strconv.ParseFloat reads it, which
-// is how a quoted "1e3" fills a float field. The result has typ itself, so a
+// A string converts to a float kind when strconv.ParseFloat accepts it,
+// so a quoted "1e3" fills a float field. The result has typ itself, so a
 // named float type such as `type Ratio float64` is filled as well.
 func ConvertToKind(v reflect.Value, typ reflect.Type, src ast.Node) (reflect.Value, error) {
 	if v.Type().ConvertibleTo(typ) {
@@ -332,7 +331,7 @@ func CastToAssignableValue(value reflect.Value, target reflect.Type, src ast.Nod
 	return value, nil
 }
 
-// SetDecoded writes v, what createDecodedNewValue decoded, into dst. v is
+// SetDecoded writes v, the value the codec's Decoder.createDecodedNewValue decoded, into dst. v is
 // invalid only where nothing decoded at all, and dst then keeps what it held.
 func SetDecoded(dst, v reflect.Value) {
 	if v.IsValid() {
@@ -343,16 +342,13 @@ func SetDecoded(dst, v reflect.Value) {
 // ReadAll returns everything r holds, without copying it where r already has
 // it in one piece.
 //
-// Unmarshal wraps the caller's slice in a bytes.Buffer, so copying it into
-// another buffer and then calling String on that made three copies of the
-// document before the parse began. The parser keeps windows into what it is
-// given, so handing it the caller's own bytes costs nothing and holds nothing
-// twice.
+// Unmarshal wraps the caller's slice in a bytes.Buffer.
+// Copying that into another buffer and calling String on it made three copies of the document before the parse began.
+// The parser keeps windows into its input, so passing it the caller's own bytes costs nothing and holds nothing twice.
 //
-// A reader that is not backed by a slice still has to be read into one. That
-// buffer grows by doubling, so what it hands back may have spare capacity, and
-// the tree pins the whole block; the alternative is a copy the size of the
-// document, which is what this exists to avoid.
+// A reader that is not backed by a slice still has to be read into one.
+// That buffer grows by doubling, so the slice ReadAll returns may have spare capacity, and the tree pins all of it.
+// Trimming it would cost a copy the size of the document, and ReadAll exists to avoid that copy.
 func ReadAll(r io.Reader) ([]byte, error) {
 	switch b := r.(type) {
 	case *bytes.Buffer:
@@ -405,16 +401,15 @@ func AppendPointerToken(dst []byte, s string) []byte {
 	return dst
 }
 
-// NamesOrderedMap reports the "!!omap" tag, whatever handle the document spells
-// it with.
+// NamesOrderedMap reports whether uri is the "!!omap" tag, under any handle the document spells it with.
 func NamesOrderedMap(uri string) bool {
 	keyword, ok := token.ReservedTagOf(uri)
 
 	return ok && keyword == token.OrderedMapTag
 }
 
-// NamesScalarType reports whether the tag says what a scalar is worth, rather
-// than naming a kind and leaving the node to say.
+// NamesScalarType reports whether uri is one of the reserved tags that fix a scalar's type:
+// "!!str", "!!int", "!!float", "!!bool", "!!null", "!!binary" or "!!timestamp".
 func NamesScalarType(uri string) bool {
 	keyword, ok := token.ReservedTagOf(uri)
 	if !ok {
@@ -443,6 +438,7 @@ func UnusableKey(key any) error {
 	return fmt.Errorf("cannot use %T as a key: %w", key, yamlerrors.ErrUnhashableKey)
 }
 
+// SetZero sets dst to the zero value of its type. It does nothing where dst is invalid or cannot be set.
 func SetZero(dst reflect.Value) {
 	if dst.IsValid() && dst.CanSet() {
 		dst.Set(reflect.Zero(dst.Type()))

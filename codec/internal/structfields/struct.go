@@ -12,28 +12,29 @@ import (
 )
 
 const (
-	// structTagName is the struct tag key Marshal and Unmarshal read: `yaml:"name,flags"`.
+	// structTagName names the struct tag read by Marshal and Unmarshal: `yaml:"name,flags"`.
 	structTagName = "yaml"
-	// jsonTagName is the tag encoding/json reads, which [github.com/go-openapi/go-yaml/codec.UseJSONTags] adds where
-	// a field carries no `yaml` tag.
+	// jsonTagName names the tag read by encoding/json.
+	// [github.com/go-openapi/go-yaml/codec.UseJSONTags] reads it where a field has no `yaml` tag.
 	jsonTagName = "json"
 )
 
-// Mode says which of encoding/json's rules a decode adds to the `yaml` tag,
+// Mode selects which of encoding/json's rules a decode adds to the `yaml` tag,
 // as a pair of independent bits.
 //
-// The `yaml` tag is read in every mode and always wins. What the two bits add
-// is everything a `yaml` tag has no spelling for. encoding/json promotes the
-// fields of an untagged embedded struct into the outer one, where YAML needs an
-// explicit `yaml:",inline"`; and it names an untagged field after its Go name,
-// where go.yaml.in/yaml/v3 lowercases it. A type tagged for JSON alone --
-// go-openapi/spec is one, and every field of it is `json:` -- carries no inline
-// marker anywhere, so reading its tags without its embedding rule fills nothing.
+// The `yaml` tag is read in every mode and always wins. The two bits add the rules a `yaml` tag has no spelling for:
+//
+//   - encoding/json promotes the fields of an untagged embedded struct into the outer one.
+//     YAML needs an explicit `yaml:",inline"` for that.
+//   - encoding/json names an untagged field after its Go name. go.yaml.in/yaml/v3 lowercases the name.
+//
+// A type tagged for JSON alone has no inline marker anywhere. go-openapi/spec is one: every field has a `json:` tag.
+// Read without encoding/json's embedding rule, such a type leaves its embedded structs empty.
 type Mode uint8
 
 const (
 	// YAMLTags reads `yaml` alone and inlines an embedded struct only where a
-	// tag says to, as go.yaml.in/yaml/v3 does. The default, and the mode with
+	// tag asks for it, as go.yaml.in/yaml/v3 does. The default, and the mode with
 	// neither bit set.
 	YAMLTags Mode = 0
 	// JSONTags reads `json` where a field carries no `yaml` tag, and promotes an
@@ -51,29 +52,33 @@ const (
 // encoding/json's field selection to what it names.
 func (m Mode) readsJSONTags() bool { return m&JSONTags != 0 }
 
-// infersNames reports whether mode names a field no tag names after its Go
-// name rather than after the lowercased one.
+// infersNames reports whether mode names a field without a tag after its Go name,
+// instead of the lowercased name.
 func (m Mode) infersNames() bool { return m&InferredNames != 0 }
 
-// tagSource says which tag gave a field the name it writes.
+// tagSource records which tag gave a field its name.
 //
-// encoding/json's conflict rule needs it twice over: a candidate a tag names
-// beats one named after its Go name at the same depth, and a name some `yaml`
-// tag wrote takes the whole type out of encoding/json's reach.
+// The conflict rule in dominant reads it twice:
+//
+//   - at the same depth, a field named by a tag beats a field named after its Go name;
+//   - a conflict over a name that a `yaml` tag wrote is an error, and encoding/json's rule does not settle it.
 type tagSource uint8
 
 const (
-	// nameFromGo is a field no tag names, which takes its Go name.
+	// nameFromGo marks a field named by no tag, which takes its Go name.
 	nameFromGo tagSource = iota
-	// nameFromYAML is a field the `yaml` tag names.
+	// nameFromYAML marks a field named by its `yaml` tag.
 	nameFromYAML
-	// nameFromJSON is a field the `json` tag names, under [github.com/go-openapi/go-yaml/codec.UseJSONTags].
+	// nameFromJSON marks a field named by its `json` tag, under [github.com/go-openapi/go-yaml/codec.UseJSONTags].
 	nameFromJSON
 )
 
-// Info holds what the struct tags say about one field of a struct: the name it is written under, and its flags.
+// Info holds what the struct tags set on one field of a struct: the name it is written under, and its flags.
+//
+// The flags follow the `yaml` tag: `omitempty`, `omitzero`, `flow` and `inline`, then `anchor`, `anchor=name`,
+// `alias` and `alias=name`, which set IsAutoAnchor, AnchorName, IsAutoAlias and AliasName.
 type Info struct {
-	// Index is where the field stands in the struct, for reflect.Value.Field.
+	// Index gives the field's position in the struct, for reflect.Value.Field.
 	// FieldByName walks the type's fields and compares names on every call.
 	Index        int
 	FieldName    string
@@ -86,17 +91,16 @@ type Info struct {
 	IsOmitZero   bool
 	IsFlow       bool
 	IsInline     bool
-	// namedBy says which tag wrote RenderName, which the conflict rule reads.
+	// namedBy records which tag wrote RenderName, for the conflict rule.
 	namedBy tagSource
 }
 
 // getTag returns the tag naming field under mode, and whether it came from the
 // `yaml` tag.
 //
-// The `yaml` tag always wins. The default mode reads it and nothing else, as
-// go.yaml.in/yaml/v3 does, so a type tagged for encoding/json alone takes the
-// lowercased Go name for every field. [github.com/go-openapi/go-yaml/codec.UseJSONTags] adds `json` where a field
-// carries no `yaml` tag, and takes nothing away from one that does.
+// The `yaml` tag always wins. The default mode reads it and nothing else, as go.yaml.in/yaml/v3 does.
+// A type tagged for encoding/json alone then takes the lowercased Go name for every field.
+// [github.com/go-openapi/go-yaml/codec.UseJSONTags] adds the `json` tag where a field has no `yaml` tag, and changes nothing where it has one.
 //
 // Callers need to know which tag they got, because the two vocabularies part
 // company on a flag neither library defines: v3 refuses the type, encoding/json
@@ -130,11 +134,11 @@ func promotesUntaggedEmbedded(field reflect.StructField, name string, mode Mode)
 	return t.Kind() == reflect.Struct
 }
 
-// inlineTarget says what a `,inline` field holds.
+// inlineTarget classifies the type held by a `,inline` field.
 type inlineTarget uint8
 
 const (
-	// notInlinable is anything `,inline` cannot be written on.
+	// notInlinable marks a type that `,inline` cannot apply to.
 	notInlinable inlineTarget = iota
 	// inlinedStruct has its fields promoted into the outer struct.
 	inlinedStruct
@@ -181,14 +185,11 @@ var selfDecoding []reflect.Type
 // call would not change them.
 func SelfDecoding(interfaces ...reflect.Type) { selfDecoding = interfaces }
 
-// InlineReadsItsOwnNode reports whether a `,inline` field of type t decodes the
-// mapping itself rather than having its fields filled one at a time.
+// InlineReadsItsOwnNode reports whether a `,inline` field of type t decodes the whole mapping itself.
 //
-// go.yaml.in/yaml/v3 keeps such a field out of the flattened field list and
-// hands it the whole node, filling the rest of the struct besides. Any type
-// implementing one of the unmarshalers this decoder honors is that case, so
-// its fields stay out of Fields.flat and decodeInlineFields gives it the
-// mapping.
+// It does when t implements one of the unmarshalers passed to [SelfDecoding].
+// Such a field gets no entry in Fields.flat, and the decoder's decodeInlineFields passes it the whole mapping.
+// The decoder fills the other fields of the struct from the same mapping, as go.yaml.in/yaml/v3 does.
 func InlineReadsItsOwnNode(t reflect.Type) bool {
 	pointer := reflect.PointerTo(t)
 	for _, iface := range selfDecoding {
@@ -208,12 +209,12 @@ const (
 // structField reads one field's tag: the name it writes, and the flags after
 // it.
 //
-// Each tag keeps its own vocabulary. A `yaml` tag takes v3's flags and the five
-// this library adds, and refuses anything else; a `json` tag takes the two
-// encoding/json defines, and ignores anything else. So `json:",inline"` names
-// no field inline, because encoding/json has no such option -- an anonymous
-// struct is promoted there by [github.com/go-openapi/go-yaml/codec.UseJSONTags] and the rule in
-// promotesUntaggedEmbedded, not by a flag.
+// Each tag keeps its own vocabulary.
+// A `yaml` tag takes v3's flags and the five this library adds, and any other flag is an error.
+// A `json` tag takes the two flags encoding/json defines, and ignores any other.
+//
+// `json:",inline"` therefore inlines nothing, because encoding/json has no such option.
+// Under [github.com/go-openapi/go-yaml/codec.UseJSONTags], promotesUntaggedEmbedded promotes an anonymous struct without a flag.
 func structField(field reflect.StructField, index int, mode Mode) (*Info, error) {
 	tag, fromYAML := getTag(field, mode)
 	fieldName := strings.ToLower(field.Name)
@@ -243,8 +244,9 @@ func structField(field reflect.StructField, index int, mode Mode) (*Info, error)
 	return sf, readYAMLFlags(sf, tag, options[1:])
 }
 
-// nameSource says which tag wrote a field's name: none where the tag gave no
-// name and the Go name stood in, and otherwise the tag getTag read it from.
+// nameSource returns the source of a field's name.
+// It returns nameFromGo where the tag gave no name and the Go name is used,
+// and otherwise the tag that getTag read the name from.
 func nameSource(name string, fromYAML bool) tagSource {
 	switch {
 	case name == "":
@@ -261,8 +263,7 @@ func nameSource(name string, fromYAML bool) tagSource {
 // `omitempty`, `flow` and `inline` are go.yaml.in/yaml/v3's. `omitzero` is
 // encoding/json's own since Go 1.24. `anchor`, `anchor=name`, `alias` and
 // `alias=name` are this library's, for a YAML feature no v3 tag reaches.
-// Anything else refuses the type, as v3 refuses it -- an empty flag included,
-// so "a," and "a,,flow" are both refused.
+// Any other flag is an error, as in v3. An empty flag is one too, so "a," and "a,,flow" are both rejected.
 func readYAMLFlags(sf *Info, tag string, flags []string) error {
 	for _, opt := range flags {
 		switch {
@@ -283,8 +284,7 @@ func readYAMLFlags(sf *Info, tag string, flags []string) error {
 		case len(opt) > len(aliasFlag) && strings.HasPrefix(opt, aliasFlag):
 			sf.AliasName = opt[len(aliasFlag):]
 		default:
-			// "anchor=" and "alias=" land here too, since neither carries the
-			// name the two cases above cut off.
+			// "anchor=" and "alias=" land here too: they carry no name for the two cases above to cut off.
 			return fmt.Errorf("unsupported flag %q in tag %q", opt, tag)
 		}
 	}
@@ -296,8 +296,8 @@ func readYAMLFlags(sf *Info, tag string, flags []string) error {
 // as encoding/json ignores one it does not define.
 //
 // encoding/json has three: `omitempty`, `omitzero` and `string`. The first two
-// mean here what they mean there. `string` is not read yet, so a number written
-// as a string reads either way rather than only the one.
+// mean here what they mean there. `string` is not supported yet:
+// a number field reads both a number and a quoted number, where encoding/json reads only the quoted one.
 func readJSONFlags(sf *Info, flags []string) {
 	for _, opt := range flags {
 		switch opt {
@@ -309,6 +309,8 @@ func readJSONFlags(sf *Info, flags []string) {
 	}
 }
 
+// Ignored reports whether the codec skips field: an unexported field that is not embedded,
+// or a field whose tag under mode is "-".
 func Ignored(field reflect.StructField, mode Mode) bool {
 	if field.PkgPath != "" && !field.Anonymous {
 		// private field
@@ -322,6 +324,8 @@ func Ignored(field reflect.StructField, mode Mode) bool {
 // InfoMap holds the Info of each field of a struct, keyed by Go field name.
 type InfoMap map[string]*Info
 
+// HasMergeProperty reports whether a field is tagged `,omitempty,inline,alias`.
+// The tree decoder then skips the "<<" key of the mapping it reads into the struct.
 func (m InfoMap) HasMergeProperty() bool {
 	for _, v := range m {
 		if v.IsOmitEmpty && v.IsInline && v.IsAutoAlias {
@@ -335,52 +339,49 @@ func (m InfoMap) HasMergeProperty() bool {
 // Mode and each keyed by reflect.Type.
 //
 // A type read for its `yaml` tags and for its `json` tags gives two different
-// field maps, and a decoder using one must not be handed the other's. One map
-// per mode keeps reflect.Type as the key: it is already an interface, where a
-// struct holding the type and the mode would be boxed at every lookup.
+// field maps, and a decoder using one must not get the other's.
+// One map per mode keeps reflect.Type as the key. A reflect.Type is already an interface,
+// but a struct holding the type and the mode would be boxed at every lookup.
 var structFieldMaps [ModeCount]Cache[*Fields]
 
-// Fields holds one type's fields, or the error its tags raised. Both are
+// Fields holds one type's fields, or the error raised by its tags. Both are
 // kept, so a type with a duplicated field name is refused as fast as one that
 // reads.
 type Fields struct {
+	// ByGoName holds every field, keyed by Go field name.
 	ByGoName InfoMap
-	// byRenderName finds the field a mapping key names, which is the lookup a
-	// decode makes. InfoMap is keyed by Go field name, which is the one
-	// an encode makes. An embedded field is left out: it takes the whole
-	// mapping rather than the entry its own name would match.
+	// byRenderName maps a key name to its field, for a decode. ByGoName is keyed by Go field name, for an encode.
+	// An embedded field is left out: it takes the whole mapping, not the entry that would match its own name.
 	byRenderName map[string]*Info
 	// Inline lists the embedded fields, which the tree decoder reads after the
 	// rest.
 	Inline []*Info
-	// flat finds the field a mapping key names through the embedded structs
-	// standing between. Both decode paths read it, so both place an entry in
-	// the same field. Nil where the type embeds nothing.
+	// flat maps a key to its field, through any embedded structs in between.
+	// Both decode paths read it, so both place an entry in the same field.
+	// It is nil where the type embeds nothing.
 	flat map[string]Flat
-	// folded finds the field a key names but for case, which encoding/json
-	// accepts once an exact match has failed. Nil outside [github.com/go-openapi/go-yaml/codec.UseJSONTags], where
-	// a key names a field exactly or names none.
+	// folded maps a case-folded name to its field.
+	// encoding/json accepts a key that differs from a name only in case, once an exact match has failed.
+	// It is nil outside [github.com/go-openapi/go-yaml/codec.UseJSONTags], where a key must match a name exactly.
 	folded map[string]Flat
-	// dropped holds the names the conflict rule left reaching no field at all,
-	// which flat cannot record by leaving out: a name it does not hold may also
-	// be one no field of this type declares, such as a key an embedded struct's
-	// own `,inline` map carries at run time.
+	// dropped holds the names that reach no field, because the conflict rule picked none.
+	// flat cannot record them by leaving them out:
+	// a name missing from flat may also be a name no field declares,
+	// such as a key held at run time by an embedded struct's own `,inline` map.
 	dropped map[string]struct{}
 	err     error
 }
 
 // MapOf returns the fields of structType, keyed by Go field name.
 //
-// A type's fields never change, so each is read once and handed out again
-// afterwards. Reading them for every value decoded was the largest single cost
-// of decoding into Go types: citm_catalog read into the structs it describes
-// allocated 73,708 times in here per document -- a InfoMap, a
-// renderNameMap and a Info per value, and 21,627 calls to strings.Split
-// on tags already split thousands of times -- against 243,679 allocations for
-// the whole decode.
+// A type's fields never change, so MapOf reads them once and returns the same map afterwards.
+// Reading them for every decoded value was the largest single cost of decoding into Go types.
+// Decoding citm_catalog into its own structs allocated 73,708 times here per document,
+// out of 243,679 allocations for the whole decode.
+// Each value cost an InfoMap, a renderNameMap and an Info,
+// and strings.Split ran 21,627 times on tags already split thousands of times.
 //
-// The map and the StructFields in it are shared between every decode and
-// encode of the type, so no caller may write to them.
+// Every decode and encode of the type shares the map and the Info values in it, so no caller may write to them.
 func MapOf(structType reflect.Type, mode Mode) (InfoMap, error) {
 	r, err := Of(structType, mode)
 
@@ -402,10 +403,9 @@ func Of(structType reflect.Type, mode Mode) (*Fields, error) {
 
 // Lookup finds the field a mapping key names.
 //
-// An exact match first, and under [github.com/go-openapi/go-yaml/codec.UseJSONTags] one differing only in case
-// after that, which is the order encoding/json tries them in. The result's at
-// is nil where the field stands in the type itself and there is no index path
-// to walk.
+// Lookup tries an exact match first. Under [github.com/go-openapi/go-yaml/codec.UseJSONTags], it then tries a match that differs only in case,
+// in the order encoding/json uses.
+// The result's At is nil where the field is in the type itself and there is no index path to walk.
 func (r *Fields) Lookup(name string) (Flat, bool) {
 	if r.flat == nil {
 		if own, named := r.byRenderName[name]; named {
@@ -430,16 +430,16 @@ func (r *Fields) Claims(name string) bool {
 	return ok
 }
 
-// WritesPromoted reports whether an entry the embedded struct at index encoded
+// WritesPromoted reports whether an entry encoded by the embedded struct at index
 // belongs in the mapping around it.
 //
-// flat holds the one field each name reaches, so a name it places under another
-// index is one a shallower field writes already, and a name in dropped is one
-// the conflict rule left reaching nothing. Writing either would put a key in
-// the document that reading it back would ignore or refuse.
+// flat holds the one field each name reaches.
+// A name that flat places under another index is already written by a shallower field.
+// A name in dropped reaches no field, because the conflict rule picked none.
+// Writing either name would put a key in the document that a decode then ignores or rejects.
 //
-// A name in neither is a key the type system never saw -- an embedded struct's
-// own `,inline` map carries those -- and it is written.
+// A name in neither map is a key no struct field declares, such as one from an embedded struct's own `,inline` map.
+// WritesPromoted returns true for it.
 func (r *Fields) WritesPromoted(name string, index int) bool {
 	if ff, known := r.flat[name]; known {
 		return len(ff.At) > 0 && ff.At[0] == index
@@ -449,11 +449,10 @@ func (r *Fields) WritesPromoted(name string, index int) bool {
 	return !gone
 }
 
-// foldedNames keys every name a type answers to by its folded form.
+// foldedNames keys every key name of the type by its folded form.
 //
-// Two names folding alike keep the first in sorted order, so a type reads the
-// same way twice. An exact match is tried before this in every case, so it only
-// ever decides between names no document spelled exactly.
+// When two names fold alike, foldedNames keeps the first in sorted order, so every read of the type agrees.
+// A decode tries an exact match first, and uses this map only for a key that matched no name exactly.
 func foldedNames(r *Fields) map[string]Flat {
 	names := make([]string, 0, max(len(r.byRenderName), len(r.flat)))
 	if r.flat == nil {
@@ -488,10 +487,8 @@ func foldedNames(r *Fields) map[string]Flat {
 // foldName returns the key a case-insensitive lookup compares on: every rune
 // folded to the smallest of those unicode.SimpleFold walks it through.
 //
-// For a letter that is its upper case, and it also puts the Kelvin sign on K
-// and the long s on S, which is where encoding/json puts them. strings.ToUpper
-// would leave both standing on their own, so a document writing "K" would miss
-// a field called "k".
+// A letter folds to its upper case. The Kelvin sign also folds to K, and the long s to S, as in encoding/json.
+// strings.ToUpper leaves both signs unchanged, so a document writing "K" would miss a field called "k".
 func foldName(name string) string {
 	var b strings.Builder
 	b.Grow(len(name))
@@ -516,9 +513,9 @@ func foldRune(r rune) rune {
 // RenderNameOf returns the name a mapping key writes for the Go field called
 // fieldName, following the embedded structs.
 //
-// A validator names the field it rejected by its Go name, and the entry that
-// wrote it is found by the name the document used. A promoted field is not in
-// fields, which holds the type's own, so flat is read as well.
+// A validator names a rejected field by its Go name.
+// The entry that wrote the field is found by the name used in the document.
+// A promoted field is missing from ByGoName, which holds only the type's own fields, so RenderNameOf reads flat too.
 func (r *Fields) RenderNameOf(fieldName string) (string, bool) {
 	if sf, own := r.ByGoName[fieldName]; own && !sf.IsInline {
 		return sf.RenderName, true
@@ -571,30 +568,32 @@ func readType(structType reflect.Type, mode Mode) *Fields {
 	return r
 }
 
-// Flat is the field one mapping key reaches: where it stands, what its
-// tag said, and a number of its own.
+// Flat describes the field reached by a mapping key.
 //
-// ord numbers the names a type answers to, from zero. The tree decoder marks
-// what a mapping has written so it can tell an entry from a later "<<" merge,
-// and an index path is no use as a bit position; a leaf's own Index is no use
-// either, since two embedded structs both have a field at zero.
+// It holds the field's location At, its tag information SF, and an ordinal index Ord.
+// The ordinal index Ord starts from zero, and numbers the key names of the type.
+//
+// The tree decoder uses Ord as a bit position. It sets one bit for each field written by a mapping,
+// to tell an own entry from a later "<<" merge.
+// An index path cannot serve as a bit position. Neither can a leaf's own Index,
+// because two embedded structs can both have a field at index zero.
 type Flat struct {
 	At  []int
 	SF  *Info
 	Ord int
 }
 
-// flatCandidate is one field a mapping key could reach, and how it got its
-// name. Its depth is the length of at.
+// flatCandidate describes one field that a mapping key could reach, and the tag that gave the field its name.
+// Its depth is the length of at.
 type flatCandidate struct {
 	at      []int
 	sf      *Info
 	namedBy tagSource
 }
 
-// flattener collects every field each name reaches, following the embedded
-// structs. It carries what does not change as the walk descends, and resolve
-// settles the names more than one field answers to.
+// flattener collects every field each name reaches, following the embedded structs.
+// It holds the state that stays fixed as walk descends.
+// resolve then settles each name that more than one field answers to.
 type flattener struct {
 	root       reflect.Type
 	candidates map[string][]flatCandidate
@@ -605,10 +604,8 @@ type flattener struct {
 // walk records the names t reaches at the index path at, then descends into the
 // structs t inlines.
 //
-// Every path is followed, so a type embedded down two branches contributes its
-// fields twice and resolve sees the collision. encoding/json reaches the same
-// verdict by walking such a type once and recording its fields twice over,
-// which is the same arithmetic written differently.
+// walk follows every path, so a type embedded down two branches adds its fields twice, and resolve sees the collision.
+// encoding/json walks such a type once and records each of its fields twice, which gives the same result.
 //
 // It reads each embedded type with readStructFields and not with Of,
 // because Of calls this and the type being read is not in the cache
@@ -663,9 +660,9 @@ func (f *flattener) walk(t reflect.Type, fields InfoMap, inline []*Info, at []in
 
 // resolve returns the field each name reaches, once every candidate is in.
 //
-// A name only one field answers to is that field's. The rest go through
-// dominant, and the contested names are settled in order so that a type with
-// two of them always reports the same one.
+// A name that only one field answers to goes to that field.
+// dominant picks the field for each of the other names.
+// resolve calls dominant in sorted name order, so a type with two contested names always fails on the same one.
 func (f *flattener) resolve() (map[string]Flat, map[string]struct{}, error) {
 	out := make(map[string]Flat, len(f.candidates))
 	contested := make([]string, 0, len(f.candidates))
@@ -696,7 +693,7 @@ func (f *flattener) resolve() (map[string]Flat, map[string]struct{}, error) {
 		out[name] = Flat{At: won.at, SF: won.sf}
 	}
 
-	// The names are numbered in order, so a type reads the same way twice.
+	// resolve numbers the names in sorted order, so every read of the type numbers them the same way.
 	numbered := make([]string, 0, len(out))
 	for name := range out {
 		numbered = append(numbered, name)
@@ -711,17 +708,20 @@ func (f *flattener) resolve() (map[string]Flat, map[string]struct{}, error) {
 	return out, dropped, nil
 }
 
-// dominant picks between the fields one name reaches, or refuses the type.
+// dominant picks one of the fields reached by name, or returns an error for the type.
 //
-// Two rules run before encoding/json's. go.yaml.in/yaml/v3 refuses a type where
-// one name reaches two fields, so the default mode refuses it here. And a name
-// some `yaml` tag wrote is refused whatever the mode: a type mixing the two
-// vocabularies is a case neither reference speaks to, and refusing it is
-// narrower than inventing an answer.
+// Two rules run before encoding/json's:
 //
-// What is left is encoding/json's rule, in three clauses: the shallowest
-// candidate wins; at equal depth the one a tag names wins, if exactly one does;
-// and otherwise the name reaches no field at all, which a nil return says.
+//   - go.yaml.in/yaml/v3 rejects a type where one name reaches two fields, so the default mode rejects it here.
+//   - A contested name that a `yaml` tag wrote is an error in every mode.
+//     Neither v3 nor encoding/json defines a type that mixes the two vocabularies,
+//     and dominant rejects it instead of inventing an answer.
+//
+// encoding/json's rule then applies, in three clauses:
+//
+//   - the shallowest candidate wins;
+//   - at equal depth, the candidate named by a tag wins, if exactly one is;
+//   - otherwise the name reaches no field, and dominant returns nil.
 func (f *flattener) dominant(name string, cs []flatCandidate) (*flatCandidate, error) {
 	refused := fmt.Errorf("duplicated key %q in struct %s", name, f.root)
 	if !f.mode.readsJSONTags() {
@@ -761,9 +761,8 @@ func (f *flattener) dominant(name string, cs []flatCandidate) (*flatCandidate, e
 // `,inline`: a field that is neither a struct nor a map, a map whose keys are
 // not exactly string, and a second map in the same struct.
 //
-// inlineMaps counts the maps seen so far in structType, and this raises it.
-// Only one map can take the entries no field claims, so a second one has no
-// rule to fill it by.
+// inlineMaps counts the maps seen so far in structType, and checkInlineTarget increments it.
+// Only one map can take the entries that no field claims. A second map would have no rule to decide its entries.
 func checkInlineTarget(structType reflect.Type, field reflect.StructField, inlineMaps *int) error {
 	switch inlineTargetOf(field.Type) {
 	case inlinedStruct:

@@ -19,24 +19,23 @@ import (
 // 100 MB, and a Decoder reading from an io.Reader held the buffer it read.
 // Clone gives the caller memory the document does not own.
 //
-// Copying each string on its own would cost two allocations where there was
-// one: the bytes, then the interface header. The Arena allocates both in
-// chunks, so it hands back owned strings for fewer allocations than pointing
-// into the document took. A live string then pins a chunk rather than the
-// document: 8 KB at worst, and a string longer than 2 KB gets its own
-// allocation instead.
+// Copying each string on its own would cost two allocations instead of one: the bytes, then the interface header.
+// The Arena allocates both in chunks.
+// Its owned strings therefore cost fewer allocations than the windows into the document did.
+// A live string pins its chunk, 8 KB at most, and not the document.
+// A string longer than 2 KB gets an allocation of its own.
 type Arena struct {
 	text []byte
 	strs []string
 }
 
 const (
-	// arenaChunk is how much text one allocation copies into.
+	// arenaChunk sets the size of one text allocation: 8 KB.
 	arenaChunk = 8 << 10
-	// arenaBig is the length above which a string is copied on its own, rather
-	// than filling a chunk it would leave little of.
+	// arenaBig sets the length above which a string gets an allocation of its own: 2 KB.
+	// A longer string would leave little of a chunk free.
 	arenaBig = arenaChunk / 4
-	// arenaSlab is how many string headers one allocation boxes.
+	// arenaSlab sets the number of string headers boxed by one allocation.
 	arenaSlab = 256
 )
 
@@ -64,8 +63,8 @@ func (a *Arena) Clone(s string) string {
 // word rather than fabricating one.
 var stringProto any = "proto"
 
-// eface is the layout of an interface value holding no methods: the type of
-// what it holds, then a pointer to it.
+// eface mirrors the layout of an empty interface value: a pointer to the type of the held value,
+// then a pointer to the value.
 type eface struct {
 	typ  unsafe.Pointer
 	data unsafe.Pointer
@@ -93,7 +92,7 @@ func (a *Arena) Box(s string) any {
 	return v
 }
 
-// Value returns s as an any the document does not own.
+// Value returns s as an any, copied out of the document.
 func (a *Arena) Value(s string) any {
 	return a.Box(a.Clone(s))
 }

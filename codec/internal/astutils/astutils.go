@@ -13,9 +13,11 @@ import (
 
 // CountNodes counts the nodes [ast.Walk] visits under node, comment groups included.
 //
-// A node handed to [Decoder.DecodeFromNode] has no source to measure, so its alias budget is taken from this.
-// [ast.Walk] visits an alias once and does not follow its target, so an alias adds one to the count however much it
-// names.
+// A node handed to [github.com/go-openapi/go-yaml/codec.Decoder.DecodeFromNode] has no source to measure.
+// The decoder sets its alias budget from this count instead.
+//
+// [ast.Walk] visits an alias once and does not follow its target.
+// An alias therefore adds one to the count, however large the node it names.
 func CountNodes(node ast.Node) int {
 	var n nodeCount
 	ast.Walk(&n, node)
@@ -23,23 +25,19 @@ func CountNodes(node ast.Node) int {
 	return int(n)
 }
 
-// MapKeyString is the text a decoded mapping key is addressed by.
+// MapKeyString returns the name a decoded mapping key is addressed by.
 //
-// Taken from the node where the node is a plain scalar, so that the decoder,
-// UseStringKeys and [ToJSON] name an entry the same way: keyName writes the
-// type's own canonical spelling, where fmt.Sprint on the resolved value wrote a
-// float and an integer alike and put "1: a" beside "1.0: b" under one name.
+// For a scalar, the name comes from the node: [ast.KeyName] writes the canonical spelling of the scalar's type.
+// The decoder, UseStringKeys and [github.com/go-openapi/go-yaml/codec.ToJSON] then name an entry the same way.
+// fmt.Sprint on the resolved value wrote a float and an integer alike, and named "1: a" and "1.0: b" the same.
 //
-// A null gives "null" rather than the empty string, which is what the document
-// wrote and what keeps it apart from the empty key: "null: a" and "\"\": b" are
-// two entries.
+// A null key is named "null", not the empty string, so "null: a" and "\"\": b" stay two entries.
 //
-// A collection has no spelling of its own and is refused. Go's own printing
-// stood in before -- "map[k:v]" into an any, "[{k v}]" into a MapSlice -- which
-// named the key after the value the decoder built rather than after the
-// document. It gave three destinations three answers for one key, and let
-// "? {k: v}" collide with a literal "map[k:v]" key and lose an entry with
-// nothing reported. go.yaml.in/yaml/v3 refuses one on every destination.
+// A collection has no spelling of its own, and MapKeyString returns an error for it,
+// as go.yaml.in/yaml/v3 does on every destination.
+// Go's printing of the decoded value used to name such a key: "map[k:v]" into an any, "[{k v}]" into a MapSlice.
+// One key then had three names on three destinations,
+// and "? {k: v}" collided with a literal "map[k:v]" key and silently lost an entry.
 func MapKeyString(node ast.Node, key any) (string, error) {
 	if name, kind := ast.KeyName(node); kind != token.KeyOther {
 		return name, nil
@@ -56,10 +54,9 @@ func MapKeyString(node ast.Node, key any) (string, error) {
 
 // kindOfKey names the key the document wrote, for the message that refuses it.
 //
-// From the node and not from the value it decoded to. The value a mapping key
-// decodes to is a Go map under one option and a MapSlice under another, so a
-// mapping key was refused as "a sequence" where the reading was taken off the
-// value.
+// kindOfKey reads the node, not the value it decoded to.
+// A mapping key decodes to a Go map under one option and to a MapSlice under another.
+// Read from the value, a mapping key was reported as "a sequence".
 func kindOfKey(node ast.Node) string {
 	switch ast.Unwrap(node).(type) {
 	case *ast.MappingNode, *ast.MappingValueNode:
@@ -72,12 +69,11 @@ func kindOfKey(node ast.Node) string {
 }
 
 // EachEntryOwnFirst calls fn for the mapping's own entries in document order,
-// then for the ones a "<<" brings in, passing merged to say which.
+// then for the entries brought in by a "<<", with merged set.
 //
-// A mapping's own keys win over the ones it merges in, whichever side of the
-// "<<" they were written, so reading them in this order settles precedence by
-// position rather than by a lookup at each key. It also keeps the MapSlice scan
-// off every mapping that holds no "<<".
+// A mapping's own keys take precedence over the merged ones, whether they are written before or after the "<<".
+// Reading the own keys first gives them that precedence without a lookup at each key.
+// The order also spares a mapping with no "<<" the MapSlice scan.
 func EachEntryOwnFirst(n *ast.MappingNode, fn func(value ast.Node, merged bool) error) error {
 	for _, pass := range [2]bool{false, true} {
 		for _, value := range n.Values {
@@ -93,19 +89,19 @@ func EachEntryOwnFirst(n *ast.MappingNode, fn func(value ast.Node, merged bool) 
 	return nil
 }
 
-// MapEntriesOwnFirst is the entries of a mapping, the ones it writes itself
-// before the ones a "<<" brings in, each group in document order.
+// MapEntriesOwnFirst returns the entries of a mapping: the ones it writes itself, then the ones a "<<" brings in,
+// each group in document order.
 //
-// It is [EachEntryOwnFirst]'s rule for the reflection path, which reads an
-// [ast.MapNode] through its iterator where the other reads an *ast.MappingNode
-// through its Values. Ordering the entries is what makes precedence fall out of
-// writing only where nothing stands.
-func MapEntriesOwnFirst(n ast.MapNode) []mapEntry {
-	var own, merged []mapEntry
+// It applies the order of [EachEntryOwnFirst] on the reflection path.
+// MapEntriesOwnFirst reads an [ast.MapNode] through its iterator,
+// and EachEntryOwnFirst reads an *ast.MappingNode through its Values. A reader that writes a field only where nothing stands yet
+// then gives an own entry precedence over a merged one.
+func MapEntriesOwnFirst(n ast.MapNode) []MapEntry {
+	var own, merged []MapEntry
 
 	iter := n.MapRange()
 	for iter.Next() {
-		entry := mapEntry{Key: iter.Key(), Value: iter.Value(), KeyValue: iter.KeyValue()}
+		entry := MapEntry{Key: iter.Key(), Value: iter.Value(), KeyValue: iter.KeyValue()}
 		if key, isKey := entry.Key.(ast.MapKeyNode); isKey && key.IsMergeKey() {
 			entry.Merged = true
 			merged = append(merged, entry)
@@ -147,8 +143,9 @@ func mergeEntry(node ast.Node) bool {
 	return ok && n.Key != nil && n.Key.IsMergeKey()
 }
 
-// HeadCommentPath is the path a head comment is keyed by: a collection's own
-// head comment belongs to its first key, as the walk below already records it.
+// HeadCommentPath returns the path a head comment on node is keyed by.
+//
+// A mapping's own head comment belongs to its first key, and an entry's to its key, as [EachComment] records them.
 func HeadCommentPath(node ast.Node) string {
 	switch n := node.(type) {
 	case *ast.MappingNode:
@@ -162,19 +159,17 @@ func HeadCommentPath(node ast.Node) string {
 	return node.GetPath()
 }
 
-// NotAnOrderedMap reports a node "!!omap" stands on that is not the shape the
-// tag names.
+// NotAnOrderedMap returns the syntax error for a node tagged "!!omap" that is not a sequence of one-entry mappings.
 func NotAnOrderedMap(node ast.Node) error {
 	return yamlerrors.NewSyntax("!!omap names a sequence of one-entry mappings", node.GetToken())
 }
 
 // ValidationErrorToken returns where to report a field that failed validation.
 //
-// A scalar is reported at itself: the message names the field, and what a
-// reader wants pointed at is the value that failed. A mapping or a sequence has
-// no one token to point at -- the first of them stands inside the value rather
-// than naming it -- so those are reported at the ':' of the entry that writes
-// them, which is what entry carries.
+// A scalar is reported at its own token. The message already names the field, so the position points at the value.
+//
+// A mapping or a sequence has no single token to point at, because its first token stands inside the value.
+// ValidationErrorToken returns the token of entry instead: the ':' of the entry that writes the value.
 func ValidationErrorToken(value, entry ast.Node) *token.Token {
 	if value.Type() == ast.MappingType || value.Type() == ast.SequenceType {
 		if entry != nil {
@@ -185,8 +180,7 @@ func ValidationErrorToken(value, entry ast.Node) *token.Token {
 	return value.GetToken()
 }
 
-// SequenceEntryNode returns the entry node that writes entry idx of node, the one holding its '-', where the
-// sequence kept it, and nil otherwise.
+// SequenceEntryNode returns the node holding the '-' of entry idx in node, or nil where the sequence did not keep it.
 func SequenceEntryNode(node ast.ArrayNode, idx int) ast.Node {
 	seq, ok := node.(*ast.SequenceNode)
 	if !ok || idx < 0 || idx >= len(seq.Entries) {
@@ -211,7 +205,7 @@ func StandsOnNothing(node ast.Node) bool {
 	}
 }
 
-// NodeAt is where a node stands in the source, and the zero Position where it carries no token.
+// NodeAt returns the source position of n, or the zero Position where n carries no token.
 //
 // The walk hands over a Cursor and not a position: a node answers this itself, and a block collection
 // answers differently on its Enter and its Leave because the parse moves its token to the ':' it reads.
@@ -227,8 +221,9 @@ func NodeAt(n ast.Node) token.Position {
 	return tk.Position
 }
 
-// KeyText is a scalar key as the string a mapping holds it under. JSON keys are
-// strings, so 4.0 and 4 address the same entry and are both "4".
+// KeyText returns a scalar key as the string a JSON object holds it under.
+//
+// JSON keys are strings, so 4.0 and 4 address the same entry and are both "4".
 func KeyText(node ast.Node) string {
 	if name, kind := ast.KeyName(node); kind != token.KeyOther {
 		return name
@@ -236,8 +231,8 @@ func KeyText(node ast.Node) string {
 
 	switch t := JSONScalarOf(node).(type) {
 	case nil:
-		// A key left empty addresses the entry by the word JSON writes for it,
-		// which is what the value converter held it under.
+		// An empty key is named "null", as JSON writes it.
+		// The value converter keeps the entry under that name too.
 		return "null"
 	case string:
 		return t
@@ -255,7 +250,7 @@ func AnchorName(n ast.Node) string {
 	return n.GetToken().Value
 }
 
-// JSONScalarOf is the Go value a scalar node holds.
+// JSONScalarOf returns the Go value a scalar node holds, and nil for any other node.
 func JSONScalarOf(n ast.Node) any {
 	if s, ok := n.(ast.ScalarNode); ok {
 		return s.GetValue()
@@ -264,6 +259,7 @@ func JSONScalarOf(n ast.Node) any {
 	return nil
 }
 
+// ScalarNumber returns the value of an integer or a float node, and nil for any other node.
 func ScalarNumber(node ast.Node) any {
 	switch n := node.(type) {
 	case *ast.IntegerNode:
@@ -286,9 +282,11 @@ func (c *nodeCount) Visit(node ast.Node) ast.Visitor {
 	return c
 }
 
-// mapEntry is one entry of a mapping: its key, its value, the node the walk
-// hands over for the pair, and whether the key is a "<<".
-type mapEntry struct {
+// MapEntry describes one entry of a mapping.
+//
+// It holds the entry's Key and Value, and KeyValue, the node handed over by the walk for the pair.
+// Merged is set when the key is a "<<".
+type MapEntry struct {
 	Key, Value, KeyValue ast.Node
 	Merged               bool
 }

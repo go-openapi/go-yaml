@@ -105,12 +105,11 @@ func PlaceFootComment(root, filtered ast.Node, comment *ast.CommentGroupNode) er
 // The three errors below report a comment that cannot be placed where it was
 // asked to go.
 //
-// A node holds one comment group and no placement, so a writer places a comment
-// by choosing which node to hang the group on: above goes to the entry, beside
-// goes to the entry's key, below goes to a field of its own. Where the node has
-// no such node around it -- it is the whole document, or it sits somewhere the
-// choice does not apply -- there is nowhere to put the comment and one of these
-// is returned.
+// A node holds one comment group and no position for it.
+// A writer places a comment by choosing the node that holds the group:
+// the entry for a comment above, the entry's key for a comment beside, and a foot field for a comment below.
+// A node with no such node around it, such as the whole document, leaves nowhere to put the comment.
+// The Place functions then return one of these errors.
 
 // errUnsupportedHeadPosition reports a comment that cannot be written above
 // node.
@@ -130,20 +129,22 @@ func errUnsupportedFootPosition(node ast.Node) error {
 	return fmt.Errorf("unsupported comment foot position for %s", node.Type())
 }
 
-// CommentPlace says where a comment stands relative to the node a CommentMap records it against.
+// CommentPlace gives the position of a comment relative to its node: above it, on its line, or below it.
 type CommentPlace int
 
 const (
-	// HeadPlace is the lines above the node.
+	// HeadPlace puts the comment on the lines above the node.
 	HeadPlace CommentPlace = iota
-	// LinePlace is the node's own line, after it.
+	// LinePlace puts the comment on the node's own line, after the node.
 	LinePlace
-	// FootPlace is the lines below the node.
+	// FootPlace puts the comment on the lines below the node.
 	FootPlace
 )
 
-// EachComment calls fn for each comment the tree records on node, with the path a CommentMap keys it by, where it
-// stands, and its text, one entry a line without the '#'. A line comment hands over its first line only.
+// EachComment calls fn for each comment recorded on node.
+//
+// fn receives the path a CommentMap keys the comment by, the comment's place, and its text:
+// one string per line, without the '#'. A line comment passes its first line only.
 func EachComment(node ast.Node, fn func(path string, place CommentPlace, texts []string)) {
 	headOrLineComments(node, fn)
 	footComment(node, fn)
@@ -193,12 +194,14 @@ func headOrLineComments(node ast.Node, fn func(path string, place CommentPlace, 
 
 // ownHeadComment records what [ast.BaseNode.HeadComment] holds.
 //
-// The walk below reads GetComment, which does not mean the same thing for every
-// node -- head on a collection, beside the property on an anchor or a tag --
-// and tells the two apart by comparing line numbers. HeadComment means "above
-// this node" whatever the node is, so it needs no such test, and a comment that
-// moved there would otherwise vanish from the map: a sequence's head comment
-// did.
+// headOrLineComments reads GetComment, whose meaning depends on the node.
+// On a collection, it returns the head comment.
+// On an anchor or a tag, it returns the comment beside the property.
+// headOrLineComments tells the two apart by comparing line numbers.
+//
+// HeadComment always means "above this node", so ownHeadComment needs no such test.
+// Without ownHeadComment, a comment held in HeadComment would be missing from the map,
+// as a sequence's head comment once was.
 func ownHeadComment(node ast.Node, fn func(path string, place CommentPlace, texts []string)) {
 	if _, sequence := node.(*ast.SequenceNode); sequence {
 		// sequenceComments reads it, and against the first element

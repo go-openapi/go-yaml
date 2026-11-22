@@ -8,8 +8,8 @@ import (
 	"sync"
 )
 
-// Cache is a [sync.Map] from a reflect.Type to a V, safe for concurrent
-// use. It holds the one type assertion its callers would otherwise repeat.
+// Cache maps a reflect.Type to a V over a [sync.Map], and is safe for concurrent use.
+// It holds the type assertion that its callers would otherwise repeat.
 type Cache[V any] struct {
 	m sync.Map
 }

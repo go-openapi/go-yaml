@@ -3,7 +3,7 @@
 // Every private function called by QuoteWith was copied.
 // There are 2 modifications to simplify the code:
 // 1. The unicode.IsPrint function was substituted for the custom implementation of IsPrint
-// 2. All code paths reachable only when ASCIIonly or grphicOnly are set to true were removed.
+// 2. All code paths reachable only when ASCIIonly or graphicOnly are set to true were removed.
 
 // SPDX-FileCopyrightText: Copyright 2009 The Go Authors
 // SPDX-License-Identifier: BSD-3-Clause
@@ -23,9 +23,12 @@ const (
 	lowerhex = "0123456789abcdef"
 )
 
-// firstSupplementaryRune is the first rune outside the Basic Multilingual Plane, which a \\u escape cannot write.
+// firstSupplementaryRune marks the first rune outside the Basic Multilingual Plane. A \\u escape cannot write it.
 const firstSupplementaryRune = 0x10000
 
+// QuoteWith returns s as a Go string literal between two quote characters, escaped as strconv.Quote escapes it.
+//
+// It is strconv's private quoteWith with ASCIIonly and graphicOnly both false.
 func QuoteWith(s string, quote byte) string {
 	return string(appendQuotedWith(make([]byte, 0, 3*len(s)/2), s, quote))
 }
