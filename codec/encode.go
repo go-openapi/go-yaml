@@ -73,12 +73,6 @@ func NewEncoder(w io.Writer, opts ...EncodeOption) *Encoder {
 	}
 }
 
-// Close closes the encoder by writing any remaining data.
-// It does not write a stream terminating string "...".
-func (e *Encoder) Close() error {
-	return nil
-}
-
 // Encode writes the YAML encoding of v to the stream.
 // If multiple items are encoded to the stream,
 // the second and subsequent document will be preceded with a "---" document separator,
