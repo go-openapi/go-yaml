@@ -391,6 +391,10 @@ func (e *Encoder) encodeValue(v reflect.Value, column int) (ast.Node, error) {
 	if node, isNode := e.heldNode(v); isNode {
 		return node, nil
 	}
+	if node, layout := v3NodeValue(v); layout != nil {
+		// A go.yaml.in/yaml/v3 Node, written as the YAML it describes.
+		return e.encodeV3Node(node, layout, column)
+	}
 	if e.canEncodeByMarshaler(v) {
 		node, err := e.encodeByMarshaler(v, column)
 		if err != nil {

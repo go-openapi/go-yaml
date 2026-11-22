@@ -30,7 +30,8 @@
 //
 // A type written for go.yaml.in/yaml/v3, whose method is UnmarshalYAML(*yaml.Node) error, is decoded through that
 // method too. The decoder builds the yaml.Node from the document by reflection, so this module does not import v3.
-// A field of type yaml.Node, or *yaml.Node, receives the node itself. The node carries no comments.
+// A field of type yaml.Node, or *yaml.Node, receives the node itself, and the encoder writes such a field, or a
+// *yaml.Node a MarshalYAML method returns, as the YAML it describes. Neither direction carries comments.
 //
 // To change how a type you do not own is encoded or decoded, pass [CustomMarshaler] or [CustomUnmarshaler], or call
 // [RegisterCustomMarshaler] or [RegisterCustomUnmarshaler] once for every encoder and decoder.

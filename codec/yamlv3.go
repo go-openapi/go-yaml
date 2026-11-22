@@ -4,12 +4,15 @@
 package codec
 
 import (
+	"fmt"
 	"reflect"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 
 	"github.com/go-openapi/go-yaml/ast"
+	"github.com/go-openapi/go-yaml/codec/internal/codecutils"
 	"github.com/go-openapi/go-yaml/token"
 )
 
@@ -408,4 +411,292 @@ func (b *v3NodeBuilder) copyPlace(to, from reflect.Value) {
 func (b *v3NodeBuilder) append(parent, child reflect.Value) {
 	content := parent.Elem().Field(b.layout.content)
 	content.Set(reflect.Append(content, child))
+}
+
+// v3NodeValue returns the yaml.Node v holds, directly or behind one pointer, with its layout. A nil *yaml.Node holds
+// none, and encodes as a nil pointer does.
+func v3NodeValue(v reflect.Value) (reflect.Value, *v3NodeLayout) {
+	if v.Kind() == reflect.Interface && !v.IsNil() {
+		v = v.Elem()
+	}
+	if v.Kind() == reflect.Pointer {
+		if v.IsNil() {
+			return reflect.Value{}, nil
+		}
+		v = v.Elem()
+	}
+	layout := v3NodeLayoutOf(v.Type())
+	if layout == nil {
+		return reflect.Value{}, nil
+	}
+
+	return v, layout
+}
+
+// encodeV3Node writes a go.yaml.in/yaml/v3 Node as the YAML it describes, as v3 does.
+//
+// A Node reaches the encoder as a field of type yaml.Node or *yaml.Node, or as the value MarshalYAML returns.
+// The encoder writes its kind, style, tag, anchor and alias. It does not write its comments.
+func (e *Encoder) encodeV3Node(node reflect.Value, layout *v3NodeLayout, column int) (ast.Node, error) {
+	if e.isJSONStyle {
+		return e.encodeV3NodeAsJSON(node, layout, column)
+	}
+	kind := node.Field(layout.kind).Uint()
+	switch kind {
+	case 0:
+		// A zero Node encodes as a null in v3.
+		return e.encodeNil(), nil
+	case v3DocumentNode:
+		content := node.Field(layout.content)
+		if content.Len() == 0 {
+			return e.encodeNil(), nil
+		}
+
+		return e.encodeV3Child(content.Index(0), layout, column)
+	case v3AliasNode:
+		name := node.Field(layout.value).String()
+		if name == "" && !node.Field(layout.alias).IsNil() {
+			name = node.Field(layout.alias).Elem().Field(layout.anchor).String()
+		}
+		alias := ast.Alias(token.New("*", "*", e.pos(column)))
+		alias.Value = ast.String(token.New(name, name, e.pos(column)))
+
+		return alias, nil
+	}
+
+	var (
+		value ast.Node
+		err   error
+	)
+	// A Node built by hand may hold the long form of its tag.
+	tag := v3ShortTag(node.Field(layout.tag).String())
+	style := node.Field(layout.style).Uint()
+	explicit := style&v3TaggedStyle != 0
+	switch kind {
+	case v3ScalarNode:
+		value, tag = e.encodeV3Scalar(node.Field(layout.value).String(), tag, style, explicit, column)
+	case v3MappingNode:
+		value, err = e.encodeV3Mapping(node, layout, style&v3FlowStyle != 0, column)
+		if !explicit && tag == "!!map" {
+			tag = ""
+		}
+	case v3SequenceNode:
+		value, err = e.encodeV3Sequence(node, layout, style&v3FlowStyle != 0, column)
+		if !explicit && tag == "!!seq" {
+			tag = ""
+		}
+	default:
+		return nil, fmt.Errorf("cannot encode a yaml.Node of kind %d", kind)
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	return e.v3Properties(value, tag, node.Field(layout.anchor).String(), column), nil
+}
+
+// encodeV3NodeAsJSON writes a Node under [JSON]. JSON has no tags, anchors or aliases, and a scalar's JSON type
+// follows from its YAML one, so the encoder writes the Node as YAML, decodes that into an any, and encodes the value.
+func (e *Encoder) encodeV3NodeAsJSON(node reflect.Value, layout *v3NodeLayout, column int) (ast.Node, error) {
+	e.isJSONStyle = false
+	written, err := e.encodeV3Node(node, layout, column)
+	e.isJSONStyle = true
+	if err != nil {
+		return nil, err
+	}
+	var value any
+	if err := Unmarshal([]byte(written.String()), &value); err != nil {
+		return nil, err
+	}
+
+	return e.encodeValue(reflect.ValueOf(&value).Elem(), column)
+}
+
+func (e *Encoder) encodeV3Child(ptr reflect.Value, layout *v3NodeLayout, column int) (ast.Node, error) {
+	if ptr.IsNil() {
+		return e.encodeNil(), nil
+	}
+
+	return e.encodeV3Node(ptr.Elem(), layout, column)
+}
+
+// encodeV3Scalar writes a scalar Node, and returns the tag left to write in front of it.
+//
+// It follows v3's encoder. A tag the Node did not mark TaggedStyle is dropped where the scalar reads back with that
+// tag anyway: a quoted or block string for !!str, and a plain scalar that resolves to the tag, as "12" does to !!int.
+// A !!str whose text resolves to another type is quoted instead.
+func (e *Encoder) encodeV3Scalar(text, tag string, style uint64, explicit bool, column int) (ast.Node, string) {
+	quoted := style&(v3DoubleQuotedStyle|v3SingleQuotedStyle) != 0
+	block := style&(v3LiteralStyle|v3FoldedStyle) != 0 || strings.Contains(text, "\n")
+	forceQuote := false
+	if !explicit && tag != "" {
+		switch {
+		case tag == "!!str" && (quoted || block):
+			tag = ""
+		case v3PlainTag(text) == tag:
+			tag = ""
+		case tag == "!!str":
+			tag = ""
+			forceQuote = true
+		}
+	}
+
+	switch {
+	case style&v3DoubleQuotedStyle != 0 || forceQuote:
+		quotedText := strconv.Quote(text)
+
+		return ast.String(token.New(quotedText, quotedText, e.pos(column))), tag
+	case style&v3SingleQuotedStyle != 0 && !token.NeedsQuotedSpelling(text):
+		quotedText := codecutils.QuoteWith(text, '\'')
+
+		return ast.String(token.New(quotedText, quotedText, e.pos(column))), tag
+	case style&(v3LiteralStyle|v3FoldedStyle) != 0 && !e.isFlowStyle && v3BlockSafe(text):
+		return e.encodeV3Block(text, style&v3FoldedStyle != 0, column), tag
+	case block || tag == "" && v3PlainTag(text) == "!!str":
+		// A string: the encoder quotes it where its plain spelling would read as something else.
+		return e.encodeString(text, column), tag
+	}
+
+	// A plain scalar of another type, or one under a tag: written as it is.
+	return ast.String(token.New(text, text, e.pos(column))), tag
+}
+
+// v3BlockSafe reports whether a block scalar can hold text as it is: one that needs an escape cannot, and one whose
+// first line starts with a space would need an indentation indicator.
+func v3BlockSafe(text string) bool {
+	return text != "" && !token.NeedsQuotedSpelling(text) && !strings.HasPrefix(text, " ")
+}
+
+// encodeV3Block writes text as a literal block, or as a folded one when folded is set.
+//
+// A folded block reads a single line break between two lines as a space, so each run of line breaks inside the text
+// takes one more break when written. A line starting with a space or a tab is read with its breaks kept, so a text
+// holding one stays literal.
+//
+// The header carries the chomping indicator text needs: none for one final line break, "-" for none, "+" for more.
+func (e *Encoder) encodeV3Block(text string, folded bool, column int) ast.Node {
+	body := strings.TrimRight(text, "\n")
+	trailing := text[len(body):]
+	header := "|"
+	if folded && v3FoldSafe(body) {
+		header = ">"
+		body = v3FoldBreaks(body)
+	}
+	switch len(trailing) {
+	case 0:
+		header += "-"
+	case 1:
+	default:
+		header += "+"
+	}
+	written := body + trailing
+	block := ast.Literal(token.New(header, header, e.pos(column)))
+	block.Value = ast.String(token.New(written, written, e.pos(column)))
+
+	return block
+}
+
+// v3FoldSafe reports whether every line of body after the first starts with neither a space nor a tab.
+func v3FoldSafe(body string) bool {
+	for i := range len(body) - 1 {
+		if body[i] == '\n' && (body[i+1] == ' ' || body[i+1] == '\t') {
+			return false
+		}
+	}
+
+	return true
+}
+
+// v3FoldBreaks returns body with one more line break in each run of breaks, as a folded block writes them.
+func v3FoldBreaks(body string) string {
+	var b strings.Builder
+	b.Grow(len(body) + strings.Count(body, "\n"))
+	for i := range len(body) {
+		if body[i] == '\n' && (i == 0 || body[i-1] != '\n') {
+			b.WriteByte('\n')
+		}
+		b.WriteByte(body[i])
+	}
+
+	return b.String()
+}
+
+// v3PlainTag returns the tag this library resolves plain text to, in the short form v3 writes. Empty text is a null.
+func v3PlainTag(text string) string {
+	if text == "" {
+		return "!!null"
+	}
+	switch token.ScalarType(text, token.Schema12) {
+	case token.NullType, token.ImplicitNullType:
+		return "!!null"
+	case token.BoolType:
+		return "!!bool"
+	case token.IntegerType, token.BinaryIntegerType, token.OctetIntegerType, token.HexIntegerType:
+		return "!!int"
+	case token.FloatType, token.InfinityType, token.NanType:
+		return "!!float"
+	default:
+		return "!!str"
+	}
+}
+
+func (e *Encoder) encodeV3Mapping(node reflect.Value, layout *v3NodeLayout, flow bool, column int) (ast.Node, error) {
+	mapping := ast.Mapping(token.New("", "", e.pos(column)), flow || e.isFlowStyle)
+	content := node.Field(layout.content)
+	if content.Len()%2 != 0 {
+		return nil, fmt.Errorf("a yaml.Node mapping holds %d nodes, not key and value pairs", content.Len())
+	}
+	for i := 0; i < content.Len(); i += 2 {
+		keyNode, err := e.encodeV3Child(content.Index(i), layout, column)
+		if err != nil {
+			return nil, err
+		}
+		key, isKey := keyNode.(ast.MapKeyNode)
+		if !isKey {
+			return nil, fmt.Errorf("a yaml.Node mapping key of type %s cannot be written as a key", keyNode.Type())
+		}
+		value, err := e.encodeV3Child(content.Index(i+1), layout, column)
+		if err != nil {
+			return nil, err
+		}
+		mapping.Values = append(mapping.Values, ast.MappingValue(token.New("", "", e.pos(column)), e.jsonKeyNode(key, column), value))
+	}
+
+	return mapping, nil
+}
+
+func (e *Encoder) encodeV3Sequence(node reflect.Value, layout *v3NodeLayout, flow bool, column int) (ast.Node, error) {
+	sequence := ast.Sequence(token.New("-", "-", e.pos(column)), flow || e.isFlowStyle)
+	content := node.Field(layout.content)
+	for i := range content.Len() {
+		value, err := e.encodeV3Child(content.Index(i), layout, column)
+		if err != nil {
+			return nil, err
+		}
+		sequence.Values = append(sequence.Values, value)
+	}
+
+	return sequence, nil
+}
+
+// v3Properties puts the tag and the anchor of a Node on its encoded value.
+func (e *Encoder) v3Properties(value ast.Node, tag, anchor string, column int) ast.Node {
+	if tag != "" {
+		text := tag
+		if !strings.HasPrefix(text, "!") {
+			// A URI v3 cannot shorten: the verbatim form.
+			text = "!<" + text + ">"
+		}
+		tagged := ast.Tag(token.New(text, text, e.pos(column)))
+		tagged.Value = value
+		value = tagged
+	}
+	if anchor != "" {
+		anchored := ast.Anchor(token.New("&", "&", e.pos(column)))
+		anchored.Name = ast.String(token.New(anchor, anchor, e.pos(column)))
+		anchored.Value = value
+		value = anchored
+	}
+
+	return value
 }
