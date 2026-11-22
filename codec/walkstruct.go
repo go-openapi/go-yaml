@@ -1436,10 +1436,14 @@ func readWalkable(t reflect.Type, seen map[reflect.Type]bool, mode structfields.
 	}
 	seen[t] = true
 
-	if slices.Contains(readByTheTree, t) {
+	if slices.Contains(readByTheTree, t) || v3NodeLayoutOf(t) != nil {
 		return false
 	}
 	pointer := reflect.PointerTo(t)
+	if v3NodeHook(pointer) != nil {
+		// UnmarshalYAML(*yaml.Node): the tree decoder builds the yaml.Node from its node.
+		return false
+	}
 	if registeredUnmarshaler(pointer) {
 		// RegisterCustomUnmarshaler: the tree decoder passes the node's text to
 		// the function, and the walk has no node to pass.

@@ -1062,6 +1062,10 @@ func (d *Decoder) canDecodeByUnmarshaler(dst reflect.Value) bool {
 // document. It does through an interface it implements, or when the decoder reads
 // its type specially. A json.Unmarshaler counts only with useJSONUnmarshaler.
 func decodesItself(ptr reflect.Value, useJSONUnmarshaler bool) bool {
+	if v3NodeHook(ptr.Type()) != nil {
+		// UnmarshalYAML(*yaml.Node), go.yaml.in/yaml/v3's own hook.
+		return true
+	}
 	switch ptr.Interface().(type) {
 	case *MapSlice, *MapSliceSeq, *MapItem, *Base64:
 		// The decoder reads these itself, ahead of any interface they satisfy.
@@ -1094,6 +1098,9 @@ func (d *Decoder) decodeByUnmarshaler(dst reflect.Value, src ast.Node) error {
 			return err
 		}
 		return nil
+	}
+	if layout := v3NodeHook(ptrValue.Type()); layout != nil {
+		return d.callV3NodeHook(ptrValue, layout, src)
 	}
 	iface := ptrValue.Interface()
 
@@ -1189,6 +1196,12 @@ func (d *Decoder) decodeValue(dst reflect.Value, src ast.Node) error {
 		return d.refuseOverBudget(src)
 	}
 	if !dst.IsValid() {
+		return nil
+	}
+	if layout := v3NodeLayoutOf(dst.Type()); layout != nil {
+		// A yaml.Node of go.yaml.in/yaml/v3 gets the node itself, its anchor or alias included, as in v3.
+		dst.Set(d.newV3NodeBuilder(layout).build(src).Elem())
+
 		return nil
 	}
 
@@ -3318,6 +3331,15 @@ func (d *Decoder) decode(v reflect.Value) error {
 	// next one, as encoding/json.Decoder moves past a value that does not fit.
 	// Before, the index stayed where it was. Every later Decode returned the same document
 	// and its error, and a Decode loop never reached the end.
+	if root := v.Elem(); root.IsValid() {
+		if layout := v3NodeLayoutOf(root.Type()); layout != nil {
+			// A yaml.Node at the root gets the document node, as in v3.
+			root.Set(d.newV3NodeBuilder(layout).document(doc, body).Elem())
+			d.streamIndex++
+
+			return nil
+		}
+	}
 	err := d.decodeValue(v.Elem(), body)
 	d.streamIndex++
 

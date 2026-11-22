@@ -28,6 +28,10 @@
 // the [ast.Node] instead, with its comments and positions. [GoYAMLMarshaler] and [GoYAMLUnmarshaler] have the shapes
 // github.com/go-yaml/yaml expects, so that types written for that library work unchanged.
 //
+// A type written for go.yaml.in/yaml/v3, whose method is UnmarshalYAML(*yaml.Node) error, is decoded through that
+// method too. The decoder builds the yaml.Node from the document by reflection, so this module does not import v3.
+// A field of type yaml.Node, or *yaml.Node, receives the node itself. The node carries no comments.
+//
 // To change how a type you do not own is encoded or decoded, pass [CustomMarshaler] or [CustomUnmarshaler], or call
 // [RegisterCustomMarshaler] or [RegisterCustomUnmarshaler] once for every encoder and decoder.
 //
