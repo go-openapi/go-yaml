@@ -2005,3 +2005,21 @@ func TestANullSetsAPointerFieldToNil(t *testing.T) {
 		})
 	}
 }
+
+// TestAnInterfaceFieldRejectsAValueItCannotHold decodes a scalar into a field of type fmt.Stringer, on both decode
+// paths. A string does not implement the interface, so the decode returns a type mismatch and goes on to the next
+// field. Setting the string panicked.
+func TestAnInterfaceFieldRejectsAValueItCannotHold(t *testing.T) {
+	for path := range walkAndTreePaths() {
+		t.Run(path.name, func(t *testing.T) {
+			var v struct {
+				S     fmt.Stringer `yaml:"s"`
+				After int          `yaml:"after"`
+			}
+			err := codec.Unmarshal([]byte("s: x\nafter: 1\n"), &v, path.opts...)
+			require.ErrorIs(t, err, yamlerrors.ErrTypeMismatch)
+			assert.Nil(t, v.S)
+			assert.Equal(t, 1, v.After, "the decode goes on past a field error")
+		})
+	}
+}

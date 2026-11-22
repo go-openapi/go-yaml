@@ -1256,6 +1256,11 @@ func (d *Decoder) decodeValue(dst reflect.Value, src ast.Node) error {
 			return err
 		}
 		v := reflect.ValueOf(srcVal)
+		if v.IsValid() && !v.Type().AssignableTo(valueType) {
+			// An interface with methods holds only a type that implements them. Setting a "string" into a
+			// fmt.Stringer panicked.
+			return yamlerrors.NewTypeMismatch(valueType, v.Type(), src.GetToken())
+		}
 		if v.IsValid() {
 			dst.Set(v)
 		} else {
