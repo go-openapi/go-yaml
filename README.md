@@ -68,10 +68,19 @@ See the runnable examples in our [go doc][godoc-url] as well as the [commented e
 
 Our main design goal for this lib was to reduce _peak_ memory usage as much as we could.
 
-| -             | go-openapi/go-yaml | yaml/go-yaml/v3 | goccy/go-yaml |
-| Timings       | |||
-| # Allocations | |||
-| Peak memory   | |||
+| -               | go-openapi/go-yaml | yaml/go-yaml/v3 | goccy/go-yaml |
+|-----------------|-------------------:|----------------:|--------------:|
+| Timings         |              78 ms |           67 ms |        135 ms |
+| # Allocations   |              92.8k |            335k |         1.40M |
+| Bytes allocated |            3.0 MiB |        15.1 MiB |      85.3 MiB |
+| Peak memory     |           0.68 MiB |        11.3 MiB |      35.1 MiB |
+
+Each library unmarshals [citm_catalog](./internal/analysis/workloads), a 0.56 MiB document, into its Go types,
+which take 0.57 MiB once decoded.
+The first three rows come from `BenchmarkTyped` in [internal/benchmarks](./internal/benchmarks), as the median of
+10 runs. Peak memory is the highest live heap during one decode, from `TestTypedDecodePeakStaysNearTheResult` in
+[internal/analysis](./internal/analysis). Measured on 2026-11-22 with go.yaml.in/yaml/v3 v3.0.6 and
+github.com/goccy/go-yaml v1.19.2, on an AMD Ryzen 7 5800X.
 
 ## Known limitations
 
