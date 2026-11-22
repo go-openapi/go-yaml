@@ -5,10 +5,12 @@ package codec
 
 import (
 	"bytes"
-	"errors"
 	"fmt"
 	"strings"
 	"testing"
+
+	"github.com/go-openapi/testify/v2/assert"
+	"github.com/go-openapi/testify/v2/require"
 
 	yamlerrors "github.com/go-openapi/go-yaml/errors"
 	"github.com/go-openapi/go-yaml/parser"
@@ -49,14 +51,10 @@ func TestAliasAmplificationIsRefused(t *testing.T) {
 
 		var dst bombDestination
 		err := Unmarshal([]byte(src), &dst)
-		if err == nil {
-			t.Errorf("width %d: %d bytes naming %d values was accepted", width, len(src), pow(width, 5))
-
+		if !assert.Errorf(t, err, "width %d: %d bytes naming %d values was accepted", width, len(src), pow(width, 5)) {
 			continue
 		}
-		if !errors.Is(err, yamlerrors.ErrExcessiveAliasing) {
-			t.Errorf("width %d: refused as %v, want ErrExcessiveAliasing", width, err)
-		}
+		assert.ErrorIsf(t, err, yamlerrors.ErrExcessiveAliasing, "width %d", width)
 	}
 }
 
@@ -77,12 +75,8 @@ func TestOrdinaryAliasingIsNotRefused(t *testing.T) {
 		const src = "base: &b\n  a: 1\n  b: 2\nuse1: *b\nuse2: *b\nuse3: *b\nuse4: *b\nuse5: *b\n"
 
 		var dst map[string]map[string]int
-		if err := Unmarshal([]byte(src), &dst); err != nil {
-			t.Fatal(err)
-		}
-		if dst["use5"]["a"] != 1 {
-			t.Errorf("read %v", dst["use5"])
-		}
+		require.NoError(t, Unmarshal([]byte(src), &dst))
+		assert.Equal(t, 1, dst["use5"]["a"])
 	})
 
 	t.Run("a hundred keys used fifty times", func(t *testing.T) {
@@ -96,12 +90,9 @@ func TestOrdinaryAliasingIsNotRefused(t *testing.T) {
 		}
 
 		var dst map[string]map[string]int
-		if err := Unmarshal([]byte(src.String()), &dst); err != nil {
-			t.Fatal(err)
-		}
-		if len(dst) != 51 || dst["use49"]["k99"] != 99 {
-			t.Errorf("read %d entries", len(dst))
-		}
+		require.NoError(t, Unmarshal([]byte(src.String()), &dst))
+		assert.Len(t, dst, 51)
+		assert.Equal(t, 99, dst["use49"]["k99"])
 	})
 }
 
@@ -118,12 +109,8 @@ func TestBudgetLeavesRealDocumentsAlone(t *testing.T) {
 		B []int `yaml:"b"`
 	}
 	var dst map[string]entry
-	if err := Unmarshal([]byte(src.String()), &dst); err != nil {
-		t.Fatal(err)
-	}
-	if len(dst) != 2000 {
-		t.Errorf("read %d entries, want 2000", len(dst))
-	}
+	require.NoError(t, Unmarshal([]byte(src.String()), &dst))
+	assert.Len(t, dst, 2000)
 }
 
 // TestARefusedExpansionNamesAnAlias holds every decode path to naming an alias when the budget runs out.
@@ -134,13 +121,11 @@ func TestARefusedExpansionNamesAnAlias(t *testing.T) {
 	refusedAt := func(t *testing.T, err error) *token.Token {
 		t.Helper()
 		var refusal *yamlerrors.Error
-		if !errors.As(err, &refusal) || !errors.Is(err, yamlerrors.ErrExcessiveAliasing) {
-			t.Fatalf("refused as %v, want ErrExcessiveAliasing", err)
-		}
+		require.ErrorAs(t, err, &refusal)
+		require.ErrorIs(t, err, yamlerrors.ErrExcessiveAliasing)
 		tk := refusal.GetToken()
-		if tk == nil || tk.Type != token.AliasType {
-			t.Fatalf("the refusal names %v, want an alias", tk)
-		}
+		require.NotNil(t, tk, "the refusal names no token")
+		require.Equal(t, token.AliasType, tk.Type, "the refusal names %v, want an alias", tk)
 
 		return tk
 	}
@@ -156,16 +141,13 @@ func TestARefusedExpansionNamesAnAlias(t *testing.T) {
 
 	t.Run("an anchor passed with WithAnchors", func(t *testing.T) {
 		declared, err := parser.ParseBytes([]byte("base: &x [" + strings.Repeat("1, ", 2000) + "1]\n"))
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
 		opt := WithParserOptions(parser.WithAnchors(declared.Docs[0].Anchors))
 		for _, dst := range []any{new(any), new(map[string]any)} {
 			t.Run(fmt.Sprintf("%T", dst), func(t *testing.T) {
 				tk := refusedAt(t, Unmarshal([]byte("a: *x\n"), dst, opt))
-				if tk.Position.Line != 1 || tk.Position.Column != 4 {
-					t.Errorf("the refusal names %d:%d, want the alias at 1:4", tk.Position.Line, tk.Position.Column)
-				}
+				assert.Equal(t, int32(1), tk.Position.Line, "line of the alias")
+				assert.Equal(t, int32(4), tk.Position.Column, "column of the alias")
 			})
 		}
 	})
@@ -184,29 +166,19 @@ const aliasSrc = "base: &b\n  n: 1\nfirst: *b\nsecond: *b\n"
 func TestAliasesAreIndependent(t *testing.T) {
 	t.Run("into an any, walking", func(t *testing.T) {
 		var v any
-		if err := Unmarshal([]byte(aliasSrc), &v); err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, Unmarshal([]byte(aliasSrc), &v))
 		m := v.(map[string]any)
 		m["first"].(map[string]any)["n"] = 999
-		if got := m["second"].(map[string]any)["n"]; got == 999 {
-			t.Error("writing through first wrote through second")
-		}
-		if got := m["base"].(map[string]any)["n"]; got == 999 {
-			t.Error("writing through first wrote through the anchor")
-		}
+		assert.NotEqual(t, 999, m["second"].(map[string]any)["n"], "writing through first wrote through second")
+		assert.NotEqual(t, 999, m["base"].(map[string]any)["n"], "writing through first wrote through the anchor")
 	})
 
 	t.Run("into an any, tree", func(t *testing.T) {
 		var v any
-		if err := treeDecoder(aliasSrc).Decode(&v); err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, treeDecoder(aliasSrc).Decode(&v))
 		m := v.(map[string]any)
 		m["first"].(map[string]any)["n"] = 999
-		if got := m["second"].(map[string]any)["n"]; got == 999 {
-			t.Error("writing through first wrote through second")
-		}
+		assert.NotEqual(t, 999, m["second"].(map[string]any)["n"], "writing through first wrote through second")
 	})
 
 	t.Run("into pointers, the anchor decoded too", func(t *testing.T) {
@@ -215,16 +187,12 @@ func TestAliasesAreIndependent(t *testing.T) {
 			First  *aliasPair `yaml:"first"`
 			Second *aliasPair `yaml:"second"`
 		}
-		if err := Unmarshal([]byte(aliasSrc), &dst); err != nil {
-			t.Fatal(err)
-		}
-		if dst.First == dst.Second || dst.First == dst.Base {
-			t.Fatal("two aliases stand at one address")
-		}
+		require.NoError(t, Unmarshal([]byte(aliasSrc), &dst))
+		require.NotSame(t, dst.Second, dst.First, "two aliases stand at one address")
+		require.NotSame(t, dst.Base, dst.First, "an alias and its anchor stand at one address")
 		dst.First.N = 999
-		if dst.Second.N == 999 || dst.Base.N == 999 {
-			t.Error("writing through first wrote through the others")
-		}
+		assert.NotEqual(t, 999, dst.Second.N, "writing through first wrote through second")
+		assert.NotEqual(t, 999, dst.Base.N, "writing through first wrote through the anchor")
 	})
 
 	t.Run("into maps, the anchor decoded too", func(t *testing.T) {
@@ -233,13 +201,10 @@ func TestAliasesAreIndependent(t *testing.T) {
 			First  map[string]int `yaml:"first"`
 			Second map[string]int `yaml:"second"`
 		}
-		if err := Unmarshal([]byte(aliasSrc), &dst); err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, Unmarshal([]byte(aliasSrc), &dst))
 		dst.First["n"] = 999
-		if dst.Second["n"] == 999 || dst.Base["n"] == 999 {
-			t.Error("writing through first wrote through the others")
-		}
+		assert.NotEqual(t, 999, dst.Second["n"], "writing through first wrote through second")
+		assert.NotEqual(t, 999, dst.Base["n"], "writing through first wrote through the anchor")
 	})
 }
 
@@ -249,14 +214,10 @@ func TestAliasesAreIndependent(t *testing.T) {
 func TestShareAliasesGivesOneValue(t *testing.T) {
 	t.Run("into an any, walking", func(t *testing.T) {
 		var v any
-		if err := Unmarshal([]byte(aliasSrc), &v, ShareAliases()); err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, Unmarshal([]byte(aliasSrc), &v, ShareAliases()))
 		m := v.(map[string]any)
 		m["first"].(map[string]any)["n"] = 999
-		if got := m["second"].(map[string]any)["n"]; got != 999 {
-			t.Errorf("second reads %v, want the value first was given", got)
-		}
+		assert.Equal(t, 999, m["second"].(map[string]any)["n"], "second reads the value first was given")
 	})
 
 	t.Run("into pointers", func(t *testing.T) {
@@ -266,12 +227,9 @@ func TestShareAliasesGivesOneValue(t *testing.T) {
 			Second *aliasPair `yaml:"second"`
 		}
 		dec := NewDecoder(bytes.NewReader([]byte(aliasSrc)), ShareAliases())
-		if err := dec.Decode(&dst); err != nil {
-			t.Fatal(err)
-		}
-		if dst.First != dst.Second || dst.First != dst.Base {
-			t.Error("the three names do not stand at one address")
-		}
+		require.NoError(t, dec.Decode(&dst))
+		assert.Same(t, dst.First, dst.Second, "first and second stand at one address")
+		assert.Same(t, dst.Base, dst.First, "the anchor and first stand at one address")
 	})
 }
 
@@ -282,9 +240,7 @@ func TestSharingSurvivesTheBudget(t *testing.T) {
 	src := aliasBomb(9, 9)
 
 	var v any
-	if err := Unmarshal([]byte(src), &v, ShareAliases()); err != nil {
-		t.Fatalf("%d bytes: %v", len(src), err)
-	}
+	require.NoErrorf(t, Unmarshal([]byte(src), &v, ShareAliases()), "%d bytes", len(src))
 }
 
 // underEleven is src read under YAML 1.1, where "<<" is the merge key.
@@ -320,28 +276,16 @@ func TestMergedKeyLosesToTheMappingsOwn(t *testing.T) {
 				Base mergePair `yaml:"base"`
 				Use  mergePair `yaml:"use"`
 			}
-			if err := Unmarshal([]byte(src), &dst); err != nil {
-				t.Fatal(err)
-			}
-			if dst.Use.A != 1 {
-				t.Errorf("a: got %d, want 1 from the merge", dst.Use.A)
-			}
-			if dst.Use.B != 3 {
-				t.Errorf("b: got %d, want 3, the mapping's own", dst.Use.B)
-			}
+			require.NoError(t, Unmarshal([]byte(src), &dst))
+			assert.Equal(t, 1, dst.Use.A, "a from the merge")
+			assert.Equal(t, 3, dst.Use.B, "b from the mapping's own")
 
 			// The two paths read one document, so they answer the same.
 			var walked any
-			if err := Unmarshal([]byte(src), &walked); err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, Unmarshal([]byte(src), &walked))
 			use, _ := walked.(map[string]any)["use"].(map[string]any)
-			if use["a"] != uint64(1) && use["a"] != int64(1) && use["a"] != 1 {
-				t.Errorf("walk read a as %v (%T)", use["a"], use["a"])
-			}
-			if use["b"] != uint64(3) && use["b"] != int64(3) && use["b"] != 3 {
-				t.Errorf("walk read b as %v (%T)", use["b"], use["b"])
-			}
+			assert.Contains(t, []any{uint64(1), int64(1), 1}, use["a"], "walk read a as %T", use["a"])
+			assert.Contains(t, []any{uint64(3), int64(3), 3}, use["b"], "walk read b as %T", use["b"])
 		})
 	}
 }
@@ -354,24 +298,17 @@ func TestEarlierMergeWinsOverLater(t *testing.T) {
 	var dst struct {
 		Use mergePair `yaml:"use"`
 	}
-	if err := Unmarshal([]byte(src), &dst); err != nil {
-		t.Fatal(err)
-	}
-	if dst.Use.A != 1 || dst.Use.C != 2 {
-		t.Errorf("the merge did not take both: %+v", dst.Use)
-	}
-	if dst.Use.B != 1 {
-		t.Errorf("b: got %d, want 1 from the mapping named first", dst.Use.B)
-	}
+	require.NoError(t, Unmarshal([]byte(src), &dst))
+	assert.Equal(t, 1, dst.Use.A, "a from the first merge")
+	assert.Equal(t, 2, dst.Use.C, "c from the second merge")
+	assert.Equal(t, 1, dst.Use.B, "b from the mapping named first")
 }
 
 // TestDuplicateKeyInOneMappingIsStillRefused holds the line the fix moves: two
 // keys of one mapping still collide.
 func TestDuplicateKeyInOneMappingIsStillRefused(t *testing.T) {
 	var dst mergePair
-	if err := Unmarshal([]byte("a: 1\na: 2\n"), &dst); err == nil {
-		t.Error("the repeated key was accepted")
-	}
+	assert.Error(t, Unmarshal([]byte("a: 1\na: 2\n"), &dst), "the repeated key was accepted")
 }
 
 // TestNodeToValueBudgetsTheNodeItIsGiven holds the alias budget of a decode from a node. Such a decode has no source,
@@ -390,42 +327,27 @@ func TestNodeToValueBudgetsTheNodeItIsGiven(t *testing.T) {
 	t.Run("a document with no alias reads", func(t *testing.T) {
 		for _, n := range []int{300, 5000} {
 			file, err := parser.ParseBytes([]byte(flat(n)))
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 			var dst map[string]string
-			if err := NodeToValue(file.Docs[0].Body, &dst); err != nil {
-				t.Fatalf("%d entries: %v", n, err)
-			}
-			if len(dst) != n {
-				t.Fatalf("%d entries: read %d", n, len(dst))
-			}
+			require.NoErrorf(t, NodeToValue(file.Docs[0].Body, &dst), "%d entries", n)
+			require.Lenf(t, dst, n, "%d entries", n)
 		}
 	})
 
 	t.Run("one decoder reads one node after another", func(t *testing.T) {
 		file, err := parser.ParseBytes([]byte(flat(100)))
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
 		dec := NewDecoder(&bytes.Buffer{})
 		for i := range 50 {
 			var dst map[string]string
-			if err := dec.DecodeFromNode(file.Docs[0].Body, &dst); err != nil {
-				t.Fatalf("decode %d: %v", i, err)
-			}
+			require.NoErrorf(t, dec.DecodeFromNode(file.Docs[0].Body, &dst), "decode %d", i)
 		}
 	})
 
 	t.Run("an alias bomb is still refused", func(t *testing.T) {
 		file, err := parser.ParseBytes([]byte(aliasBomb(5, 12)))
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
 		var dst bombDestination
-		err = NodeToValue(file.Docs[0].Body, &dst)
-		if !errors.Is(err, yamlerrors.ErrExcessiveAliasing) {
-			t.Fatalf("refused as %v, want ErrExcessiveAliasing", err)
-		}
+		require.ErrorIs(t, NodeToValue(file.Docs[0].Body, &dst), yamlerrors.ErrExcessiveAliasing)
 	})
 }

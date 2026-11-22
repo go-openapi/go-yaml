@@ -20,6 +20,7 @@ import (
 	"github.com/go-openapi/go-yaml/codec"
 	yamlerrors "github.com/go-openapi/go-yaml/errors"
 	"github.com/go-openapi/go-yaml/parser"
+	"github.com/go-openapi/testify/v2/assert"
 	"github.com/go-openapi/testify/v2/require"
 )
 
@@ -45,9 +46,7 @@ type decodeCase struct {
 func TestDecoder(t *testing.T) {
 	seen := make(map[string]bool)
 	for tc := range decoderCases() {
-		if seen[tc.name] {
-			t.Fatalf("two cases are named %q", tc.name)
-		}
+		require.Falsef(t, seen[tc.name], "two cases are named %q", tc.name)
 		seen[tc.name] = true
 
 		t.Run(tc.name, testDecode(tc))
@@ -64,16 +63,12 @@ func testDecode(tc decodeCase) func(*testing.T) {
 			if tc.eof && errors.Is(err, io.EOF) {
 				return
 			}
-			t.Fatalf("%s: %+v", tc.source, err)
+			require.NoError(t, err)
 		}
-		if tc.eof {
-			t.Fatal("expected EOF but got no error")
-		}
+		require.False(t, tc.eof, "decode returned no io.EOF")
 		actual := fmt.Sprintf("%+v", value.Elem().Interface())
 		expect := fmt.Sprintf("%+v", tc.value)
-		if actual != expect {
-			t.Fatalf("failed to test [%s], actual=[%s], expect=[%s]", tc.source, actual, expect)
-		}
+		require.Equal(t, expect, actual)
 	}
 }
 
@@ -1668,9 +1663,7 @@ func TestDecoder_Invalid(t *testing.T) {
 			err := codec.Unmarshal([]byte(test.src), &v)
 			require.Errorf(t, err, "cannot catch decode error")
 			actual := "\n" + err.Error()
-			if test.expect != actual {
-				t.Fatalf("expected: [%s] but got [%s]", test.expect, actual)
-			}
+			require.Equal(t, test.expect, actual)
 		})
 	}
 }
@@ -1691,9 +1684,7 @@ func TestDecoder_TypeConversionError(t *testing.T) {
 	for tc := range concatCases(
 		conversionStructCases(), conversionSequenceCases(), conversionOverflowCases(), conversionTimeCases(),
 	) {
-		if seen[tc.name] {
-			t.Fatalf("two cases are named %q", tc.name)
-		}
+		require.Falsef(t, seen[tc.name], "two cases are named %q", tc.name)
 		seen[tc.name] = true
 
 		t.Run(tc.name, testConversionError(tc))
@@ -1703,17 +1694,12 @@ func TestDecoder_TypeConversionError(t *testing.T) {
 func testConversionError(tc conversionErrorCase) func(*testing.T) {
 	return func(t *testing.T) {
 		err := codec.Unmarshal([]byte(tc.source), tc.target)
-		if err == nil {
-			t.Fatal("expected to error")
-		}
-		if !strings.Contains(err.Error(), tc.message) {
-			t.Fatalf("expected error message: %s to contain: %s", err.Error(), tc.message)
-		}
+		require.ErrorContains(t, err, tc.message)
 		if !tc.zeroEntry {
 			return
 		}
-		if entry := reflect.ValueOf(tc.target).Elem().MapIndex(reflect.ValueOf("v")); entry.IsValid() && !entry.IsZero() {
-			t.Fatal("failed to decode value")
+		if entry := reflect.ValueOf(tc.target).Elem().MapIndex(reflect.ValueOf("v")); entry.IsValid() {
+			require.Zero(t, entry.Interface(), "the v entry")
 		}
 	}
 }
@@ -1849,15 +1835,8 @@ a:
 		A []string
 	}
 	err := codec.NewDecoder(strings.NewReader(src)).Decode(&v)
-	if err == nil {
-		t.Fatalf("expected error")
-	}
-
-	if err.Error() != yamlerrors.FormatError(err, false, true) {
-		t.Logf("err.Error() = %s", err.Error())
-		t.Logf("yamlerrors.FormatError(err, false, true) = %s", yamlerrors.FormatError(err, false, true))
-		t.Fatal(`err.Error() should match yamlerrors.FormatError(err, false, true)`)
-	}
+	require.Error(t, err)
+	require.Equal(t, yamlerrors.FormatError(err, false, true), err.Error())
 
 	// TODO: properly check if errors are colored/have source
 	t.Logf("%s", err)
@@ -1875,18 +1854,12 @@ command:
 - python`
 
 		var out map[string]any
-		if err := codec.Unmarshal([]byte(yml), &out); err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
+		require.NoError(t, codec.Unmarshal([]byte(yml), &out))
 
 		args := out["args"].([]any)
-		if len(args) != 2 || args[0] != "a" || args[1] != nil {
-			t.Fatalf("expected [a, nil], got %v", args)
-		}
+		require.Equal(t, []any{"a", nil}, args)
 		command := out["command"].([]any)
-		if len(command) != 1 || command[0] != "python" {
-			t.Fatalf("expected [python], got %v", command)
-		}
+		require.Equal(t, []any{"python"}, command)
 	})
 
 	t.Run("indented sequence", func(t *testing.T) {
@@ -1897,18 +1870,12 @@ command:
   other: val`
 
 		var out map[string]any
-		if err := codec.Unmarshal([]byte(yml), &out); err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
+		require.NoError(t, codec.Unmarshal([]byte(yml), &out))
 
 		parent := out["parent"].(map[string]any)
 		items := parent["items"].([]any)
-		if len(items) != 2 || items[0] != "a" || items[1] != nil {
-			t.Fatalf("expected [a, nil], got %v", items)
-		}
-		if parent["other"] != "val" {
-			t.Errorf("expected other=val, got %v", parent["other"])
-		}
+		require.Equal(t, []any{"a", nil}, items)
+		assert.Equal(t, "val", parent["other"])
 	})
 
 	t.Run("empty item with indented value on next line", func(t *testing.T) {
@@ -1918,21 +1885,13 @@ command:
 - b`
 
 		var out map[string]any
-		if err := codec.Unmarshal([]byte(yml), &out); err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
+		require.NoError(t, codec.Unmarshal([]byte(yml), &out))
 
 		items := out["items"].([]any)
-		if len(items) != 2 {
-			t.Fatalf("expected 2 items, got %d: %v", len(items), items)
-		}
+		require.Len(t, items, 2)
 		m, ok := items[0].(map[string]any)
-		if !ok {
-			t.Fatalf("items[0] should be map, got %T: %v", items[0], items[0])
-		}
-		if m["key"] != "val" {
-			t.Errorf("expected key=val, got %v", m["key"])
-		}
+		require.Truef(t, ok, "items[0] is %T: %v", items[0], items[0])
+		assert.Equal(t, "val", m["key"])
 	})
 }
 
@@ -1945,21 +1904,15 @@ map: *map`
 		var buf bytes.Buffer
 		dec := codec.NewDecoder(&buf)
 		f, err := parser.ParseBytes([]byte(str))
-		if err != nil {
-			t.Fatalf("failed to parse: %s", err)
-		}
+		require.NoError(t, err, "parse")
 		type T struct {
 			Map map[string]string
 		}
 		var v T
-		if err := dec.DecodeFromNode(f.Docs[0].Body, &v); err != nil {
-			t.Fatalf("failed to decode: %s", err)
-		}
+		require.NoError(t, dec.DecodeFromNode(f.Docs[0].Body, &v), "decode")
 		actual := fmt.Sprintf("%+v", v)
 		expect := fmt.Sprintf("%+v", T{map[string]string{"text": "hello"}})
-		if actual != expect {
-			t.Fatalf("actual=[%s], expect=[%s]", actual, expect)
-		}
+		require.Equal(t, expect, actual)
 	})
 	t.Run("with reference option", func(t *testing.T) {
 		const reference = `
@@ -1973,33 +1926,23 @@ map: &map
 		// decoder reads the reference for the value; the parser reads it for
 		// the name.
 		ref, err := parser.ParseBytes([]byte(reference))
-		if err != nil {
-			t.Fatalf("failed to parse the reference: %s", err)
-		}
+		require.NoError(t, err, "parse the reference")
 		f, err := parser.ParseBytes([]byte("map: *map"), parser.WithAnchors(ref.Docs[0].Anchors))
-		if err != nil {
-			t.Fatalf("failed to parse: %s", err)
-		}
+		require.NoError(t, err, "parse")
 		type T struct {
 			Map map[string]string
 		}
 		var v T
-		if err := dec.DecodeFromNode(f.Docs[0].Body, &v); err != nil {
-			t.Fatalf("failed to decode: %s", err)
-		}
+		require.NoError(t, dec.DecodeFromNode(f.Docs[0].Body, &v), "decode")
 		actual := fmt.Sprintf("%+v", v)
 		expect := fmt.Sprintf("%+v", T{map[string]string{"text": "hello"}})
-		if actual != expect {
-			t.Fatalf("actual=[%s], expect=[%s]", actual, expect)
-		}
+		require.Equal(t, expect, actual)
 	})
 	t.Run("value is not pointer", func(t *testing.T) {
 		var buf bytes.Buffer
 		var v bool
 		err := codec.NewDecoder(&buf).DecodeFromNode(nil, v)
-		if !errors.Is(err, yamlerrors.ErrDecodeRequiredPointerType) {
-			t.Fatalf("unexpected error: %s", err)
-		}
+		require.ErrorIs(t, err, yamlerrors.ErrDecodeRequiredPointerType)
 	})
 }
 
@@ -2029,19 +1972,11 @@ e:
 j: k
 `
 	var v any
-	if err := codec.NewDecoder(strings.NewReader(yml), codec.UseOrderedMap()).Decode(&v); err != nil {
-		t.Fatalf("%+v", err)
-	}
-	if _, ok := v.(codec.MapSlice); !ok {
-		t.Fatalf("failed to convert to ordered map: %T", v)
-	}
+	require.NoError(t, codec.NewDecoder(strings.NewReader(yml), codec.UseOrderedMap()).Decode(&v))
+	require.IsType(t, codec.MapSlice{}, v)
 	bytes, err := codec.Marshal(v)
-	if err != nil {
-		t.Fatalf("%+v", err)
-	}
-	if yml != "\n"+string(bytes) {
-		t.Fatalf("expected:[%s] actual:[%s]", yml, "\n"+string(bytes))
-	}
+	require.NoError(t, err)
+	require.Equal(t, yml, "\n"+string(bytes))
 }
 
 func TestDecoder_LiteralWithNewLine(t *testing.T) {
@@ -2067,15 +2002,9 @@ func TestDecoder_LiteralWithNewLine(t *testing.T) {
 	for _, want := range tests {
 		bytes, _ := codec.Marshal(want)
 		got := A{}
-		if err := codec.Unmarshal(bytes, &got); err != nil {
-			t.Fatal(err)
-		}
-		if want.Node != got.Node {
-			t.Fatalf("expected:%q but got %q", want.Node, got.Node)
-		}
-		if want.LastNode != got.LastNode {
-			t.Fatalf("expected:%q but got %q", want.LastNode, got.LastNode)
-		}
+		require.NoError(t, codec.Unmarshal(bytes, &got))
+		require.Equal(t, want.Node, got.Node)
+		require.Equal(t, want.LastNode, got.LastNode)
 	}
 }
 
@@ -2085,15 +2014,9 @@ func TestDecoder_TabCharacterAtRight(t *testing.T) {
   b: [2 , 2] 			
   c: [2 , 2]`
 	var v []map[string][]int
-	if err := codec.Unmarshal([]byte(yml), &v); err != nil {
-		t.Fatal(err)
-	}
-	if len(v) != 1 {
-		t.Fatalf("failed to unmarshal %+v", v)
-	}
-	if len(v[0]) != 3 {
-		t.Fatalf("failed to unmarshal %+v", v)
-	}
+	require.NoError(t, codec.Unmarshal([]byte(yml), &v))
+	require.Len(t, v, 1)
+	require.Len(t, v[0], 3)
 }
 
 func TestDecoder_Canonical(t *testing.T) {
@@ -2108,22 +2031,14 @@ func TestDecoder_Canonical(t *testing.T) {
 	// keeps the value it resolves to, and only a mapping whose keys are all
 	// strings comes back as a map[string]any.
 	var v any
-	if err := codec.Unmarshal([]byte(yml), &v); err != nil {
-		t.Fatalf("%+v", err)
-	}
+	require.NoError(t, codec.Unmarshal([]byte(yml), &v))
 	m, ok := v.(map[any]any)
-	if !ok {
-		t.Fatalf("failed to decode canonical yaml: %+v", v)
-	}
-	if m["explicit"] != "entry" {
-		t.Fatalf("failed to decode canonical yaml: %+v", m)
-	}
-	if m["implicit"] != "entry" {
-		t.Fatalf("failed to decode canonical yaml: %+v", m)
-	}
-	if value, held := m[nil]; !held || value != nil {
-		t.Fatalf("failed to decode canonical yaml: %+v", m)
-	}
+	require.Truef(t, ok, "v is %T: %+v", v, v)
+	require.Equal(t, "entry", m["explicit"])
+	require.Equal(t, "entry", m["implicit"])
+	value, held := m[nil]
+	require.Truef(t, held, "no nil key in %+v", m)
+	require.Nil(t, value)
 }
 
 func TestDecoder_DecodeWithNode(t *testing.T) {
@@ -2132,28 +2047,16 @@ func TestDecoder_DecodeWithNode(t *testing.T) {
 			Text ast.Node `yaml:"text"`
 		}
 		var v T
-		if err := codec.Unmarshal([]byte(`text: hello`), &v); err != nil {
-			t.Fatalf("%+v", err)
-		}
-		expected := "hello"
-		got := v.Text.String()
-		if expected != got {
-			t.Fatalf("failed to decode to ast.Node: expected %s but got %s", expected, got)
-		}
+		require.NoError(t, codec.Unmarshal([]byte(`text: hello`), &v))
+		require.Equal(t, "hello", v.Text.String())
 	})
 	t.Run("concrete node", func(t *testing.T) {
 		type T struct {
 			Text *ast.StringNode `yaml:"text"`
 		}
 		var v T
-		if err := codec.Unmarshal([]byte(`text: hello`), &v); err != nil {
-			t.Fatalf("%+v", err)
-		}
-		expected := "hello"
-		got := v.Text.String()
-		if expected != got {
-			t.Fatalf("failed to decode to ast.Node: expected %s but got %s", expected, got)
-		}
+		require.NoError(t, codec.Unmarshal([]byte(`text: hello`), &v))
+		require.Equal(t, "hello", v.Text.String())
 	})
 }
 
@@ -2190,14 +2093,9 @@ steps:
 			t.Parallel()
 			for range 10 {
 				var m mappedSteps
-				if err := codec.Unmarshal([]byte(content), &m); err != nil {
-					t.Fatal(err)
-				}
+				require.NoError(t, codec.Unmarshal([]byte(content), &m))
 				for v := range m.Steps.Values() {
-					_, ok := v.(map[string]any)
-					if !ok {
-						t.Fatal("unexpected error")
-					}
+					require.IsType(t, map[string]any{}, v)
 				}
 			}
 		})

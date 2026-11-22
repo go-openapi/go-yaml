@@ -849,13 +849,6 @@ func (s keySet) add(key any) (any, bool) {
 	return nil, false
 }
 
-// IsZeroer is used to check whether an object is zero to determine
-// whether it should be omitted when marshaling with the omitempty flag.
-// One notable implementation is time.Time.
-type IsZeroer interface {
-	IsZero() bool
-}
-
 func (e *Encoder) isOmittedByOmitZero(v reflect.Value) bool {
 	kind := v.Kind()
 	if v.CanInterface() {

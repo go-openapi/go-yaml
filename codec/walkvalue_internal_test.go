@@ -11,6 +11,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/go-openapi/testify/v2/assert"
+	"github.com/go-openapi/testify/v2/require"
+
 	"github.com/go-openapi/go-yaml/internal/fuzzseeds"
 	"github.com/go-openapi/go-yaml/internal/yamltestsuite"
 )
@@ -82,15 +85,9 @@ func TestReferenceStreamBuildsATree(t *testing.T) {
 	dec := treeDecoder("a: 1\n")
 
 	var v any
-	if err := dec.Decode(&v); err != nil {
-		t.Fatal(err)
-	}
-	if dec.stream != nil {
-		t.Error("the reference decoder walked the source")
-	}
-	if dec.parsedFile == nil {
-		t.Error("the reference decoder built no tree")
-	}
+	require.NoError(t, dec.Decode(&v))
+	assert.Nil(t, dec.stream, "the reference decoder walked the source")
+	assert.NotNil(t, dec.parsedFile, "the reference decoder built no tree")
 }
 
 // corpusSource is one document of the corpus the codec is swept over.
@@ -228,15 +225,14 @@ func TestWalkMatchesTheStream(t *testing.T) {
 				t.Logf("%s:\n  src  %q\n  want %#v\n  got  %#v", src.name, src.text, want, got)
 			}
 		}
-		if reason, held := walkStreamHoldOuts[src.text]; held &&
-			fmt.Sprintf("%#v", want) == fmt.Sprintf("%#v", got) {
-			t.Errorf("%s: %q agrees now, so %s has closed: delete the hold-out", src.name, src.text, reason)
+		if reason, held := walkStreamHoldOuts[src.text]; held {
+			assert.NotEqualf(t, fmt.Sprintf("%#v", want), fmt.Sprintf("%#v", got),
+				"%s: %q agrees now, so %s has closed: delete the hold-out", src.name, src.text, reason)
 		}
 	}
 	t.Logf("same=%d differ=%d bothErr=%d oneErr=%d skipped=%d heldOut=%d", same, differ, bothErr, oneErr, skipped, heldOut)
-	if differ > 0 || oneErr > 0 {
-		t.Errorf("the walk and the tree disagree on %d documents (%d only one failed)", differ, oneErr)
-	}
+	assert.Zero(t, differ, "documents the walk and the tree decode differently")
+	assert.Zero(t, oneErr, "documents only one of the walk and the tree refuses")
 }
 
 // TestStreamSwitchesFromWalkToTree covers a Decoder handed an any for one
@@ -249,41 +245,23 @@ func TestStreamSwitchesFromWalkToTree(t *testing.T) {
 	dec := NewDecoder(bytes.NewReader([]byte(src)))
 
 	var first any
-	if err := dec.Decode(&first); err != nil {
-		t.Fatal(err)
-	}
-	if dec.stream == nil {
-		t.Fatal("the first document was not walked")
-	}
-	if got, want := fmt.Sprintf("%v", first), "map[a:1]"; got != want {
-		t.Errorf("first document: got %s, want %s", got, want)
-	}
+	require.NoError(t, dec.Decode(&first))
+	require.NotNil(t, dec.stream, "the first document was not walked")
+	assert.Equal(t, "map[a:1]", fmt.Sprintf("%v", first), "first document")
 
 	var second map[int]string
-	if err := dec.Decode(&second); err != nil {
-		t.Fatal(err)
-	}
-	if dec.stream != nil {
-		t.Error("the Decoder stayed on the walking path")
-	}
-	if second[2] != "two" {
-		t.Errorf("second document: got %v, want map[2:two]", second)
-	}
+	require.NoError(t, dec.Decode(&second))
+	assert.Nil(t, dec.stream, "the Decoder stayed on the walking path")
+	assert.Equal(t, "two", second[2], "second document")
 
 	// The stream carries on from where the walk left it rather than starting
 	// again: the tree is read from the same source and indexed the same way.
 	var third any
-	if err := dec.Decode(&third); err != nil {
-		t.Fatal(err)
-	}
-	if got, want := fmt.Sprintf("%v", third), "map[c:3]"; got != want {
-		t.Errorf("third document: got %s, want %s", got, want)
-	}
+	require.NoError(t, dec.Decode(&third))
+	assert.Equal(t, "map[c:3]", fmt.Sprintf("%v", third), "third document")
 
 	var extra any
-	if err := dec.Decode(&extra); !errors.Is(err, io.EOF) {
-		t.Errorf("after the last document: got %v, want io.EOF", err)
-	}
+	assert.ErrorIs(t, dec.Decode(&extra), io.EOF, "after the last document")
 }
 
 // walkStreamHoldOuts are the documents the walk and the tree disagree about,

@@ -12,6 +12,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/go-openapi/testify/v2/assert"
+	"github.com/go-openapi/testify/v2/require"
+
 	"github.com/go-openapi/go-yaml/codec"
 	yamlerrors "github.com/go-openapi/go-yaml/errors"
 )
@@ -26,17 +29,11 @@ key: value # line comment
 	}
 	comments := codec.CommentMap{}
 
-	if err := codec.Unmarshal([]byte(yml), &v, codec.Strict(), codec.CommentToMap(comments)); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, codec.Unmarshal([]byte(yml), &v, codec.Strict(), codec.CommentToMap(comments)))
 	out, err := codec.Marshal(v, codec.WithComment(comments))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	got := "\n" + string(out)
-	if yml != got {
-		t.Fatalf("failed to get round tripped yaml: %s", got)
-	}
+	require.Equal(t, yml, got)
 }
 
 func TestStreamDecodingWithComment(t *testing.T) {
@@ -58,12 +55,11 @@ foo: bar # comment
 	var commentPathsWithDocIndex [][]string
 	for {
 		var v any
-		if err := dec.Decode(&v); err != nil {
-			if errors.Is(err, io.EOF) {
-				break
-			}
-			t.Fatal(err)
+		err := dec.Decode(&v)
+		if errors.Is(err, io.EOF) {
+			break
 		}
+		require.NoError(t, err)
 		paths := make([]string, 0, len(cm))
 		for k := range cm {
 			paths = append(paths, k)
@@ -73,13 +69,11 @@ foo: bar # comment
 			delete(cm, k)
 		}
 	}
-	if !reflect.DeepEqual(commentPathsWithDocIndex, [][]string{
+	require.Equal(t, [][]string{
 		{"$.a.b.c"},
 		{"$.foo"},
 		{"$[2]"},
-	}) {
-		t.Fatalf("failed to get comment: %v", commentPathsWithDocIndex)
-	}
+	}, commentPathsWithDocIndex)
 }
 
 func TestDecodeKeepAddress(t *testing.T) {
@@ -92,20 +86,14 @@ d: &d [*c,*c]
 	// ShareAliases: every alias of one anchor stands for one Go value, which is
 	// what this checks. Without it each builds its own and the addresses differ.
 	var v map[string]any
-	if err := codec.Unmarshal([]byte(data), &v, codec.ShareAliases()); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, codec.Unmarshal([]byte(data), &v, codec.ShareAliases()))
 	a := v["a"]
 	b := v["b"]
 	for _, vv := range v["b"].([]any) {
-		if fmt.Sprintf("%p", a) != fmt.Sprintf("%p", vv) {
-			t.Fatalf("failed to decode b element as keep address")
-		}
+		require.Equalf(t, fmt.Sprintf("%p", a), fmt.Sprintf("%p", vv), "an element of b does not keep the address of a")
 	}
 	for _, vv := range v["c"].([]any) {
-		if fmt.Sprintf("%p", b) != fmt.Sprintf("%p", vv) {
-			t.Fatalf("failed to decode c element as keep address")
-		}
+		require.Equalf(t, fmt.Sprintf("%p", b), fmt.Sprintf("%p", vv), "an element of c does not keep the address of b")
 	}
 }
 
@@ -125,13 +113,9 @@ i: &i [*h,*h,*h,*h,*h,*h,*h,*h,*h,*h]
 	// decode has to leave them there: ShareAliases is what puts them there.
 	// Without it this document builds 10^9 values and the alias budget stops it.
 	var v any
-	if err := codec.Unmarshal([]byte(data), &v, codec.ShareAliases()); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, codec.Unmarshal([]byte(data), &v, codec.ShareAliases()))
 	got, err := codec.Marshal(v, codec.WithSmartAnchor())
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	expected := `
 a: &a
 - _
@@ -238,9 +222,7 @@ i:
 - *h
 - *h
 `
-	if strings.TrimPrefix(expected, "\n") != string(got) {
-		t.Fatalf("failed to encode: %s", string(got))
-	}
+	require.Equal(t, strings.TrimPrefix(expected, "\n"), string(got))
 }
 
 func TestCustomErrorMessage(t *testing.T) {
@@ -256,14 +238,11 @@ foo: 2
 	// the load is what reports one, so the error with a position on it comes
 	// from there.
 	var into any
-	if err := codec.Unmarshal([]byte(data), &into); err == nil {
-		t.Fatalf("expected error")
-	} else {
-		var yamlErr *yamlerrors.Error
-		if !errors.As(err, &yamlErr) {
-			t.Fatalf("failed to get *yamlerrors.Error from error: %T", err)
-		}
-		expected := `
+	err := codec.Unmarshal([]byte(data), &into)
+	require.Error(t, err)
+	var yamlErr *yamlerrors.Error
+	require.ErrorAs(t, err, &yamlErr)
+	expected := `
 [7:1] custom message
    4 |     foo: 2
    5 |   baz:
@@ -271,11 +250,8 @@ foo: 2
 >  7 | foo: 2
        ^
 `
-		got := "\n" + yamlerrors.FormatErrorAtToken("custom message", yamlErr.GetToken(), []byte(data), false, true)
-		if expected != got {
-			t.Fatalf("unexpected error message:\nexpected:\n%s\nbut got:\n%s", expected, got)
-		}
-	}
+	got := "\n" + yamlerrors.FormatErrorAtToken("custom message", yamlErr.GetToken(), []byte(data), false, true)
+	require.Equal(t, expected, got)
 }
 
 func checkRawValue[T any](t *testing.T, v codec.RawMessage, expected T) {
@@ -283,14 +259,11 @@ func checkRawValue[T any](t *testing.T, v codec.RawMessage, expected T) {
 
 	var actual T
 
-	if err := codec.Unmarshal(v, &actual); err != nil {
-		t.Errorf("failed to unmarshal: %v", err)
+	if !assert.NoError(t, codec.Unmarshal(v, &actual)) {
 		return
 	}
 
-	if !reflect.DeepEqual(expected, actual) {
-		t.Errorf("expected %v, got %v", expected, actual)
-	}
+	assert.Equal(t, expected, actual)
 }
 
 func checkJSONRawValue[T any](t *testing.T, v json.RawMessage, expected T) {
@@ -298,14 +271,11 @@ func checkJSONRawValue[T any](t *testing.T, v json.RawMessage, expected T) {
 
 	var actual T
 
-	if err := json.Unmarshal(v, &actual); err != nil {
-		t.Errorf("failed to unmarshal: %v", err)
+	if !assert.NoError(t, json.Unmarshal(v, &actual)) {
 		return
 	}
 
-	if !reflect.DeepEqual(expected, actual) {
-		t.Errorf("expected %v, got %v", expected, actual)
-	}
+	assert.Equal(t, expected, actual)
 
 	checkRawValue(t, codec.RawMessage(v), expected)
 }
@@ -319,48 +289,34 @@ c:
 `)
 
 	var m map[string]codec.RawMessage
-	if err := codec.Unmarshal(data, &m); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, codec.Unmarshal(data, &m))
 
-	if len(m) != 3 {
-		t.Fatalf("failed to decode: %d", len(m))
-	}
+	require.Len(t, m, 3)
 
 	checkRawValue(t, m["a"], 1)
 	checkRawValue(t, m["b"], "asdf")
 	checkRawValue(t, m["c"], map[string]string{"foo": "bar"})
 
 	dt, err := codec.Marshal(m)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	var m2 map[string]codec.RawMessage
-	if err := codec.Unmarshal(dt, &m2); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, codec.Unmarshal(dt, &m2))
 
 	checkRawValue(t, m2["a"], 1)
 	checkRawValue(t, m2["b"], "asdf")
 	checkRawValue(t, m2["c"], map[string]string{"foo": "bar"})
 
 	dt, err = json.Marshal(m2)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	var m3 map[string]codec.RawMessage
-	if err := codec.Unmarshal(dt, &m3); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, codec.Unmarshal(dt, &m3))
 	checkRawValue(t, m3["a"], 1)
 	checkRawValue(t, m3["b"], "asdf")
 	checkRawValue(t, m3["c"], map[string]string{"foo": "bar"})
 
 	var m4 map[string]json.RawMessage
-	if err := json.Unmarshal(dt, &m4); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, json.Unmarshal(dt, &m4))
 	checkJSONRawValue(t, m4["a"], 1)
 	checkJSONRawValue(t, m4["b"], "asdf")
 	checkJSONRawValue(t, m4["c"], map[string]string{"foo": "bar"})
@@ -411,7 +367,6 @@ func (t dynamicField) Equals(o *dynamicField) bool {
 	return true
 }
 
-//nolint:gocognit // inline subtests, one per marshaler and RawMessage pairing
 func TestRawMessageJSONCompatibility(t *testing.T) {
 	rawData := []byte(`staticField: value
 dynamicField:
@@ -433,93 +388,53 @@ dynamicField:
 
 	t.Run("UseJSONUnmarshaler and json.RawMessage", func(t *testing.T) {
 		var wrapper rawJSONWrapper
-		if err := codec.Unmarshal(rawData, &wrapper, codec.UseJSONUnmarshaler()); err != nil {
-			t.Fatal(err)
-		}
-		if wrapper.StaticField != "value" {
-			t.Fatalf("unexpected wrapper static field value: %s", wrapper.StaticField)
-		}
+		require.NoError(t, codec.Unmarshal(rawData, &wrapper, codec.UseJSONUnmarshaler()))
+		require.Equal(t, "value", wrapper.StaticField)
 		var dynamicFieldValue dynamicField
-		if err := codec.Unmarshal(wrapper.DynamicField, &dynamicFieldValue); err != nil {
-			t.Fatal(err)
-		}
-		if !dynamicFieldValue.Equals(expectedDynamicFieldValue) {
-			t.Fatalf("unexpected dynamic field value: %v", dynamicFieldValue)
-		}
+		require.NoError(t, codec.Unmarshal(wrapper.DynamicField, &dynamicFieldValue))
+		require.Truef(t, dynamicFieldValue.Equals(expectedDynamicFieldValue), "dynamic field is %v", dynamicFieldValue)
 	})
 
 	t.Run("UseJSONUnmarshaler and codec.RawMessage", func(t *testing.T) {
 		var wrapper rawYAMLWrapper
-		if err := codec.Unmarshal(rawData, &wrapper, codec.UseJSONUnmarshaler()); err != nil {
-			t.Fatal(err)
-		}
-		if wrapper.StaticField != "value" {
-			t.Fatalf("unexpected wrapper static field value: %s", wrapper.StaticField)
-		}
+		require.NoError(t, codec.Unmarshal(rawData, &wrapper, codec.UseJSONUnmarshaler()))
+		require.Equal(t, "value", wrapper.StaticField)
 		var dynamicFieldValue dynamicField
-		if err := codec.Unmarshal(wrapper.DynamicField, &dynamicFieldValue); err != nil {
-			t.Fatal(err)
-		}
-		if !dynamicFieldValue.Equals(expectedDynamicFieldValue) {
-			t.Fatalf("unexpected dynamic field value: %v", dynamicFieldValue)
-		}
+		require.NoError(t, codec.Unmarshal(wrapper.DynamicField, &dynamicFieldValue))
+		require.Truef(t, dynamicFieldValue.Equals(expectedDynamicFieldValue), "dynamic field is %v", dynamicFieldValue)
 	})
 
 	t.Run("UseJSONMarshaler and json.RawMessage", func(t *testing.T) {
 		dynamicFieldBytes, err := codec.Marshal(expectedDynamicFieldValue)
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
 		wrapper := rawJSONWrapper{
 			StaticField:  "value",
 			DynamicField: json.RawMessage(dynamicFieldBytes),
 		}
 		wrapperBytes, err := codec.Marshal(&wrapper, codec.UseJSONMarshaler())
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
 		var unmarshaledWrapper rawJSONWrapper
-		if err := codec.Unmarshal(wrapperBytes, &unmarshaledWrapper, codec.UseJSONUnmarshaler()); err != nil {
-			t.Fatal(err)
-		}
-		if unmarshaledWrapper.StaticField != wrapper.StaticField {
-			t.Fatalf("unexpected unmarshaled static field value: %s", unmarshaledWrapper.StaticField)
-		}
+		require.NoError(t, codec.Unmarshal(wrapperBytes, &unmarshaledWrapper, codec.UseJSONUnmarshaler()))
+		require.Equal(t, wrapper.StaticField, unmarshaledWrapper.StaticField)
 		var unmarshaledDynamicFieldValue dynamicField
-		if err := codec.Unmarshal(unmarshaledWrapper.DynamicField, &unmarshaledDynamicFieldValue, codec.UseJSONUnmarshaler()); err != nil {
-			t.Fatal(err)
-		}
-		if !unmarshaledDynamicFieldValue.Equals(expectedDynamicFieldValue) {
-			t.Fatalf("unexpected unmarshaled dynamic field value: %v", unmarshaledDynamicFieldValue)
-		}
+		require.NoError(t, codec.Unmarshal(unmarshaledWrapper.DynamicField, &unmarshaledDynamicFieldValue, codec.UseJSONUnmarshaler()))
+		require.Truef(t, unmarshaledDynamicFieldValue.Equals(expectedDynamicFieldValue), "dynamic field is %v", unmarshaledDynamicFieldValue)
 	})
 
 	t.Run("UseJSONMarshaler and codec.RawMessage", func(t *testing.T) {
 		dynamicFieldBytes, err := codec.Marshal(expectedDynamicFieldValue)
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
 		wrapper := rawYAMLWrapper{
 			StaticField:  "value",
 			DynamicField: codec.RawMessage(dynamicFieldBytes),
 		}
 		wrapperBytes, err := codec.Marshal(&wrapper, codec.UseJSONMarshaler())
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
 		var unmarshaledWrapper rawYAMLWrapper
-		if err := codec.Unmarshal(wrapperBytes, &unmarshaledWrapper, codec.UseJSONUnmarshaler()); err != nil {
-			t.Fatal(err)
-		}
-		if unmarshaledWrapper.StaticField != wrapper.StaticField {
-			t.Fatalf("unexpected unmarshaled static field value: %s", unmarshaledWrapper.StaticField)
-		}
+		require.NoError(t, codec.Unmarshal(wrapperBytes, &unmarshaledWrapper, codec.UseJSONUnmarshaler()))
+		require.Equal(t, wrapper.StaticField, unmarshaledWrapper.StaticField)
 		var unmarshaledDynamicFieldValue dynamicField
-		if err := codec.Unmarshal(unmarshaledWrapper.DynamicField, &unmarshaledDynamicFieldValue, codec.UseJSONUnmarshaler()); err != nil {
-			t.Fatal(err)
-		}
-		if !unmarshaledDynamicFieldValue.Equals(expectedDynamicFieldValue) {
-			t.Fatalf("unexpected unmarshaled dynamic field value: %v", unmarshaledDynamicFieldValue)
-		}
+		require.NoError(t, codec.Unmarshal(unmarshaledWrapper.DynamicField, &unmarshaledDynamicFieldValue, codec.UseJSONUnmarshaler()))
+		require.Truef(t, unmarshaledDynamicFieldValue.Equals(expectedDynamicFieldValue), "dynamic field is %v", unmarshaledDynamicFieldValue)
 	})
 }

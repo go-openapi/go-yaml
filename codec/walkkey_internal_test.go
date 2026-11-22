@@ -5,8 +5,10 @@ package codec
 
 import (
 	"fmt"
-	"reflect"
 	"testing"
+
+	"github.com/go-openapi/testify/v2/assert"
+	"github.com/go-openapi/testify/v2/require"
 )
 
 // TestAKeptKeyKeepsTheWalk reads documents whose keys are written with an
@@ -42,15 +44,10 @@ func TestAKeptKeyKeepsTheWalk(t *testing.T) {
 					opts = append(opts, ShareAliases())
 				}
 				r := decodeBothWays(t, src, opts...)
-				if r.walkErr != nil || r.treeErr != nil {
-					t.Fatalf("walk err=%v, tree err=%v", r.walkErr, r.treeErr)
-				}
-				if !reflect.DeepEqual(r.walked, r.built) {
-					t.Errorf("the two paths disagree:\n  walk %+v\n  tree %+v", r.walked, r.built)
-				}
-				if r.dec.parsedFile != nil {
-					t.Error("the decode built a tree")
-				}
+				require.NoError(t, r.walkErr, "walk")
+				require.NoError(t, r.treeErr, "tree")
+				assert.Equal(t, r.built, r.walked, "walk against tree")
+				assert.Nil(t, r.dec.parsedFile, "the decode built a tree")
 			})
 		}
 	}
@@ -67,22 +64,15 @@ func TestAKeptKeyTheWalkCannotReadGoesToTheTree(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			r := decodeBothWays(t, src)
-			if (r.walkErr == nil) != (r.treeErr == nil) {
-				t.Fatalf("walk err=%v, tree err=%v", r.walkErr, r.treeErr)
-			}
+			require.Equalf(t, r.treeErr == nil, r.walkErr == nil,
+				"walk err=%v, tree err=%v", r.walkErr, r.treeErr)
 			if r.walkErr != nil {
-				if r.walkErr.Error() != r.treeErr.Error() {
-					t.Errorf("the two paths refuse differently:\n  walk %v\n  tree %v", r.walkErr, r.treeErr)
-				}
+				assert.EqualError(t, r.walkErr, r.treeErr.Error(), "walk against tree")
 
 				return
 			}
-			if !reflect.DeepEqual(r.walked, r.built) {
-				t.Errorf("the two paths disagree:\n  walk %+v\n  tree %+v", r.walked, r.built)
-			}
-			if r.dec.parsedFile == nil {
-				t.Error("the walk read it: move the case to TestAKeptKeyKeepsTheWalk")
-			}
+			assert.Equal(t, r.built, r.walked, "walk against tree")
+			assert.NotNil(t, r.dec.parsedFile, "the walk read it: move the case to TestAKeptKeyKeepsTheWalk")
 		})
 	}
 }
@@ -100,12 +90,9 @@ func TestAKeptKeyRefusesARepeatAsTheTreeDoes(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			r := decodeBothWays(t, src)
-			if r.walkErr == nil || r.treeErr == nil {
-				t.Fatalf("walk err=%v, tree err=%v", r.walkErr, r.treeErr)
-			}
-			if r.walkErr.Error() != r.treeErr.Error() {
-				t.Errorf("the two paths refuse differently:\n  walk %v\n  tree %v", r.walkErr, r.treeErr)
-			}
+			require.Error(t, r.walkErr, "walk")
+			require.Error(t, r.treeErr, "tree")
+			assert.EqualError(t, r.walkErr, r.treeErr.Error(), "walk against tree")
 		})
 	}
 }

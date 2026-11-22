@@ -8,7 +8,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"reflect"
 	"strings"
 	"testing"
 
@@ -26,15 +25,9 @@ func TestDecoder_AnchorReferenceDirs(t *testing.T) {
 			C string
 		}
 	}
-	if err := dec.Decode(&v); err != nil {
-		t.Fatalf("%+v", err)
-	}
-	if v.A.B != 1 {
-		t.Fatal("failed to decode by reference dirs")
-	}
-	if v.A.C != "hello" {
-		t.Fatal("failed to decode by reference dirs")
-	}
+	require.NoError(t, dec.Decode(&v))
+	require.Equal(t, 1, v.A.B)
+	require.Equal(t, "hello", v.A.C)
 }
 
 func TestDecoder_AnchorReferenceDirsRecursive(t *testing.T) {
@@ -49,15 +42,9 @@ func TestDecoder_AnchorReferenceDirsRecursive(t *testing.T) {
 			C string
 		}
 	}
-	if err := dec.Decode(&v); err != nil {
-		t.Fatalf("%+v", err)
-	}
-	if v.A.B != 1 {
-		t.Fatal("failed to decode by reference dirs")
-	}
-	if v.A.C != "hello" {
-		t.Fatal("failed to decode by reference dirs")
-	}
+	require.NoError(t, dec.Decode(&v))
+	require.Equal(t, 1, v.A.B)
+	require.Equal(t, "hello", v.A.C)
 }
 
 func TestDecoder_AnchorFiles(t *testing.T) {
@@ -69,15 +56,9 @@ func TestDecoder_AnchorFiles(t *testing.T) {
 			C string
 		}
 	}
-	if err := dec.Decode(&v); err != nil {
-		t.Fatalf("%+v", err)
-	}
-	if v.A.B != 1 {
-		t.Fatal("failed to decode by reference dirs")
-	}
-	if v.A.C != "hello" {
-		t.Fatal("failed to decode by reference dirs")
-	}
+	require.NoError(t, dec.Decode(&v))
+	require.Equal(t, 1, v.A.B)
+	require.Equal(t, "hello", v.A.C)
 }
 
 func TestDecoder_DecodeWithAnchorAnyValue(t *testing.T) {
@@ -100,12 +81,8 @@ config:
 `
 
 	var cfg Schema
-	if err := codec.NewDecoder(strings.NewReader(data)).Decode(&cfg); err != nil {
-		t.Fatal(err)
-	}
-	if !reflect.DeepEqual(cfg.Config.Env, []string{"VAR1=1", "VAR2=2"}) {
-		t.Fatalf("failed to decode value. actual = %+v", cfg)
-	}
+	require.NoError(t, codec.NewDecoder(strings.NewReader(data)).Decode(&cfg))
+	require.Equal(t, []string{"VAR1=1", "VAR2=2"}, cfg.Config.Env)
 }
 
 func TestRoundtripAnchorAlias(t *testing.T) {
@@ -136,13 +113,9 @@ bar:
  k3: "Three"
 `
 		var v doc
-		if err := codec.Unmarshal([]byte(yml), &v); err != nil {
-			t.Fatalf("%+v", err)
-		}
+		require.NoError(t, codec.Unmarshal([]byte(yml), &v))
 		bytes, err := codec.Marshal(v)
-		if err != nil {
-			t.Fatalf("%+v", err)
-		}
+		require.NoError(t, err)
 		expected := `
 foo:
   k1: One
@@ -152,9 +125,7 @@ bar:
   k3: Three
 `
 		got := "\n" + string(bytes)
-		if expected != got {
-			t.Fatalf("expected:[%s] but got [%s]", expected, got)
-		}
+		require.Equal(t, expected, got)
 	})
 	t.Run("reversible", func(t *testing.T) {
 		type TestAnchor struct {
@@ -190,17 +161,11 @@ bar:
   k3: Three
 `
 		var v doc
-		if err := codec.Unmarshal([]byte("%YAML 1.1\n---"+body), &v); err != nil {
-			t.Fatalf("%+v", err)
-		}
+		require.NoError(t, codec.Unmarshal([]byte("%YAML 1.1\n---"+body), &v))
 		bytes, err := codec.Marshal(v)
-		if err != nil {
-			t.Fatalf("%+v", err)
-		}
+		require.NoError(t, err)
 		got := "\n" + string(bytes)
-		if body != got {
-			t.Fatalf("expected:[%s] but got [%s]", body, got)
-		}
+		require.Equal(t, body, got)
 	})
 }
 
@@ -218,12 +183,8 @@ d: *a
 		D int
 	}
 	var v T
-	if err := codec.Unmarshal([]byte(yml), &v); err != nil {
-		t.Fatal(err)
-	}
-	if !reflect.DeepEqual(v, T{A: 1, B: 2, C: 3, D: 3}) {
-		t.Fatalf("failed to decode same anchor: %+v", v)
-	}
+	require.NoError(t, codec.Unmarshal([]byte(yml), &v))
+	require.Equal(t, T{A: 1, B: 2, C: 3, D: 3}, v)
 }
 
 func TestDecoder_AnchorInUnmappedField(t *testing.T) {
@@ -250,40 +211,22 @@ jobs:
 `
 
 	var config Config
-	if err := codec.Unmarshal([]byte(yml), &config); err != nil {
-		t.Fatalf("failed to decode: %v", err)
-	}
-
-	if config.Name != "Test Config" {
-		t.Fatalf("unexpected name: %v", config.Name)
-	}
-
-	if len(config.Jobs) != 1 {
-		t.Fatalf("unexpected jobs length: %d", len(config.Jobs))
-	}
+	require.NoError(t, codec.Unmarshal([]byte(yml), &config))
+	require.Equal(t, "Test Config", config.Name)
+	require.Len(t, config.Jobs, 1)
 
 	job := config.Jobs[0]
-	if job.Name != "Job1" {
-		t.Fatalf("unexpected job name: %v", job.Name)
-	}
+	require.Equal(t, "Job1", job.Name)
 
 	defaults, ok := job.Defaults.(map[string]any)
-	if !ok {
-		t.Fatalf("defaults is not a map: %T", job.Defaults)
-	}
+	require.Truef(t, ok, "defaults is not a map: %T", job.Defaults)
 
 	http, ok := defaults["http"].(map[string]any)
-	if !ok {
-		t.Fatalf("http is not a map: %T", defaults["http"])
-	}
+	require.Truef(t, ok, "http is not a map: %T", defaults["http"])
 
 	url, ok := http["url"].(string)
-	if !ok {
-		t.Fatalf("url is not a string: %T", http["url"])
-	}
-	if url != "http://example.com" {
-		t.Fatalf("unexpected url: %v", url)
-	}
+	require.Truef(t, ok, "url is not a string: %T", http["url"])
+	require.Equal(t, "http://example.com", url)
 }
 
 func TestDecoder_SiblingAnchorAlias(t *testing.T) {
@@ -298,19 +241,11 @@ a: &a
   ref: *b
 `
 		var result map[string]any
-		if err := codec.Unmarshal([]byte(yml), &result); err != nil {
-			t.Fatalf("failed to decode: %v", err)
-		}
+		require.NoError(t, codec.Unmarshal([]byte(yml), &result))
 		a, ok := result["a"].(map[string]any)
-		if !ok {
-			t.Fatalf("a is not a map: %T", result["a"])
-		}
-		if a["b"] != "value" {
-			t.Fatalf("unexpected a.b: %v", a["b"])
-		}
-		if a["ref"] != "value" {
-			t.Fatalf("unexpected a.ref: got %v, want \"value\"", a["ref"])
-		}
+		require.Truef(t, ok, "a is not a map: %T", result["a"])
+		require.Equal(t, "value", a["b"], "a.b")
+		require.Equal(t, "value", a["ref"], "a.ref")
 	})
 
 	t.Run("multiple sibling aliases", func(t *testing.T) {
@@ -323,17 +258,11 @@ config: &config
     cache_url: *cache
 `
 		var result map[string]any
-		if err := codec.Unmarshal([]byte(yml), &result); err != nil {
-			t.Fatalf("failed to decode: %v", err)
-		}
+		require.NoError(t, codec.Unmarshal([]byte(yml), &result))
 		cfg, _ := result["config"].(map[string]any)
 		app, _ := cfg["app"].(map[string]any)
-		if app["database_url"] != "postgres://localhost/mydb" {
-			t.Fatalf("unexpected database_url: got %v, want postgres://localhost/mydb", app["database_url"])
-		}
-		if app["cache_url"] != "redis://localhost:6379" {
-			t.Fatalf("unexpected cache_url: got %v, want redis://localhost:6379", app["cache_url"])
-		}
+		require.Equal(t, "postgres://localhost/mydb", app["database_url"], "database_url")
+		require.Equal(t, "redis://localhost:6379", app["cache_url"], "cache_url")
 	})
 
 	t.Run("nested map sibling alias", func(t *testing.T) {
@@ -346,21 +275,13 @@ service: &service
     security: *auth
 `
 		var result map[string]any
-		if err := codec.Unmarshal([]byte(yml), &result); err != nil {
-			t.Fatalf("failed to decode: %v", err)
-		}
+		require.NoError(t, codec.Unmarshal([]byte(yml), &result))
 		svc, _ := result["service"].(map[string]any)
 		ep, _ := svc["endpoint"].(map[string]any)
 		security, ok := ep["security"].(map[string]any)
-		if !ok {
-			t.Fatalf("security is not a map: %T (value: %v)", ep["security"], ep["security"])
-		}
-		if security["required"] != true {
-			t.Fatalf("unexpected security.required: %v", security["required"])
-		}
-		if security["type"] != "jwt" {
-			t.Fatalf("unexpected security.type: %v", security["type"])
-		}
+		require.Truef(t, ok, "security is not a map: %T (value: %v)", ep["security"], ep["security"])
+		require.Equal(t, true, security["required"], "security.required")
+		require.Equal(t, "jwt", security["type"], "security.type")
 	})
 
 	t.Run("self recursion is refused", func(t *testing.T) {
@@ -374,12 +295,8 @@ a: &a
 `
 		var result map[string]any
 		err := codec.Unmarshal([]byte(yml), &result)
-		if err == nil {
-			t.Fatalf("a self-recursive alias should be refused, decoded to: %v", result)
-		}
-		if !strings.Contains(err.Error(), `alias "a" stands inside its own anchor`) {
-			t.Fatalf("unexpected error: %v", err)
-		}
+		require.Error(t, err, "decoded to %v", result)
+		require.ErrorContains(t, err, `alias "a" stands inside its own anchor`)
 	})
 }
 

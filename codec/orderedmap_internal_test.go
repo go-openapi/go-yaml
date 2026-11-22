@@ -128,7 +128,7 @@ func TestAnOrderedMapKeyIsUniqueOnEveryPath(t *testing.T) {
 			assert.ErrorIsf(t, jsonErr, yamlerrors.ErrNotJSON, "ToJSON: %q", src)
 			assert.ErrorIsf(t, tokenErr, yamlerrors.ErrNotJSON, "tokens: %q", src)
 		default:
-			t.Fatalf("unknown expectation %v", want)
+			require.FailNowf(t, "unknown expectation", "%v", want)
 		}
 	}
 }

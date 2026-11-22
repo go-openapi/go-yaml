@@ -10,6 +10,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-openapi/testify/v2/assert"
+	"github.com/go-openapi/testify/v2/require"
+
 	"github.com/go-openapi/go-yaml/codec/internal/structfields"
 
 	"github.com/go-openapi/go-yaml/ast"
@@ -81,12 +84,8 @@ func TestEmbeddedWalkMatchesTheTree(t *testing.T) {
 				CustomUnmarshaler[chan int](func(*chan int, []byte) error { return nil }),
 			).Decode(&built)
 
-			if (walkErr == nil) != (treeErr == nil) {
-				t.Fatalf("walk err=%v, tree err=%v", walkErr, treeErr)
-			}
-			if !reflect.DeepEqual(walked, built) {
-				t.Errorf("the two paths disagree:\n  walk %+v\n  tree %+v", walked, built)
-			}
+			require.Equal(t, treeErr == nil, walkErr == nil, "walk err=%v, tree err=%v", walkErr, treeErr)
+			assert.Equal(t, built, walked, "the two paths disagree")
 		})
 	}
 }
@@ -132,14 +131,8 @@ func TestTypedWalkMatchesTheTree(t *testing.T) {
 				CustomUnmarshaler[chan int](func(*chan int, []byte) error { return nil }),
 			).Decode(&built)
 
-			switch {
-			case walkErr != nil && treeErr != nil:
-			case walkErr != nil || treeErr != nil:
-				t.Fatalf("walk err=%v, tree err=%v", walkErr, treeErr)
-			}
-			if !reflect.DeepEqual(walked, built) {
-				t.Errorf("the two paths disagree:\n  walk %+v\n  tree %+v", walked, built)
-			}
+			require.Equal(t, treeErr == nil, walkErr == nil, "walk err=%v, tree err=%v", walkErr, treeErr)
+			assert.Equal(t, built, walked, "the two paths disagree")
 		})
 	}
 }
@@ -159,9 +152,7 @@ func TestWalkableTypeRefusesWhatTheTreeReads(t *testing.T) {
 		"a complex number":      reflect.TypeFor[struct{ A complex128 }](),
 	}
 	for name, typ := range refused {
-		if walkableType(typ, structfields.YAMLTags) {
-			t.Errorf("%s: the gate let %s through", name, typ)
-		}
+		assert.Falsef(t, walkableType(typ, structfields.YAMLTags), "%s: the gate let %s through", name, typ)
 	}
 
 	accepted := map[string]reflect.Type{
@@ -176,9 +167,7 @@ func TestWalkableTypeRefusesWhatTheTreeReads(t *testing.T) {
 		"a self-embedding":   reflect.TypeFor[selfEmbedding](),
 	}
 	for name, typ := range accepted {
-		if !walkableType(typ, structfields.YAMLTags) {
-			t.Errorf("%s: the gate refused %s", name, typ)
-		}
+		assert.Truef(t, walkableType(typ, structfields.YAMLTags), "%s: the gate refused %s", name, typ)
 	}
 }
 
@@ -187,12 +176,9 @@ func TestWalkableTypeRefusesWhatTheTreeReads(t *testing.T) {
 // fresh zero.
 func TestWalkPreservesDefaults(t *testing.T) {
 	dst := walkShape{Name: "default", Leaf: WalkLeaf{S: "kept"}}
-	if err := Unmarshal([]byte("leaf:\n"), &dst); err != nil {
-		t.Fatal(err)
-	}
-	if dst.Name != "default" || dst.Leaf.S != "kept" {
-		t.Errorf("got %+v, want the defaults kept", dst)
-	}
+	require.NoError(t, Unmarshal([]byte("leaf:\n"), &dst))
+	assert.Equal(t, "default", dst.Name)
+	assert.Equal(t, "kept", dst.Leaf.S)
 }
 
 // TestAnAnchorKeepsTheWalk reads documents whose values carry an anchor, and
@@ -233,15 +219,10 @@ func TestAnAnchorKeepsTheWalk(t *testing.T) {
 				CustomUnmarshaler[chan int](func(*chan int, []byte) error { return nil }),
 			).Decode(&built)
 
-			if walkErr != nil || treeErr != nil {
-				t.Fatalf("walk err=%v, tree err=%v", walkErr, treeErr)
-			}
-			if !reflect.DeepEqual(walked, built) {
-				t.Errorf("the two paths disagree:\n  walk %+v\n  tree %+v", walked, built)
-			}
-			if dec.parsedFile != nil {
-				t.Error("the decode built a tree")
-			}
+			require.NoError(t, walkErr, "walk")
+			require.NoError(t, treeErr, "tree")
+			assert.Equal(t, built, walked, "the two paths disagree")
+			assert.Nil(t, dec.parsedFile, "the decode built a tree")
 		})
 	}
 }
@@ -258,12 +239,8 @@ func TestAnAnchorTheWalkCannotReadGoesToTheTree(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			var walked walkShape
 			dec := NewDecoder(bytes.NewReader([]byte(src)))
-			if err := dec.Decode(&walked); err != nil {
-				t.Fatal(err)
-			}
-			if dec.parsedFile == nil {
-				t.Error("the walk read it: move the case to TestAnAnchorKeepsTheWalk")
-			}
+			require.NoError(t, dec.Decode(&walked))
+			assert.NotNil(t, dec.parsedFile, "the walk read it: move the case to TestAnAnchorKeepsTheWalk")
 		})
 	}
 }
@@ -287,15 +264,10 @@ func TestADirectiveKeepsTheWalk(t *testing.T) {
 				CustomUnmarshaler[chan int](func(*chan int, []byte) error { return nil }),
 			).Decode(&built)
 
-			if walkErr != nil || treeErr != nil {
-				t.Fatalf("walk err=%v, tree err=%v", walkErr, treeErr)
-			}
-			if !reflect.DeepEqual(walked, built) {
-				t.Errorf("the two paths disagree:\n  walk %+v\n  tree %+v", walked, built)
-			}
-			if dec.parsedFile != nil {
-				t.Error("the decode built a tree")
-			}
+			require.NoError(t, walkErr, "walk")
+			require.NoError(t, treeErr, "tree")
+			assert.Equal(t, built, walked, "the two paths disagree")
+			assert.Nil(t, dec.parsedFile, "the decode built a tree")
 		})
 	}
 }
@@ -345,15 +317,10 @@ func TestAnAliasKeepsTheWalk(t *testing.T) {
 					append(opts, CustomUnmarshaler[chan int](func(*chan int, []byte) error { return nil }))...,
 				).Decode(&built)
 
-				if walkErr != nil || treeErr != nil {
-					t.Fatalf("walk err=%v, tree err=%v", walkErr, treeErr)
-				}
-				if !reflect.DeepEqual(walked, built) {
-					t.Errorf("the two paths disagree:\n  walk %+v\n  tree %+v", walked, built)
-				}
-				if dec.parsedFile != nil {
-					t.Error("the decode built a tree")
-				}
+				require.NoError(t, walkErr, "walk")
+				require.NoError(t, treeErr, "tree")
+				assert.Equal(t, built, walked, "the two paths disagree")
+				assert.Nil(t, dec.parsedFile, "the decode built a tree")
 			})
 		}
 	}
@@ -377,9 +344,7 @@ func TestASharedAliasPointsWhereTheTreeDoes(t *testing.T) {
 	read := func(opts ...DecodeOption) shared {
 		t.Helper()
 		var v shared
-		if err := NewDecoder(bytes.NewReader([]byte(src)), append(opts, ShareAliases())...).Decode(&v); err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, NewDecoder(bytes.NewReader([]byte(src)), append(opts, ShareAliases())...).Decode(&v))
 
 		return v
 	}
@@ -394,13 +359,9 @@ func TestASharedAliasPointsWhereTheTreeDoes(t *testing.T) {
 		{"p and q are one value", walked.P == walked.Q, built.P == built.Q},
 		{"lp points at the slice element", len(walked.L) > 0 && walked.LP == &walked.L[0], len(built.L) > 0 && built.LP == &built.L[0]},
 	} {
-		if c.walk != c.tree {
-			t.Errorf("%s: walk %v, tree %v", c.name, c.walk, c.tree)
-		}
+		assert.Equal(t, c.tree, c.walk, c.name)
 	}
-	if !reflect.DeepEqual(walked, built) {
-		t.Errorf("the two paths disagree:\n  walk %+v\n  tree %+v", walked, built)
-	}
+	assert.Equal(t, built, walked, "the two paths disagree")
 }
 
 // TestABrokenAliasIsRefusedAsByTheTree holds the walk to the tree's error on an
@@ -420,12 +381,9 @@ func TestABrokenAliasIsRefusedAsByTheTree(t *testing.T) {
 				CustomUnmarshaler[chan int](func(*chan int, []byte) error { return nil }),
 			).Decode(&built)
 
-			if walkErr == nil || treeErr == nil {
-				t.Fatalf("walk err=%v, tree err=%v", walkErr, treeErr)
-			}
-			if walkErr.Error() != treeErr.Error() {
-				t.Errorf("the two paths refuse differently:\n  walk %v\n  tree %v", walkErr, treeErr)
-			}
+			require.Error(t, walkErr, "walk")
+			require.Error(t, treeErr, "tree")
+			assert.EqualError(t, walkErr, treeErr.Error(), "the two paths refuse differently")
 		})
 	}
 }
@@ -484,15 +442,10 @@ func TestAMergeKeepsTheWalk(t *testing.T) {
 					opts = append(opts, ShareAliases())
 				}
 				r := decodeBothWays(t, src, opts...)
-				if r.walkErr != nil || r.treeErr != nil {
-					t.Fatalf("walk err=%v, tree err=%v", r.walkErr, r.treeErr)
-				}
-				if !reflect.DeepEqual(r.walked, r.built) {
-					t.Errorf("the two paths disagree:\n  walk %+v\n  tree %+v", r.walked, r.built)
-				}
-				if r.dec.parsedFile != nil {
-					t.Error("the decode built a tree")
-				}
+				require.NoError(t, r.walkErr, "walk")
+				require.NoError(t, r.treeErr, "tree")
+				assert.Equal(t, r.built, r.walked, "the two paths disagree")
+				assert.Nil(t, r.dec.parsedFile, "the decode built a tree")
 			})
 		}
 	}
@@ -512,22 +465,14 @@ func TestAMergeTheWalkCannotReadGoesToTheTree(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			r := decodeBothWays(t, src)
-			if (r.walkErr == nil) != (r.treeErr == nil) {
-				t.Fatalf("walk err=%v, tree err=%v", r.walkErr, r.treeErr)
-			}
+			require.Equal(t, r.treeErr == nil, r.walkErr == nil, "walk err=%v, tree err=%v", r.walkErr, r.treeErr)
 			if r.walkErr != nil {
-				if r.walkErr.Error() != r.treeErr.Error() {
-					t.Errorf("the two paths refuse differently:\n  walk %v\n  tree %v", r.walkErr, r.treeErr)
-				}
+				assert.EqualError(t, r.walkErr, r.treeErr.Error(), "the two paths refuse differently")
 
 				return
 			}
-			if !reflect.DeepEqual(r.walked, r.built) {
-				t.Errorf("the two paths disagree:\n  walk %+v\n  tree %+v", r.walked, r.built)
-			}
-			if r.dec.parsedFile == nil {
-				t.Error("the walk read it: move the case to TestAMergeKeepsTheWalk")
-			}
+			assert.Equal(t, r.built, r.walked, "the two paths disagree")
+			assert.NotNil(t, r.dec.parsedFile, "the walk read it: move the case to TestAMergeKeepsTheWalk")
 		})
 	}
 }
@@ -545,17 +490,13 @@ func TestAMergeKeepsTheDefaults(t *testing.T) {
 			Plain: map[string]string{"a": "default", "b": "default", "z": "kept"},
 		}
 		opts = append(opts, WithParserOptions(parser.WithYAMLVersion(parser.YAML11)))
-		if err := NewDecoder(bytes.NewReader([]byte(src)), opts...).Decode(&v); err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, NewDecoder(bytes.NewReader([]byte(src)), opts...).Decode(&v))
 
 		return v
 	}
 	walked := read()
 	built := read(CustomUnmarshaler[chan int](func(*chan int, []byte) error { return nil }))
-	if !reflect.DeepEqual(walked, built) {
-		t.Errorf("the two paths disagree:\n  walk %+v\n  tree %+v", walked, built)
-	}
+	assert.Equal(t, built, walked, "the two paths disagree")
 }
 
 // declaredAnchors parses each source into the tree parser.WithAnchors takes.
@@ -564,9 +505,7 @@ func declaredAnchors(t *testing.T, srcs map[string]string) map[string]ast.Node {
 	anchors := make(map[string]ast.Node, len(srcs))
 	for name, src := range srcs {
 		f, err := parser.ParseBytes([]byte(src))
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
 		anchors[name] = f.Docs[0].Body
 	}
 
@@ -607,15 +546,10 @@ func TestADeclaredAnchorKeepsTheWalk(t *testing.T) {
 					opts = append(opts, ShareAliases())
 				}
 				r := decodeBothWays(t, src, opts...)
-				if r.walkErr != nil || r.treeErr != nil {
-					t.Fatalf("walk err=%v, tree err=%v", r.walkErr, r.treeErr)
-				}
-				if !reflect.DeepEqual(r.walked, r.built) {
-					t.Errorf("the two paths disagree:\n  walk %+v\n  tree %+v", r.walked, r.built)
-				}
-				if r.dec.parsedFile != nil {
-					t.Error("the decode built a tree")
-				}
+				require.NoError(t, r.walkErr, "walk")
+				require.NoError(t, r.treeErr, "tree")
+				assert.Equal(t, r.built, r.walked, "the two paths disagree")
+				assert.Nil(t, r.dec.parsedFile, "the decode built a tree")
 			})
 		}
 	}
@@ -638,19 +572,12 @@ func TestADeclaredAnchorIsNeverShared(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			var v shared
 			opts := append([]DecodeOption{WithParserOptions(parser.WithAnchors(anchors)), ShareAliases()}, extra...)
-			if err := NewDecoder(bytes.NewReader([]byte(src)), opts...).Decode(&v); err != nil {
-				t.Fatal(err)
-			}
-			if v.P == nil || v.Q == nil {
-				t.Fatalf("an alias decoded to nil: %+v", v)
-			}
-			if v.P == v.Q {
-				t.Error("two aliases of a declared anchor share a value")
-			}
+			require.NoError(t, NewDecoder(bytes.NewReader([]byte(src)), opts...).Decode(&v))
+			require.NotNil(t, v.P, "p decoded to nil")
+			require.NotNil(t, v.Q, "q decoded to nil")
+			assert.NotSame(t, v.P, v.Q, "two aliases of a declared anchor share a value")
 			v.P.Xs[0] = 9
-			if v.Q.Xs[0] != 1 {
-				t.Error("writing through one alias reached the other")
-			}
+			assert.Equal(t, int64(1), v.Q.Xs[0], "writing through one alias reached the other")
 		})
 	}
 }
@@ -667,22 +594,14 @@ func TestADeclaredAnchorTheWalkCannotReadGoesToTheTree(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			r := decodeBothWays(t, src, WithParserOptions(parser.WithAnchors(anchors)))
-			if (r.walkErr == nil) != (r.treeErr == nil) {
-				t.Fatalf("walk err=%v, tree err=%v", r.walkErr, r.treeErr)
-			}
+			require.Equal(t, r.treeErr == nil, r.walkErr == nil, "walk err=%v, tree err=%v", r.walkErr, r.treeErr)
 			if r.walkErr != nil {
-				if r.walkErr.Error() != r.treeErr.Error() {
-					t.Errorf("the two paths refuse differently:\n  walk %v\n  tree %v", r.walkErr, r.treeErr)
-				}
+				assert.EqualError(t, r.walkErr, r.treeErr.Error(), "the two paths refuse differently")
 
 				return
 			}
-			if !reflect.DeepEqual(r.walked, r.built) {
-				t.Errorf("the two paths disagree:\n  walk %+v\n  tree %+v", r.walked, r.built)
-			}
-			if r.dec.parsedFile == nil {
-				t.Error("the walk read it: move the case to TestADeclaredAnchorKeepsTheWalk")
-			}
+			assert.Equal(t, r.built, r.walked, "the two paths disagree")
+			assert.NotNil(t, r.dec.parsedFile, "the walk read it: move the case to TestADeclaredAnchorKeepsTheWalk")
 		})
 	}
 }
@@ -701,21 +620,13 @@ func TestUseStringKeysReachesAnAnyFieldOfAStruct(t *testing.T) {
 			var walked, built doc
 			walkErr := NewDecoder(bytes.NewReader([]byte(src)), UseStringKeys()).Decode(&walked)
 			treeErr := NewDecoder(bytes.NewReader([]byte(src)), UseStringKeys(), tree).Decode(&built)
-			if (walkErr == nil) != (treeErr == nil) {
-				t.Fatalf("walk err=%v, tree err=%v", walkErr, treeErr)
-			}
-			if !reflect.DeepEqual(walked, built) {
-				t.Errorf("the two paths disagree:\n  walk %#v\n  tree %#v", walked, built)
-			}
+			require.Equal(t, treeErr == nil, walkErr == nil, "walk err=%v, tree err=%v", walkErr, treeErr)
+			assert.Equal(t, built, walked, "the two paths disagree")
 		})
 	}
 	var v doc
-	if err := NewDecoder(bytes.NewReader([]byte("k: {1: x}\n")), UseStringKeys()).Decode(&v); err != nil {
-		t.Fatal(err)
-	}
-	if want := map[string]any{"1": "x"}; !reflect.DeepEqual(v.K, want) {
-		t.Errorf("got %#v, want %#v", v.K, want)
-	}
+	require.NoError(t, NewDecoder(bytes.NewReader([]byte("k: {1: x}\n")), UseStringKeys()).Decode(&v))
+	assert.Equal(t, map[string]any{"1": "x"}, v.K)
 }
 
 // TestAConvertedScalarKeepsTheWalk reads scalars of another kind than their
@@ -749,15 +660,10 @@ func TestAConvertedScalarKeepsTheWalk(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			r := decodeBothWays(t, src)
-			if r.walkErr != nil || r.treeErr != nil {
-				t.Fatalf("walk err=%v, tree err=%v", r.walkErr, r.treeErr)
-			}
-			if !reflect.DeepEqual(r.walked, r.built) {
-				t.Errorf("the two paths disagree:\n  walk %+v\n  tree %+v", r.walked, r.built)
-			}
-			if r.dec.parsedFile != nil {
-				t.Error("the decode built a tree")
-			}
+			require.NoError(t, r.walkErr, "walk")
+			require.NoError(t, r.treeErr, "tree")
+			assert.Equal(t, r.built, r.walked, "the two paths disagree")
+			assert.Nil(t, r.dec.parsedFile, "the decode built a tree")
 		})
 	}
 }
@@ -790,18 +696,11 @@ func TestAValueThatDoesNotFitKeepsTheWalk(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			r := decodeBothWays(t, src)
-			if r.walkErr == nil || r.treeErr == nil {
-				t.Fatalf("walk err=%v, tree err=%v", r.walkErr, r.treeErr)
-			}
-			if r.walkErr.Error() != r.treeErr.Error() {
-				t.Errorf("the two paths refuse differently:\n  walk %v\n  tree %v", r.walkErr, r.treeErr)
-			}
-			if !reflect.DeepEqual(r.walked, r.built) {
-				t.Errorf("the two paths fill the value differently:\n  walk %+v\n  tree %+v", r.walked, r.built)
-			}
-			if r.dec.parsedFile != nil {
-				t.Error("the decode built a tree")
-			}
+			require.Error(t, r.walkErr, "walk")
+			require.Error(t, r.treeErr, "tree")
+			assert.EqualError(t, r.walkErr, r.treeErr.Error(), "the two paths refuse differently")
+			assert.Equal(t, r.built, r.walked, "the two paths fill the value differently")
+			assert.Nil(t, r.dec.parsedFile, "the decode built a tree")
 		})
 	}
 }

@@ -77,13 +77,11 @@ func TestDecoder_ScientificNotation(t *testing.T) {
 				if errors.Is(err, io.EOF) {
 					return
 				}
-				t.Fatalf("%s: %+v", test.source, err)
+				require.NoError(t, err)
 			}
 			actual := fmt.Sprintf("%+v", value.Elem().Interface())
 			expect := fmt.Sprintf("%+v", test.value)
-			if actual != expect {
-				t.Fatalf("failed to test [%s], actual=[%s], expect=[%s]", test.source, actual, expect)
-			}
+			require.Equal(t, expect, actual)
 		})
 	}
 }

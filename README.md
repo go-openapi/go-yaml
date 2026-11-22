@@ -12,7 +12,6 @@
 
 **A advanced Go library to work with YAML documents.**
 
-> This is a hard fork of [`goccy/go-yaml`][upstream].
 
 ## Status
 
@@ -20,7 +19,9 @@ Early days. API remains subject to changes.
 
 > [!WARNING]
 >
-> This library is still in its early days: a lot of work has been issued on top of our fork point
+> This library is still in its early days.
+>
+> It is a hard fork of [`goccy/go-yaml`][upstream]. A lot of work has been issued on top of our fork point
 > (`edee2f91616c6d73112a13e7c0dbde72ce938877`), and the exported API is still in flux.
 >
 > The posture we have adopted for various so-YAML puzzles may also be debatable and might need to be revisited.

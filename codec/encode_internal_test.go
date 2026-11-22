@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/go-openapi/testify/v2/assert"
+
 	"github.com/go-openapi/go-yaml/codec/internal/codecutils"
 
 	"github.com/go-openapi/go-yaml/ast"
@@ -36,8 +38,6 @@ var keyIdentityCases = []string{
 // defect of this kind sat between two such rules, so for every scalar key the
 // corpus writes, the value the key decodes to must have the identity the key's
 // node has.
-//
-//nolint:gocognit // walks every scalar key of the corpus and compares its identity under each rule
 func TestAKeyNodeAndItsValueHaveOneIdentity(t *testing.T) {
 	srcs := corpusSources()
 	for i, text := range keyIdentityCases {
@@ -49,7 +49,7 @@ func TestAKeyNodeAndItsValueHaveOneIdentity(t *testing.T) {
 		file, err := parser.ParseBytes([]byte(src.text))
 		if err != nil {
 			if strings.HasPrefix(src.name, "cases/") {
-				t.Errorf("%s does not parse, so its keys are compared nowhere: %v", src.name, err)
+				assert.NoErrorf(t, err, "%s does not parse, so its keys are compared nowhere", src.name)
 			}
 
 			continue
@@ -74,9 +74,9 @@ func TestAKeyNodeAndItsValueHaveOneIdentity(t *testing.T) {
 					continue
 				}
 				gotKind, gotName, gotNamed := codecutils.KeyIDOf(value)
-				if !gotNamed || gotKind != kind || gotName != name {
-					t.Errorf("%s: key %q is %v %q as a node and %v %q (%v) as the value %#v",
-						src.name, entry.Key.String(), kind, name, gotKind, gotName, gotNamed, value)
+				if assert.Truef(t, gotNamed, "%s: key %q has no name as the value %#v", src.name, entry.Key.String(), value) {
+					assert.Equalf(t, kind, gotKind, "%s: key %q as the value %#v", src.name, entry.Key.String(), value)
+					assert.Equalf(t, name, gotName, "%s: key %q as the value %#v", src.name, entry.Key.String(), value)
 				}
 				compared++
 			}
@@ -86,7 +86,5 @@ func TestAKeyNodeAndItsValueHaveOneIdentity(t *testing.T) {
 	// 11,191 on 2026-09-11. A floor near it fails when the loop stops reaching
 	// the corpus, which a floor of a few keys would not notice.
 	t.Logf("%d keys compared", compared)
-	if compared < 10000 {
-		t.Errorf("only %d keys compared: the loop has stopped reaching the corpus", compared)
-	}
+	assert.GreaterOrEqualf(t, compared, 10000, "the loop has stopped reaching the corpus")
 }

@@ -8,7 +8,6 @@ import (
 	"errors"
 	"fmt"
 	"net"
-	"reflect"
 	"strconv"
 	"strings"
 	"testing"
@@ -35,12 +34,8 @@ func (t *useJSONUnmarshalerTest) UnmarshalJSON(b []byte) error {
 
 func TestDecoder_UseJSONUnmarshaler(t *testing.T) {
 	var v useJSONUnmarshalerTest
-	if err := codec.Unmarshal([]byte(`"a"`), &v, codec.UseJSONUnmarshaler()); err != nil {
-		t.Fatal(err)
-	}
-	if v.s != "a" {
-		t.Fatalf("unexpected decoded value: %s", v.s)
-	}
+	require.NoError(t, codec.Unmarshal([]byte(`"a"`), &v, codec.UseJSONUnmarshaler()))
+	require.Equal(t, "a", v.s)
 }
 
 func TestDecoder_CustomUnmarshaler(t *testing.T) {
@@ -50,25 +45,18 @@ func TestDecoder_CustomUnmarshaler(t *testing.T) {
 		}
 		src := []byte(`foo: "bar"`)
 		var v T
-		if err := codec.Unmarshal(src, &v, codec.CustomUnmarshaler[T](func(dst *T, b []byte) error {
-			if !bytes.Equal(src, b) {
-				t.Fatalf("failed to get decode target buffer. expected %q but got %q", src, b)
-			}
+		err := codec.Unmarshal(src, &v, codec.CustomUnmarshaler[T](func(dst *T, b []byte) error {
+			require.Equal(t, src, b)
 			var v T
 			if err := codec.Unmarshal(b, &v); err != nil {
 				return err
 			}
-			if v.Foo != "bar" {
-				t.Fatal("failed to decode")
-			}
+			require.Equal(t, "bar", v.Foo)
 			dst.Foo = "bazbaz" // assign another value to target
 			return nil
-		})); err != nil {
-			t.Fatal(err)
-		}
-		if v.Foo != "bazbaz" {
-			t.Fatalf("failed to switch to custom unmarshaler. got: %v", v.Foo)
-		}
+		}))
+		require.NoError(t, err)
+		require.Equal(t, "bazbaz", v.Foo)
 	})
 	t.Run("override bytes type", func(t *testing.T) {
 		type T struct {
@@ -76,18 +64,13 @@ func TestDecoder_CustomUnmarshaler(t *testing.T) {
 		}
 		src := []byte(`foo: "bar"`)
 		var v T
-		if err := codec.Unmarshal(src, &v, codec.CustomUnmarshaler[[]byte](func(dst *[]byte, b []byte) error {
-			if !bytes.Equal(b, []byte(`"bar"`)) {
-				t.Fatalf("failed to get target buffer: %q", b)
-			}
+		err := codec.Unmarshal(src, &v, codec.CustomUnmarshaler[[]byte](func(dst *[]byte, b []byte) error {
+			require.Equal(t, []byte(`"bar"`), b)
 			*dst = []byte("bazbaz")
 			return nil
-		})); err != nil {
-			t.Fatal(err)
-		}
-		if !bytes.Equal(v.Foo, []byte("bazbaz")) {
-			t.Fatalf("failed to switch to custom unmarshaler. got: %q", v.Foo)
-		}
+		}))
+		require.NoError(t, err)
+		require.Equal(t, []byte("bazbaz"), v.Foo)
 	})
 }
 
@@ -118,7 +101,7 @@ foo: # comment
 		t.Run(strconv.Itoa(idx), func(t *testing.T) {
 			m := codec.CommentMap{}
 			var v T
-			if err := codec.Unmarshal(
+			require.NoError(t, codec.Unmarshal(
 				[]byte(test),
 				&v,
 				codec.CommentToMap(m),
@@ -128,9 +111,7 @@ foo: # comment
 					}
 					return nil
 				}),
-			); err != nil {
-				t.Fatal(err)
-			}
+			))
 		})
 	}
 }
@@ -158,7 +139,6 @@ type unmarshalableStringContainer struct {
 	B unmarshalableTextStringValue `yaml:"b"`
 }
 
-//nolint:gocognit // inline subtests, one per kind of string node
 func TestUnmarshalableString(t *testing.T) {
 	t.Run("empty string", func(t *testing.T) {
 		t.Parallel()
@@ -167,15 +147,9 @@ a: ""
 b: ""
 `
 		var container unmarshalableStringContainer
-		if err := codec.Unmarshal([]byte(yml), &container); err != nil {
-			t.Fatalf("failed to unmarshal %v", err)
-		}
-		if container.A != "" {
-			t.Fatalf("expected empty string, but %q is set", container.A)
-		}
-		if container.B != "" {
-			t.Fatalf("expected empty string, but %q is set", container.B)
-		}
+		require.NoError(t, codec.Unmarshal([]byte(yml), &container))
+		require.Empty(t, container.A)
+		require.Empty(t, container.B)
 	})
 	t.Run("filled string", func(t *testing.T) {
 		t.Parallel()
@@ -184,15 +158,9 @@ a: "aaa"
 b: "bbb"
 `
 		var container unmarshalableStringContainer
-		if err := codec.Unmarshal([]byte(yml), &container); err != nil {
-			t.Fatalf("failed to unmarshal %v", err)
-		}
-		if container.A != "aaa" {
-			t.Fatalf("expected \"aaa\", but %q is set", container.A)
-		}
-		if container.B != "bbb" {
-			t.Fatalf("expected \"bbb\", but %q is set", container.B)
-		}
+		require.NoError(t, codec.Unmarshal([]byte(yml), &container))
+		require.Equal(t, "aaa", string(container.A))
+		require.Equal(t, "bbb", string(container.B))
 	})
 	t.Run("single-quoted string", func(t *testing.T) {
 		t.Parallel()
@@ -201,15 +169,9 @@ a: 'aaa'
 b: 'bbb'
 `
 		var container unmarshalableStringContainer
-		if err := codec.Unmarshal([]byte(yml), &container); err != nil {
-			t.Fatalf("failed to unmarshal %v", err)
-		}
-		if container.A != "aaa" {
-			t.Fatalf("expected \"aaa\", but %q is set", container.A)
-		}
-		if container.B != "bbb" {
-			t.Fatalf("expected \"aaa\", but %q is set", container.B)
-		}
+		require.NoError(t, codec.Unmarshal([]byte(yml), &container))
+		require.Equal(t, "aaa", string(container.A))
+		require.Equal(t, "bbb", string(container.B))
 	})
 	t.Run("literal", func(t *testing.T) {
 		t.Parallel()
@@ -224,15 +186,9 @@ b: |
  c
 `
 		var container unmarshalableStringContainer
-		if err := codec.Unmarshal([]byte(yml), &container); err != nil {
-			t.Fatalf("failed to unmarshal %v", err)
-		}
-		if container.A != "a\nb\nc\n" {
-			t.Fatalf("expected \"a\nb\nc\n\", but %q is set", container.A)
-		}
-		if container.B != "a\nb\nc\n" {
-			t.Fatalf("expected \"a\nb\nc\n\", but %q is set", container.B)
-		}
+		require.NoError(t, codec.Unmarshal([]byte(yml), &container))
+		require.Equal(t, "a\nb\nc\n", string(container.A))
+		require.Equal(t, "a\nb\nc\n", string(container.B))
 	})
 	t.Run("anchor/alias", func(t *testing.T) {
 		yml := `
@@ -244,21 +200,11 @@ d: *y
 		var v struct {
 			A, B, C, D unmarshalableTextStringValue
 		}
-		if err := codec.Unmarshal([]byte(yml), &v); err != nil {
-			t.Fatal(err)
-		}
-		if v.A != "1" {
-			t.Fatal("failed to unmarshal")
-		}
-		if v.B != "1" {
-			t.Fatal("failed to unmarshal")
-		}
-		if v.C != "hello" {
-			t.Fatal("failed to unmarshal")
-		}
-		if v.D != "hello" {
-			t.Fatal("failed to unmarshal")
-		}
+		require.NoError(t, codec.Unmarshal([]byte(yml), &v))
+		require.Equal(t, "1", string(v.A))
+		require.Equal(t, "1", string(v.B))
+		require.Equal(t, "hello", string(v.C))
+		require.Equal(t, "hello", string(v.D))
 	})
 	t.Run("net.IP", func(t *testing.T) {
 		yml := `
@@ -268,15 +214,9 @@ b: *a
 		var v struct {
 			A, B net.IP
 		}
-		if err := codec.Unmarshal([]byte(yml), &v); err != nil {
-			t.Fatal(err)
-		}
-		if v.A.String() != net.IPv4(127, 0, 0, 1).String() {
-			t.Fatal("failed to unmarshal")
-		}
-		if v.B.String() != net.IPv4(127, 0, 0, 1).String() {
-			t.Fatal("failed to unmarshal")
-		}
+		require.NoError(t, codec.Unmarshal([]byte(yml), &v))
+		require.Equal(t, net.IPv4(127, 0, 0, 1).String(), v.A.String())
+		require.Equal(t, net.IPv4(127, 0, 0, 1).String(), v.B.String())
 	})
 	t.Run("quoted map keys", func(t *testing.T) {
 		t.Parallel()
@@ -291,15 +231,9 @@ a:
 				C bool
 			}
 		}
-		if err := codec.Unmarshal([]byte(yml), &v); err != nil {
-			t.Fatalf("failed to unmarshal %v", err)
-		}
-		if v.A.B != 2 {
-			t.Fatalf("expected a.b to equal 2 but was %d", v.A.B)
-		}
-		if !v.A.C {
-			t.Fatal("expected a.c to be true but was false")
-		}
+		require.NoError(t, codec.Unmarshal([]byte(yml), &v))
+		require.Equal(t, 2, v.A.B)
+		require.True(t, v.A.C)
 	})
 }
 
@@ -311,23 +245,16 @@ func TestUnmarshalablePtrString(t *testing.T) {
 	t.Run("empty string", func(t *testing.T) {
 		t.Parallel()
 		var container unmarshalablePtrStringContainer
-		if err := codec.Unmarshal([]byte(`value: ""`), &container); err != nil {
-			t.Fatalf("failed to unmarshal %v", err)
-		}
-		if container.V == nil || *container.V != "" {
-			t.Fatalf("expected empty string, but %q is set", *container.V)
-		}
+		require.NoError(t, codec.Unmarshal([]byte(`value: ""`), &container))
+		require.NotNil(t, container.V)
+		require.Empty(t, *container.V)
 	})
 
 	t.Run("null", func(t *testing.T) {
 		t.Parallel()
 		var container unmarshalablePtrStringContainer
-		if err := codec.Unmarshal([]byte(`value: null`), &container); err != nil {
-			t.Fatalf("failed to unmarshal %v", err)
-		}
-		if container.V != (*string)(nil) {
-			t.Fatalf("expected nil, but %q is set", *container.V)
-		}
+		require.NoError(t, codec.Unmarshal([]byte(`value: null`), &container))
+		require.Nil(t, container.V)
 	})
 }
 
@@ -350,32 +277,20 @@ func TestUnmarshalableInt(t *testing.T) {
 	t.Run("empty int", func(t *testing.T) {
 		t.Parallel()
 		var container unmarshalableIntContainer
-		if err := codec.Unmarshal([]byte(``), &container); err != nil {
-			t.Fatalf("failed to unmarshal %v", err)
-		}
-		if container.V != 0 {
-			t.Fatalf("expected empty int, but %d is set", container.V)
-		}
+		require.NoError(t, codec.Unmarshal([]byte(``), &container))
+		require.Zero(t, container.V)
 	})
 	t.Run("filled int", func(t *testing.T) {
 		t.Parallel()
 		var container unmarshalableIntContainer
-		if err := codec.Unmarshal([]byte(`value: 9`), &container); err != nil {
-			t.Fatalf("failed to unmarshal %v", err)
-		}
-		if container.V != 9 {
-			t.Fatalf("expected 9, but %d is set", container.V)
-		}
+		require.NoError(t, codec.Unmarshal([]byte(`value: 9`), &container))
+		require.Equal(t, unmarshalableIntValue(9), container.V)
 	})
 	t.Run("filled number", func(t *testing.T) {
 		t.Parallel()
 		var container unmarshalableIntContainer
-		if err := codec.Unmarshal([]byte(`value: 9`), &container); err != nil {
-			t.Fatalf("failed to unmarshal %v", err)
-		}
-		if container.V != 9 {
-			t.Fatalf("expected 9, but %d is set", container.V)
-		}
+		require.NoError(t, codec.Unmarshal([]byte(`value: 9`), &container))
+		require.Equal(t, unmarshalableIntValue(9), container.V)
 	})
 }
 
@@ -423,15 +338,9 @@ value: |
   }
 `
 	var v map[string]*literalContainer
-	if err := codec.Unmarshal([]byte(yml), &v); err != nil {
-		t.Fatalf("failed to unmarshal %+v", err)
-	}
-	if v["value"] == nil {
-		t.Fatal("failed to unmarshal literal with bytes unmarshaler")
-	}
-	if v["value"].v == "" {
-		t.Fatal("failed to unmarshal literal with bytes unmarshaler")
-	}
+	require.NoError(t, codec.Unmarshal([]byte(yml), &v))
+	require.NotNil(t, v["value"])
+	require.NotEmpty(t, v["value"].v)
 }
 
 type unmarshalYAMLWithAliasString string
@@ -524,21 +433,12 @@ map:
 			err := codec.Unmarshal([]byte(test.yaml), &v)
 
 			if test.err != "" {
-				if err == nil {
-					t.Fatal("expected to error")
-				}
-				if !strings.Contains(err.Error(), test.err) {
-					t.Fatalf("expected error message: %s to contain: %s", err.Error(), test.err)
-				}
+				require.ErrorContains(t, err, test.err)
 
 				return
 			}
-			if err != nil {
-				t.Fatalf("%+v", err)
-			}
-			if !reflect.DeepEqual(test.expectedValue, v) {
-				t.Fatalf("non matching values:\nexpected[%s]\ngot     [%s]", test.expectedValue, v)
-			}
+			require.NoError(t, err)
+			require.Equal(t, test.expectedValue, v)
 		})
 	}
 }
@@ -599,18 +499,10 @@ a:
 		A unmarshalList
 	}
 	cm := codec.CommentMap{}
-	if err := codec.Unmarshal([]byte(yml), &v, codec.CommentToMap(cm)); err != nil {
-		t.Fatal(err)
-	}
-	if len(v.A.v) != 4 {
-		t.Fatalf("failed to unmarshal %+v", v)
-	}
-	if len(v.A.v[0]) != 3 {
-		t.Fatalf("failed to unmarshal %+v", v.A.v[0])
-	}
-	if len(v.A.v[1]) != 1 {
-		t.Fatalf("failed to unmarshal %+v", v.A.v[1])
-	}
+	require.NoError(t, codec.Unmarshal([]byte(yml), &v, codec.CommentToMap(cm)))
+	require.Len(t, v.A.v, 4)
+	require.Len(t, v.A.v[0], 3)
+	require.Len(t, v.A.v[1], 1)
 }
 
 type unmarshableMapKey struct {
@@ -677,51 +569,29 @@ func TestNodeUnmarshaler(t *testing.T) {
 			out := c.body
 			err := codec.Unmarshal(src, &out)
 			if c.expectErr != "" {
-				if err == nil {
-					t.Fatal("expected error but got nil")
-					return
-				}
-
-				if !strings.Contains(err.Error(), c.expectErr) {
-					t.Fatalf("error message %q should contain %q", err.Error(), c.expectErr)
-				}
+				require.ErrorContains(t, err, c.expectErr)
 				return
 			}
 
 			expect := struct {
 				Root ast.Node `yaml:"root"`
 			}{}
-			if err := codec.Unmarshal(src, &expect); err != nil {
-				t.Fatal("invalid test yaml:", err)
-				return
-			}
+			require.NoError(t, codec.Unmarshal(src, &expect), "invalid test yaml")
 
-			if err != nil {
-				t.Fatalf("unexpected error: %s", err)
-			}
+			require.NoError(t, err)
 
-			if !reflect.DeepEqual(out.Root.received, expect.Root) {
-				t.Fatalf("expected:\n%#v\n but got:\n%#v", expect.Root, out.Root.received)
-			}
+			require.Equal(t, expect.Root, out.Root.received)
 		})
 	}
 }
 
 func TestMapKeyCustomUnmarshaler(t *testing.T) {
 	var m map[unmarshableMapKey]string
-	if err := codec.Unmarshal([]byte(`key: value`), &m); err != nil {
-		t.Fatalf("failed to unmarshal %v", err)
-	}
-	if len(m) != 1 {
-		t.Fatalf("expected 1 element in map, but got %d", len(m))
-	}
+	require.NoError(t, codec.Unmarshal([]byte(`key: value`), &m))
+	require.Len(t, m, 1)
 	val, ok := m[unmarshableMapKey{Key: "key"}]
-	if !ok {
-		t.Fatal("expected to have element 'key' in map")
-	}
-	if val != "value" {
-		t.Fatalf("expected to have value \"value\", but got %q", val)
-	}
+	require.True(t, ok, "no entry for key")
+	require.Equal(t, "value", val)
 }
 
 type bytesUnmershalerWithMapAlias struct{}
@@ -764,9 +634,7 @@ foo:
 		Foo bytesUnmershalerWithMapAlias `yaml:"foo"`
 	}
 	var v T
-	if err := codec.Unmarshal([]byte(yml), &v); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, codec.Unmarshal([]byte(yml), &v))
 }
 
 func TestBytesUnmarshalerWithEmptyValue(t *testing.T) {
@@ -786,21 +654,17 @@ baz: *seq
 `
 	m := codec.CommentMap{}
 	var v T
-	if err := codec.Unmarshal(
+	require.NoError(t, codec.Unmarshal(
 		[]byte(yml),
 		&v,
 		codec.CommentToMap(m),
 		codec.CustomUnmarshaler[T](unmarshaler),
-	); err != nil {
-		t.Fatal(err)
-	}
-	if err := codec.Unmarshal(
+	))
+	require.NoError(t, codec.Unmarshal(
 		[]byte(yml),
 		&v,
 		codec.CustomUnmarshaler[T](unmarshaler),
-	); err != nil {
-		t.Fatal(err)
-	}
+	))
 }
 
 func TestIssue650(t *testing.T) {
@@ -829,9 +693,7 @@ disks:
 `)
 
 	var sample Sample
-	if err := codec.Unmarshal(data, &sample, codec.CustomUnmarshaler[Disk](unmarshalDisk)); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, codec.Unmarshal(data, &sample, codec.CustomUnmarshaler[Disk](unmarshalDisk)))
 }
 
 func TestBytesUnmarshalerWithLiteral(t *testing.T) {
@@ -858,12 +720,8 @@ func TestBytesUnmarshalerWithLiteral(t *testing.T) {
 `)
 
 		var v []map[string]Literal
-		if err := codec.Unmarshal(data, &v, codec.CustomUnmarshaler[Literal](unmarshalLit)); err != nil {
-			t.Fatal(err)
-		}
-		if !reflect.DeepEqual(v, []map[string]Literal{{"name": "foo\n  bar\n"}, {"name": "foo\nbar\n"}}) {
-			t.Fatalf("failed to get decoded value. got: %q", v)
-		}
+		require.NoError(t, codec.Unmarshal(data, &v, codec.CustomUnmarshaler[Literal](unmarshalLit)))
+		require.Equal(t, []map[string]Literal{{"name": "foo\n  bar\n"}, {"name": "foo\nbar\n"}}, v)
 	})
 	t.Run("sequence value", func(t *testing.T) {
 		type Literal string
@@ -888,12 +746,8 @@ func TestBytesUnmarshalerWithLiteral(t *testing.T) {
 `)
 
 		var v []Literal
-		if err := codec.Unmarshal(data, &v, codec.CustomUnmarshaler[Literal](unmarshalLit)); err != nil {
-			t.Fatal(err)
-		}
-		if !reflect.DeepEqual(v, []Literal{"foo\n  bar\n", "foo\nbar\n"}) {
-			t.Fatalf("failed to get decoded value. got: %q", v)
-		}
+		require.NoError(t, codec.Unmarshal(data, &v, codec.CustomUnmarshaler[Literal](unmarshalLit)))
+		require.Equal(t, []Literal{"foo\n  bar\n", "foo\nbar\n"}, v)
 	})
 }
 
@@ -941,9 +795,7 @@ releases:
 	var v struct {
 		Releases []*Release `yaml:"releases"`
 	}
-	if err := codec.Unmarshal([]byte(yml), &v); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, codec.Unmarshal([]byte(yml), &v))
 }
 
 // recordedBytes keeps the YAML a custom unmarshaler is handed.
@@ -1021,17 +873,11 @@ func TestBytesUnmarshalerReceivesAValueThatReadsBack(t *testing.T) {
 			var v struct {
 				Foo recordedBytes `yaml:"foo"`
 			}
-			if err := codec.Unmarshal([]byte(test.yaml), &v); err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, codec.Unmarshal([]byte(test.yaml), &v))
 
 			var got any
-			if err := codec.Unmarshal([]byte(v.Foo.raw), &got); err != nil {
-				t.Fatalf("the bytes handed over do not parse: %q: %s", v.Foo.raw, err)
-			}
-			if !reflect.DeepEqual(got, test.want) {
-				t.Fatalf("handed over %q, which reads as %#v, want %#v", v.Foo.raw, got, test.want)
-			}
+			require.NoErrorf(t, codec.Unmarshal([]byte(v.Foo.raw), &got), "the bytes handed over do not parse: %q", v.Foo.raw)
+			require.Equalf(t, test.want, got, "handed over %q", v.Foo.raw)
 		})
 	}
 }

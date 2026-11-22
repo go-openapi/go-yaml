@@ -30,18 +30,10 @@ c: true
 
 		C bool
 	}
-	if err := codec.NewDecoder(strings.NewReader(yml)).Decode(&v); err != nil {
-		t.Fatalf("%+v", err)
-	}
-	if v.A != 1 {
-		t.Fatal("failed to decode with inline key")
-	}
-	if v.B != "hello" {
-		t.Fatal("failed to decode with inline key")
-	}
-	if !v.C {
-		t.Fatal("failed to decode with inline key")
-	}
+	require.NoError(t, codec.NewDecoder(strings.NewReader(yml)).Decode(&v))
+	require.Equal(t, 1, v.A)
+	require.Equal(t, "hello", v.B)
+	require.True(t, v.C)
 
 	t.Run("multiple inline with strict", func(t *testing.T) {
 		type Base struct {
@@ -58,15 +50,9 @@ b: hello
 		var v struct {
 			Base2 *Base2 `yaml:",inline"`
 		}
-		if err := codec.NewDecoder(strings.NewReader(yml), codec.Strict()).Decode(&v); err != nil {
-			t.Fatalf("%+v", err)
-		}
-		if v.Base2.Base.A != 1 {
-			t.Fatal("failed to decode with inline key")
-		}
-		if v.Base2.Base.B != "hello" {
-			t.Fatal("failed to decode with inline key")
-		}
+		require.NoError(t, codec.NewDecoder(strings.NewReader(yml), codec.Strict()).Decode(&v))
+		require.Equal(t, 1, v.Base2.Base.A)
+		require.Equal(t, "hello", v.Base2.Base.B)
 	})
 }
 
@@ -90,12 +76,7 @@ c: true
 	// "a" reaches Base.A and the outer A, and nothing settles which one the
 	// document meant, so go.yaml.in/yaml/v3 refuses the type and so do we.
 	err := codec.NewDecoder(strings.NewReader(yml)).Decode(&v)
-	if err == nil {
-		t.Fatal("a name reaching two fields should be refused")
-	}
-	if !strings.Contains(err.Error(), `duplicated key "a"`) {
-		t.Fatalf("unexpected error: %+v", err)
-	}
+	require.ErrorContains(t, err, `duplicated key "a"`)
 }
 
 func TestDecoder_InlineAndWrongTypeStrict(t *testing.T) {
@@ -137,34 +118,22 @@ b_yaml: b_yaml_value
 
 	t.Run("the default reads no json tag", func(t *testing.T) {
 		var v tagged
-		if err := codec.NewDecoder(strings.NewReader(src)).Decode(&v); err != nil {
-			t.Fatalf(`parsing should succeed: %s`, err)
-		}
+		require.NoError(t, codec.NewDecoder(strings.NewReader(src)).Decode(&v))
 
 		// A is named "a" here, after its Go name, so nothing in src reaches it.
-		if v.A != "" {
-			t.Fatalf("v.A should be empty, got `%s`", v.A)
-		}
+		require.Empty(t, v.A)
 
-		if v.B != "b_yaml_value" {
-			t.Fatalf("v.B should be `b_yaml_value`, got `%s`", v.B)
-		}
+		require.Equal(t, "b_yaml_value", v.B)
 	})
 
 	t.Run("UseJSONTags reads it", func(t *testing.T) {
 		var v tagged
-		if err := codec.NewDecoder(strings.NewReader(src), codec.UseJSONTags(true)).Decode(&v); err != nil {
-			t.Fatalf(`parsing should succeed: %s`, err)
-		}
+		require.NoError(t, codec.NewDecoder(strings.NewReader(src), codec.UseJSONTags(true)).Decode(&v))
 
-		if v.A != "a_json_value" {
-			t.Fatalf("v.A should be `a_json_value`, got `%s`", v.A)
-		}
+		require.Equal(t, "a_json_value", v.A)
 
 		// The option adds a name for A and takes none away from B.
-		if v.B != "b_yaml_value" {
-			t.Fatalf("v.B should be `b_yaml_value`, got `%s`", v.B)
-		}
+		require.Equal(t, "b_yaml_value", v.B)
 	})
 }
 
@@ -180,9 +149,7 @@ c:
 `
 
 		err := codec.NewDecoder(strings.NewReader(yml), codec.DisallowUnknownField()).Decode(&v)
-		if err == nil {
-			t.Fatalf("error expected")
-		}
+		require.Error(t, err)
 	})
 	t.Run("inline", func(t *testing.T) {
 		var v struct {
@@ -195,18 +162,10 @@ a: a
 b: 1
 `
 
-		if err := codec.NewDecoder(strings.NewReader(yml), codec.DisallowUnknownField()).Decode(&v); err != nil {
-			t.Fatalf(`parsing should succeed: %s`, err)
-		}
-		if v.A != "a" {
-			t.Fatalf("v.A should be `a`, got `%s`", v.A)
-		}
-		if v.B != 1 {
-			t.Fatalf("v.B should be 1, got %d", v.B)
-		}
-		if v.C != 0 {
-			t.Fatalf("v.C should be 0, got %d", v.C)
-		}
+		require.NoError(t, codec.NewDecoder(strings.NewReader(yml), codec.DisallowUnknownField()).Decode(&v))
+		require.Equal(t, "a", v.A)
+		require.Equal(t, 1, v.B)
+		require.Equal(t, 0, v.C)
 	})
 	t.Run("list", func(t *testing.T) {
 		type C struct {
@@ -223,21 +182,13 @@ children:
 - b: 2
 `
 
-		if err := codec.NewDecoder(strings.NewReader(yml), codec.DisallowUnknownField()).Decode(&v); err != nil {
-			t.Fatalf(`parsing should succeed: %s`, err)
-		}
+		require.NoError(t, codec.NewDecoder(strings.NewReader(yml), codec.DisallowUnknownField()).Decode(&v))
 
-		if len(v.Children) != 2 {
-			t.Fatalf(`len(v.Children) should be 2, got %d`, len(v.Children))
-		}
+		require.Len(t, v.Children, 2)
 
-		if v.Children[0].B != 1 {
-			t.Fatalf(`v.Children[0].B should be 1, got %d`, v.Children[0].B)
-		}
+		require.Equal(t, 1, v.Children[0].B)
 
-		if v.Children[1].B != 2 {
-			t.Fatalf(`v.Children[1].B should be 2, got %d`, v.Children[1].B)
-		}
+		require.Equal(t, 2, v.Children[1].B)
 	})
 
 	t.Run("with allowed prefixes", func(t *testing.T) {
@@ -249,9 +200,7 @@ a: a_value
 x-some-extra-thing: b_value
 `
 
-		if err := codec.NewDecoder(strings.NewReader(yml), codec.DisallowUnknownField(), codec.AllowFieldPrefixes("x-")).Decode(&v); err != nil {
-			t.Fatalf(`parsing should succeed: %s`, err)
-		}
+		require.NoError(t, codec.NewDecoder(strings.NewReader(yml), codec.DisallowUnknownField(), codec.AllowFieldPrefixes("x-")).Decode(&v))
 
 		yml = `---
 a: a_value
@@ -260,9 +209,7 @@ x-some-extra-thing: b_value
 `
 
 		err := codec.NewDecoder(strings.NewReader(yml), codec.DisallowUnknownField(), codec.AllowFieldPrefixes("x-")).Decode(&v)
-		if err == nil {
-			t.Fatal("expected error")
-		}
+		require.Error(t, err)
 	})
 }
 
@@ -329,68 +276,36 @@ p:
    q: q_value
 w: w_value
 `
-	if err := codec.NewDecoder(strings.NewReader(src)).Decode(&v); err != nil {
-		t.Fatalf(`parsing should succeed: %s`, err)
-	}
-	if v.A != "a_value" {
-		t.Fatalf("v.A should be `a_value`, got `%s`", v.A)
-	}
+	require.NoError(t, codec.NewDecoder(strings.NewReader(src)).Decode(&v))
+	require.Equal(t, "a_value", v.A)
 
-	if v.B != "defaultBValue" {
-		t.Fatalf("v.B should be `defaultValue`, got `%s`", v.B)
-	}
+	require.Equal(t, "defaultBValue", v.B)
 
-	if v.c != "defaultCValue" {
-		t.Fatalf("v.c should be `defaultCValue`, got `%s`", v.c)
-	}
+	require.Equal(t, "defaultCValue", v.c)
 
-	if v.D.E != "defaultEValue" {
-		t.Fatalf("v.D.E should be `defaultEValue`, got `%s`", v.D.E)
-	}
+	require.Equal(t, "defaultEValue", v.D.E)
 
-	if v.D.F.G != "defaultGValue" {
-		t.Fatalf("v.D.F.G should be `defaultGValue`, got `%s`", v.D.F.G)
-	}
+	require.Equal(t, "defaultGValue", v.D.F.G)
 
-	if v.D.H.I != "defaultIValue" {
-		t.Fatalf("v.D.H.I should be `defaultIValue`, got `%s`", v.D.H.I)
-	}
+	require.Equal(t, "defaultIValue", v.D.H.I)
 
-	if v.J.K != "defaultKValue" {
-		t.Fatalf("v.J.K should be `defaultKValue`, got `%s`", v.J.K)
-	}
+	require.Equal(t, "defaultKValue", v.J.K)
 
-	if v.J.L.M != "defaultMValue" {
-		t.Fatalf("v.J.L.M should be `defaultMValue`, got `%s`", v.J.L.M)
-	}
+	require.Equal(t, "defaultMValue", v.J.L.M)
 
-	if v.J.N.O != "defaultOValue" {
-		t.Fatalf("v.J.N.O should be `defaultOValue`, got `%s`", v.J.N.O)
-	}
+	require.Equal(t, "defaultOValue", v.J.N.O)
 
-	if v.P.Q != "q_value" {
-		t.Fatalf("v.P.Q should be `q_value`, got `%s`", v.P.Q)
-	}
+	require.Equal(t, "q_value", v.P.Q)
 
-	if v.P.R.S != "defaultSValue" {
-		t.Fatalf("v.P.R.S should be `defaultSValue`, got `%s`", v.P.R.S)
-	}
+	require.Equal(t, "defaultSValue", v.P.R.S)
 
-	if v.P.T.U != "defaultUValue" {
-		t.Fatalf("v.P.T.U should be `defaultUValue`, got `%s`", v.P.T.U)
-	}
+	require.Equal(t, "defaultUValue", v.P.T.U)
 
-	if v.V.W != "w_value" {
-		t.Fatalf("v.V.W should be `w_value`, got `%s`", v.V.W)
-	}
+	require.Equal(t, "w_value", v.V.W)
 
-	if v.V.X.Y != "defaultYValue" {
-		t.Fatalf("v.V.X.Y should be `defaultYValue`, got `%s`", v.V.X.Y)
-	}
+	require.Equal(t, "defaultYValue", v.V.X.Y)
 
-	if v.V.Z.Ä != "defaultÄValue" {
-		t.Fatalf("v.V.Z.Ä should be `defaultÄValue`, got `%s`", v.V.Z.Ä)
-	}
+	require.Equal(t, "defaultÄValue", v.V.Z.Ä)
 }
 
 func ExampleUnmarshal_yAMLTags() {
@@ -445,12 +360,8 @@ func TestSameNameInineStruct(t *testing.T) {
 	}
 
 	var v T
-	if err := codec.Unmarshal([]byte(`x: 0.7`), &v); err != nil {
-		t.Fatal(err)
-	}
-	if fmt.Sprint(v.X.X) != "0.7" {
-		t.Fatalf("failed to decode")
-	}
+	require.NoError(t, codec.Unmarshal([]byte(`x: 0.7`), &v))
+	require.Equal(t, "0.7", fmt.Sprint(v.X.X))
 }
 
 func TestDecoderPreservesDefaultValues(t *testing.T) {
@@ -470,12 +381,8 @@ nested:
 #  val: "default"
 `
 	v := test{Default: nested{Val: "default"}}
-	if err := codec.Unmarshal([]byte(yml), &v); err != nil {
-		t.Fatal(err)
-	}
-	if v.Default.Val != "default" {
-		t.Fatal("decoder doesn't preserve struct defaults")
-	}
+	require.NoError(t, codec.Unmarshal([]byte(yml), &v))
+	require.Equal(t, "default", v.Default.Val)
 }
 
 // TestANullDocumentLeavesAStructAsItWas holds a decode into a struct to a

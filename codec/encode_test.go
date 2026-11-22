@@ -11,7 +11,6 @@ import (
 	"iter"
 	"math"
 	"net/netip"
-	"reflect"
 	"slices"
 	"strconv"
 	"strings"
@@ -58,9 +57,7 @@ type encodeCase struct {
 func TestEncoder(t *testing.T) {
 	seen := make(map[string]bool)
 	for tc := range encoderCases() {
-		if seen[tc.name] {
-			t.Fatalf("two cases are named %q", tc.name)
-		}
+		require.Falsef(t, seen[tc.name], "two cases are named %q", tc.name)
 		seen[tc.name] = true
 
 		t.Run(tc.name, testEncode(tc))
@@ -71,12 +68,8 @@ func testEncode(tc encodeCase) func(*testing.T) {
 	return func(t *testing.T) {
 		var buf bytes.Buffer
 		enc := codec.NewEncoder(&buf, tc.options...)
-		if err := enc.Encode(tc.value); err != nil {
-			t.Fatalf("%+v", err)
-		}
-		if tc.source != buf.String() {
-			t.Fatalf("expect = [%s], actual = [%s]", tc.source, buf.String())
-		}
+		require.NoError(t, enc.Encode(tc.value))
+		require.Equal(t, tc.source, buf.String())
 	}
 }
 
@@ -1220,14 +1213,10 @@ func TestEncodeStructIncludeMap(t *testing.T) {
 			M: map[string]string{"x": "y"},
 		},
 	})
-	if err != nil {
-		t.Fatalf("%+v", err)
-	}
+	require.NoError(t, err)
 	expect := "a:\n  m:\n    x: \"y\"\n"
 	actual := string(bytes)
-	if actual != expect {
-		t.Fatalf("unexpected output. expect:[%s] actual:[%s]", expect, actual)
-	}
+	require.Equal(t, expect, actual)
 }
 
 func TestEncodeDefinedTypeKeyMap(t *testing.T) {
@@ -1238,14 +1227,10 @@ func TestEncodeDefinedTypeKeyMap(t *testing.T) {
 	bytes, err := codec.Marshal(U{
 		M: map[K]string{K("x"): "y"},
 	})
-	if err != nil {
-		t.Fatalf("%+v", err)
-	}
+	require.NoError(t, err)
 	expect := "m:\n  x: \"y\"\n"
 	actual := string(bytes)
-	if actual != expect {
-		t.Fatalf("unexpected output. expect:[%s] actual:[%s]", expect, actual)
-	}
+	require.Equal(t, expect, actual)
 }
 
 func TestEncodeWithAnchorAndAlias(t *testing.T) {
@@ -1261,13 +1246,9 @@ func TestEncodeWithAnchorAndAlias(t *testing.T) {
 	}
 	v.A = &T{A: 1, B: "hello"}
 	v.B = v.A
-	if err := enc.Encode(v); err != nil {
-		t.Fatalf("%+v", err)
-	}
+	require.NoError(t, enc.Encode(v))
 	expect := "a: &c\n  a: 1\n  b: hello\nb: *c\n"
-	if expect != buf.String() {
-		t.Fatalf("expect = [%s], actual = [%s]", expect, buf.String())
-	}
+	require.Equal(t, expect, buf.String())
 }
 
 func TestEncodeWithAutoAlias(t *testing.T) {
@@ -1287,9 +1268,7 @@ func TestEncodeWithAutoAlias(t *testing.T) {
 	v.B = &T{I: 2, S: "world"}
 	v.C = v.A
 	v.D = v.B
-	if err := enc.Encode(v); err != nil {
-		t.Fatalf("%+v", err)
-	}
+	require.NoError(t, enc.Encode(v))
 	expect := `a: &a
   i: 1
   s: hello
@@ -1299,9 +1278,7 @@ b: &b
 c: *a
 d: *b
 `
-	if expect != buf.String() {
-		t.Fatalf("expect = [%s], actual = [%s]", expect, buf.String())
-	}
+	require.Equal(t, expect, buf.String())
 }
 
 func TestEncodeWithImplicitAnchorAndAlias(t *testing.T) {
@@ -1321,9 +1298,7 @@ func TestEncodeWithImplicitAnchorAndAlias(t *testing.T) {
 	v.B = &T{I: 2, S: "world"}
 	v.C = v.A
 	v.D = v.B
-	if err := enc.Encode(v); err != nil {
-		t.Fatalf("%+v", err)
-	}
+	require.NoError(t, enc.Encode(v))
 	expect := `a: &a
   i: 1
   s: hello
@@ -1333,9 +1308,7 @@ b: &b
 c: *a
 d: *b
 `
-	if expect != buf.String() {
-		t.Fatalf("expect = [%s], actual = [%s]", expect, buf.String())
-	}
+	require.Equal(t, expect, buf.String())
 }
 
 func TestEncodeWithMerge(t *testing.T) {
@@ -1367,9 +1340,7 @@ func TestEncodeWithMerge(t *testing.T) {
 	doc.People = people
 	var buf bytes.Buffer
 	enc := codec.NewEncoder(&buf)
-	if err := enc.Encode(doc); err != nil {
-		t.Fatalf("%+v", err)
-	}
+	require.NoError(t, enc.Encode(doc))
 	expect := `default: &default
   name: John Smith
   age: 20
@@ -1379,9 +1350,7 @@ people:
   age: 10
 - <<: *default
 `
-	if expect != buf.String() {
-		t.Fatalf("expect = [%s], actual = [%s]", expect, buf.String())
-	}
+	require.Equal(t, expect, buf.String())
 }
 
 func TestEncodeWithNestedYAML(t *testing.T) {
@@ -1407,30 +1376,21 @@ func TestEncodeWithNestedYAML(t *testing.T) {
 
 	for _, test := range tests {
 		yamlBytesForced, err := codec.Marshal(test.value, codec.UseLiteralStyleIfMultiline(true))
-		if err != nil {
-			t.Fatalf("%+v", err)
-		}
+		require.NoError(t, err)
 
 		// Convert it back for proper equality testing
 		var unmarshaled any
 
-		if err := codec.Unmarshal(yamlBytesForced, &unmarshaled); err != nil {
-			t.Fatalf("%+v", err)
-		}
+		require.NoError(t, codec.Unmarshal(yamlBytesForced, &unmarshaled))
 
-		if !reflect.DeepEqual(test.value, unmarshaled) {
-			t.Fatalf("expected %v(%T). but actual %v(%T)", test.value, test.value, unmarshaled, unmarshaled)
-		}
+		require.Equal(t, test.value, unmarshaled)
 
 		if test.expectDifferent {
 			yamlBytesNotForced, err := codec.Marshal(test.value)
-			if err != nil {
-				t.Fatalf("%+v", err)
-			}
+			require.NoError(t, err)
 
-			if string(yamlBytesForced) == string(yamlBytesNotForced) {
-				t.Fatalf("expected different strings when force literal style is not enabled. forced: %s, not forced: %s", string(yamlBytesForced), string(yamlBytesNotForced))
-			}
+			require.NotEqualf(t, string(yamlBytesNotForced), string(yamlBytesForced),
+				"the output does not change when literal style is not forced")
 		}
 	}
 }
@@ -1442,7 +1402,7 @@ func TestEncoder_Inline(t *testing.T) {
 	}
 	var buf bytes.Buffer
 	enc := codec.NewEncoder(&buf)
-	if err := enc.Encode(struct {
+	require.NoError(t, enc.Encode(struct {
 		*base `yaml:",inline"`
 
 		C bool
@@ -1452,18 +1412,14 @@ func TestEncoder_Inline(t *testing.T) {
 			B: "hello",
 		},
 		C: true,
-	}); err != nil {
-		t.Fatalf("%+v", err)
-	}
+	}))
 	expect := `
 a: 1
 b: hello
 c: true
 `
 	actual := "\n" + buf.String()
-	if expect != actual {
-		t.Fatalf("inline marshal error: expect=[%s] actual=[%s]", expect, actual)
-	}
+	require.Equal(t, expect, actual)
 }
 
 func TestEncoder_InlineAndConflictKey(t *testing.T) {
@@ -1489,12 +1445,7 @@ func TestEncoder_InlineAndConflictKey(t *testing.T) {
 		A: 0,
 		C: true,
 	})
-	if err == nil {
-		t.Fatal("a name reaching two fields should be refused")
-	}
-	if !strings.Contains(err.Error(), `duplicated key "a"`) {
-		t.Fatalf("unexpected error: %+v", err)
-	}
+	require.ErrorContains(t, err, `duplicated key "a"`)
 }
 
 func TestEncoder_InlineNil(t *testing.T) {
@@ -1504,22 +1455,18 @@ func TestEncoder_InlineNil(t *testing.T) {
 	}
 	var buf bytes.Buffer
 	enc := codec.NewEncoder(&buf)
-	if err := enc.Encode(struct {
+	require.NoError(t, enc.Encode(struct {
 		*base `yaml:",inline"`
 
 		C bool
 	}{
 		C: true,
-	}); err != nil {
-		t.Fatalf("%+v", err)
-	}
+	}))
 	expect := `
 c: true
 `
 	actual := "\n" + buf.String()
-	if expect != actual {
-		t.Fatalf("inline marshal error: expect=[%s] actual=[%s]", expect, actual)
-	}
+	require.Equal(t, expect, actual)
 }
 
 func TestEncoder_Flow(t *testing.T) {
@@ -1539,16 +1486,12 @@ func TestEncoder_Flow(t *testing.T) {
 	v.C.D = 3
 	v.C.E = "world"
 	v.F = []int{1, 2}
-	if err := enc.Encode(v); err != nil {
-		t.Fatalf("%+v", err)
-	}
+	require.NoError(t, enc.Encode(v))
 	expect := `
 {a: 1, b: hello, c: {d: 3, e: world}, f: [1, 2]}
 `
 	actual := "\n" + buf.String()
-	if expect != actual {
-		t.Fatalf("flow style marshal error: expect=[%s] actual=[%s]", expect, actual)
-	}
+	require.Equal(t, expect, actual)
 }
 
 func TestEncoder_FlowRecursive(t *testing.T) {
@@ -1559,16 +1502,12 @@ func TestEncoder_FlowRecursive(t *testing.T) {
 		"test": {1, 2, 3},
 	}
 	var buf bytes.Buffer
-	if err := codec.NewEncoder(&buf).Encode(v); err != nil {
-		t.Fatalf("%+v", err)
-	}
+	require.NoError(t, codec.NewEncoder(&buf).Encode(v))
 	expect := `
 m: {test: [1, 2, 3]}
 `
 	actual := "\n" + buf.String()
-	if expect != actual {
-		t.Fatalf("flow style marshal error: expect=[%s] actual=[%s]", expect, actual)
-	}
+	require.Equal(t, expect, actual)
 }
 
 func TestEncoder_JSON(t *testing.T) {
@@ -1579,7 +1518,7 @@ func TestEncoder_JSON(t *testing.T) {
 		S string
 		F float32
 	}
-	if err := enc.Encode(struct {
+	require.NoError(t, enc.Encode(struct {
 		I        int
 		U        uint
 		S        string
@@ -1607,17 +1546,13 @@ func TestEncoder_JSON(t *testing.T) {
 		},
 		Time:     time.Time{},
 		Duration: 5 * time.Minute,
-	}); err != nil {
-		t.Fatalf("%+v", err)
-	}
+	}))
 	//nolint:lll // the expected flow-style output is a single line
 	expect := `
 {"i": -10, "u": 10, "s": "hello", "f": 3.14, "struct": {"i": 2, "s": "world", "f": 1.23}, "slice": [1, 2, 3, 4, 5], "map": {"a": 1, "b": 1.23, "c": "json"}, "time": "0001-01-01T00:00:00Z", "duration": "5m0s"}
 `
 	actual := "\n" + buf.String()
-	if expect != actual {
-		t.Fatalf("JSON style marshal error: expect=[%s] actual=[%s]", expect, actual)
-	}
+	require.Equal(t, expect, actual)
 }
 
 func TestEncoder_MarshalAnchor(t *testing.T) {
@@ -1677,9 +1612,7 @@ func TestEncoder_MarshalAnchor(t *testing.T) {
 	})
 
 	var buf bytes.Buffer
-	if err := codec.NewEncoder(&buf, opt).Encode(doc); err != nil {
-		t.Fatalf("%+v", err)
-	}
+	require.NoError(t, codec.NewEncoder(&buf, opt).Encode(doc))
 	expect := `
 hosts:
 - host: &host1
@@ -1696,9 +1629,7 @@ queues:
 - name: queue2
   host: *host2
 `
-	if "\n"+buf.String() != expect {
-		t.Fatalf("unexpected output. %s", buf.String())
-	}
+	require.Equal(t, expect, "\n"+buf.String())
 }
 
 type useJSONMarshalerTest struct{}
@@ -1709,18 +1640,14 @@ func (t useJSONMarshalerTest) MarshalJSON() ([]byte, error) {
 
 func TestEncoder_UseJSONMarshaler(t *testing.T) {
 	got, err := codec.Marshal(useJSONMarshalerTest{}, codec.UseJSONMarshaler())
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	expected := `
 a:
 - 1
 - 2
 - 3
 `
-	if expected != "\n"+string(got) {
-		t.Fatalf("failed to use json marshaler. expected [%q] but got [%q]", expected, string(got))
-	}
+	require.Equal(t, expected, "\n"+string(got))
 }
 
 func TestEncoder_CustomMarshaler(t *testing.T) {
@@ -1731,29 +1658,19 @@ func TestEncoder_CustomMarshaler(t *testing.T) {
 		b, err := codec.Marshal(&T{Foo: "bar"}, codec.CustomMarshaler[T](func(_ T) ([]byte, error) {
 			return []byte(`"override"`), nil
 		}))
-		if err != nil {
-			t.Fatal(err)
-		}
-		if !bytes.Equal(b, []byte("\"override\"\n")) {
-			t.Fatalf("failed to switch to custom marshaler. got: %q", b)
-		}
+		require.NoError(t, err)
+		require.Equal(t, []byte("\"override\"\n"), b)
 	})
 	t.Run("override bytes type", func(t *testing.T) {
 		type T struct {
 			Foo []byte `yaml:"foo"`
 		}
 		b, err := codec.Marshal(&T{Foo: []byte("bar")}, codec.CustomMarshaler[[]byte](func(v []byte) ([]byte, error) {
-			if !bytes.Equal(v, []byte("bar")) {
-				t.Fatalf("failed to get src buffer: %q", v)
-			}
+			require.Equal(t, []byte("bar"), v)
 			return []byte(`override`), nil
 		}))
-		if err != nil {
-			t.Fatal(err)
-		}
-		if !bytes.Equal(b, []byte("foo: override\n")) {
-			t.Fatalf("failed to switch to custom marshaler. got: %q", b)
-		}
+		require.NoError(t, err)
+		require.Equal(t, []byte("foo: override\n"), b)
 	})
 }
 
@@ -1795,12 +1712,8 @@ func TestEncoder_AutoInt(t *testing.T) {
 		t.Run(test.desc, func(t *testing.T) {
 			var buf bytes.Buffer
 			enc := codec.NewEncoder(&buf, codec.AutoInt())
-			if err := enc.Encode(test.input); err != nil {
-				t.Fatalf("failed to encode: %s", err)
-			}
-			if actual := buf.String(); actual != test.expected {
-				t.Errorf("expect:\n%s\nactual\n%s\n", test.expected, actual)
-			}
+			require.NoError(t, enc.Encode(test.input))
+			assert.Equal(t, test.expected, buf.String())
 		})
 	}
 }
@@ -1808,15 +1721,9 @@ func TestEncoder_AutoInt(t *testing.T) {
 func TestEncoder_MultipleDocuments(t *testing.T) {
 	var buf bytes.Buffer
 	enc := codec.NewEncoder(&buf)
-	if err := enc.Encode(1); err != nil {
-		t.Fatalf("failed to encode: %s", err)
-	}
-	if err := enc.Encode(2); err != nil {
-		t.Fatalf("failed to encode: %s", err)
-	}
-	if actual, expect := buf.String(), "1\n---\n2\n"; actual != expect {
-		t.Errorf("expect:\n%s\nactual\n%s\n", expect, actual)
-	}
+	require.NoError(t, enc.Encode(1))
+	require.NoError(t, enc.Encode(2))
+	assert.Equal(t, "1\n---\n2\n", buf.String())
 }
 
 func TestEncoder_UnmarshallableTypes(t *testing.T) {
@@ -1885,11 +1792,7 @@ func TestEncoder_UnmarshallableTypes(t *testing.T) {
 		t.Run(test.desc, func(t *testing.T) {
 			var buf bytes.Buffer
 			err := codec.NewEncoder(&buf).Encode(test.input)
-			if err == nil {
-				t.Errorf("expect error:\n%s\nbut got none\n", test.expectedErr)
-			} else if err.Error() != test.expectedErr {
-				t.Errorf("expect error:\n%s\nactual\n%s\n", test.expectedErr, err)
-			}
+			assert.EqualError(t, err, test.expectedErr)
 		})
 	}
 }
@@ -1986,18 +1889,12 @@ func Test_Marshaler(t *testing.T) {
 
 	// sanity check
 	var l []string
-	if err := codec.Unmarshal([]byte(expected), &l); err != nil {
-		t.Fatalf("failed to parse string: %s", err)
-	}
+	require.NoError(t, codec.Unmarshal([]byte(expected), &l))
 
 	buf, err := codec.Marshal(tMarshal{"hello-world"})
-	if err != nil {
-		t.Fatalf("failed to marshal: %s", err)
-	}
+	require.NoError(t, err)
 
-	if string(buf) != expected {
-		t.Fatalf("expected '%s', got '%s'", expected, buf)
-	}
+	require.Equal(t, expected, string(buf))
 
 	t.Logf("%s", buf)
 }
@@ -2129,22 +2026,14 @@ func TestIssue356(t *testing.T) {
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
 			f, err := parser.ParseBytes([]byte(test.in))
-			if err != nil {
-				t.Fatalf("parse: %v", err)
-			}
+			require.NoError(t, err)
 			got := f.String()
-			if test.want != got {
-				t.Fatalf("failed to encode.\nexpected:\n%s\nbut got:\n%s\n", test.want, got)
-			}
+			require.Equal(t, test.want, got)
 
 			// And it settles: reading the result back gives the same text.
 			again, err := parser.ParseBytes([]byte(got))
-			if err != nil {
-				t.Fatalf("reparse: %v", err)
-			}
-			if regot := again.String(); regot != got {
-				t.Fatalf("a second render changed the document:\n%s\nbut got:\n%s\n", got, regot)
-			}
+			require.NoError(t, err)
+			require.Equalf(t, got, again.String(), "a second render changed the document")
 		})
 	}
 }
@@ -2232,13 +2121,9 @@ line3`},
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			b, err := codec.Marshal(tt.input, tt.indent)
-			if err != nil {
-				t.Fatalf("failed to marshal yaml: %v", err)
-			}
+			require.NoError(t, err)
 			got := string(b)
-			if tt.want != got {
-				t.Fatalf("failed to encode.\nexpected:\n%s\nbut got:\n%s\n", tt.want, got)
-			}
+			require.Equal(t, tt.want, got)
 		})
 	}
 }
@@ -2257,9 +2142,7 @@ func TestBytesMarshaler(t *testing.T) {
 			},
 		},
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	expected := `
 a:
   b:
@@ -2267,9 +2150,7 @@ a:
       d: foo
 `
 	got := "\n" + string(b)
-	if expected != got {
-		t.Fatalf("failed to encode. expected %s but got %s", expected, got)
-	}
+	require.Equal(t, expected, got)
 }
 
 type customMapSliceOneItemMarshaler struct{}
@@ -2295,9 +2176,7 @@ func TestCustomMapSliceMarshaler(t *testing.T) {
 		A: &customMapSliceOneItemMarshaler{},
 		B: &customMapSliceTwoItemMarshaler{},
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	expected := `
 a:
   a: b
@@ -2306,9 +2185,7 @@ b:
   b: c
 `
 	got := "\n" + string(b)
-	if expected != got {
-		t.Fatalf("failed to encode. expected %s but got %s", expected, got)
-	}
+	require.Equal(t, expected, got)
 }
 
 type Issue174 struct {
@@ -2322,13 +2199,9 @@ func (v Issue174) MarshalYAML() ([]byte, error) {
 
 func TestIssue174(t *testing.T) {
 	b, err := codec.Marshal(Issue174{"00:00:00-23:59:59", []int{1, 2, 3}})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	got := strings.TrimSuffix(string(b), "\n")
-	if got != `{"00:00:00-23:59:59": [1, 2, 3]}` {
-		t.Fatalf("failed to encode: %q", got)
-	}
+	require.Equal(t, `{"00:00:00-23:59:59": [1, 2, 3]}`, got)
 }
 
 func TestIssue259(t *testing.T) {
@@ -2354,9 +2227,7 @@ func TestIssue259(t *testing.T) {
 		{Baz: "zzz", Value: &anchorValue},
 	}
 	b, err := codec.Marshal(schema)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	expected := `
 values:
 - baz: xxx
@@ -2368,9 +2239,7 @@ values:
 - baz: zzz
   value: *value
 `
-	if strings.TrimPrefix(expected, "\n") != string(b) {
-		t.Fatalf("failed to encode: got = %s", string(b))
-	}
+	require.Equal(t, strings.TrimPrefix(expected, "\n"), string(b))
 }
 
 func TestTagMarshalling(t *testing.T) {
@@ -2401,15 +2270,11 @@ a: &anc !mytag
 		t.Run(tt.name, func(t *testing.T) {
 			res, _ := parser.ParseBytes([]byte(tt.input))
 			result, err := codec.Marshal(res.Docs[0])
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 
 			expected := strings.TrimSpace(tt.input)
 			output := strings.TrimSpace(string(result))
-			if expected != output {
-				t.Fatalf("input is not equal to output.\n\nexpected:\n%v\n actual:\n%v", expected, output)
-			}
+			require.Equal(t, expected, output)
 		})
 	}
 }
@@ -3005,10 +2870,9 @@ func TestABuiltNodeClaimsNoSource(t *testing.T) {
 					return
 				}
 				tokens++
-				if tk.FromSource() {
+				if !assert.Falsef(t, tk.FromSource(), "a %s built from %T claims to come from a document, at %v",
+					n.Type(), value, tk.Position) {
 					claimed++
-					t.Errorf("a %s built from %T claims to come from a document, at %v",
-						n.Type(), value, tk.Position)
 				}
 			})
 

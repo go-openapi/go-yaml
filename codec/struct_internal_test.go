@@ -5,9 +5,11 @@ package codec
 
 import (
 	"bytes"
-	"strings"
 	"sync"
 	"testing"
+
+	"github.com/go-openapi/testify/v2/assert"
+	"github.com/go-openapi/testify/v2/require"
 )
 
 type cachedFields struct {
@@ -26,14 +28,10 @@ func TestConcurrentDecodeSharesTheFieldMap(t *testing.T) {
 		wg.Go(func() {
 			for range 50 {
 				var v cachedFields
-				if err := Unmarshal([]byte(src), &v); err != nil {
-					t.Error(err)
-
+				if !assert.NoError(t, Unmarshal([]byte(src), &v)) {
 					return
 				}
-				if v.Name != "a value" || v.Count != 42 || len(v.Tags) != 2 {
-					t.Errorf("decoded %+v", v)
-
+				if !assert.Equal(t, "a value", v.Name) || !assert.Equal(t, 42, v.Count) || !assert.Len(t, v.Tags, 2) {
 					return
 				}
 			}
@@ -76,12 +74,8 @@ func TestKeyNoFieldCanBeNamedAfterIsSkipped(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			var dst namedOnly
-			if err := Unmarshal([]byte(src), &dst); err != nil {
-				t.Fatal(err)
-			}
-			if dst.Name != "x" || dst.N != 2 {
-				t.Errorf("got %+v, want {Name:x N:2}", dst)
-			}
+			require.NoError(t, Unmarshal([]byte(src), &dst))
+			assert.Equal(t, namedOnly{Name: "x", N: 2}, dst)
 		})
 	}
 }
@@ -93,12 +87,8 @@ func TestLastOfTwoEntriesWins(t *testing.T) {
 	dec := NewDecoder(bytes.NewReader([]byte("name: first\nname: second\n")), AllowDuplicateMapKey())
 
 	var dst namedOnly
-	if err := dec.Decode(&dst); err != nil {
-		t.Fatal(err)
-	}
-	if dst.Name != "second" {
-		t.Errorf("got %q, want %q", dst.Name, "second")
-	}
+	require.NoError(t, dec.Decode(&dst))
+	assert.Equal(t, "second", dst.Name)
 }
 
 // TestUnknownFieldIsStillFound checks DisallowUnknownField against the inverted
@@ -108,37 +98,25 @@ func TestUnknownFieldIsStillFound(t *testing.T) {
 
 	var dst namedOnly
 	err := dec.Decode(&dst)
-	if err == nil {
-		t.Fatal("the unknown field was accepted")
-	}
-	if !strings.Contains(err.Error(), "nope") {
-		t.Errorf("%v does not name the field", err)
-	}
+	require.Error(t, err, "the unknown field was accepted")
+	assert.ErrorContains(t, err, "nope")
 
 	// A field every name matches is not unknown.
 	dec = NewDecoder(bytes.NewReader([]byte("name: x\nn: 1\n")), DisallowUnknownField())
-	if err := dec.Decode(&dst); err != nil {
-		t.Error(err)
-	}
+	assert.NoError(t, dec.Decode(&dst))
 }
 
 // TestEmbeddedFieldTakesTheWholeMapping covers an inline struct, which is read
 // after the rest and from every entry rather than from one.
 func TestEmbeddedFieldTakesTheWholeMapping(t *testing.T) {
 	var dst embeddingOuter
-	if err := Unmarshal([]byte("a: 1\nb: 2\nc: 3\n"), &dst); err != nil {
-		t.Fatal(err)
-	}
-	if dst.A != 1 || dst.B != 2 || dst.C != 3 {
-		t.Errorf("got %+v, want {A:1 inner:{B:2 C:3}}", dst)
-	}
+	require.NoError(t, Unmarshal([]byte("a: 1\nb: 2\nc: 3\n"), &dst))
+	assert.Equal(t, embeddingOuter{A: 1, EmbeddedInner: EmbeddedInner{B: 2, C: 3}}, dst)
 
 	// The names an embedded struct knows are not unknown fields either.
 	dec := NewDecoder(bytes.NewReader([]byte("a: 1\nb: 2\nc: 3\n")), DisallowUnknownField())
 	var strict embeddingOuter
-	if err := dec.Decode(&strict); err != nil {
-		t.Error(err)
-	}
+	assert.NoError(t, dec.Decode(&strict))
 }
 
 // TestMergedEntryFillsAFieldTheMappingLeavesAlone is the other side of
@@ -157,13 +135,7 @@ func TestMergedEntryFillsAFieldTheMappingLeavesAlone(t *testing.T) {
 			Num  int    `yaml:"num"`
 		} `yaml:"use"`
 	}
-	if err := Unmarshal([]byte(src), &dst); err != nil {
-		t.Fatal(err)
-	}
-	if dst.Use.Name != "own" {
-		t.Errorf("name: got %q, want %q", dst.Use.Name, "own")
-	}
-	if dst.Use.Num != 7 {
-		t.Errorf("num: got %d, want 7 from the merge", dst.Use.Num)
-	}
+	require.NoError(t, Unmarshal([]byte(src), &dst))
+	assert.Equal(t, "own", dst.Use.Name)
+	assert.Equal(t, 7, dst.Use.Num, "num comes from the merge")
 }

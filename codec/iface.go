@@ -65,6 +65,13 @@ type NodeUnmarshaler interface {
 	UnmarshalYAML(node ast.Node) error
 }
 
+// IsZeroer is used to check whether an object is zero to determine
+// whether it should be omitted when marshaling with the omitempty flag.
+// One notable implementation is time.Time.
+type IsZeroer interface {
+	IsZero() bool
+}
+
 type jsonUnmarshaler interface {
 	UnmarshalJSON(data []byte) error
 }

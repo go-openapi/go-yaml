@@ -7,7 +7,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"iter"
-	"reflect"
 	"slices"
 	"testing"
 	"time"
@@ -24,14 +23,10 @@ func TestIssue617(t *testing.T) {
 a: !Not [!Equals [!Ref foo, 'bar']]
 `
 	var v map[string][]any
-	if err := codec.Unmarshal([]byte(data), &v); err != nil {
-		t.Fatal(err)
-	}
-	if !reflect.DeepEqual(v, map[string][]any{
+	require.NoError(t, codec.Unmarshal([]byte(data), &v))
+	require.Equal(t, map[string][]any{
 		"a": {[]any{"foo", "bar"}},
-	}) {
-		t.Fatalf("found unexpected value: %v", v)
-	}
+	}, v)
 }
 
 func TestIssue735(t *testing.T) {
@@ -46,50 +41,34 @@ func TestIssue735(t *testing.T) {
 		// A YAML tag applied to a non-sequence value on a slice field must
 		// return an error, not panic.
 		var v Slice
-		if err := codec.Unmarshal([]byte("items:\n  ! scalar"), &v); err == nil {
-			t.Fatal("expected error, got nil")
-		}
+		require.Error(t, codec.Unmarshal([]byte("items:\n  ! scalar"), &v))
 	})
 
 	t.Run("tag on scalar decoded as map errors", func(t *testing.T) {
 		// A YAML tag applied to a non-map value on a map field must
 		// return an error, not panic.
 		var v Map
-		if err := codec.Unmarshal([]byte("items: !!str scalar"), &v); err == nil {
-			t.Fatal("expected error, got nil")
-		}
+		require.Error(t, codec.Unmarshal([]byte("items: !!str scalar"), &v))
 	})
 
 	t.Run("!!seq tag on sequence decoded as slice succeeds", func(t *testing.T) {
 		var v Slice
-		if err := codec.Unmarshal([]byte("items: !!seq\n  - a\n  - b"), &v); err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		if len(v.Items) != 2 || v.Items[0] != "a" || v.Items[1] != "b" {
-			t.Fatalf("unexpected items: %v", v.Items)
-		}
+		require.NoError(t, codec.Unmarshal([]byte("items: !!seq\n  - a\n  - b"), &v))
+		require.Equal(t, []string{"a", "b"}, v.Items)
 	})
 
 	t.Run("!!map tag on mapping decoded as map succeeds", func(t *testing.T) {
 		var v Map
-		if err := codec.Unmarshal([]byte("items: !!map\n  a: b"), &v); err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		if v.Items["a"] != "b" {
-			t.Fatalf("unexpected items: %v", v.Items)
-		}
+		require.NoError(t, codec.Unmarshal([]byte("items: !!map\n  a: b"), &v))
+		require.Equal(t, "b", v.Items["a"])
 	})
 
 	t.Run("!!null tag on slice field yields nil slice", func(t *testing.T) {
 		// A tagged null value on a slice field should decode to nil, not error.
 		// Exercises the recursive dispatch through TagNode -> NullNode.
 		var v Slice
-		if err := codec.Unmarshal([]byte("items: !!null null"), &v); err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		if v.Items != nil {
-			t.Fatalf("expected nil slice, got %v", v.Items)
-		}
+		require.NoError(t, codec.Unmarshal([]byte("items: !!null null"), &v))
+		require.Nil(t, v.Items)
 	})
 
 	t.Run("anchored tagged scalar aliased to slice field errors", func(t *testing.T) {
@@ -97,20 +76,14 @@ func TestIssue735(t *testing.T) {
 		// must return an error rather than panic via the nil ArrayRange iterator.
 		var v Slice
 		src := "anchor: &anchor !!str scalar\nitems: *anchor"
-		if err := codec.Unmarshal([]byte(src), &v); err == nil {
-			t.Fatal("expected error, got nil")
-		}
+		require.Error(t, codec.Unmarshal([]byte(src), &v))
 	})
 
 	t.Run("anchored tagged sequence aliased to slice field succeeds", func(t *testing.T) {
 		var v Slice
 		src := "anchor: &anchor !!seq\n  - a\n  - b\nitems: *anchor"
-		if err := codec.Unmarshal([]byte(src), &v); err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		if len(v.Items) != 2 || v.Items[0] != "a" || v.Items[1] != "b" {
-			t.Fatalf("unexpected items: %v", v.Items)
-		}
+		require.NoError(t, codec.Unmarshal([]byte(src), &v))
+		require.Equal(t, []string{"a", "b"}, v.Items)
 	})
 }
 

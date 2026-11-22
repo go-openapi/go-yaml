@@ -8,6 +8,9 @@ import (
 	"strings"
 	"testing"
 	"unsafe"
+
+	"github.com/go-openapi/testify/v2/assert"
+	"github.com/go-openapi/testify/v2/require"
 )
 
 // pointsInto reports whether s reads bytes of src.
@@ -63,18 +66,12 @@ func TestDecodedStringsLeaveTheDocument(t *testing.T) {
 	t.Run("walk", func(t *testing.T) {
 		src := []byte(arenaSrc)
 		v, err := walkFirst(src)
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
 		var got []string
 		walkStrings(v, &got)
-		if len(got) < 20 {
-			t.Fatalf("read only %d strings, the document writes more", len(got))
-		}
+		require.GreaterOrEqual(t, len(got), 20, "the document writes more strings")
 		for _, s := range got {
-			if pointsInto(s, src) {
-				t.Errorf("%q still reads the document", s)
-			}
+			assert.False(t, pointsInto(s, src), "%q still reads the document", s)
 		}
 	})
 
@@ -83,23 +80,15 @@ func TestDecodedStringsLeaveTheDocument(t *testing.T) {
 		dec := treeDecoder(string(src))
 
 		var v any
-		if err := dec.Decode(&v); err != nil {
-			t.Fatal(err)
-		}
-		if dec.stream != nil {
-			t.Fatal("did not take the tree path")
-		}
+		require.NoError(t, dec.Decode(&v))
+		require.Nil(t, dec.stream, "did not take the tree path")
 		var got []string
 		walkStrings(v, &got)
-		if len(got) < 20 {
-			t.Fatalf("read only %d strings, the document writes more", len(got))
-		}
+		require.GreaterOrEqual(t, len(got), 20, "the document writes more strings")
 		for _, s := range got {
 			// The Decoder read the reader into a buffer of its own, which is
 			// the document these strings must not be reading.
-			if pointsInto(s, dec.src) {
-				t.Errorf("%q still reads the document", s)
-			}
+			assert.False(t, pointsInto(s, dec.src), "%q still reads the document", s)
 		}
 	})
 
@@ -115,9 +104,7 @@ func TestDecodedStringsLeaveTheDocument(t *testing.T) {
 			Nested  map[string]string `yaml:"nested"`
 			Long    string            `yaml:"long"`
 		}
-		if err := Unmarshal(src, &dst); err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, Unmarshal(src, &dst))
 
 		got := []string{dst.Plain, dst.Quoted, dst.Literal, dst.Tagged, dst.Long}
 		got = append(got, dst.Seq...)
@@ -125,13 +112,11 @@ func TestDecodedStringsLeaveTheDocument(t *testing.T) {
 			got = append(got, k, v)
 		}
 		for _, s := range got {
-			if pointsInto(s, src) {
-				t.Errorf("%q still reads the document", s)
-			}
+			assert.False(t, pointsInto(s, src), "%q still reads the document", s)
 		}
-		if dst.Plain != "hello world" || dst.Tagged != "0x10" || len(dst.Long) != 4<<10 {
-			t.Errorf("decoded the wrong values: %+v", dst)
-		}
+		assert.Equal(t, "hello world", dst.Plain)
+		assert.Equal(t, "0x10", dst.Tagged)
+		assert.Len(t, dst.Long, 4<<10)
 	})
 }
 
@@ -179,9 +164,7 @@ func TestNoDecodedStringReadsTheDocument(t *testing.T) {
 		}
 
 		if v, err := walkFirst([]byte(src.text)); err == nil {
-			if held := pinnedStrings(v, []byte(src.text)); len(held) > 0 {
-				t.Errorf("%s: walk left %q reading the document", src.name, held)
-			}
+			assert.Empty(t, pinnedStrings(v, []byte(src.text)), "%s: walk left strings reading the document", src.name)
 		}
 
 		for _, mode := range []struct {
@@ -196,9 +179,7 @@ func TestNoDecodedStringReadsTheDocument(t *testing.T) {
 			if err := dec.Decode(&v); err != nil {
 				continue
 			}
-			if held := pinnedStrings(v, dec.src); len(held) > 0 {
-				t.Errorf("%s: %s left %q reading the document", src.name, mode.name, held)
-			}
+			assert.Empty(t, pinnedStrings(v, dec.src), "%s: %s left strings reading the document", src.name, mode.name)
 		}
 	}
 }

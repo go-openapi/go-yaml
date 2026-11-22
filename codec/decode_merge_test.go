@@ -15,7 +15,6 @@ import (
 	"github.com/go-openapi/testify/v2/require"
 )
 
-//nolint:gocognit // inline subtests, one per destination type
 func TestDecodeWithMergeKey(t *testing.T) {
 	// Read under YAML 1.1, where "<<" is the merge key. It is a 1.1 type, so
 	// under the core schema this document holds a key named "<<" and merges
@@ -41,57 +40,25 @@ items:
 	buf := bytes.NewBufferString(yml)
 	dec := codec.NewDecoder(buf, codec.AllowDuplicateMapKey())
 	var v T
-	if err := dec.Decode(&v); err != nil {
-		t.Fatalf("%+v", err)
-	}
-	if len(v.Items) != 2 {
-		t.Fatal("failed to decode with merge key")
-	}
-	if v.Items[0].B != 1 || v.Items[0].C != "hello" {
-		t.Fatal("failed to decode with merge key")
-	}
-	if v.Items[1].B != 1 || v.Items[1].C != "world" {
-		t.Fatal("failed to decode with merge key")
-	}
+	require.NoError(t, dec.Decode(&v))
+	require.Len(t, v.Items, 2)
+	require.Equal(t, Item{B: 1, C: "hello"}, *v.Items[0])
+	require.Equal(t, Item{B: 1, C: "world"}, *v.Items[1])
 	t.Run("decode with interface{}", func(t *testing.T) {
 		buf := bytes.NewBufferString(yml)
 		dec := codec.NewDecoder(buf)
 		var v any
-		if err := dec.Decode(&v); err != nil {
-			t.Fatalf("%+v", err)
-		}
+		require.NoError(t, dec.Decode(&v))
 		items, _ := v.(map[string]any)["items"].([]any)
-		if len(items) != 2 {
-			t.Fatal("failed to decode with merge key")
-		}
+		require.Len(t, items, 2)
 		b0 := items[0].(map[string]any)["b"]
-		if _, ok := b0.(uint64); !ok {
-			t.Fatal("failed to decode with merge key")
-		}
-		if b0.(uint64) != 1 {
-			t.Fatal("failed to decode with merge key")
-		}
+		require.Equal(t, uint64(1), b0)
 		c0 := items[0].(map[string]any)["c"]
-		if _, ok := c0.(string); !ok {
-			t.Fatal("failed to decode with merge key")
-		}
-		if c0.(string) != "hello" {
-			t.Fatal("failed to decode with merge key")
-		}
+		require.Equal(t, "hello", c0)
 		b1 := items[1].(map[string]any)["b"]
-		if _, ok := b1.(uint64); !ok {
-			t.Fatal("failed to decode with merge key")
-		}
-		if b1.(uint64) != 1 {
-			t.Fatal("failed to decode with merge key")
-		}
+		require.Equal(t, uint64(1), b1)
 		c1 := items[1].(map[string]any)["c"]
-		if _, ok := c1.(string); !ok {
-			t.Fatal("failed to decode with merge key")
-		}
-		if c1.(string) != "world" {
-			t.Fatal("failed to decode with merge key")
-		}
+		require.Equal(t, "world", c1)
 	})
 	t.Run("decode with map", func(t *testing.T) {
 		var v struct {
@@ -99,40 +66,16 @@ items:
 		}
 		buf := bytes.NewBufferString(yml)
 		dec := codec.NewDecoder(buf)
-		if err := dec.Decode(&v); err != nil {
-			t.Fatalf("%+v", err)
-		}
-		if len(v.Items) != 2 {
-			t.Fatal("failed to decode with merge key")
-		}
+		require.NoError(t, dec.Decode(&v))
+		require.Len(t, v.Items, 2)
 		b0 := v.Items[0]["b"]
-		if _, ok := b0.(uint64); !ok {
-			t.Fatal("failed to decode with merge key")
-		}
-		if b0.(uint64) != 1 {
-			t.Fatal("failed to decode with merge key")
-		}
+		require.Equal(t, uint64(1), b0)
 		c0 := v.Items[0]["c"]
-		if _, ok := c0.(string); !ok {
-			t.Fatal("failed to decode with merge key")
-		}
-		if c0.(string) != "hello" {
-			t.Fatal("failed to decode with merge key")
-		}
+		require.Equal(t, "hello", c0)
 		b1 := v.Items[1]["b"]
-		if _, ok := b1.(uint64); !ok {
-			t.Fatal("failed to decode with merge key")
-		}
-		if b1.(uint64) != 1 {
-			t.Fatal("failed to decode with merge key")
-		}
+		require.Equal(t, uint64(1), b1)
 		c1 := v.Items[1]["c"]
-		if _, ok := c1.(string); !ok {
-			t.Fatal("failed to decode with merge key")
-		}
-		if c1.(string) != "world" {
-			t.Fatal("failed to decode with merge key")
-		}
+		require.Equal(t, "world", c1)
 	})
 }
 

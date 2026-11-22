@@ -33,26 +33,17 @@ k: l
 	values := []map[string]string{}
 	for {
 		var v map[string]string
-		if err := dec.Decode(&v); err != nil {
-			if errors.Is(err, io.EOF) {
-				break
-			}
-			t.Fatalf("%+v", err)
+		err := dec.Decode(&v)
+		if errors.Is(err, io.EOF) {
+			break
 		}
+		require.NoError(t, err)
 		values = append(values, v)
 	}
-	if len(values) != 3 {
-		t.Fatal("failed to stream decoding")
-	}
-	if values[0]["a"] != "b" {
-		t.Fatal("failed to stream decoding")
-	}
-	if values[1]["e"] != "f" {
-		t.Fatal("failed to stream decoding")
-	}
-	if values[2]["i"] != "j" {
-		t.Fatal("failed to stream decoding")
-	}
+	require.Len(t, values, 3)
+	require.Equal(t, "b", values[0]["a"])
+	require.Equal(t, "f", values[1]["e"])
+	require.Equal(t, "j", values[2]["i"])
 }
 
 func TestDecoder_DecodeFromFile(t *testing.T) {
@@ -61,22 +52,12 @@ a: b
 c: d
 `
 	file, err := parser.ParseBytes([]byte(yml))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	var v map[string]string
-	if err := codec.NewDecoder(file).Decode(&v); err != nil {
-		t.Fatal(err)
-	}
-	if len(v) != 2 {
-		t.Fatal("failed to decode from ast.File")
-	}
-	if v["a"] != "b" {
-		t.Fatal("failed to decode from ast.File")
-	}
-	if v["c"] != "d" {
-		t.Fatal("failed to decode from ast.File")
-	}
+	require.NoError(t, codec.NewDecoder(file).Decode(&v))
+	require.Len(t, v, 2)
+	require.Equal(t, "b", v["a"])
+	require.Equal(t, "d", v["c"])
 }
 
 func TestSetNullValue(t *testing.T) {
@@ -97,21 +78,13 @@ func TestSetNullValue(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			t.Run("set null", func(t *testing.T) {
 				var v any = 0x1
-				if err := codec.Unmarshal([]byte(test.src), &v); err != nil {
-					t.Fatal(err)
-				}
-				if v != nil {
-					t.Fatal("failed to set nil value")
-				}
+				require.NoError(t, codec.Unmarshal([]byte(test.src), &v))
+				require.Nil(t, v)
 			})
 			t.Run("invalid value", func(t *testing.T) {
 				var v *struct{}
-				if err := codec.Unmarshal([]byte(test.src), v); err != nil {
-					t.Fatal(err)
-				}
-				if v != nil {
-					t.Fatal("failed to set nil value")
-				}
+				require.NoError(t, codec.Unmarshal([]byte(test.src), v))
+				require.Nil(t, v)
 			})
 		})
 	}
@@ -228,7 +201,7 @@ func decodeStream(t *testing.T, src string, opts ...codec.DecodeOption) []any {
 		out = append(out, v)
 	}
 
-	t.Fatalf("%q: the decoder never reached the end of the stream", src)
+	require.FailNowf(t, "the decoder never reached the end of the stream", "%q", src)
 
 	return nil
 }

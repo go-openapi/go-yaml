@@ -22,17 +22,13 @@ a: c
 `
 	t.Run("map", func(t *testing.T) {
 		var v map[string]string
-		if err := codec.NewDecoder(strings.NewReader(yml), codec.AllowDuplicateMapKey()).Decode(&v); err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, codec.NewDecoder(strings.NewReader(yml), codec.AllowDuplicateMapKey()).Decode(&v))
 	})
 	t.Run("struct", func(t *testing.T) {
 		var v struct {
 			A string
 		}
-		if err := codec.NewDecoder(strings.NewReader(yml), codec.AllowDuplicateMapKey()).Decode(&v); err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, codec.NewDecoder(strings.NewReader(yml), codec.AllowDuplicateMapKey()).Decode(&v))
 	})
 }
 
@@ -49,9 +45,7 @@ func TestDecodeError(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			var v any
-			if err := codec.Unmarshal([]byte(test.source), &v); err == nil {
-				t.Fatal("cannot catch decode error")
-			}
+			require.Error(t, codec.Unmarshal([]byte(test.source), &v))
 		})
 	}
 }
