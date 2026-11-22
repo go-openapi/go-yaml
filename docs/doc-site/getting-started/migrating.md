@@ -49,21 +49,25 @@ v3's rule. See [Struct tags](../../values/struct-tags/).
 
 A repeated key is an error in both: `mapping key "a" already defined`.
 
-**There is no `yaml.Node`.** Parse with `parser.ParseBytes` to get an
-`*ast.File`, and see [Documents](../../documents/).
+**The document tree is `ast`, not `yaml.Node`.** Parse with `parser.ParseBytes`
+to get an `*ast.File`, and see [Documents](../../documents/). A v3 `yaml.Node`
+still works as a field or in a hook, as below.
 
-{{% notice style="warning" title="A v3 node hook is never called" %}}
-A type whose method is `UnmarshalYAML(*yaml.Node) error` matches none of this
-library's interfaces. The decoder ignores the method, returns no error, and
-leaves the field at its zero value.
+{{% notice style="info" title="Hooks written for v3 keep working" %}}
+All three of v3's hook shapes are called:
 
-Rewrite the method to one of these:
-
-| interface | method |
+| v3 method | here |
 |---|---|
-| `codec.NodeUnmarshaler` | `UnmarshalYAML(ast.Node) error` |
-| `codec.Unmarshaler` | `UnmarshalYAML([]byte) error`, which receives the value's YAML text |
-| `codec.GoYAMLUnmarshaler` | `UnmarshalYAML(func(any) error) error`, v2's shape |
+| `UnmarshalYAML(*yaml.Node) error` | called with a `yaml.Node` built from the document |
+| `UnmarshalYAML(func(interface{}) error) error` | `codec.GoYAMLUnmarshaler` |
+| `MarshalYAML() (interface{}, error)` | `codec.GoYAMLMarshaler`; a returned `*yaml.Node` is written as the YAML it describes |
+
+A field of type `yaml.Node` or `*yaml.Node` receives the node, and is written
+back as YAML. v3 itself decodes a `*yaml.Node` field as a plain struct.
+
+The decoder builds the `yaml.Node` by reflection, so this library does not
+import v3. The node's tags follow this library's reading: under YAML 1.2, a
+plain `1_000` is `!!str`, where v3 gives `!!int`. The node carries no comments.
 {{% /notice %}}
 
 ## From `goccy/go-yaml`
@@ -93,9 +97,9 @@ goccy's method shapes. `NodeUnmarshaler` takes this library's `ast.Node`, so
 change the import of `ast` too.
 
 goccy's variants that take a `context.Context` first, such as
-`UnmarshalYAML(context.Context, []byte) error`, are gone. As with v3's node hook,
-the decoder ignores such a method and returns no error. Drop the context
-argument.
+`UnmarshalYAML(context.Context, []byte) error`, are gone. The decoder ignores such
+a method, returns no error, and decodes the type field by field, as
+encoding/json does for a method it does not know. Drop the context argument.
 
 ## From `gopkg.in/yaml.v2`
 
@@ -113,9 +117,7 @@ library gives a `map[string]any` when every key is a string, and a
 
 ## Open questions for the API
 
-- There is no `yaml.Node` equivalent with a stable, small surface. `ast.Node` is
-  an interface over ~30 concrete types. A migrating caller has nothing to put in
-  a struct field. Is that a gap, or the point of the fork?
-- The decoder ignores a method named `UnmarshalYAML` whose signature matches
-  none of its interfaces, such as v3's `UnmarshalYAML(*yaml.Node)` or goccy's
-  context variants. Should it return an error instead?
+- This library has no node type of its own with a stable, small surface, as v3's
+  `yaml.Node` is. `ast.Node` is an interface over ~30 concrete types. A caller
+  can hold a v3 `yaml.Node`, but has nothing of this library's to put in a
+  struct field. Is that a gap, or the point of the fork?
