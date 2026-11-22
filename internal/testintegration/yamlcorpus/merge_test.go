@@ -6,8 +6,8 @@ package yamlcorpus_test
 import (
 	"testing"
 
-	"github.com/go-openapi/conformance-suites/grammar"
 	"github.com/go-openapi/conformance-suites/stance"
+	yamloracle "github.com/go-openapi/conformance-suites/yaml"
 
 	"github.com/go-openapi/go-yaml/internal/testintegration/yamlcorpus"
 )
@@ -19,7 +19,7 @@ import (
 // there is no production for it and there could not be, since 1.2 does not
 // define the type at all.
 func TestTheGrammarHasNoOpinionAboutMerge(t *testing.T) {
-	rec := grammar.NewRecognizer(1024)
+	rec := yamloracle.NewRecognizer(1024)
 
 	for _, s := range yamlcorpus.MergeShapes() {
 		if got := rec.Stream(s.Src); !got.OK {

@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/go-openapi/conformance-suites/grammar"
+	yamloracle "github.com/go-openapi/conformance-suites/yaml"
 	"github.com/go-openapi/testify/v2/assert"
 	"github.com/go-openapi/testify/v2/require"
 
@@ -25,7 +25,7 @@ import (
 // grammar accepts, the message is the only statement anywhere of a rule the
 // library applies and the language does not.
 func TestEveryRefusalSaysWhy(t *testing.T) {
-	oracle := grammar.NewRecognizer(1024)
+	oracle := yamloracle.NewRecognizer(1024)
 
 	for _, r := range yamlcorpus.Refusals() {
 		t.Run(r.Name, func(t *testing.T) {

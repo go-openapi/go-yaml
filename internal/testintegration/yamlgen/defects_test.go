@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/go-openapi/conformance-suites/grammar"
+	yamloracle "github.com/go-openapi/conformance-suites/yaml"
 	"github.com/go-openapi/testify/v2/assert"
 	"github.com/go-openapi/testify/v2/require"
 
@@ -35,7 +35,7 @@ import (
 func wellFormed(t *testing.T, src string) {
 	t.Helper()
 
-	require.True(t, grammar.NewRecognizer(1024).Stream([]byte(src)).OK,
+	require.True(t, yamloracle.NewRecognizer(1024).Stream([]byte(src)).OK,
 		"the document is not YAML 1.2, so there is nothing to hold the library to")
 }
 
@@ -55,7 +55,7 @@ func renderOnce(t *testing.T, src string) string {
 // ": value" -- and the generator had only ever written the short one. All three
 // of these are the long form and nothing else: the same document written short
 // reads, libfyaml 1.0.0b1 reads every one, the reference parser passes them,
-// and grammar.NewRecognizer accepts them.
+// and yamloracle.NewRecognizer accepts them.
 
 // secondDocument reads a two-document stream and returns what the second one
 // holds, which is where this defect shows.
@@ -195,7 +195,7 @@ func TestDefectAPropertiedEmptyKeyIsMishandled(t *testing.T) {
 // be the empty node, so `? a` over `:` over `: v` is two entries and two bare
 // ":" lines. It is refused with `found an invalid key for this map`.
 //
-// grammar.NewRecognizer accepts it, the reference parser passes it, and libfyaml
+// yamloracle.NewRecognizer accepts it, the reference parser passes it, and libfyaml
 // 1.0.0b1 reads {a: null, null: "v"}. go.yaml.in/yaml/v3 v3.0.5 refuses it,
 // which is its own refusal of a bare ":" as an empty key rather than agreement.
 //

@@ -7,7 +7,7 @@ import (
 	"flag"
 	"testing"
 
-	"github.com/go-openapi/conformance-suites/grammar"
+	yamloracle "github.com/go-openapi/conformance-suites/yaml"
 	"github.com/go-openapi/testify/v2/require"
 	"pgregory.net/rapid"
 
@@ -154,7 +154,7 @@ func TestInvariantsAreStillOutstanding(t *testing.T) {
 		// Every document here is an accusation, so it had better be YAML. One
 		// that is not would be this suite's own defect, filed under the
 		// library's name and left there.
-		require.Truef(t, grammar.Stream([]byte(o.src)).OK,
+		require.Truef(t, yamloracle.Stream([]byte(o.src)).OK,
 			"%q is not valid YAML 1.2, so it says nothing about the library", o.src)
 
 		if o.fails([]byte(o.src)) {

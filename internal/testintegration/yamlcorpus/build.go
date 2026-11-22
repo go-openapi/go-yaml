@@ -12,9 +12,9 @@ import (
 	"slices"
 	"unicode/utf8"
 
-	"github.com/go-openapi/conformance-suites/grammar"
 	"github.com/go-openapi/conformance-suites/stance"
 	"github.com/go-openapi/conformance-suites/suite"
+	yamloracle "github.com/go-openapi/conformance-suites/yaml"
 
 	"github.com/go-openapi/go-yaml/internal/testintegration/yamlgen"
 
@@ -99,8 +99,8 @@ func (b Build) Write(w io.Writer) error {
 	cases := b.cases()
 
 	header := suite.Header{
-		Grammar:   grammar.YAML.Name(),
-		Digest:    grammar.YAML.Digest(),
+		Grammar:   yamloracle.YAML.Name(),
+		Digest:    yamloracle.YAML.Digest(),
 		Generator: Generator,
 		Seed:      b.Seed,
 		Tier:      b.Tier,
@@ -140,9 +140,9 @@ func (b Build) minimizing() bool { return b.PerSignature > 0 }
 func (b Build) cases() []suite.Case {
 	out := Cases()
 
-	rec := grammar.NewRecognizer(4096)
-	seen := grammar.YAML.NewCoverage()
-	one := grammar.YAML.NewCoverage()
+	rec := yamloracle.NewRecognizer(4096)
+	seen := yamloracle.YAML.NewCoverage()
+	one := yamloracle.YAML.NewCoverage()
 	kept := map[string]int{}
 	// The construct sets already held, so a document bringing a new combination
 	// survives the quota. See the keep decision below.
@@ -394,7 +394,7 @@ func Cases() []suite.Case {
 		len(Patterns())+len(Resolutions())+len(TagShapes())+len(KeyShapes())+
 			len(MergeShapes())+len(DirectiveShapes())+len(SeparationShapes())+len(ReachShapes()))
 
-	rec := grammar.NewRecognizer(4096)
+	rec := yamloracle.NewRecognizer(4096)
 	a := Corpus()
 
 	for i, p := range Patterns() {
@@ -453,7 +453,7 @@ func Cases() []suite.Case {
 // [stance.Shape.Means] becomes the case's meaning, where the specification
 // settles what the document denotes. A shape leaving it nil states none, and
 // the tags say which question the language leaves open instead.
-func shapeCases(prefix string, shapes []stance.Shape, rec *grammar.Recognizer) []suite.Case {
+func shapeCases(prefix string, shapes []stance.Shape, rec *yamloracle.Recognizer) []suite.Case {
 	out := make([]suite.Case, 0, len(shapes))
 
 	for i, s := range shapes {

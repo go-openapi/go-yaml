@@ -7,8 +7,8 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/go-openapi/conformance-suites/grammar"
 	"github.com/go-openapi/conformance-suites/stance"
+	yamloracle "github.com/go-openapi/conformance-suites/yaml"
 
 	yaml "github.com/go-openapi/go-yaml"
 	"github.com/go-openapi/go-yaml/internal/testintegration/yamlcorpus"
@@ -216,7 +216,7 @@ func TestALeadingZeroKeepsItsQuantity(t *testing.T) {
 // scalar denotes. A shape the grammar refused would be a syntax test wearing a
 // schema's clothes.
 func TestEverySchemaShapeIsAValidDocument(t *testing.T) {
-	rec := grammar.NewRecognizer(256)
+	rec := yamloracle.NewRecognizer(256)
 
 	for _, s := range yamlcorpus.SchemaShapes() {
 		if got := rec.Stream(s.Src); !got.OK {

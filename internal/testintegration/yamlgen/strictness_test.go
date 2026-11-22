@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/go-openapi/conformance-suites/grammar"
+	yamloracle "github.com/go-openapi/conformance-suites/yaml"
 	"github.com/go-openapi/testify/v2/require"
 
 	"github.com/go-openapi/go-yaml/internal/testintegration/perlref"
@@ -26,7 +26,7 @@ import (
 //
 // # Two syntax oracles, and neither of them a loader
 //
-// The validity is asserted against grammar.Stream and against the reference
+// The validity is asserted against yamloracle.Stream and against the reference
 // parser, which are generated from the specification's grammar by different
 // toolchains -- ours from yaml-spec-1.2.json, the Perl one from yaml-grammar --
 // and neither of which builds a value.
@@ -43,7 +43,7 @@ func TestValidDocumentsTheLibraryRefusesAreStillRefused(t *testing.T) {
 
 	for _, s := range yamlgen.Strict {
 		t.Run(s.Name, func(t *testing.T) {
-			require.Truef(t, grammar.Stream([]byte(s.Src)).OK,
+			require.Truef(t, yamloracle.Stream([]byte(s.Src)).OK,
 				"%q is not valid YAML 1.2 after all, so this entry accuses the library of nothing.\nrule claimed: %s",
 				s.Src, s.Rule)
 

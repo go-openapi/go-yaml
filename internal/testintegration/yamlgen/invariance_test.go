@@ -7,7 +7,7 @@ import (
 	"regexp"
 	"testing"
 
-	"github.com/go-openapi/conformance-suites/grammar"
+	yamloracle "github.com/go-openapi/conformance-suites/yaml"
 	"github.com/go-openapi/testify/v2/assert"
 	"github.com/go-openapi/testify/v2/require"
 	"pgregory.net/rapid"
@@ -84,7 +84,7 @@ func TestPresentationInvariance(t *testing.T) {
 // YAML. Every property test was green throughout: the library reads them, and
 // reading them back gives the value.
 func TestEveryEmittedDocumentIsValidYAML(t *testing.T) {
-	oracle := grammar.NewRecognizer(1024)
+	oracle := yamloracle.NewRecognizer(1024)
 
 	rapid.Check(t, func(rt *rapid.T) {
 		value := yamlgen.Values().Draw(rt, "value")
@@ -109,7 +109,7 @@ func TestEveryEmittedDocumentIsValidYAML(t *testing.T) {
 // rather than a note that something, somewhere, does not line up.
 func TestEmitParses(t *testing.T) {
 	tally := newTally()
-	oracle := grammar.NewRecognizer(1024)
+	oracle := yamloracle.NewRecognizer(1024)
 
 	rapid.Check(t, func(rt *rapid.T) {
 		value := yamlgen.Values().Draw(rt, "value")
@@ -138,7 +138,7 @@ func TestEmitParses(t *testing.T) {
 }
 
 // verdict names which side of a disagreement to look at first.
-func verdict(oracle *grammar.Recognizer, src string) string {
+func verdict(oracle *yamloracle.Recognizer, src string) string {
 	if oracle.Stream([]byte(src)).OK {
 		return "the YAML 1.2 grammar accepts it, so the fault is the parser's"
 	}
@@ -223,7 +223,7 @@ func TestEmitterAgreesOnKnownDocuments(t *testing.T) {
 
 			// A hand-written expectation is as capable of not being YAML as a
 			// generated one, and rather more likely to be believed.
-			assert.Truef(t, grammar.Stream([]byte(tc.want)).OK,
+			assert.Truef(t, yamloracle.Stream([]byte(tc.want)).OK,
 				"the expected document is not valid YAML 1.2:\n%s", indent(tc.want))
 
 			var got any

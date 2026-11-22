@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/go-openapi/conformance-suites/grammar"
+	yamloracle "github.com/go-openapi/conformance-suites/yaml"
 	"github.com/go-openapi/testify/v2/assert"
 	"github.com/go-openapi/testify/v2/require"
 	"pgregory.net/rapid"
@@ -42,7 +42,7 @@ var runLaxity = flag.Bool("yamlgen.laxity", false,
 // library's business, and the day it stops is the day the entry gets deleted
 // rather than the day this test goes red.
 //
-// Asserted against grammar.Stream and against the reference parser, for the
+// Asserted against yamloracle.Stream and against the reference parser, for the
 // reason TestValidDocumentsTheLibraryRefusesAreStillRefused gives: both are
 // generated from the specification's grammar and neither builds a value, so
 // neither can confuse a document it will not parse with a value it cannot hold.
@@ -51,7 +51,7 @@ func TestWronglyAcceptedDocumentsAreStillWronglyAccepted(t *testing.T) {
 
 	for _, l := range yamlgen.Lax {
 		t.Run(l.Name, func(t *testing.T) {
-			require.Falsef(t, grammar.Stream([]byte(l.Src)).OK,
+			require.Falsef(t, yamloracle.Stream([]byte(l.Src)).OK,
 				"%q is valid YAML 1.2 after all, so this entry accuses the library of nothing.\nrule claimed: %s",
 				l.Src, l.Rule)
 
@@ -89,7 +89,7 @@ func TestEveryDocumentTheGrammarRefusesIsRefused(t *testing.T) {
 		t.Skip("known to fail: pass -yamlgen.laxity to hunt for documents the library reads that YAML 1.2 refuses")
 	}
 
-	oracle := grammar.NewRecognizer(1024)
+	oracle := yamloracle.NewRecognizer(1024)
 
 	accepted := func(b []byte) bool {
 		if oracle.Stream(b).OK {
@@ -155,7 +155,7 @@ func entryFor(src string, got any) string {
 // an alias pointing at no anchor, which the grammar has no opinion about -- and
 // it was found by counting rather than by reasoning.
 func TestEveryMutationBreaksSomething(t *testing.T) {
-	oracle := grammar.NewRecognizer(1024)
+	oracle := yamloracle.NewRecognizer(1024)
 	broke := map[string]int{}
 
 	// enough is how many refusals a mutation has to earn, and draws how many

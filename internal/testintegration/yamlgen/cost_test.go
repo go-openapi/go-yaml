@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/go-openapi/conformance-suites/grammar"
+	yamloracle "github.com/go-openapi/conformance-suites/yaml"
 	"github.com/go-openapi/testify/v2/assert"
 	"github.com/go-openapi/testify/v2/require"
 
@@ -93,7 +93,7 @@ func costGrowth(t *testing.T, shape yamlgen.Depth) float64 {
 	// A depth of eight is where the shape is checked against the grammar. It is
 	// the same shape at every depth, and running the recognizer over eight
 	// megabytes would be the slowest thing in this package by a wide margin.
-	require.True(t, grammar.NewRecognizer(1024).Stream(yamlgen.DeepDocument(shape, 8)).OK,
+	require.True(t, yamloracle.NewRecognizer(1024).Stream(yamlgen.DeepDocument(shape, 8)).OK,
 		"%s is not YAML 1.2, so its cost says nothing about parsing one", shape)
 
 	// The two depths are timed next to each other and the smallest ratio of the

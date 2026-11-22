@@ -9,8 +9,8 @@ import (
 	"strconv"
 	"testing"
 
-	"github.com/go-openapi/conformance-suites/grammar"
 	"github.com/go-openapi/conformance-suites/stance"
+	yamloracle "github.com/go-openapi/conformance-suites/yaml"
 
 	"github.com/go-openapi/go-yaml/internal/testintegration/yamlcorpus"
 )
@@ -33,7 +33,7 @@ func around() yamlcorpus.Around { return yamlcorpus.Corpus() }
 // well formed, and three of them would then accuse a correct parser of a defect
 // for refusing exactly what the specification tells it to refuse.
 func TestTheGrammarCannotSeeAnyOfThis(t *testing.T) {
-	rec := grammar.NewRecognizer(1024)
+	rec := yamloracle.NewRecognizer(1024)
 
 	for _, s := range yamlcorpus.Shapes(around()) {
 		t.Run(s.Name, func(t *testing.T) {

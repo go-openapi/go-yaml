@@ -8,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/go-openapi/conformance-suites/grammar"
 	"github.com/go-openapi/conformance-suites/stance"
+	yamloracle "github.com/go-openapi/conformance-suites/yaml"
 
 	"github.com/go-openapi/go-yaml/internal/testintegration/yamlcorpus"
 	"github.com/go-openapi/go-yaml/internal/testintegration/yamlgen"
@@ -23,7 +23,7 @@ import (
 // that are reproduced here, and the second is now the point: the grammar
 // accepts every one of these, and every one is invalid.
 func TestTheBrokenDocumentsAreInvalidWhereTheGrammarCannotTell(t *testing.T) {
-	rec := grammar.NewRecognizer(4096)
+	rec := yamloracle.NewRecognizer(4096)
 
 	var broken, refused int
 

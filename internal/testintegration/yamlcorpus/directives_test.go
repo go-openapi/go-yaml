@@ -6,8 +6,8 @@ package yamlcorpus_test
 import (
 	"testing"
 
-	"github.com/go-openapi/conformance-suites/grammar"
 	"github.com/go-openapi/conformance-suites/stance"
+	yamloracle "github.com/go-openapi/conformance-suites/yaml"
 
 	"github.com/go-openapi/go-yaml/internal/testintegration/yamlcorpus"
 )
@@ -19,7 +19,7 @@ import (
 // compare a version against the one anybody implements. Every document here is
 // one it accepts, the four errors included.
 func TestTheGrammarCountsNothing(t *testing.T) {
-	rec := grammar.NewRecognizer(1024)
+	rec := yamloracle.NewRecognizer(1024)
 
 	for _, s := range yamlcorpus.DirectiveShapes() {
 		if got := rec.Stream(s.Src); !got.OK {

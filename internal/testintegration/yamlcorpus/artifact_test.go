@@ -12,8 +12,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/go-openapi/conformance-suites/grammar"
 	"github.com/go-openapi/conformance-suites/suite"
+	yamloracle "github.com/go-openapi/conformance-suites/yaml"
 
 	"github.com/go-openapi/go-yaml/internal/testintegration/yamlcorpus"
 )
@@ -93,11 +93,11 @@ func TestTheCorpusIsUsableWithNothingElse(t *testing.T) {
 	}
 
 	switch {
-	case header.Grammar != grammar.YAML.Name():
+	case header.Grammar != yamloracle.YAML.Name():
 		t.Errorf("built against %q", header.Grammar)
-	case header.Digest != grammar.YAML.Digest():
+	case header.Digest != yamloracle.YAML.Digest():
 		t.Errorf("built against a different grammar file:\n  stored %s\n  now    %s",
-			header.Digest, grammar.YAML.Digest())
+			header.Digest, yamloracle.YAML.Digest())
 	case len(cases) == 0:
 		t.Fatal("the corpus is empty")
 	}
@@ -169,7 +169,7 @@ func TestTheEnumeratedFamiliesSurviveMinimizing(t *testing.T) {
 // of this was worth generating.
 //
 // The denominator is computed rather than guessed -- 605 production-by-context
-// buckets reachable from a stream, see grammar.Reach -- so the number here means
+// buckets reachable from a stream, see yamloracle.Reach -- so the number here means
 // something. A corpus that reached a third of it would be a corpus that had
 // explored one corner and called it a language.
 func TestTheCorpusReachesMostOfTheGrammar(t *testing.T) {
@@ -178,9 +178,9 @@ func TestTheCorpusReachesMostOfTheGrammar(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	reach := grammar.YAML.Reach("l-yaml-stream", "block-in")
-	cover := grammar.YAML.NewCoverage()
-	rec := grammar.NewRecognizer(4096)
+	reach := yamloracle.YAML.Reach("l-yaml-stream", "block-in")
+	cover := yamloracle.YAML.NewCoverage()
+	rec := yamloracle.NewRecognizer(4096)
 	rec.Cover(cover)
 
 	for _, c := range cases {

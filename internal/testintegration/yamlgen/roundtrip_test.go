@@ -6,7 +6,7 @@ package yamlgen_test
 import (
 	"testing"
 
-	"github.com/go-openapi/conformance-suites/grammar"
+	yamloracle "github.com/go-openapi/conformance-suites/yaml"
 	"pgregory.net/rapid"
 
 	"github.com/go-openapi/go-yaml"
@@ -73,7 +73,7 @@ func renderDoesNotSettle(src []byte) bool {
 // content at the parent's own column. So it now consults the ledger like the
 // rest, under [yamlgen.RenderValid].
 func TestRenderWritesValidYAML(t *testing.T) {
-	oracle := grammar.NewRecognizer(1024)
+	oracle := yamloracle.NewRecognizer(1024)
 	tally := newTally()
 
 	rapid.Check(t, func(rt *rapid.T) {

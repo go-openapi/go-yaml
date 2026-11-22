@@ -7,7 +7,7 @@ import (
 	"sort"
 	"testing"
 
-	"github.com/go-openapi/conformance-suites/grammar"
+	yamloracle "github.com/go-openapi/conformance-suites/yaml"
 
 	"github.com/go-openapi/go-yaml/internal/testintegration/goyaml"
 	"github.com/go-openapi/go-yaml/internal/testintegration/libfyaml"
@@ -16,7 +16,7 @@ import (
 // Where the outside sources decline, and what the corpus may claim there.
 //
 // Three of the four sources answer a narrow question each. perlref and
-// grammar.NewRecognizer answer syntax and nothing else. libfyaml 1.0.0b1 and
+// yamloracle.NewRecognizer answer syntax and nothing else. libfyaml 1.0.0b1 and
 // go.yaml.in/yaml/v3 answer what a document denotes -- when they can: libfyaml
 // dies on a collection key, since Python cannot hash a list, and yaml/v3
 // refuses one for the same reason Go cannot.
@@ -36,7 +36,7 @@ import (
 //     neither can hold a collection as a key. Nobody contradicts the grammar;
 //     nobody can be asked. Read the specification.
 //   - a flow mapping key spanning two lines: both refuse it *in the parser*, at
-//     a position, against grammar.NewRecognizer and the reference parser, which
+//     a position, against yamloracle.NewRecognizer and the reference parser, which
 //     accept it. That is not silence -- it is two implementations reading 7.4.2
 //     the other way, and the evidence is about 7.4.2 rather than about any
 //     library.
@@ -76,7 +76,7 @@ func TestEveryUncorroboratedMeaningIsNamed(t *testing.T) {
 		t.Skipf("libfyaml is not installed at %s", libfyaml.Home())
 	}
 
-	rec := grammar.NewRecognizer(1024)
+	rec := yamloracle.NewRecognizer(1024)
 
 	var silent []string
 
