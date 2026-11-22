@@ -1103,3 +1103,15 @@ func TestAStrictDecodeWalks(t *testing.T) {
 	assert.Equal(t, 1, v.A)
 	require.NotNil(t, dec.stream, "the struct was not walked")
 }
+
+// TestADuplicateKeyDecodeWalks checks that AllowDuplicateMapKey no longer sends a struct decode to the tree.
+func TestADuplicateKeyDecodeWalks(t *testing.T) {
+	type repeated struct {
+		A int `yaml:"a"`
+	}
+	dec := NewDecoder(bytes.NewReader([]byte("a: 1\na: 2\n")), AllowDuplicateMapKey())
+	var v repeated
+	require.NoError(t, dec.Decode(&v))
+	assert.Equal(t, 2, v.A)
+	require.NotNil(t, dec.stream, "the struct was not walked")
+}

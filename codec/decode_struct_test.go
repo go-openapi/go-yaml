@@ -1927,3 +1927,63 @@ func disallowUnknownFieldCases() iter.Seq[disallowUnknownFieldCase] {
 		{name: "a promoted field", src: "p: 1\n"},
 	})
 }
+
+// TestAllowDuplicateMapKeyAgreesOnBothPaths decodes documents that repeat a key into a struct preset by the caller,
+// under AllowDuplicateMapKey, on the walk and on the tree, and requires the same value from both. Both decode every
+// entry in order, so a repeated scalar keeps the last value and a repeated collection merges into the field.
+func TestAllowDuplicateMapKeyAgreesOnBothPaths(t *testing.T) {
+	for tc := range allowDuplicateMapKeyCases() {
+		t.Run(tc.name, func(t *testing.T) {
+			var got []dupOuter
+			for path := range walkAndTreePaths() {
+				v := dupOuter{S: "preset", In: dupInner{X: 9, Y: 9}, M: map[string]int{"pre": 0}}
+				opts := append([]codec.DecodeOption{codec.AllowDuplicateMapKey()}, path.opts...)
+				require.NoErrorf(t, codec.Unmarshal([]byte(tc.src), &v, opts...), "%s", path.name)
+				got = append(got, v)
+			}
+
+			assert.Equal(t, got[1], got[0], "the walk and the tree disagree")
+			assert.Equal(t, tc.want, got[0])
+		})
+	}
+}
+
+type dupInner struct {
+	X int `yaml:"x"`
+	Y int `yaml:"y"`
+}
+
+type dupOuter struct {
+	S   string         `yaml:"s"`
+	One int            `yaml:"1"`
+	In  dupInner       `yaml:"in"`
+	M   map[string]int `yaml:"m"`
+	L   []int          `yaml:"l"`
+	P   *dupInner      `yaml:"p"`
+}
+
+// allowDuplicateMapKeyCase holds a document that repeats a key, and the value both paths decode it to.
+type allowDuplicateMapKeyCase struct {
+	name string
+	src  string
+	want dupOuter
+}
+
+func allowDuplicateMapKeyCases() iter.Seq[allowDuplicateMapKeyCase] {
+	preset := func(edit func(*dupOuter)) dupOuter {
+		v := dupOuter{S: "preset", In: dupInner{X: 9, Y: 9}, M: map[string]int{"pre": 0}}
+		edit(&v)
+
+		return v
+	}
+
+	return slices.Values([]allowDuplicateMapKeyCase{
+		{"a scalar keeps the last value", "s: a\ns: b\n", preset(func(v *dupOuter) { v.S = "b" })},
+		{"a struct merges", "in: {x: 1}\nin: {y: 2}\n", preset(func(v *dupOuter) { v.In = dupInner{X: 1, Y: 2} })},
+		{"a map merges", "m: {a: 1}\nm: {b: 2}\n", preset(func(v *dupOuter) { v.M = map[string]int{"pre": 0, "a": 1, "b": 2} })},
+		{"a slice takes the last", "l: [1, 2]\nl: [3]\n", preset(func(v *dupOuter) { v.L = []int{3} })},
+		{"a pointer merges", "p: {x: 1}\np: {y: 2}\n", preset(func(v *dupOuter) { v.P = &dupInner{X: 1, Y: 2} })},
+		{"a repeat inside a nested struct", "in: {x: 1, x: 5}\n", preset(func(v *dupOuter) { v.In.X = 5 })},
+		{"two spellings of one name", "1: 5\n\"1\": 6\n", preset(func(v *dupOuter) { v.One = 6 })},
+	})
+}
