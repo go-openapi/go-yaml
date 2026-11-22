@@ -1987,3 +1987,21 @@ func allowDuplicateMapKeyCases() iter.Seq[allowDuplicateMapKeyCase] {
 		{"two spellings of one name", "1: 5\n\"1\": 6\n", preset(func(v *dupOuter) { v.One = 6 })},
 	})
 }
+
+// TestANullSetsAPointerFieldToNil decodes a null into pointer fields that the caller set, on the walk and on the
+// tree, and requires both to set them to nil, as encoding/json does. The walk left them as they stood.
+func TestANullSetsAPointerFieldToNil(t *testing.T) {
+	type pointers struct {
+		P  *int       `yaml:"p"`
+		PS *rootPoint `yaml:"ps"`
+		PE *rootPoint `yaml:"pe"`
+	}
+	for path := range walkAndTreePaths() {
+		t.Run(path.name, func(t *testing.T) {
+			seven := 7
+			v := pointers{P: &seven, PS: &rootPoint{A: 1}, PE: &rootPoint{A: 2}}
+			require.NoError(t, codec.Unmarshal([]byte("p: ~\nps: null\npe:\n"), &v, path.opts...))
+			assert.Equal(t, pointers{}, v)
+		})
+	}
+}

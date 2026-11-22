@@ -1267,7 +1267,13 @@ func (b *typedBuilder) openEntry(top *typedFrame, keyNode ast.Node) error {
 
 func (b *typedBuilder) setScalar(dst reflect.Value, node ast.Node) error {
 	if _, isNull := node.(*ast.NullNode); isNull {
-		// A null leaves the destination as it stands. The tree decoder does the
+		// A null sets a pointer to nil, as the tree decoder and encoding/json do.
+		if dst.Kind() == reflect.Pointer && dst.CanSet() {
+			dst.Set(reflect.Zero(dst.Type()))
+
+			return nil
+		}
+		// It leaves any other destination as it stands. The tree decoder does the
 		// same: it builds a zero value and then writes the default over it.
 		// "nested:" with nothing under it keeps the defaults set by the caller.
 		return nil
