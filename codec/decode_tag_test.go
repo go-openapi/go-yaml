@@ -909,3 +909,91 @@ func (c uriCollector) Visit(n ast.Node) ast.Visitor {
 
 	return c
 }
+
+// decodeTagCases covers explicit tags, and merge keys read under YAML 1.1, where "<<" is the merge key.
+func decodeTagCases() iter.Seq[decodeCase] {
+	return slices.Values([]decodeCase{
+		{
+			name:   "tag/float-on-quoted",
+			source: "v: !!float '1.1'",
+			value:  map[string]any{"v": 1.1},
+		},
+		{
+			name:   "tag/float-on-zero",
+			source: "v: !!float 0",
+			value:  map[string]any{"v": float64(0)},
+		},
+		{
+			name:   "tag/float-on-negative-int",
+			source: "v: !!float -1",
+			value:  map[string]any{"v": float64(-1)},
+		},
+		{
+			name:   "tag/null-on-empty-quoted",
+			source: "v: !!null ''",
+			value:  map[string]any{"v": nil},
+		},
+		{
+			name:   "tag/timestamp-on-quoted",
+			source: "v: !!timestamp \"2015-01-01\"",
+			value:  map[string]time.Time{"v": time.Date(2015, 1, 1, 0, 0, 0, 0, time.UTC)},
+		},
+		{
+			name:   "tag/timestamp-on-plain",
+			source: "v: !!timestamp 2015-01-01",
+			value:  map[string]time.Time{"v": time.Date(2015, 1, 1, 0, 0, 0, 0, time.UTC)},
+		},
+		{
+			name:   "tag/bool-yes",
+			source: "v: !!bool yes",
+			value:  map[string]bool{"v": true},
+		},
+		{
+			name:   "tag/bool-capitalized-false",
+			source: "v: !!bool False",
+			value:  map[string]bool{"v": false},
+		},
+		{
+			name: "tag/merge-on-key",
+			source: `
+!!merge <<: { a: 1, b: 2 }
+c: 3
+`,
+			value: map[string]any{"a": 1, "b": 2, "c": 3},
+		},
+		{
+			name: "merge/aliases-into-maps",
+			source: `%YAML 1.1
+---
+a: &a
+ foo: 1
+b: &b
+ bar: 2
+merge:
+ <<: [*a, *b]
+`,
+			value: map[string]map[string]any{
+				"a":     {"foo": 1},
+				"b":     {"bar": 2},
+				"merge": {"foo": 1, "bar": 2},
+			},
+		},
+		{
+			name: "merge/aliases-into-map-slices",
+			source: `%YAML 1.1
+---
+a: &a
+ foo: 1
+b: &b
+ bar: 2
+merge:
+ <<: [*a, *b]
+`,
+			value: map[string]codec.MapSlice{
+				"a":     mapSliceOf(item("foo", 1)),
+				"b":     mapSliceOf(item("bar", 2)),
+				"merge": mapSliceOf(item("foo", 1), item("bar", 2)),
+			},
+		},
+	})
+}

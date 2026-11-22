@@ -8,9 +8,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"iter"
 	"math"
 	"math/big"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 
@@ -605,5 +607,281 @@ func TestASignedInfinityResolves(t *testing.T) {
 		err := codec.Unmarshal([]byte("+.inf: a\n.inf: b\n"), &got)
 		require.Error(t, err)
 		assert.ErrorIs(t, err, yamlerrors.ErrDuplicateKey)
+	})
+}
+
+// decodeNumberFormCases covers the number forms of the YAML 1.2 core schema, and the YAML 1.1 forms it reads as strings.
+func decodeNumberFormCases() iter.Seq[decodeCase] {
+	return slices.Values([]decodeCase{
+		// YAML 1.1 wrote binary integers as "0b...". The 1.2 core schema has
+		// no such form, so these resolve to strings until WithYAML11 exists.
+		{
+			name:   "number/binary-is-string",
+			source: "v: 0b10",
+			value:  map[string]any{"v": "0b10"},
+		},
+		{
+			name:   "number/negative-binary-is-string",
+			source: "v: -0b101010",
+			value:  map[string]any{"v": "-0b101010"},
+		},
+		{
+			name:   "number/long-negative-binary-is-string",
+			source: "v: -0b1000000000000000000000000000000000000000000000000000000000000000",
+			value:  map[string]any{"v": "-0b1000000000000000000000000000000000000000000000000000000000000000"},
+		},
+		{
+			name:   "number/hex",
+			source: "v: 0xA",
+			value:  map[string]any{"v": 10},
+		},
+		// The "_" digit separator is YAML 1.1's. The 1.2 core schema has no
+		// separator, so a number written with one is a string.
+		{
+			name:   "number/separator-in-float-is-string",
+			source: "v: 685.230_15e+03",
+			value:  map[string]any{"v": "685.230_15e+03"},
+		},
+		{
+			name:   "number/separator-in-decimal-float-is-string",
+			source: "v: 685_230.15",
+			value:  map[string]any{"v": "685_230.15"},
+		},
+		{
+			name:   "number/separator-into-string",
+			source: "v: 685_230.15",
+			value:  map[string]string{"v": "685_230.15"},
+		},
+		{
+			name:   "number/decimal",
+			source: "v: 685230",
+			value:  map[string]any{"v": 685230},
+		},
+		{
+			name:   "number/signed-separator-is-string",
+			source: "v: +685_230",
+			value:  map[string]any{"v": "+685_230"},
+		},
+		// A leading zero made a number octal in YAML 1.1. In 1.2 the decimal
+		// form is "[-+]? [0-9]+", which reads the zero and nothing into it.
+		{
+			name:   "number/leading-zero-is-decimal",
+			source: "v: 02472256",
+			value:  map[string]any{"v": 2472256},
+		},
+		{
+			name:   "number/octal",
+			source: "v: 0o2472256",
+			value:  map[string]any{"v": 685230},
+		},
+		{
+			name:   "number/hex-with-separator-is-string",
+			source: "v: 0x_0A_74_AE",
+			value:  map[string]any{"v": "0x_0A_74_AE"},
+		},
+		{
+			name:   "number/hex-uppercase",
+			source: "v: 0x0A74AE",
+			value:  map[string]any{"v": 685230},
+		},
+		{
+			name:   "number/binary-with-separators-is-string",
+			source: "v: 0b1010_0111_0100_1010_1110",
+			value:  map[string]any{"v": "0b1010_0111_0100_1010_1110"},
+		},
+		{
+			name:   "number/signed-separator-into-string",
+			source: "v: +685_230",
+			value:  map[string]string{"v": "+685_230"},
+		},
+	})
+}
+
+// decodeIntegerRangeCases covers the bounds of each integer type, and an integer written with an exponent.
+func decodeIntegerRangeCases() iter.Seq[decodeCase] {
+	return slices.Values([]decodeCase{
+		{
+			name:   "uint/into-uint",
+			source: "v: 42",
+			value:  map[string]uint{"v": 42},
+		},
+		{
+			name:   "uint/uint64-above-32-bits",
+			source: "v: 4294967296",
+			value:  map[string]uint64{"v": uint64(4294967296)},
+		},
+		{
+			name:   "int/max-int32",
+			source: "v: 2147483647",
+			value:  map[string]int{"v": math.MaxInt32},
+		},
+		{
+			name:   "int/min-int32",
+			source: "v: -2147483648",
+			value:  map[string]int{"v": math.MinInt32},
+		},
+		{
+			name:   "int64/max",
+			source: "v: 9223372036854775807",
+			value:  map[string]int64{"v": math.MaxInt64},
+		},
+		// The 1.2 core schema writes a base-16 integer as "0x [0-9a-fA-F]+",
+		// with no sign in front of the prefix, so "-0x7F" is a string.
+		{
+			name:   "int64/max-as-hex",
+			source: "v: 0x7FFFFFFFFFFFFFFF",
+			value:  map[string]int64{"v": math.MaxInt64},
+		},
+		{
+			name:   "int64/negative-hex-is-string",
+			source: "v: -0x7FFFFFFFFFFFFFFF",
+			value:  map[string]string{"v": "-0x7FFFFFFFFFFFFFFF"},
+		},
+		{
+			name:   "int64/min",
+			source: "v: -9223372036854775808",
+			value:  map[string]int64{"v": math.MinInt64},
+		},
+		{
+			name:   "uint/zero",
+			source: "v: 0",
+			value:  map[string]uint{"v": 0},
+		},
+		{
+			name:   "uint/max-uint32",
+			source: "v: 4294967295",
+			value:  map[string]uint{"v": math.MaxUint32},
+		},
+		{
+			name:   "uint/exponent",
+			source: "v: 1e3",
+			value:  map[string]uint{"v": 1000},
+		},
+		{
+			name:   "uint64/zero",
+			source: "v: 0",
+			value:  map[string]uint64{"v": 0},
+		},
+		{
+			name:   "uint64/max",
+			source: "v: 18446744073709551615",
+			value:  map[string]uint64{"v": math.MaxUint64},
+		},
+		{
+			name:   "uint64/max-as-hex",
+			source: "v: 0xFFFFFFFFFFFFFFFF",
+			value:  map[string]uint64{"v": math.MaxUint64},
+		},
+		{
+			name:   "uint64/max-int64",
+			source: "v: 9223372036854775807",
+			value:  map[string]uint64{"v": math.MaxInt64},
+		},
+		{
+			name:   "uint64/exponent",
+			source: "v: 1e3",
+			value:  map[string]uint64{"v": 1000},
+		},
+	})
+}
+
+// decodeFloatRangeCases covers the bounds of float32 and float64, and the spellings of infinity and NaN.
+func decodeFloatRangeCases() iter.Seq[decodeCase] {
+	return slices.Values([]decodeCase{
+		{
+			name:   "float32/max",
+			source: "v: 3.40282346638528859811704183484516925440e+38",
+			value:  map[string]float32{"v": math.MaxFloat32},
+		},
+		{
+			name:   "float32/smallest-nonzero",
+			source: "v: 1.401298464324817070923729583289916131280e-45",
+			value:  map[string]float32{"v": math.SmallestNonzeroFloat32},
+		},
+		{
+			name:   "float32/max-uint64",
+			source: "v: 18446744073709551615",
+			value:  map[string]float32{"v": float32(math.MaxUint64)},
+		},
+		{
+			name:   "float32/above-max-uint64",
+			source: "v: 18446744073709551616",
+			value:  map[string]float32{"v": float32(math.MaxUint64 + 1)},
+		},
+		{
+			name:   "float32/small-exponent",
+			source: "v: 1e-06",
+			value:  map[string]float32{"v": 1e-6},
+		},
+		{
+			name:   "float64/max",
+			source: "v: 1.797693134862315708145274237317043567981e+308",
+			value:  map[string]float64{"v": math.MaxFloat64},
+		},
+		{
+			name:   "float64/smallest-nonzero",
+			source: "v: 4.940656458412465441765687928682213723651e-324",
+			value:  map[string]float64{"v": math.SmallestNonzeroFloat64},
+		},
+		{
+			name:   "float64/max-uint64",
+			source: "v: 18446744073709551615",
+			value:  map[string]float64{"v": float64(math.MaxUint64)},
+		},
+		{
+			name:   "float64/above-max-uint64",
+			source: "v: 18446744073709551616",
+			value:  map[string]float64{"v": float64(math.MaxUint64 + 1)},
+		},
+		{
+			name:   "float64/small-exponent",
+			source: "v: 1e-06",
+			value:  map[string]float64{"v": 1e-06},
+		},
+		{
+			name:   "inf/lowercase",
+			source: "v: .inf\n",
+			value:  map[string]any{"v": math.Inf(0)},
+		},
+		{
+			name:   "inf/capitalized",
+			source: "v: .Inf\n",
+			value:  map[string]any{"v": math.Inf(0)},
+		},
+		{
+			name:   "inf/uppercase",
+			source: "v: .INF\n",
+			value:  map[string]any{"v": math.Inf(0)},
+		},
+		{
+			name:   "inf/negative-lowercase",
+			source: "v: -.inf\n",
+			value:  map[string]any{"v": math.Inf(-1)},
+		},
+		{
+			name:   "inf/negative-capitalized",
+			source: "v: -.Inf\n",
+			value:  map[string]any{"v": math.Inf(-1)},
+		},
+		{
+			name:   "inf/negative-uppercase",
+			source: "v: -.INF\n",
+			value:  map[string]any{"v": math.Inf(-1)},
+		},
+		{
+			name:   "nan/lowercase",
+			source: "v: .nan\n",
+			value:  map[string]any{"v": math.NaN()},
+		},
+		{
+			name:   "nan/mixed-case",
+			source: "v: .NaN\n",
+			value:  map[string]any{"v": math.NaN()},
+		},
+		{
+			name:   "nan/uppercase",
+			source: "v: .NAN\n",
+			value:  map[string]any{"v": math.NaN()},
+		},
 	})
 }

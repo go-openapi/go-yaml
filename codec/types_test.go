@@ -5,16 +5,17 @@ package codec_test
 
 import (
 	"encoding/json"
+	"fmt"
 	"reflect"
 	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/go-openapi/go-yaml/codec"
 	yamlerrors "github.com/go-openapi/go-yaml/errors"
+	"github.com/go-openapi/go-yaml/parser"
 	"github.com/go-openapi/testify/v2/assert"
 	"github.com/go-openapi/testify/v2/require"
-
-	"github.com/go-openapi/go-yaml/parser"
 )
 
 // mapSliceOf builds a MapSlice from entries a test knows are good.
@@ -955,4 +956,63 @@ dynamicField:
 		require.NoError(t, codec.Unmarshal(unmarshaledWrapper.DynamicField, &unmarshaledDynamicFieldValue, codec.UseJSONUnmarshaler()))
 		require.Truef(t, unmarshaledDynamicFieldValue.Equals(expectedDynamicFieldValue), "dynamic field is %v", unmarshaledDynamicFieldValue)
 	})
+}
+
+func TestDecoder_UseOrderedMap(t *testing.T) {
+	yml := `
+a: b
+c: d
+e:
+  f: g
+  h: i
+j: k
+`
+	var v any
+	require.NoError(t, codec.NewDecoder(strings.NewReader(yml), codec.UseOrderedMap()).Decode(&v))
+	require.IsType(t, codec.MapSlice{}, v)
+	bytes, err := codec.Marshal(v)
+	require.NoError(t, err)
+	require.Equal(t, yml, "\n"+string(bytes))
+}
+
+func TestUnmarshalMapSliceParallel(t *testing.T) {
+	content := `
+steps:
+  req0:
+    desc: Get /users/1
+    req:
+      /users/1:
+        get: nil
+    test: |
+      current.res.status == 200
+  req1:
+    desc: Get /private
+    req:
+      /private:
+        get: nil
+    test: |
+      current.res.status == 403
+  req2:
+    desc: Get /users
+    req:
+      /users:
+        get: nil
+    test: |
+      current.res.status == 200
+`
+	type mappedSteps struct {
+		Steps codec.MapSlice `yaml:"steps,omitempty"`
+	}
+	for i := range 100 {
+		t.Run(fmt.Sprintf("i=%d", i), func(t *testing.T) {
+			t.Parallel()
+			for range 10 {
+				var m mappedSteps
+				require.NoError(t, codec.Unmarshal([]byte(content), &m))
+				for v := range m.Steps.Values() {
+					require.IsType(t, map[string]any{}, v)
+				}
+			}
+		})
+	}
 }

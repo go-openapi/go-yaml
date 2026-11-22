@@ -6,15 +6,16 @@ package codec_test
 import (
 	"encoding/json"
 	"fmt"
+	"iter"
 	"log"
+	"slices"
 	"strings"
 	"testing"
 
 	"github.com/go-openapi/go-yaml/codec"
+	yamlerrors "github.com/go-openapi/go-yaml/errors"
 	"github.com/go-openapi/testify/v2/assert"
 	"github.com/go-openapi/testify/v2/require"
-
-	yamlerrors "github.com/go-openapi/go-yaml/errors"
 )
 
 func TestDecoder_Inline(t *testing.T) {
@@ -1682,4 +1683,148 @@ func TestTheFoldMatchesEncodingJSONsOwn(t *testing.T) {
 			assert.Equal(t, "V", c.reaches(ours))
 		})
 	}
+}
+
+// decodeStructCases covers structs and ordered maps as targets, field tags, and anchors and aliases.
+func decodeStructCases() iter.Seq[decodeCase] {
+	return slices.Values([]decodeCase{
+		{
+			name:   "struct/string-field",
+			source: "hello: world",
+			value:  struct{ Hello string }{"world"},
+		},
+		{
+			name:   "struct/nested-struct",
+			source: "a: {b: c}",
+			value:  struct{ A struct{ B string } }{struct{ B string }{"c"}},
+		},
+		{
+			name:   "struct/map-field",
+			source: "a: {b: c}",
+			value:  struct{ A map[string]string }{map[string]string{"b": "c"}},
+		},
+		{
+			name:   "struct/empty-map-field",
+			source: "a:",
+			value:  struct{ A map[string]string }{},
+		},
+		{
+			name:   "struct/int-field",
+			source: "a: 1",
+			value:  struct{ A int }{1},
+		},
+		{
+			name:   "struct/int-into-float-field",
+			source: "a: 1",
+			value:  struct{ A float64 }{1},
+		},
+		{
+			name:   "struct/float-into-int-field",
+			source: "a: 1.0",
+			value:  struct{ A int }{1},
+		},
+		{
+			name:   "struct/float-into-uint-field",
+			source: "a: 1.0",
+			value:  struct{ A uint }{1},
+		},
+		{
+			name:   "struct/slice-field",
+			source: "a: [1, 2]",
+			value:  struct{ A []int }{[]int{1, 2}},
+		},
+		{
+			name:   "struct/array-field",
+			source: "a: [1, 2]",
+			value:  struct{ A [2]int }{[2]int{1, 2}},
+		},
+		{
+			name:   "struct/unknown-key-ignored",
+			source: "a: 1",
+			value:  struct{ B int }{0},
+		},
+		{
+			name:   "struct/tag-renames-field",
+			source: "a: 1",
+			value: struct {
+				B int `yaml:"a"`
+			}{1},
+		},
+		{
+			name:   "struct/tag-renames-second-field",
+			source: "a: b\nc: d\n",
+			value: struct {
+				A string
+				C string `yaml:"c"`
+			}{
+				"b", "d",
+			},
+		},
+		{
+			name:   "struct/dash-tag-skips-field",
+			source: "a: 1\nb: 2\n",
+			value: struct {
+				A int
+				B int `yaml:"-"`
+			}{
+				1, 0,
+			},
+		},
+		{
+			name:   "struct/inline-field",
+			source: "a: 1\nb: 2\n",
+			value: struct {
+				A     int
+				Child `yaml:",inline"` //nolint:embeddedstructfieldcheck // the embedded field follows a regular one on purpose: the test covers that order
+			}{
+				1,
+				Child{
+					B: 2,
+					C: 0,
+				},
+			},
+		},
+		{
+			name:   "struct/sequence-then-scalar-field",
+			source: "tags:\n- hello-world\na: foo",
+			value: struct {
+				Tags []string
+				A    string
+			}{Tags: []string{"hello-world"}, A: "foo"},
+		},
+		{
+			name:   "ordered/map-item",
+			source: "a: 1\n",
+			value:  codec.MapItem{Key: "a", Value: 1},
+		},
+		{
+			name:   "ordered/map-slice",
+			source: "a: 1\nb: 2\nc: 3\n",
+			value:  mapSliceOf(item("a", 1), item("b", 2), item("c", 3)),
+		},
+		{
+			name:   "anchor/scalars",
+			source: "a: &x 1\nb: &y 2\nc: *x\nd: *y\n",
+			value:  struct{ A, B, C, D int }{1, 2, 1, 2},
+		},
+		{
+			name:   "anchor/mapping",
+			source: "a: &a {c: 1}\nb: *a\n",
+			value: struct {
+				A, B struct {
+					C int
+				}
+			}{struct{ C int }{1}, struct{ C int }{1}},
+		},
+		{
+			name:   "anchor/sequence",
+			source: "a: &a [1, 2]\nb: *a\n",
+			value:  struct{ B []int }{[]int{1, 2}},
+		},
+		{
+			name:   "anchor/alias-as-key",
+			source: `{a: &a c, *a : b}`,
+			value:  map[string]string{"a": "c", "c": "b"},
+		},
+	})
 }

@@ -12,8 +12,9 @@ import (
 	"testing"
 
 	"github.com/go-openapi/go-yaml/codec"
-	"github.com/go-openapi/testify/v2/assert"
 	"github.com/go-openapi/testify/v2/require"
+
+	"github.com/go-openapi/testify/v2/assert"
 )
 
 func TestDecoder_AnchorReferenceDirs(t *testing.T) {
@@ -608,5 +609,26 @@ func TestATaggedNullDecodesAsNull(t *testing.T) {
 
 			assert.Equal(t, want, got)
 		})
+	}
+}
+
+func TestDecodeKeepAddress(t *testing.T) {
+	data := `
+a: &a [_]
+b: &b [*a,*a]
+c: &c [*b,*b]
+d: &d [*c,*c]
+`
+	// ShareAliases: every alias of one anchor stands for one Go value, which is
+	// what this checks. Without it each builds its own and the addresses differ.
+	var v map[string]any
+	require.NoError(t, codec.Unmarshal([]byte(data), &v, codec.ShareAliases()))
+	a := v["a"]
+	b := v["b"]
+	for _, vv := range v["b"].([]any) {
+		require.Equalf(t, fmt.Sprintf("%p", a), fmt.Sprintf("%p", vv), "an element of b does not keep the address of a")
+	}
+	for _, vv := range v["c"].([]any) {
+		require.Equalf(t, fmt.Sprintf("%p", b), fmt.Sprintf("%p", vv), "an element of c does not keep the address of b")
 	}
 }

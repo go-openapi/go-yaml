@@ -8,6 +8,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"iter"
+	"slices"
 	"strings"
 	"testing"
 
@@ -249,4 +251,152 @@ func TestDecodeEmptyDocumentsKeepTheirPlace(t *testing.T) {
 			assert.Equal(t, test.want, decodeStream(t, test.src))
 		})
 	}
+}
+
+// decodeDocumentCases covers document markers, line breaks, and documents whose entries end on a null value.
+func decodeDocumentCases() iter.Seq[decodeCase] {
+	return slices.Values([]decodeCase{
+		{
+			name:   "document/bare-int",
+			source: "123\n",
+			value:  123,
+		},
+		{
+			name:   "document/one-entry",
+			source: "hello: world\n",
+			value:  map[string]string{"hello": "world"},
+		},
+		{
+			name:   "line-break/crlf",
+			source: "hello: world\r\n",
+			value:  map[string]string{"hello": "world"},
+		},
+		{
+			name:   "line-break/cr",
+			source: "hello: world\rGo: Gopher",
+			value:  map[string]string{"hello": "world", "Go": "Gopher"},
+		},
+		{
+			name:   "document/spaces-around-key",
+			source: "       a       :          b        \n",
+			value:  map[string]string{"a": "b"},
+		},
+		{
+			name:   "document/trailing-comment",
+			source: "a: b # comment\nb: c\n",
+			value: map[string]string{
+				"a": "b",
+				"b": "c",
+			},
+		},
+		{
+			name:   "document/header",
+			source: "---\na: b\n",
+			value:  map[string]string{"a": "b"},
+		},
+		{
+			name:   "document/end-marker",
+			source: "a: b\n...\n",
+			value:  map[string]string{"a": "b"},
+		},
+		// "---" opens a document holding the empty node, which decodes to
+		// null rather than ending the stream. go.yaml.in/yaml/v3 and PyYAML
+		// both read one document here.
+		{
+			name:   "document/yaml-directive-only",
+			source: "%YAML 1.2\n---\n",
+			value:  (*struct{})(nil),
+		},
+		{
+			name:   "document/header-only",
+			source: "---\n",
+			value:  (*struct{})(nil),
+		},
+		{
+			name:   "document/end-marker-only-is-eof",
+			source: "...",
+			value:  (*struct{})(nil),
+			eof:    true,
+		},
+		{
+			name:   "document/empty-is-eof",
+			source: "",
+			value:  (*struct{})(nil),
+			eof:    true,
+		},
+		{
+			name: "document/sequence-of-mappings-with-null",
+			source: `---
+- a:
+    b:
+- c: d
+`,
+			value: []map[string]any{
+				{
+					"a": map[string]any{
+						"b": nil,
+					},
+				},
+				{
+					"c": "d",
+				},
+			},
+		},
+		{
+			name: "document/null-nested-value",
+			source: `---
+a:
+  b:
+c: d
+`,
+			value: map[string]any{
+				"a": map[string]any{
+					"b": nil,
+				},
+				"c": "d",
+			},
+		},
+		{
+			name: "document/all-null-values",
+			source: `---
+a:
+b:
+c:
+`,
+			value: map[string]any{
+				"a": nil,
+				"b": nil,
+				"c": nil,
+			},
+		},
+		{
+			name: "document/null-values-after-command",
+			source: `---
+a: go test ./...
+b:
+c:
+`,
+			value: map[string]any{
+				"a": "go test ./...",
+				"b": nil,
+				"c": nil,
+			},
+		},
+		{
+			name: "document/null-values-after-literal-with-dots",
+			source: `---
+a: |
+  hello
+  ...
+  world
+b:
+c:
+`,
+			value: map[string]any{
+				"a": "hello\n...\nworld\n",
+				"b": nil,
+				"c": nil,
+			},
+		},
+	})
 }
