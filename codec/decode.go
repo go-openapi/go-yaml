@@ -2473,6 +2473,15 @@ func (d *Decoder) decodeArray(dst reflect.Value, src ast.Node) error {
 	var foundErr error
 	for iter.Next() {
 		v := iter.Value()
+		if idx == arrayType.Len() {
+			// The array holds no more. The entries it holds are written, and the rest are dropped, as
+			// encoding/json drops them. Indexing past the end panicked.
+			if foundErr == nil {
+				foundErr = yamlerrors.NewOverflow(arrayType, fmt.Sprintf("a sequence of %d entries", iter.Len()), v.GetToken())
+			}
+
+			break
+		}
 		if elemType.Kind() == reflect.Pointer && ast.IsNull(v) {
 			// Set the pointer to nil.
 			arrayValue.Index(idx).Set(reflect.Zero(elemType))

@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/go-openapi/go-yaml/codec"
+	yamlerrors "github.com/go-openapi/go-yaml/errors"
 	"github.com/go-openapi/testify/v2/assert"
 	"github.com/go-openapi/testify/v2/require"
 )
@@ -284,6 +285,29 @@ func TestAMapFieldKeepsTheCallersEntries(t *testing.T) {
 			v := doc{Plain: map[string]string{"a": "default", "z": "kept"}}
 			require.NoError(t, codec.NewDecoder(strings.NewReader("plain: {a: x}\n"), path.opts...).Decode(&v))
 			require.Equal(t, want, v)
+		})
+	}
+}
+
+// TestAnArrayGivenTooManyEntriesOverflows decodes a sequence longer than its array, at the root and as a field, on
+// both decode paths. The array holds its first entries, and the decode returns an error of kind ErrOverflow.
+// Indexing past the array's end panicked.
+func TestAnArrayGivenTooManyEntriesOverflows(t *testing.T) {
+	for path := range walkAndTreePaths() {
+		t.Run(path.name, func(t *testing.T) {
+			var root [2]int
+			err := codec.Unmarshal([]byte("[1, 2, 3]\n"), &root, path.opts...)
+			require.ErrorIs(t, err, yamlerrors.ErrOverflow)
+			assert.Equal(t, [2]int{1, 2}, root)
+
+			var field struct {
+				A     [2]string `yaml:"a"`
+				After int       `yaml:"after"`
+			}
+			err = codec.Unmarshal([]byte("a: [x, y, z]\nafter: 1\n"), &field, path.opts...)
+			require.ErrorIs(t, err, yamlerrors.ErrOverflow)
+			assert.Equal(t, [2]string{"x", "y"}, field.A)
+			assert.Equal(t, 1, field.After, "the decode goes on past a field error")
 		})
 	}
 }
