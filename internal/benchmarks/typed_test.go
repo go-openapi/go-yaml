@@ -90,10 +90,9 @@ func citmSource(tb testing.TB) []byte {
 // BenchmarkTyped unmarshals citm_catalog into the Go types it describes, which
 // is the path a caller with a schema takes.
 //
-// BenchmarkWorkloads reads every document into an any, and a Decoder handed an
-// interface folds the document as the parse goes and never reflects. Reading
-// into a struct builds the tree and decodes it field by field, so the two
-// benchmarks measure different halves of the decoder.
+// BenchmarkWorkloads reads every document into an any, through valueBuilder, which never reflects. A struct is
+// filled by typedBuilder, which reflects on each field as the walk reaches it, so the two benchmarks measure the
+// decoder's two builders. Neither builds a tree for citm_catalog.
 func BenchmarkTyped(b *testing.B) {
 	src := citmSource(b)
 

@@ -3124,8 +3124,8 @@ func (d *Decoder) canWalk(v reflect.Value) bool {
 		return !d.useStringKeys
 	}
 
-	// SPIKE: reading into a Go struct by walking.
-	if !typedWalkEnabled || d.disallowUnknownField || d.validator != nil || d.allowDuplicateMapKey || d.useJSONUnmarshaler {
+	// A struct walks unless an option needs the tree.
+	if d.disallowUnknownField || d.validator != nil || d.allowDuplicateMapKey || d.useJSONUnmarshaler {
 		return false
 	}
 	if d.useStringKeys {

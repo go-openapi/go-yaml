@@ -77,7 +77,7 @@ func TestEmbeddedWalkMatchesTheTree(t *testing.T) {
 			var built embedded
 			treeErr := NewDecoder(
 				bytes.NewReader([]byte(tc.src)),
-				CustomUnmarshaler[chan int](func(*chan int, []byte) error { return nil }),
+				treeOnly(),
 			).Decode(&built)
 
 			require.Equal(t, treeErr == nil, walkErr == nil, "walk err=%v, tree err=%v", walkErr, treeErr)
@@ -113,7 +113,7 @@ func TestTypedWalkMatchesTheTree(t *testing.T) {
 			var built walkShape
 			treeErr := NewDecoder(
 				bytes.NewReader([]byte(tc.src)),
-				CustomUnmarshaler[chan int](func(*chan int, []byte) error { return nil }),
+				treeOnly(),
 			).Decode(&built)
 
 			require.Equal(t, treeErr == nil, walkErr == nil, "walk err=%v, tree err=%v", walkErr, treeErr)
@@ -232,7 +232,7 @@ func TestAnAnchorKeepsTheWalk(t *testing.T) {
 			var built walkShape
 			treeErr := NewDecoder(
 				bytes.NewReader([]byte(tc.src)),
-				CustomUnmarshaler[chan int](func(*chan int, []byte) error { return nil }),
+				treeOnly(),
 			).Decode(&built)
 
 			require.NoError(t, walkErr, "walk")
@@ -312,7 +312,7 @@ func TestADirectiveKeepsTheWalk(t *testing.T) {
 			built := walkShape{Name: "default"}
 			treeErr := NewDecoder(
 				bytes.NewReader([]byte(tc.src)),
-				CustomUnmarshaler[chan int](func(*chan int, []byte) error { return nil }),
+				treeOnly(),
 			).Decode(&built)
 
 			require.NoError(t, walkErr, "walk")
@@ -362,7 +362,7 @@ func TestAnAliasKeepsTheWalk(t *testing.T) {
 				var built walkShape
 				treeErr := NewDecoder(
 					bytes.NewReader([]byte(tc.src)),
-					append(opts, CustomUnmarshaler[chan int](func(*chan int, []byte) error { return nil }))...,
+					append(opts, treeOnly())...,
 				).Decode(&built)
 
 				require.NoError(t, walkErr, "walk")
@@ -423,7 +423,7 @@ func TestASharedAliasPointsWhereTheTreeDoes(t *testing.T) {
 		return v
 	}
 	walked := read()
-	built := read(CustomUnmarshaler[chan int](func(*chan int, []byte) error { return nil }))
+	built := read(treeOnly())
 
 	for _, c := range []struct {
 		name       string
@@ -449,7 +449,7 @@ func TestABrokenAliasIsRefusedAsByTheTree(t *testing.T) {
 			walkErr := NewDecoder(bytes.NewReader([]byte(tc.src))).Decode(&walked)
 			treeErr := NewDecoder(
 				bytes.NewReader([]byte(tc.src)),
-				CustomUnmarshaler[chan int](func(*chan int, []byte) error { return nil }),
+				treeOnly(),
 			).Decode(&built)
 
 			require.Error(t, walkErr, "walk")
@@ -490,7 +490,7 @@ func decodeBothWays(t *testing.T, src string, opts ...DecodeOption) bothWays {
 	r.walkErr = r.dec.Decode(&r.walked)
 	r.treeErr = NewDecoder(
 		bytes.NewReader([]byte(src)),
-		append(opts, CustomUnmarshaler[chan int](func(*chan int, []byte) error { return nil }))...,
+		append(opts, treeOnly())...,
 	).Decode(&r.built)
 
 	return r
@@ -598,7 +598,7 @@ func TestAMergeKeepsTheDefaults(t *testing.T) {
 		return v
 	}
 	walked := read()
-	built := read(CustomUnmarshaler[chan int](func(*chan int, []byte) error { return nil }))
+	built := read(treeOnly())
 	assert.Equal(t, built, walked, "the two paths disagree")
 }
 
@@ -700,7 +700,7 @@ type aDeclaredAnchorIsNeverSharedCase struct {
 func aDeclaredAnchorIsNeverSharedCases() iter.Seq[aDeclaredAnchorIsNeverSharedCase] {
 	return slices.Values([]aDeclaredAnchorIsNeverSharedCase{
 		{name: "walk"},
-		{name: "tree", extra: []DecodeOption{CustomUnmarshaler[chan int](func(*chan int, []byte) error { return nil })}},
+		{name: "tree", extra: []DecodeOption{treeOnly()}},
 	})
 }
 
@@ -746,7 +746,7 @@ func TestUseStringKeysReachesAnAnyFieldOfAStruct(t *testing.T) {
 	type doc struct {
 		K any `yaml:"k"`
 	}
-	tree := CustomUnmarshaler[chan int](func(*chan int, []byte) error { return nil })
+	tree := treeOnly()
 	for _, src := range []string{"k: {1: x, true: y}\n", "k: {1: x, \"1\": y}\n"} {
 		t.Run(src, func(t *testing.T) {
 			var walked, built doc

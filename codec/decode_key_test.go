@@ -396,7 +396,7 @@ func aReaderKeyedByNameRefusesTwoKeysOfOneNameCases() iter.Seq[aReaderKeyedByNam
 		Rest map[string]any `yaml:",inline"`
 	}
 	// A custom unmarshaler turns the walk off, and no field holds a chan int.
-	tree := codec.CustomUnmarshaler[chan int](func(*chan int, []byte) error { return nil })
+	tree := treeOnly()
 
 	return slices.Values([]aReaderKeyedByNameRefusesTwoKeysOfOneNameCase{
 		{

@@ -400,7 +400,7 @@ func TestANullDocumentLeavesAStructAsItWas(t *testing.T) {
 		A string `yaml:"a"`
 	}
 	// A custom unmarshaler turns the walk off, and no field holds a chan int.
-	tree := codec.CustomUnmarshaler[chan int](func(*chan int, []byte) error { return nil })
+	tree := treeOnly()
 
 	for _, src := range []string{"~\n", "null\n", "&a ~\n", "--- ~\n"} {
 		t.Run(src, func(t *testing.T) {

@@ -379,3 +379,9 @@ func walkAndOrderedMapPaths(opts ...DecodeOption) iter.Seq[decodePath] {
 		{name: "tree", opts: append(slices.Clone(opts), UseOrderedMap())},
 	})
 }
+
+// treeOnly sends a decode down the tree path without changing the value it decodes. canWalk turns the walk down for a
+// decoder holding a custom unmarshaler, and no test document holds a chan int.
+func treeOnly() DecodeOption {
+	return CustomUnmarshaler[chan int](func(*chan int, []byte) error { return nil })
+}

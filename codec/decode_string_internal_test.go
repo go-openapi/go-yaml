@@ -188,7 +188,7 @@ type noDecodedStringReadsTheDocumentCase struct {
 
 func noDecodedStringReadsTheDocumentCases() iter.Seq[noDecodedStringReadsTheDocumentCase] {
 	return slices.Values([]noDecodedStringReadsTheDocumentCase{
-		{"tree", []DecodeOption{CustomUnmarshaler[chan int](func(*chan int, []byte) error { return nil })}},
+		{"tree", []DecodeOption{treeOnly()}},
 		{"ordered", []DecodeOption{UseOrderedMap()}},
 	})
 }

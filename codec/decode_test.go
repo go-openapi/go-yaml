@@ -90,6 +90,12 @@ func decoderCases() iter.Seq[decodeCase] {
 func walkAndTreePaths() iter.Seq[decodePath] {
 	return slices.Values([]decodePath{
 		{name: "walk"},
-		{name: "tree", opts: []codec.DecodeOption{codec.CustomUnmarshaler[chan int](func(*chan int, []byte) error { return nil })}},
+		{name: "tree", opts: []codec.DecodeOption{treeOnly()}},
 	})
+}
+
+// treeOnly sends a decode down the tree path without changing the value it decodes. canWalk turns the walk down for a
+// decoder holding a custom unmarshaler, and no test document holds a chan int.
+func treeOnly() codec.DecodeOption {
+	return codec.CustomUnmarshaler[chan int](func(*chan int, []byte) error { return nil })
 }

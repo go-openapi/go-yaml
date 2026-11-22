@@ -52,13 +52,6 @@ func readStructStream(src string, opts ...codec.DecodeOption) []streamRead {
 	return reads
 }
 
-// treeOnly turns the walk off without changing the decode, as agDecode does:
-// canWalk refuses a decoder holding a custom unmarshaler, and a chan int
-// stands nowhere in streamDoc.
-func treeOnly() codec.DecodeOption {
-	return codec.CustomUnmarshaler[chan int](func(*chan int, []byte) error { return nil })
-}
-
 // TestAStreamDecodesOneDocumentIntoEachStruct holds a Decode loop into a struct to
 // the tree: one document per Decode, in order, then io.EOF.
 //
@@ -196,7 +189,7 @@ func aDecoderKeepsTheErrorThatStoppedItsStreamCases() iter.Seq[aDecoderKeepsTheE
 		B []int `yaml:"b"`
 	}
 	// A custom unmarshaler turns the walk off, and no field holds a chan int.
-	tree := codec.CustomUnmarshaler[chan int](func(*chan int, []byte) error { return nil })
+	tree := treeOnly()
 
 	return slices.Values([]aDecoderKeepsTheErrorThatStoppedItsStreamCase{
 		{name: "a walk", into: func() any { return new(walked) }},

@@ -29,7 +29,7 @@ import (
 func treeDecoder(src string) *Decoder {
 	return NewDecoder(
 		bytes.NewReader([]byte(src)),
-		CustomUnmarshaler[chan int](func(*chan int, []byte) error { return nil }),
+		treeOnly(),
 	)
 }
 

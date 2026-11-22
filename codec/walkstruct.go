@@ -1456,9 +1456,6 @@ func (b *typedBuilder) reset(root reflect.Value) {
 	b.naming = false
 }
 
-// typedWalkEnabled turns the spike on. SPIKE.
-const typedWalkEnabled = true
-
 func shapeOf(node ast.Node) keptShape {
 	var k keptShape
 	ast.Walk(&k, node)

@@ -163,7 +163,7 @@ func agDecode(c agShape, tree bool, jsonTags, inferred bool) (any, error) {
 	}
 	if tree {
 		opts = append(opts,
-			codec.CustomUnmarshaler[chan int](func(*chan int, []byte) error { return nil }))
+			treeOnly())
 	}
 
 	v := c.mk()

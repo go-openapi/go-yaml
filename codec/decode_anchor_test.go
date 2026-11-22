@@ -572,7 +572,7 @@ func TestAnAnchoredNullDecodesAsTheNullItNames(t *testing.T) {
 		By    map[string]leaf  `yaml:"by"`
 	}
 	// A custom unmarshaler turns the walk off, and no field holds a chan int.
-	tree := codec.CustomUnmarshaler[chan int](func(*chan int, []byte) error { return nil })
+	tree := treeOnly()
 
 	for tc := range anAnchoredNullDecodesAsTheNullItNamesCases() {
 		t.Run(tc.anchored, func(t *testing.T) {
@@ -621,7 +621,7 @@ func TestATaggedNullDecodesAsNull(t *testing.T) {
 		By    map[string]leaf  `yaml:"by"`
 	}
 	// A custom unmarshaler turns the walk off, and no field holds a chan int.
-	tree := codec.CustomUnmarshaler[chan int](func(*chan int, []byte) error { return nil })
+	tree := treeOnly()
 
 	for tc := range aTaggedNullDecodesAsNullCases() {
 		t.Run(tc.tagged, func(t *testing.T) {
