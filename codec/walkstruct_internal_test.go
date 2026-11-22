@@ -183,9 +183,8 @@ type walkableTypeRefusesWhatTheTreeReadsCase struct {
 func walkableTypeRefusedCases() iter.Seq[walkableTypeRefusesWhatTheTreeReadsCase] {
 	return slices.Values([]walkableTypeRefusesWhatTheTreeReadsCase{
 		{name: "a RawMessage", typ: reflect.TypeFor[struct{ A RawMessage }]()},
-		{name: "a complex number", typ: reflect.TypeFor[struct{ A complex128 }]()},
-		{name: "a map keyed by an int", typ: reflect.TypeFor[struct{ A map[int]string }]()},
-		{name: "an array", typ: reflect.TypeFor[struct{ A [3]int }]()},
+		{name: "a channel", typ: reflect.TypeFor[struct{ A chan int }]()},
+		{name: "a NodeUnmarshaler in an array", typ: reflect.TypeFor[struct{ A [2]walkNodeHook }]()},
 		// A NodeUnmarshaler and an ast.Node field may keep the node they receive, which the walk recycles.
 		{name: "a NodeUnmarshaler", typ: reflect.TypeFor[struct{ A walkNodeHook }]()},
 		{name: "an ast.Node field", typ: reflect.TypeFor[struct{ A ast.Node }]()},
@@ -231,6 +230,11 @@ func walkableTypeAcceptedCases() iter.Seq[walkableTypeRefusesWhatTheTreeReadsCas
 		{name: "a GoYAMLUnmarshaler", typ: reflect.TypeFor[struct{ A walkFuncHook }]()},
 		{name: "a TextUnmarshaler", typ: reflect.TypeFor[struct{ A *walkTextHook }]()},
 		{name: "a time.Time at the root", typ: reflect.TypeFor[time.Time]()},
+		// The walk keeps the node of each of these too.
+		{name: "a complex number", typ: reflect.TypeFor[struct{ A complex128 }]()},
+		{name: "a map keyed by an int", typ: reflect.TypeFor[struct{ A map[int]string }]()},
+		{name: "an array", typ: reflect.TypeFor[struct{ A [3]int }]()},
+		{name: "a narrower interface", typ: reflect.TypeFor[struct{ A fmt.Stringer }]()},
 	})
 }
 

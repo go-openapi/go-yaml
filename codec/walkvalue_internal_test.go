@@ -249,10 +249,11 @@ func TestStreamSwitchesFromWalkToTree(t *testing.T) {
 	require.NotNil(t, dec.stream, "the first document was not walked")
 	assert.Equal(t, "map[a:1]", fmt.Sprintf("%v", first), "first document")
 
-	var second map[int]string
+	// A RawMessage holds its source text, which the walk drops, so it goes to the tree.
+	var second RawMessage
 	require.NoError(t, dec.Decode(&second))
 	assert.Nil(t, dec.stream, "the Decoder stayed on the walking path")
-	assert.Equal(t, "two", second[2], "second document")
+	assert.Contains(t, string(second), "two", "second document")
 
 	// The stream carries on from where the walk left it rather than starting
 	// again: the tree is read from the same source and indexed the same way.

@@ -933,7 +933,8 @@ func (b *typedBuilder) openMapping(dst reflect.Value, wanted bool) error {
 		return nil
 	case reflect.Map:
 		if dst.Type().Key().Kind() != reflect.String {
-			return b.fail(errNeedsTheTree)
+			// The tree decoder reads the keys of this one node.
+			return b.keepWhole(out, true)
 		}
 		if dst.IsNil() {
 			if !dst.CanSet() {
@@ -1516,24 +1517,24 @@ func readWalkable(t reflect.Type, seen map[reflect.Type]bool, mode structfields.
 
 		return true
 	case reflect.Map:
-		if t.Key().Kind() != reflect.String {
-			return false
-		}
-
-		return readWalkable(t.Elem(), seen, mode)
-	case reflect.Slice:
+		// A map keyed by anything but a string is kept whole for the tree decoder, which reads its keys.
+		return readWalkable(t.Key(), seen, mode) && readWalkable(t.Elem(), seen, mode)
+	case reflect.Slice, reflect.Array:
+		// An array is kept whole for the tree decoder, which fills it.
 		return readWalkable(t.Elem(), seen, mode)
 	case reflect.Interface:
-		// An "any" holds whatever the document writes, and valueBuilder
-		// builds it. A narrower interface needs a type that this walk cannot pick.
-		return t.NumMethod() == 0
+		// An "any" holds whatever the document writes, and valueBuilder builds it. The walk keeps the node of a
+		// narrower interface for the tree decoder, which sets it or returns the error.
+		return true
 	case reflect.String, reflect.Bool,
 		reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
 		reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64,
-		reflect.Float32, reflect.Float64:
+		reflect.Float32, reflect.Float64,
+		// convertScalar passes a complex number to the tree decoder.
+		reflect.Complex64, reflect.Complex128:
 		return true
 	default:
-		// An array, a channel, a function, a complex number.
+		// A channel, a function, an unsafe pointer.
 		return false
 	}
 }

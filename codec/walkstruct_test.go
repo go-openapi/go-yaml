@@ -6,6 +6,7 @@ package codec_test
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"iter"
 	"slices"
 	"strings"
@@ -533,7 +534,11 @@ type KeptFields struct {
 	Text    KeptText       `yaml:"text"`
 	Times   []time.Time    `yaml:"times"`
 	ByName  map[string]KeptRaw
-	After   int `yaml:"after"`
+	IntKeys map[int]string `yaml:"intKeys"`
+	Fixed   [2]int         `yaml:"fixed"`
+	Complex complex128     `yaml:"complex"`
+	Iface   fmt.Stringer   `yaml:"iface"`
+	After   int            `yaml:"after"`
 }
 
 // TestAFieldTheTreeReadsAgreesOnBothPaths decodes documents into fields the walk keeps the node of, and checks the
@@ -583,5 +588,11 @@ func keptFieldCases() iter.Seq[keptFieldCase] {
 		{"unmarshalers in a map", "ByName: {a: 1, b: [2]}\n"},
 		{"an alias into a kept field", "name: &n 2001-12-14\nwhen: *n\n"},
 		{"a fragment under 1.1", "%YAML 1.1\n---\nraw: {on: yes}\n"},
+		{"a map keyed by an int", "intKeys: {1: a, 2: b}\nafter: 5\n"},
+		{"a map keyed by an int given a string key", "intKeys: {x: a}\nafter: 5\n"},
+		{"an array", "fixed: [1, 2]\n"},
+		{"an array given too many entries", "fixed: [1, 2, 3]\nafter: 6\n"},
+		{"a complex number", "complex: 1.5\n"},
+		{"an interface with methods", "iface: x\nafter: 7\n"},
 	})
 }
