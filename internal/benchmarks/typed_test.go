@@ -7,13 +7,14 @@ import (
 	"reflect"
 	"testing"
 
+	goccy "github.com/goccy/go-yaml"
 	goyaml3 "go.yaml.in/yaml/v3"
 
 	yaml "github.com/go-openapi/go-yaml"
 	"github.com/go-openapi/go-yaml/internal/analysis/workloads"
 )
 
-// The citm_catalog schema, written once for both libraries. The tags are the
+// The citm_catalog schema, written once for the three libraries. The tags are the
 // same in each, so the two decode the same document into the same shape.
 type (
 	citmCatalog struct {
@@ -96,15 +97,18 @@ func citmSource(tb testing.TB) []byte {
 func BenchmarkTyped(b *testing.B) {
 	src := citmSource(b)
 
-	var probe3, probeOA citmCatalog
+	var probe3, probeGoccy, probeOA citmCatalog
+	if err := goccy.Unmarshal(src, &probeGoccy); err != nil {
+		b.Fatalf("goccy/go-yaml: %v", err)
+	}
 	if err := goyaml3.Unmarshal(src, &probe3); err != nil {
 		b.Fatalf("go.yaml.in/yaml/v3: %v", err)
 	}
 	if err := yaml.Unmarshal(src, &probeOA); err != nil {
 		b.Fatalf("go-openapi/go-yaml: %v", err)
 	}
-	if !reflect.DeepEqual(probe3, probeOA) {
-		b.Fatal("the two libraries read the document differently; the comparison would be meaningless")
+	if !reflect.DeepEqual(probe3, probeOA) || !reflect.DeepEqual(probeGoccy, probeOA) {
+		b.Fatal("the libraries read the document differently; the comparison would be meaningless")
 	}
 	if len(probeOA.Performances) == 0 || len(probeOA.Events) == 0 {
 		b.Fatal("the schema does not match the document")
@@ -116,6 +120,16 @@ func BenchmarkTyped(b *testing.B) {
 		for b.Loop() {
 			var v citmCatalog
 			if err := goyaml3.Unmarshal(src, &v); err != nil {
+				b.Fatal(err)
+			}
+		}
+	})
+	b.Run("goccy", func(b *testing.B) {
+		b.SetBytes(int64(len(src)))
+		b.ReportAllocs()
+		for b.Loop() {
+			var v citmCatalog
+			if err := goccy.Unmarshal(src, &v); err != nil {
 				b.Fatal(err)
 			}
 		}

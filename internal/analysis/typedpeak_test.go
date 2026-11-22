@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/go-openapi/testify/v2/require"
+	goccy "github.com/goccy/go-yaml"
 	v3 "go.yaml.in/yaml/v3"
 
 	"github.com/go-openapi/go-yaml/codec"
@@ -74,12 +75,12 @@ type (
 
 // typedPeakRatioCap caps the typed walk's peak live heap as a multiple of the value it builds. The walk holds the
 // destination and little else, so its peak stays near the size of the result: 1.2x on citm_catalog, plain or with
-// an anchor held across the document, on 2026-11-22, where go.yaml.in/yaml/v3 peaks at 20x and the tree path, a
-// fallback, at 34.5x. The cap leaves room for peakLive's spread between runs.
+// an anchor held across the document, on 2026-11-22, where go.yaml.in/yaml/v3 peaks at 20x, github.com/goccy/go-yaml
+// at 61.7x and the tree path, a fallback, at 34.5x. The cap leaves room for peakLive's spread between runs.
 const typedPeakRatioCap = 2.0
 
 // TestTypedDecodePeakStaysNearTheResult decodes citm_catalog into its Go types and reports the peak live heap of each
-// reader, beside go.yaml.in/yaml/v3. It fails when the typed walk's peak passes typedPeakRatioCap times the size of
+// reader, beside go.yaml.in/yaml/v3 and github.com/goccy/go-yaml. It fails when the typed walk's peak passes typedPeakRatioCap times the size of
 // the value it builds, on the plain document or on one holding an anchor from its first key to its last.
 func TestTypedDecodePeakStaysNearTheResult(t *testing.T) {
 	if testing.Short() {
@@ -104,6 +105,7 @@ func TestTypedDecodePeakStaysNearTheResult(t *testing.T) {
 		capped bool
 	}{
 		{"v3, into the struct", plain, func(s []byte) error { var v citmCatalog; return v3.Unmarshal(s, &v) }, false},
+		{"goccy, into the struct", plain, func(s []byte) error { var v citmCatalog; return goccy.Unmarshal(s, &v) }, false},
 		{"typed walk", plain, func(s []byte) error { var v citmCatalog; return codec.Unmarshal(s, &v) }, true},
 		{"tree", plain, func(s []byte) error { var v citmCatalog; return codec.Unmarshal(s, &v, tree) }, false},
 		{"v3, anchored", anchored, func(s []byte) error { var v citmCatalog; return v3.Unmarshal(s, &v) }, false},

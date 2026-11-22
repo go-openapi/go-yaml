@@ -7,6 +7,7 @@ require (
 	github.com/go-openapi/go-yaml/internal/analysis v0.0.0-00010101000000-000000000000
 	github.com/go-openapi/spec v1.0.1
 	github.com/go-openapi/testify/v2 v2.8.1
+	github.com/goccy/go-yaml v1.19.2
 	go.yaml.in/yaml/v3 v3.0.6
 	gopkg.in/yaml.v2 v2.4.0
 )

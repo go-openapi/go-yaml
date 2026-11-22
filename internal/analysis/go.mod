@@ -13,3 +13,5 @@ require (
 	github.com/go-openapi/testify/v2 v2.8.1
 	go.yaml.in/yaml/v3 v3.0.6
 )
+
+require github.com/goccy/go-yaml v1.19.2
