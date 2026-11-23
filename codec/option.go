@@ -323,8 +323,12 @@ func WithSmartAnchor() EncodeOption {
 	}
 }
 
-// UseLiteralStyleIfMultiline writes every string that spans several lines as a literal block scalar ("|"),
-// whatever characters it holds.
+// UseLiteralStyleIfMultiline writes a string that spans several lines as a literal block scalar ("|").
+//
+// Two kinds of string stay double-quoted, because the encoder has no block scalar that reads back as the same string.
+// A string holding a carriage return or a byte order mark is one: a reader turns "\r\n" into "\n".
+// A string whose first line of text starts with a space is the other:
+// a reader takes the block's indentation from that line, and the encoder writes no indentation indicator.
 func UseLiteralStyleIfMultiline(useLiteralStyleIfMultiline bool) EncodeOption {
 	return func(e *Encoder) error {
 		e.useLiteralStyleIfMultiline = useLiteralStyleIfMultiline

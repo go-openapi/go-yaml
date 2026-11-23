@@ -16,7 +16,7 @@ for an encoder you keep.
 | `Indent(n)` | spaces per level of mapping nesting; `DefaultIndentSpaces` is 2 |
 | `IndentSequence(bool)` | indents sequence entries under their key |
 | `Flow(bool)` | flow style throughout |
-| `UseLiteralStyleIfMultiline(bool)` | a multiline string is written as a literal block, whatever it contains |
+| `UseLiteralStyleIfMultiline(bool)` | a multiline string is written as a literal block, unless it holds a carriage return or a byte order mark, or its first line of text starts with a space |
 | `UseSingleQuote(bool)` | prefers `'` over `"` where a string needs quoting |
 | `JSON()` | writes JSON |
 
