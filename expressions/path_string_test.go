@@ -4,6 +4,7 @@
 package expressions_test
 
 import (
+	"strconv"
 	"strings"
 	"testing"
 
@@ -28,6 +29,16 @@ func TestPathStringRejectsAnIndexThatNeverCloses(t *testing.T) {
 			assert.ErrorIs(t, err, expressions.ErrInvalidPathString)
 		})
 	}
+}
+
+// TestPathStringRejectsAnIndexTooLargeForAUint parses an index past the largest uint. The error matches
+// ErrInvalidPathString, as every other malformed path does, and keeps the strconv error under it.
+func TestPathStringRejectsAnIndexTooLargeForAUint(t *testing.T) {
+	p, err := expressions.PathString("$.a[99999999999999999999999]")
+	require.Error(t, err)
+	assert.Nil(t, p)
+	assert.ErrorIs(t, err, expressions.ErrInvalidPathString)
+	assert.ErrorIs(t, err, strconv.ErrRange)
 }
 
 // TestPathStringReadsKeysThatAreNotASCII checks that the path parser, which

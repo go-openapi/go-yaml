@@ -5,6 +5,7 @@ package yamlpath
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"io"
 	"strconv"
@@ -201,7 +202,8 @@ func parsePathIndex(b *PathBuilder, buf string, cursor int) (*PathBuilder, strin
 		}
 		num, err := strconv.ParseUint(numOrAll, 10, 0)
 		if err != nil {
-			return nil, "", 0, err
+			// The scan admits only digits here, so the one error left is an index too large for a uint.
+			return nil, "", 0, fmt.Errorf("index %s at %d: %w", numOrAll, start, errors.Join(ErrInvalidPathString, err))
 		}
 		return b.Index(uint(num)), buf, cursor + 1, nil
 	}
