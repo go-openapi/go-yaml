@@ -14,25 +14,24 @@ import (
 	"github.com/go-openapi/go-yaml/parser"
 )
 
-// Path represent YAMLPath ( like a JSONPath ).
+// Path is a parsed YAML Path: a chain of steps from the root.
 type Path struct {
 	node pathNode
 }
 
-// String path to text.
+// String returns the path as text, such as "$.a[0]".
 func (p *Path) String() string {
 	return p.node.String()
 }
 
 // ReadNode reads the YAML stream r and returns the first node the path addresses.
 //
-// It answers as [Path.FilterFile] does on the parsed stream, and reads the stream by walking it: every branch
-// off the path is skipped, so the memory it holds is the node it returns and not the document.
-// It stops reading at the answer, so a later document is not read and a syntax error there is not reported.
-// Parse the stream and call FilterFile to have the whole of it checked.
-// The node is a copy that owns its tokens. Where it is most of the document, the copy costs more than a parse
-// into a tree: 206 ms against 155 ms for the whole of golang_source, which is 4 MB against 60 MB for one
-// scalar of it.
+// It returns what [Path.FilterFile] returns for the parsed stream, but it walks the stream instead of parsing
+// it whole: it skips every branch off the path and stops at the answer, so it holds the node it returns and not
+// the document. A syntax error after the answer is not reported.
+//
+// The node is a copy that owns its tokens. Where the node is most of the document, the copy costs more than a
+// parse: 206 ms against 155 ms for the whole of golang_source, and 4 MB against 60 MB for one scalar of it.
 func (p *Path) ReadNode(r io.Reader) (ast.Node, error) {
 	if p.node == nil {
 		return nil, ErrInvalidPath
@@ -45,10 +44,10 @@ func (p *Path) ReadNode(r io.Reader) (ast.Node, error) {
 	return p.readByWalking(buf.Bytes())
 }
 
-// FilterFile filter from ast.File by YAMLPath.
+// FilterFile returns the first node p addresses in the documents of f, or [ErrNotFoundNode].
 func (p *Path) FilterFile(f *ast.File) (ast.Node, error) {
 	for _, doc := range f.Docs {
-		// For simplicity, directives cannot be the target of operations
+		// A directive is no target: a path addresses the document body.
 		if doc.Body != nil && doc.Body.Type() == ast.DirectiveType {
 			continue
 		}
@@ -63,7 +62,7 @@ func (p *Path) FilterFile(f *ast.File) (ast.Node, error) {
 	return nil, p.errNotFound()
 }
 
-// FilterNode filter from node by YAMLPath.
+// FilterNode returns the node p addresses under node, or nil for a nil node.
 func (p *Path) FilterNode(node ast.Node) (ast.Node, error) {
 	if node == nil {
 		return nil, nil
@@ -75,7 +74,7 @@ func (p *Path) FilterNode(node ast.Node) (ast.Node, error) {
 	return n, nil
 }
 
-// MergeFromReader merge YAML text into ast.File.
+// MergeFromReader parses src and merges each of its documents into the node p addresses in dst.
 func (p *Path) MergeFromReader(dst *ast.File, src io.Reader) error {
 	var buf bytes.Buffer
 	if _, err := io.Copy(&buf, src); err != nil {
@@ -91,7 +90,7 @@ func (p *Path) MergeFromReader(dst *ast.File, src io.Reader) error {
 	return nil
 }
 
-// MergeFromFile merge ast.File into ast.File.
+// MergeFromFile merges each document of src into the node p addresses in dst, with [ast.Merge].
 func (p *Path) MergeFromFile(dst *ast.File, src *ast.File) error {
 	base, err := p.FilterFile(dst)
 	if err != nil {
@@ -105,7 +104,7 @@ func (p *Path) MergeFromFile(dst *ast.File, src *ast.File) error {
 	return nil
 }
 
-// MergeFromNode merge ast.Node into ast.File.
+// MergeFromNode merges src into the node p addresses in dst, with [ast.Merge].
 func (p *Path) MergeFromNode(dst *ast.File, src ast.Node) error {
 	base, err := p.FilterFile(dst)
 	if err != nil {
@@ -117,7 +116,7 @@ func (p *Path) MergeFromNode(dst *ast.File, src ast.Node) error {
 	return nil
 }
 
-// ReplaceWithReader replace ast.File with io.Reader.
+// ReplaceWithReader parses src and replaces the nodes p addresses in dst with it, as ReplaceWithFile does.
 func (p *Path) ReplaceWithReader(dst *ast.File, src io.Reader) error {
 	var buf bytes.Buffer
 	if _, err := io.Copy(&buf, src); err != nil {
@@ -133,7 +132,7 @@ func (p *Path) ReplaceWithReader(dst *ast.File, src io.Reader) error {
 	return nil
 }
 
-// ReplaceWithFile replace ast.File with ast.File.
+// ReplaceWithFile replaces the nodes p addresses in dst with each document of src in turn.
 func (p *Path) ReplaceWithFile(dst *ast.File, src *ast.File) error {
 	for _, doc := range src.Docs {
 		if err := p.ReplaceWithNode(dst, doc); err != nil {
@@ -146,7 +145,7 @@ func (p *Path) ReplaceWithFile(dst *ast.File, src *ast.File) error {
 // ReplaceWithNode replaces the nodes matched by the path in dst with node.
 func (p *Path) ReplaceWithNode(dst *ast.File, node ast.Node) error {
 	for _, doc := range dst.Docs {
-		// For simplicity, directives cannot be the target of operations
+		// A directive is no target: a path addresses the document body.
 		if doc.Body != nil && doc.Body.Type() == ast.DirectiveType {
 			continue
 		}
@@ -160,7 +159,7 @@ func (p *Path) ReplaceWithNode(dst *ast.File, node ast.Node) error {
 	return nil
 }
 
-// AnnotateSource add annotation to passed source ( see section 5.1 in README.md ).
+// AnnotateSource parses source and returns the lines around the node p addresses, with a caret under it.
 func (p *Path) AnnotateSource(source []byte, colored bool) ([]byte, error) {
 	file, err := parser.ParseBytes(source)
 	if err != nil {
@@ -173,7 +172,7 @@ func (p *Path) AnnotateSource(source []byte, colored bool) ([]byte, error) {
 	return []byte(excerpt.Source(nocopy.String(source), 1, node.GetToken(), colored)), nil
 }
 
-// errNotFound refuses a path that addresses no node of any document.
+// errNotFound returns [ErrNotFoundNode] for a path that addresses no node of any document.
 func (p *Path) errNotFound() error {
 	return fmt.Errorf("failed to find path ( %s ): %w", p.node, ErrNotFoundNode)
 }

@@ -5,42 +5,42 @@ package yamlpath
 
 import "strings"
 
-// PathBuilder represent builder for YAMLPath.
+// PathBuilder builds a Path one step at a time. The zero value is ready to use.
 type PathBuilder struct {
 	root *rootNode
 	node pathNode
 }
 
-// Root add '$' to current path.
+// Root adds '$', the document's root.
 func (b *PathBuilder) Root() *PathBuilder {
 	root := newRootNode()
 	return &PathBuilder{root: root, node: root}
 }
 
-// IndexAll add '[*]' to current path.
+// IndexAll adds '[*]', every entry of a sequence.
 func (b *PathBuilder) IndexAll() *PathBuilder {
 	b.node = b.node.chain(newIndexAllNode())
 	return b
 }
 
-// Recursive add '..selector' to current path.
+// Recursive adds '..selector', the entries named selector at any depth.
 func (b *PathBuilder) Recursive(selector string) *PathBuilder {
 	b.node = b.node.chain(newRecursiveNode(selector))
 	return b
 }
 
-// Child add '.name' to current path.
+// Child adds '.name', the entry of a mapping called name. A name holding '.' or '*' is quoted.
 func (b *PathBuilder) Child(name string) *PathBuilder {
 	return b.child(b.normalizeSelectorName(name))
 }
 
-// Index add '[idx]' to current path.
+// Index adds '[idx]', the idx'th entry of a sequence.
 func (b *PathBuilder) Index(idx uint) *PathBuilder {
 	b.node = b.node.chain(newIndexNode(idx))
 	return b
 }
 
-// Build build YAMLPath.
+// Build returns the path built so far.
 func (b *PathBuilder) Build() *Path {
 	return &Path{node: b.root}
 }
@@ -61,7 +61,7 @@ func (b *PathBuilder) enclosedSingleQuote(name string) bool {
 
 func (b *PathBuilder) normalizeSelectorName(name string) string {
 	if b.enclosedSingleQuote(name) {
-		// already escaped name
+		// The name is quoted already.
 		return name
 	}
 	if b.containsReservedPathCharacters(name) {

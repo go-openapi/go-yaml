@@ -13,7 +13,7 @@ import (
 
 // readByWalking reads the first node of src that p addresses, without building the document's tree.
 //
-// It answers as FilterFile does on the parsed file, refusals included, and holds only the nodes it returns:
+// It returns what FilterFile returns for the parsed file, errors included, and holds only the nodes it returns:
 // every branch off the path is skipped, and a match is kept whole with [parser.ErrKeepNode] and cloned.
 func (p *Path) readByWalking(src []byte) (ast.Node, error) {
 	w := &pathWalker{steps: p.steps()}
@@ -94,7 +94,7 @@ type walkFrame struct {
 	name  string
 	index uint
 
-	// results holds what each entry of a "[*]" sequence answered, the nil answers left out.
+	// results holds what each entry of a "[*]" sequence returned, without the nil results.
 	results []ast.Node
 
 	// rec is the recursive step's collection, shared by every frame below the node it started on.
@@ -123,7 +123,7 @@ type pathWalker struct {
 
 func (w *pathWalker) Enter(node ast.Node, at parser.Cursor) error {
 	if at.IsRoot() {
-		// A document starts, and the last one answered nil: the walk stops at the first answer.
+		// A document starts, and the last one returned nil: the walk stops at the first answer.
 		w.frames = w.frames[:0]
 		if _, isDirective := node.(*ast.DirectiveNode); isDirective {
 			return parser.ErrSkipNode
@@ -255,7 +255,7 @@ func (w *pathWalker) descend(node ast.Node, rec *recursiveMatch, root bool) erro
 		w.frames = append(w.frames, walkFrame{kind: frameRecursive, rec: rec, root: root})
 	default:
 		if root {
-			// A recursive step on anything else finds nothing, and answers an empty sequence all the same.
+			// A recursive step on anything else finds nothing, and returns an empty sequence all the same.
 			if err := w.deliver(rec.answer()); err != nil {
 				return err
 			}
@@ -291,7 +291,7 @@ func (w *pathWalker) read(node ast.Node, step int) error {
 			return errNotASequence(node.Type())
 		}
 		if step+1 == len(w.steps) {
-			// "[*]" last answers the sequence itself.
+			// "[*]" as the last step returns the sequence itself.
 			w.frames = append(w.frames, walkFrame{kind: frameKeep})
 
 			return parser.ErrKeepNode
@@ -304,15 +304,15 @@ func (w *pathWalker) read(node ast.Node, step int) error {
 	return nil
 }
 
-// deliver hands what a node answered to the node that read it, or ends the walk with the first answer.
+// deliver hands a node's answer to the node that read it, or ends the walk with the first answer.
 func (w *pathWalker) deliver(answer ast.Node) error {
 	return w.deliverTo(len(w.frames)-1, answer)
 }
 
 // deliverTo hands answer to the frame at index at, and on up where that settles the frame's own answer.
 //
-// A ".name" answers with its first match and a "[k]" with entry k, so neither waits for the rest of its node:
-// the answer goes up at once, and a walk whose first document answers stops there.
+// A ".name" step returns its first match and a "[k]" step entry k, so neither waits for the rest of its node:
+// the result goes up at once, and a walk stops at the first document that returns one.
 func (w *pathWalker) deliverTo(at int, answer ast.Node) error {
 	if at < 0 {
 		if answer == nil {

@@ -9,18 +9,8 @@ import (
 	"strconv"
 )
 
-// PathString create Path from string
-//
-// YAMLPath rule
-// $     : the root object/element
-// .     : child operator
-// ..    : recursive descent
-// [num] : object/element of array by number
-// [*]   : all objects/elements for array.
-//
-// If you want to use reserved characters such as `.` and `*` as a key name,
-// enclose them in single quotation as follows ( $.foo.'bar.baz-*'.hoge ).
-// If you want to use a single quote with reserved characters, escape it with `\` ( $.foo.'bar.baz\'s value'.hoge ).
+// PathString parses s as a YAML Path, or returns [ErrInvalidPathString]. See
+// [github.com/go-openapi/go-yaml/expressions.PathString] for the grammar.
 func PathString(s string) (*Path, error) {
 	buf := s
 	length := len(buf)
@@ -94,7 +84,7 @@ func parsePathDot(b *PathBuilder, buf string, cursor int) (*PathBuilder, string,
 	cursor++ // skip . character
 	start := cursor
 
-	// if started single quote, looking for end single quote char
+	// A name opening with a single quote runs to the closing one.
 	if cursor < length && buf[cursor] == '\'' {
 		return parseQuotedKey(b, buf, cursor)
 	}

@@ -10,6 +10,8 @@ import (
 	"github.com/go-openapi/go-yaml/ast"
 )
 
+// pathNode is one step of a path. filter returns the node the step and the steps after it address, and
+// replace puts target there.
 type pathNode interface {
 	fmt.Stringer
 	chain(node pathNode) pathNode
@@ -17,15 +19,18 @@ type pathNode interface {
 	replace(node ast.Node, target ast.Node) error
 }
 
+// basePathNode holds the step after this one, nil for the last.
 type basePathNode struct {
 	child pathNode
 }
 
+// chain sets node as the step after this one, and returns it.
 func (n *basePathNode) chain(node pathNode) pathNode {
 	n.child = node
 	return node
 }
 
+// rootNode is "$", the first step of every path.
 type rootNode struct {
 	*basePathNode
 }
@@ -63,6 +68,7 @@ func (n *rootNode) replace(node ast.Node, target ast.Node) error {
 	return nil
 }
 
+// selectorNode is ".name": the value of the entry called name, in a mapping.
 type selectorNode struct {
 	*basePathNode
 
@@ -124,7 +130,7 @@ func (n *selectorNode) filter(node ast.Node) (ast.Node, error) {
 	return nil, nil
 }
 
-// selectorKey is the text a key's token is compared to a selector by, with its quotes taken off.
+// selectorKey returns the text of a key's token without its quotes, which the selector is compared to.
 func selectorKey(key string) (string, error) {
 	if len(key) == 0 {
 		return key, nil
@@ -141,8 +147,8 @@ func selectorKey(key string) (string, error) {
 	return key, nil
 }
 
-// errNotAMapping, errNotASequence and errOutOfRange are the refusals a step gives the node it cannot read.
-// The tree filter and the walk share them.
+// errNotAMapping, errNotASequence and errOutOfRange return the [ErrInvalidQuery] a step gives a node it cannot
+// read. The tree filter, the replace methods and the walk share them.
 func errNotAMapping(got ast.NodeType) error {
 	return fmt.Errorf("expected node type is map or map value. but got %s: %w", got, ErrInvalidQuery)
 }
@@ -155,7 +161,7 @@ func errOutOfRange(index uint, length int) error {
 	return fmt.Errorf("expected index is %d. but got sequences has %d items: %w", index, length, ErrInvalidQuery)
 }
 
-// name is the key the selector matches, without the quotes a reserved character needs.
+// name returns the key the selector matches, without the quotes a reserved character needs.
 func (n *selectorNode) name() string {
 	selector := n.selector
 	if len(selector) > 1 && selector[0] == '\'' && selector[len(selector)-1] == '\'' {
@@ -200,6 +206,7 @@ func (n *selectorNode) replace(node ast.Node, target ast.Node) error {
 	return nil
 }
 
+// indexNode is "[n]": the n'th entry of a sequence, counting from 0.
 type indexNode struct {
 	*basePathNode
 
@@ -260,6 +267,7 @@ func (n *indexNode) replace(node ast.Node, target ast.Node) error {
 	return nil
 }
 
+// indexAllNode is "[*]": every entry of a sequence.
 type indexAllNode struct {
 	*basePathNode
 }
@@ -325,6 +333,7 @@ func (n *indexAllNode) replace(node ast.Node, target ast.Node) error {
 	return nil
 }
 
+// recursiveNode is "..name": the value of every entry called name, at any depth, gathered in a sequence.
 type recursiveNode struct {
 	*basePathNode
 
