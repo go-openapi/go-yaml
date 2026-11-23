@@ -701,9 +701,6 @@ func (d *Decoder) eachMergeNode(node ast.Node, fn func(one ast.Node, inSequence 
 		return fn(node, false)
 	}
 	for _, one := range seq.Values {
-		if err := d.refuseMergeTags(one); err != nil {
-			return err
-		}
 		if err := fn(one, true); err != nil {
 			return err
 		}
@@ -738,39 +735,71 @@ func (d *Decoder) mergeSequence(node ast.Node) *ast.SequenceNode {
 	}
 }
 
-// refuseMergeTags returns an error for a tag on a node named by a "<<", or on an element of a sequence it names,
-// when the tag does not fit the node, as taggedValue returns for the node decoded as a value. It reads the tags
-// through anchors and aliases.
+// refuseMergeTags returns an error for a tag on a node named by a "<<". See mergeTagError.
+func (d *Decoder) refuseMergeTags(node ast.Node) error {
+	return mergeTagError(node, func(n *ast.AliasNode) ast.Node {
+		target, _ := d.aliasTarget(n)
+
+		return target
+	})
+}
+
+// mergeTagError returns an error for a tag on value, the node named by a "<<", or on an element of the sequence it
+// names, when the tag does not fit the node, as taggedValue returns for the node decoded as a value. It reads the
+// tags through anchors, and through aliases by target, which returns the node an alias names or nil.
 //
 // A tag naming another kind than its node, such as "!!seq" on a mapping, is an error. So is an "!!omap" that is
 // not a sequence of one-entry mappings with no key repeated across them. A valid "!!omap" merges as the sequence of
 // mappings it is written as.
-func (d *Decoder) refuseMergeTags(node ast.Node) error {
-	for {
+//
+// The decoder and the JSON tokens both call it, so the readers agree on which tags a merge accepts.
+func mergeTagError(value ast.Node, target func(*ast.AliasNode) ast.Node) error {
+	core, err := underMergeTags(value, target)
+	if err != nil {
+		return err
+	}
+	if seq, isSeq := core.(*ast.SequenceNode); isSeq {
+		for _, one := range seq.Values {
+			if _, err := underMergeTags(one, target); err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
+}
+
+// underMergeTags returns the node under the anchors, aliases and tags written on node, or an error for the first
+// tag that does not fit. See mergeTagError. It returns nil for an alias that names nothing.
+func underMergeTags(node ast.Node, target func(*ast.AliasNode) ast.Node) (ast.Node, error) {
+	for range maxMergeWrappers {
 		switch n := node.(type) {
 		case *ast.AnchorNode:
 			node = n.Value
 		case *ast.AliasNode:
-			target, _ := d.aliasTarget(n)
-			if target == nil {
-				// getMapNode returns the unknown anchor error.
-				return nil
-			}
-			node = target
+			node = target(n)
 		case *ast.TagNode:
 			res := n.Resolve()
 			if res.Verdict == ast.TagKindMismatch {
-				return yamlerrors.NewSyntax(fmt.Sprintf("%s does not support this kind of node", res.Tag), n.GetToken())
+				return nil, yamlerrors.NewSyntax(fmt.Sprintf("%s does not support this kind of node", res.Tag), n.GetToken())
 			}
 			if res.Tag == token.OrderedMapTag {
-				return refuseBadOrderedMap(n)
+				if err := refuseBadOrderedMap(n); err != nil {
+					return nil, err
+				}
 			}
 			node = n.Value
 		default:
-			return nil
+			return node, nil
 		}
 	}
+
+	return node, nil
 }
+
+// maxMergeWrappers bounds the aliases underMergeTags follows. An alias naming itself, through an anchor around it,
+// would loop otherwise. The parser rejects such a document, so the bound only guards the loop.
+const maxMergeWrappers = 64
 
 // refuseBadOrderedMap returns an error for n, tagged "!!omap", when it is not an ordered map.
 func refuseBadOrderedMap(n *ast.TagNode) error {

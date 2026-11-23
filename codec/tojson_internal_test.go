@@ -219,3 +219,87 @@ func aTaggedMergeKeyCases() iter.Seq[aTaggedMergeKeyCase] {
 		{src: "&x <<: {a: 1}\n", want: `{"<<":{"a":1}}`, want11: `{"a":1}`},
 	})
 }
+
+// TestAMergeValueUnderAPropertyMergesOnEveryPath holds the readers to one answer about a "<<" whose value is not a
+// mapping or a sequence written in place: an alias, or a node under a tag or an anchor.
+//
+// ToJSON and its tokens rejected "<<: !!map {a: 1}" and "<<: &x {a: 1}" with "tag (anchor) was used where mapping is
+// expected", merged nothing for an alias to a sequence of mappings, and accepted an alias to a scalar. jsonTokener
+// now reads such a value whole and merges it from the tree, with the tag checks the decoder applies.
+func TestAMergeValueUnderAPropertyMergesOnEveryPath(t *testing.T) {
+	const v11 = "%YAML 1.1\n---\n"
+
+	for tc := range aMergeValueUnderAPropertyCases() {
+		doc := []byte(v11 + tc.src)
+
+		js, err := ToJSON(doc)
+		require.NoErrorf(t, err, "ToJSON: %q", tc.src)
+		assert.JSONEqf(t, tc.want, string(js), "ToJSON: %q", tc.src)
+
+		toks, err := collectJSONTokens(doc)
+		require.NoErrorf(t, err, "tokens: %q", tc.src)
+		assert.JSONEqf(t, tc.want, string(rebuildJSON(toks)), "tokens: %q", tc.src)
+
+		for path := range walkAndOrderedMapPaths() {
+			var v any
+			require.NoErrorf(t, Unmarshal(doc, &v, path.opts...), "%s: %q", path.name, tc.src)
+			got, err := Marshal(v, JSON())
+			require.NoError(t, err)
+			assert.JSONEqf(t, tc.want, string(got), "%s: %q", path.name, tc.src)
+		}
+	}
+
+	t.Run("and the readers reject the same values at the same place", func(t *testing.T) {
+		for tc := range aMergeValueUnderAPropertyRefusedCases() {
+			doc := []byte(v11 + tc.src)
+
+			var walked any
+			walkErr := Unmarshal(doc, &walked)
+			var tree any
+			treeErr := Unmarshal(doc, &tree, UseOrderedMap(), treeOnly())
+			_, jsonErr := ToJSON(doc)
+			_, tokenErr := collectJSONTokens(doc)
+
+			for name, err := range map[string]error{"walk": walkErr, "tree": treeErr, "ToJSON": jsonErr, "tokens": tokenErr} {
+				if assert.Errorf(t, err, "%s: %q", name, tc.src) {
+					assert.Containsf(t, err.Error(), tc.want, "%s: %q", name, tc.src)
+				}
+			}
+		}
+	})
+}
+
+func aMergeValueUnderAPropertyCases() iter.Seq[aMergeTakesOnlyMappingsOnEveryPathCase] {
+	return slices.Values([]aMergeTakesOnlyMappingsOnEveryPathCase{
+		{src: "k: {<<: !!map {a: 1}, b: 2}\n", want: `{"k":{"a":1,"b":2}}`},
+		{src: "k:\n  <<: !!map\n    a: 1\n  b: 2\n", want: `{"k":{"a":1,"b":2}}`},
+		{src: "k: {<<: &x {a: 1}, b: 2}\nm: *x\n", want: `{"k":{"a":1,"b":2},"m":{"a":1}}`},
+		{src: "k: {<<: &s [{a: 1}], b: 2}\nm: *s\n", want: `{"k":{"a":1,"b":2},"m":[{"a":1}]}`},
+		{src: "k: {<<: [!!map {a: 1}, &v {c: 1}], b: 2}\n", want: `{"k":{"a":1,"b":2,"c":1}}`},
+		{src: "k: {<<: !!seq [{a: 1}, {a: 2, c: 3}], b: 2}\n", want: `{"k":{"a":1,"b":2,"c":3}}`},
+		{src: "k: {<<: !!omap [{a: 1}, {b: 2}], b: 3}\n", want: `{"k":{"a":1,"b":3}}`},
+		{src: "a: &a [{x: 1}, {v: 2}]\nk: {<<: *a}\n", want: `{"a":[{"x":1},{"v":2}],"k":{"x":1,"v":2}}`},
+		{src: "a: &a !!map {x: 1}\nk: {<<: *a, v: 2}\n", want: `{"a":{"x":1},"k":{"x":1,"v":2}}`},
+		// The walk never hands over a merge nested in a kept value, so the tree path reads it alone.
+		{src: "k: {<<: !!map {x: 1, <<: {v: 2}}, b: 3}\n", want: `{"k":{"x":1,"v":2,"b":3}}`},
+	})
+}
+
+func aMergeValueUnderAPropertyRefusedCases() iter.Seq[aMergeTakesOnlyMappingsOnEveryPathCase] {
+	return slices.Values([]aMergeTakesOnlyMappingsOnEveryPathCase{
+		{src: "k: {<<: !!seq {a: 1}}\n", want: "[3:9] !!seq does not support this kind of node"},
+		{src: "k: {<<: !!omap {a: 1}}\n", want: "[3:9] !!omap does not support this kind of node"},
+		{src: "k: {<<: !!omap [{a: 1, b: 2}]}\n", want: "[3:16] !!omap names a sequence of one-entry mappings"},
+		{src: "k: {<<: !!omap [{a: 1}, {a: 2}]}\n", want: `[3:26] mapping key "a" already defined at [3:18]`},
+		{src: "k: {<<: [!!omap [{a: 1}]]}\n", want: "[3:17] sequence was used where mapping is expected"},
+		{src: "k: {<<: [!!seq {a: 1}]}\n", want: "[3:10] !!seq does not support this kind of node"},
+		{src: "k: {<<: &z 1}\n", want: "[3:12] int was used where mapping is expected"},
+		{src: "k: {<<: !!int 1}\n", want: "[3:15] int was used where mapping is expected"},
+		{src: "a: &a 1\nk: {<<: *a}\n", want: "[3:7] int was used where mapping is expected"},
+		{src: "a: &a [{x: 1}]\nk: {<<: [*a]}\n", want: "[3:7] sequence was used where mapping is expected"},
+		{src: "a: &a !!seq {x: 1}\nk: {<<: *a}\n", want: "[3:7] !!seq does not support this kind of node"},
+		{src: "a: &a {x: 1, <<: !!seq {v: 2}}\nk: {<<: *a}\n", want: "[3:18] !!seq does not support this kind of node"},
+		{src: "k: {<<: !!map {x: 1, <<: !!seq {v: 2}}}\n", want: "[3:26] !!seq does not support this kind of node"},
+		{src: "k: {<<: !!map {x: 1, <<: &z 1}}\n", want: "[3:29] int was used where mapping is expected"},
+	})
+}

@@ -40,7 +40,10 @@ type valueBuilder struct {
 	stack []buildFrame
 	// named holds what each anchor of the document named, for a later alias.
 	// Enter empties it at each document, because an anchor belongs to one document.
-	named map[string]any
+	// placed holds, by anchor, the type and a copy of the token of the node it names, for the error of a "<<"
+	// naming it through an alias. The tree names that node, and the walk has recycled it by then.
+	named  map[string]any
+	placed map[string]nodePlace
 	// declared holds the anchors passed by parser.WithAnchors, which the walk
 	// never passes over. declaredValues holds the value built for each one the
 	// first time an alias named it. Both serve every document of the stream.
@@ -132,6 +135,25 @@ type buildFrame struct {
 	// mergeKey records that the property stands as a key on a "<<" and names no entry. See markMerge.
 	mergeKey bool
 	got      bool
+	// place records, for an anchor, the node under it, from that node's Enter. See valueBuilder.placed.
+	place nodePlace
+}
+
+// nodePlace records the type and a copy of the token of a node, once the walk has recycled the node.
+type nodePlace struct {
+	typ ast.NodeType
+	tk  *token.Token
+}
+
+// placeOf returns the place of node, the token copied.
+func placeOf(node ast.Node) nodePlace {
+	var tk *token.Token
+	if t := node.GetToken(); t != nil {
+		c := *t
+		tk = &c
+	}
+
+	return nodePlace{typ: node.Type(), tk: tk}
 }
 
 // Enter is called before anything a node holds.
@@ -141,7 +163,13 @@ func (b *valueBuilder) Enter(node ast.Node, at parser.Cursor) error {
 			// A directive opens a document of its own and holds no value.
 			return parser.ErrSkipNode
 		}
-		b.named = nil
+		b.named, b.placed = nil, nil
+	}
+
+	switch node.(type) {
+	case *ast.AnchorNode, *ast.TagNode, *ast.MappingKeyNode, *ast.CommentGroupNode:
+	default:
+		b.placeAnchors(node)
 	}
 
 	if key, isKey := node.(ast.MapKeyNode); isKey && key.IsMergeKey() {
@@ -240,6 +268,16 @@ func (b *valueBuilder) Leave(node ast.Node, _ parser.Closing) error {
 	return b.err
 }
 
+// placeAnchors records node on the anchors standing around it, innermost first, that have recorded no node yet.
+func (b *valueBuilder) placeAnchors(node ast.Node) {
+	for i := len(b.stack) - 1; i >= 0 && b.stack[i].kind == frameProperty; i-- {
+		frame := &b.stack[i]
+		if _, anchor := frame.node.(*ast.AnchorNode); anchor && frame.place.typ == ast.UnknownNodeType {
+			frame.place = placeOf(node)
+		}
+	}
+}
+
 // markMerge records that a "<<" opens the next entry of the mapping being built.
 //
 // The "<<" may stand under an anchor written as the key, "&a <<: *b". The walk passes the anchor before the node
@@ -281,11 +319,19 @@ func (b *valueBuilder) closeProperty(frame buildFrame) (any, error) {
 		if n := len(b.open); n > 0 {
 			b.open = b.open[:n-1]
 		}
+		if frame.place.typ == ast.UnknownNodeType && n.Value != nil {
+			// The walk passed nothing under the anchor, and the anchor's node is still whole here.
+			frame.place = placeOf(underProperties(n.Value))
+		}
 		if name := astutils.AnchorName(n.Name); name != "" {
 			if b.named == nil {
 				b.named = map[string]any{}
 			}
 			b.named[name] = value
+			if b.placed == nil {
+				b.placed = map[string]nodePlace{}
+			}
+			b.placed[name] = frame.place
 		}
 
 		return value, nil
@@ -293,6 +339,10 @@ func (b *valueBuilder) closeProperty(frame buildFrame) (any, error) {
 		tagged, err := b.taggedWalkValue(n, value)
 		if err != nil {
 			return nil, err
+		}
+		if !frame.got && n.Value != nil {
+			// The walk passed nothing under the tag, so the anchors around it have recorded no node.
+			b.placeAnchors(underProperties(n.Value))
 		}
 		if anchor, anchored := n.Value.(*ast.AnchorNode); anchored {
 			// The anchor closed before the tag was applied, and recorded its
@@ -507,8 +557,7 @@ func (b *valueBuilder) deliver(v any, node ast.Node, key bool) {
 			// not a null, and not a sequence inside the sequence. mergingValue
 			// sets the flag only on a sequence held by the merging mapping, so
 			// that mapping stands just below it.
-			under := underProperties(node)
-			b.stack[n-2].refuseMerge(yamlerrors.NewUnexpectedNodeType(under.Type(), ast.MappingType, under.GetToken()))
+			b.stack[n-2].refuseMerge(b.notAMapping(node))
 
 			return
 		}
@@ -738,7 +787,7 @@ func (b *valueBuilder) merge(top *buildFrame, v any, node ast.Node) {
 				// The walk reaches this case through an anchor or an alias, where
 				// the element's own node is not at hand. deliver checked a sequence
 				// written in place element by element as it was built.
-				top.refuseMerge(yamlerrors.NewUnexpectedNodeType(node.Type(), ast.MappingType, node.GetToken()))
+				top.refuseMerge(b.notAMapping(node))
 
 				return
 			}
@@ -747,7 +796,7 @@ func (b *valueBuilder) merge(top *buildFrame, v any, node ast.Node) {
 	default:
 		// "<<" takes a mapping or a sequence of them, and nothing else. A null
 		// is no mapping: merge rejects "<<:" with no value, as the tree does.
-		top.refuseMerge(yamlerrors.NewUnexpectedNodeType(node.Type(), ast.MappingType, node.GetToken()))
+		top.refuseMerge(b.notAMapping(node))
 	}
 }
 
@@ -761,6 +810,19 @@ func (b *valueBuilder) bringItem(top *buildFrame, item MapItem) {
 	if !top.holds(item.Key) {
 		top.bring(item.Key, item.Value)
 	}
+}
+
+// notAMapping returns the error for node, written where a "<<" takes a mapping. It names the node under the tags
+// and anchors, and for an alias the node its anchor names, as getMapNode does on the tree.
+func (b *valueBuilder) notAMapping(node ast.Node) error {
+	under := underProperties(node)
+	if alias, isAlias := under.(*ast.AliasNode); isAlias {
+		if place, known := b.placed[astutils.AnchorName(alias.Value)]; known && place.typ != ast.UnknownNodeType {
+			return yamlerrors.NewUnexpectedNodeType(place.typ, ast.MappingType, place.tk)
+		}
+	}
+
+	return yamlerrors.NewUnexpectedNodeType(under.Type(), ast.MappingType, under.GetToken())
 }
 
 // underProperties returns the node under the tags and anchors written on node, as getMapNode reads it on the tree.

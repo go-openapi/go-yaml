@@ -293,6 +293,10 @@ type jsonTokener struct {
 	// peek indexes the tag in tags whose first token decides whether it holds a scalar or a collection.
 	// It is -1 when no tag waits on that token.
 	peek int
+	// keptMerge records that a "<<" value under a tag or an anchor is being read whole, at keptMergeDepth.
+	// Its Leave hands it to mergeFromTree. See collectMerge.
+	keptMerge      bool
+	keptMergeDepth int
 	// suppress counts the open wrappers whose content is not handed over on its own. A key gives one token
 	// whatever it holds. A tag naming a scalar type sets its node's value whatever the node wrote.
 	suppress int
@@ -429,6 +433,19 @@ type tokenMapFrame struct {
 
 func (t *jsonTokener) Leave(node ast.Node, at parser.Closing) error {
 	if t.stopped {
+		return t.halted()
+	}
+
+	if t.keptMerge && at.Depth() == t.keptMergeDepth {
+		// The walk passes nothing inside a kept node, so this Leave closes the "<<" value collectMerge kept.
+		t.keptMerge = false
+		frame := t.frame()
+		inSeq := frame.mergeSeq >= 0
+		if !inSeq {
+			frame.mergeValue = false
+		}
+		t.mergeFromTree(node, inSeq, astutils.NodeAt(node))
+
 		return t.halted()
 	}
 
@@ -1125,12 +1142,25 @@ func (t *jsonTokener) treeEntries(n *ast.MappingNode) ([]treeEntry, bool) {
 	}
 
 	for _, entry := range n.Values {
-		switch merge := ast.MergeOf(entry); merge.Verdict {
+		merge := ast.MergeOf(entry)
+		if merge.Verdict != ast.NotAMerge {
+			// As collectMerge does for a "<<" the walk hands over.
+			if err := mergeTagError(entry.Value, func(a *ast.AliasNode) ast.Node { return a.Target }); err != nil {
+				t.fail(err)
+
+				return nil, false
+			}
+		}
+		switch merge.Verdict {
 		case ast.Folds:
 			sources = append(sources, merge.Sources...)
 		case ast.Refused:
-			t.fail(yamlerrors.NewUnexpectedNodeType(
-				merge.Offender.Type(), ast.MappingType, merge.Offender.GetToken()))
+			// The tree names the node under the anchors, tags and aliases: "<<: *a" where a is "1" fails at the 1.
+			offender := ast.Unwrap(merge.Offender)
+			if offender == nil {
+				offender = merge.Offender
+			}
+			t.fail(yamlerrors.NewUnexpectedNodeType(offender.Type(), ast.MappingType, offender.GetToken()))
 
 			return nil, false
 		default:
@@ -1433,23 +1463,19 @@ func (t *jsonTokener) collectMerge(node ast.Node, at parser.Cursor) error {
 
 		return nil
 	case *ast.AliasNode:
-		target, err := t.aliasTarget(n)
-		if err != nil {
-			t.fail(err)
-
-			return t.halted()
-		}
-		if frame.mergeSeq < 0 {
+		inSeq := frame.mergeSeq >= 0
+		if !inSeq {
 			frame.mergeValue = false
 		}
-		t.collectRun(func() {
-			name := astutils.AnchorName(n.Value)
-			t.expanding = append(t.expanding, name)
-			t.emitTree(target, astutils.NodeAt(n))
-			t.expanding = t.expanding[:len(t.expanding)-1]
-		})
+		t.mergeFromTree(n, inSeq, astutils.NodeAt(n))
 
 		return t.skipped()
+	case *ast.AnchorNode, *ast.TagNode:
+		// "<<: &a {x: 1}" and "<<: !!map {x: 1}": the walk hands the property over before the node under it, so
+		// the value is read whole and merged at its Leave, from the tree.
+		t.keptMerge, t.keptMergeDepth = true, at.Depth()
+
+		return parser.ErrKeepNode
 	case *ast.MappingNode:
 		// "<<: {a: 1}" merges a mapping written in place. The walk hands its
 		// entries over one at a time, and the tree holds none of them. The
@@ -1468,6 +1494,70 @@ func (t *jsonTokener) collectMerge(node ast.Node, at parser.Cursor) error {
 		t.failMerge(frame, yamlerrors.NewUnexpectedNodeType(node.Type(), ast.MappingType, node.GetToken()))
 
 		return t.halted()
+	}
+}
+
+// mergeFromTree collects the mappings that node, the value of a "<<" or an element of the sequence it names, brings
+// in, reading node from the tree: an alias, or a node under a tag or an anchor that collectMerge kept whole.
+// inSeq marks an element of a merge sequence, which must be a mapping.
+//
+// It validates the tags with mergeTagError, as the decoder does, and names a node that is not a mapping by its own
+// type and position, as the tree does: "<<: *a" where a is "1" fails at the 1.
+func (t *jsonTokener) mergeFromTree(node ast.Node, inSeq bool, at token.Position) {
+	frame := t.frame()
+	if err := mergeTagError(node, func(n *ast.AliasNode) ast.Node { return n.Target }); err != nil {
+		t.failMerge(frame, err)
+
+		return
+	}
+
+	held := len(t.expanding)
+	defer func() { t.expanding = t.expanding[:held] }()
+	for {
+		switch n := node.(type) {
+		case *ast.AnchorNode:
+			node = n.Value
+
+			continue
+		case *ast.TagNode:
+			node = n.Value
+
+			continue
+		case *ast.AliasNode:
+			target, err := t.aliasTarget(n)
+			if err != nil {
+				t.fail(err)
+
+				return
+			}
+			t.expanding = append(t.expanding, astutils.AnchorName(n.Value))
+			node = target
+
+			continue
+		}
+
+		break
+	}
+
+	switch n := node.(type) {
+	case *ast.MappingNode:
+		t.collectRun(func() { t.emitTreeMapping(n, at) })
+	case *ast.SequenceNode:
+		if inSeq {
+			t.failMerge(frame, yamlerrors.NewUnexpectedNodeType(n.Type(), ast.MappingType, n.GetToken()))
+
+			return
+		}
+		for _, one := range n.Values {
+			t.mergeFromTree(one, true, at)
+			if t.stopped {
+				return
+			}
+		}
+	case nil:
+		t.failMerge(frame, yamlerrors.NewUnexpectedNodeType(ast.NullType, ast.MappingType, nil))
+	default:
+		t.failMerge(frame, yamlerrors.NewUnexpectedNodeType(n.Type(), ast.MappingType, n.GetToken()))
 	}
 }
 
