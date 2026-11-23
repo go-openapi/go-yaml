@@ -3,6 +3,8 @@
 
 package ast
 
+import "fmt"
+
 // Verdict says what a mapping entry whose key is "<<" means.
 //
 // The three answers are what a reader has to tell apart, and every reader has
@@ -109,4 +111,45 @@ func mergeSources(value Node) (sources []MapNode, offender Node) {
 	default:
 		return nil, value
 	}
+}
+
+type InvalidMergeTypeError struct {
+	dst Node
+	src Node
+}
+
+func (e *InvalidMergeTypeError) Error() string {
+	return fmt.Sprintf("cannot merge %s into %s", e.src.Type(), e.dst.Type())
+}
+
+// Merge merge document, map, sequence node.
+func Merge(dst Node, src Node) error {
+	if doc, ok := src.(*DocumentNode); ok {
+		src = doc.Body
+	}
+	err := &InvalidMergeTypeError{dst: dst, src: src}
+	switch dst.Type() {
+	case DocumentType:
+		node, _ := dst.(*DocumentNode)
+		return Merge(node.Body, src)
+	case MappingType:
+		node, _ := dst.(*MappingNode)
+		target, ok := src.(*MappingNode)
+		if !ok {
+			return err
+		}
+		node.Merge(target)
+		return nil
+	case SequenceType:
+		node, _ := dst.(*SequenceNode)
+		target, ok := src.(*SequenceNode)
+		if !ok {
+			return err
+		}
+		node.Merge(target)
+		return nil
+	default:
+		// nothing to do
+	}
+	return err
 }

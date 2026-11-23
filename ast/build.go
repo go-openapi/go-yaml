@@ -4,7 +4,9 @@
 package ast
 
 import (
+	"math"
 	"strconv"
+	"strings"
 
 	"github.com/go-openapi/go-yaml/token"
 )
@@ -47,4 +49,186 @@ func Seq(values ...Node) *SequenceNode {
 	seq.Values = append(seq.Values, values...)
 
 	return seq
+}
+
+// Null create node for null value.
+func Null(tk *token.Token) *NullNode {
+	return &NullNode{
+		Token: tk,
+	}
+}
+
+// Bool create node for boolean value.
+func Bool(tk *token.Token) *BoolNode {
+	b, _ := token.ParseBool(tk.Value)
+
+	return &BoolNode{
+		Token: tk,
+		Value: b,
+	}
+}
+
+// Integer create node for integer value.
+func Integer(tk *token.Token) *IntegerNode {
+	return &IntegerNode{
+		Token: tk,
+	}
+}
+
+// Float create node for float value.
+func Float(tk *token.Token) *FloatNode {
+	return &FloatNode{
+		Token: tk,
+	}
+}
+
+// Infinity create node for .inf or -.inf value.
+//
+// The 1.2 core schema's float production is `[-+]? ( \.inf | \.Inf | \.INF )`,
+// so a "+" spells the same value the bare form does. Reading the sign rather
+// than matching all nine spellings keeps this in step with the scanner's
+// reservedInfKeywords, which is where they are listed.
+func Infinity(tk *token.Token) *InfinityNode {
+	node := &InfinityNode{
+		Token: tk,
+	}
+	if tk.Type != token.InfinityType {
+		return node
+	}
+	if strings.HasPrefix(tk.Value, "-") {
+		node.Value = math.Inf(-1)
+
+		return node
+	}
+	node.Value = math.Inf(0)
+
+	return node
+}
+
+// Nan create node for .nan value.
+func Nan(tk *token.Token) *NanNode {
+	return &NanNode{
+		Token: tk,
+	}
+}
+
+// String create node for string value.
+func String(tk *token.Token) *StringNode {
+	return &StringNode{
+		Token: tk,
+		Value: tk.Value,
+	}
+}
+
+// Comment create node for comment.
+func Comment(tk *token.Token) *CommentNode {
+	return &CommentNode{
+		Token: tk,
+	}
+}
+
+func CommentGroup(comments []*token.Token) *CommentGroupNode {
+	nodes := make([]*CommentNode, 0, len(comments))
+	for _, comment := range comments {
+		nodes = append(nodes, Comment(comment))
+	}
+	return &CommentGroupNode{
+		Comments: nodes,
+	}
+}
+
+// MergeKey create node for merge key ( << ).
+func MergeKey(tk *token.Token) *MergeKeyNode {
+	return &MergeKeyNode{
+		Token: tk,
+	}
+}
+
+// Mapping create node for map.
+func Mapping(tk *token.Token, isFlowStyle bool, values ...*MappingValueNode) *MappingNode {
+	node := &MappingNode{
+		Start:       tk,
+		IsFlowStyle: isFlowStyle,
+		Values:      []*MappingValueNode{},
+	}
+	node.Values = append(node.Values, values...)
+	return node
+}
+
+// MappingValue create node for mapping value.
+func MappingValue(tk *token.Token, key MapKeyNode, value Node) *MappingValueNode {
+	return &MappingValueNode{
+		Start: tk,
+		Key:   key,
+		Value: value,
+	}
+}
+
+// MappingKey create node for map key ( '?' ).
+func MappingKey(tk *token.Token) *MappingKeyNode {
+	return &MappingKeyNode{
+		Start: tk,
+	}
+}
+
+// Sequence create node for sequence.
+func Sequence(tk *token.Token, isFlowStyle bool) *SequenceNode {
+	return &SequenceNode{
+		Start:       tk,
+		IsFlowStyle: isFlowStyle,
+		Values:      []Node{},
+	}
+}
+
+func Anchor(tk *token.Token) *AnchorNode {
+	return &AnchorNode{
+		Start: tk,
+	}
+}
+
+func Alias(tk *token.Token) *AliasNode {
+	return &AliasNode{
+		Start: tk,
+	}
+}
+
+func Document(tk *token.Token, body Node) *DocumentNode {
+	return &DocumentNode{
+		Start: tk,
+		Body:  body,
+	}
+}
+
+func Directive(tk *token.Token) *DirectiveNode {
+	return &DirectiveNode{
+		Start: tk,
+	}
+}
+
+func Literal(tk *token.Token) *LiteralNode {
+	return &LiteralNode{
+		Start: tk,
+	}
+}
+
+func Tag(tk *token.Token) *TagNode {
+	return &TagNode{
+		Start: tk,
+	}
+}
+
+// SequenceEntry creates SequenceEntryNode instance.
+func SequenceEntry(start *token.Token, value Node, headComment *CommentGroupNode) *SequenceEntryNode {
+	return &SequenceEntryNode{
+		HeadComment: headComment,
+		Start:       start,
+		Value:       value,
+	}
+}
+
+// SequenceMergeValue creates SequenceMergeValueNode instance.
+func SequenceMergeValue(values ...MapNode) *SequenceMergeValueNode {
+	return &SequenceMergeValueNode{
+		values: values,
+	}
 }
