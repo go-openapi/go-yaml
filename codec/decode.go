@@ -3181,20 +3181,11 @@ func (d *Decoder) canWalk(v reflect.Value) bool {
 		return false
 	}
 	if codecutils.HoldsAnything(dst) {
-		// UseStringKeys names every key by its text, as mapKeyNodeToValue
-		// does on the tree. valueBuilder keys a mapping by the resolved value of each key,
-		// so it would give "1: a" the key uint64(1) whatever the
-		// option is.
-		return !d.useStringKeys
+		return true
 	}
 
 	// A struct walks unless an option needs the tree.
 	if d.validator != nil || d.useJSONUnmarshaler {
-		return false
-	}
-	if d.useStringKeys {
-		// valueBuilder builds an "any" field, and keys a mapping by
-		// value whatever the option is, as for a bare "any" above.
 		return false
 	}
 	if !dst.CanSet() {

@@ -770,27 +770,54 @@ func aDeclaredAnchorTheWalkCannotReadGoesToTheTreeCases() iter.Seq[aDeclaredAnch
 	})
 }
 
-// TestUseStringKeysReachesAnAnyFieldOfAStruct holds the walk to the tree on an
-// "any" field under UseStringKeys: its mapping keys are the names of the keys,
-// so "1: x" is "1" and two keys of one name are refused. valueBuilder keys a
-// mapping by value, so the walk hands the decode to the tree.
-func TestUseStringKeysReachesAnAnyFieldOfAStruct(t *testing.T) {
+// TestUseStringKeysWalksAndAgreesWithTheTree decodes under UseStringKeys into a bare "any", a struct holding an "any",
+// and maps keyed by any type, on the walk and on the tree. Both paths name each key of an "any" mapping by its text,
+// so "1: x" gives the key "1", and both reject "1" and "\"1\"" in one mapping as a repeat.
+func TestUseStringKeysWalksAndAgreesWithTheTree(t *testing.T) {
 	type doc struct {
-		K any `yaml:"k"`
+		K   any            `yaml:"k"`
+		Any map[any]string `yaml:"any"`
+		Str map[string]any `yaml:"str"`
 	}
-	tree := treeOnly()
-	for _, src := range []string{"k: {1: x, true: y}\n", "k: {1: x, \"1\": y}\n"} {
-		t.Run(src, func(t *testing.T) {
-			var walked, built doc
-			walkErr := NewDecoder(bytes.NewReader([]byte(src)), UseStringKeys()).Decode(&walked)
-			treeErr := NewDecoder(bytes.NewReader([]byte(src)), UseStringKeys(), tree).Decode(&built)
-			require.Equal(t, treeErr == nil, walkErr == nil, "walk err=%v, tree err=%v", walkErr, treeErr)
-			assert.Equal(t, built, walked, "the two paths disagree")
+	for tc := range useStringKeysCases() {
+		t.Run(tc.name, func(t *testing.T) {
+			for _, into := range []func() any{func() any { return new(any) }, func() any { return new(doc) }} {
+				walked, built := into(), into()
+				dec := NewDecoder(bytes.NewReader([]byte(tc.src)), UseStringKeys())
+				walkErr := dec.Decode(walked)
+				treeErr := NewDecoder(bytes.NewReader([]byte(tc.src)), UseStringKeys(), treeOnly()).Decode(built)
+				require.Equalf(t, treeErr == nil, walkErr == nil, "%T: walk err=%v, tree err=%v", walked, walkErr, treeErr)
+				assert.Equalf(t, built, walked, "%T: the two paths disagree", walked)
+				if _, isStruct := walked.(*doc); !isStruct || !tc.anchored {
+					// An anchor inside an "any" field sends the decode to the tree. See errNeedsTheTree.
+					assert.NotNilf(t, dec.stream, "%T was not walked", walked)
+				}
+			}
 		})
 	}
+
 	var v doc
-	require.NoError(t, NewDecoder(bytes.NewReader([]byte("k: {1: x}\n")), UseStringKeys()).Decode(&v))
-	assert.Equal(t, map[string]any{"1": "x"}, v.K)
+	require.NoError(t, NewDecoder(bytes.NewReader([]byte("k: {1: x, 1.50: y, true: z}\n")), UseStringKeys()).Decode(&v))
+	assert.Equal(t, map[string]any{"1": "x", "1.5": "y", "true": "z"}, v.K)
+}
+
+type useStringKeysCase struct {
+	name     string
+	src      string
+	anchored bool
+}
+
+func useStringKeysCases() iter.Seq[useStringKeysCase] {
+	return slices.Values([]useStringKeysCase{
+		{name: "keys of every type", src: "k: {1: x, true: y, null: z, 0x10: w}\nany: {2: a}\nstr: {3: {4: b}}\n"},
+		{name: "a repeat by name", src: "k: {1: x, \"1\": y}\n"},
+		{name: "a repeat by name at the root", src: "1: x\n\"1\": y\n"},
+		{name: "nested", src: "k: [{1: [{2: x}]}]\n"},
+		{name: "a merge", src: "k: {base: &b {1: x}, m: {<<: *b, 2: y}}\n", anchored: true},
+		{name: "an alias as a key", src: "k: {a: &n 7, m: {*n : x}}\n", anchored: true},
+		{name: "a collection as a key", src: "k: {[1, 2]: x}\n"},
+		{name: "a timestamp key", src: "k: {2001-12-14: x}\n"},
+	})
 }
 
 // TestAConvertedScalarKeepsTheWalk reads scalars of another kind than their

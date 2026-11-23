@@ -55,6 +55,8 @@ type valueBuilder struct {
 	// share gives every alias of one anchor the same value. See
 	// codec.ShareAliases.
 	share bool
+	// stringKeys names every key by its text, as a string, whatever it resolves to. See codec.UseStringKeys.
+	stringKeys bool
 	// built counts the values copied for an alias, and budget bounds them. A
 	// chain of aliases multiplies the copies, and a document written to exhaust
 	// memory abuses exactly that.
@@ -191,7 +193,8 @@ func (b *valueBuilder) Leave(node ast.Node, _ parser.Closing) error {
 	case frameMapping:
 		// The parser attaches the repeated keys to the mapping as it closes, so
 		// Leave reads them here and not as the mapping opens.
-		if err := astutils.RefuseDuplicateKeys(node); err != nil {
+		// Under UseStringKeys, keys that spell alike name one entry, as on the tree.
+		if err := astutils.RefuseRepeats(node, b.stringKeys); err != nil {
 			return b.fail(err)
 		}
 		if frame.keyErr != nil {
@@ -388,6 +391,7 @@ func (b *valueBuilder) declaredValue(name string, node ast.Node, alias *ast.Alia
 
 	dec := NewDecoder(nil)
 	dec.shareAliases = b.share
+	dec.useStringKeys = b.stringKeys
 	v, err := dec.nodeToValue(node)
 	if err != nil {
 		return nil, err
@@ -489,7 +493,14 @@ func (b *valueBuilder) deliverToMapping(top *buildFrame, v any, node ast.Node, k
 
 			return
 		}
-		top.keyed(b.strs.Clone(name), v)
+		name = b.strs.Clone(name)
+		if b.stringKeys {
+			// UseStringKeys keys the entry by its name, as mapKeyNodeToValue does on the tree.
+			top.keyed(name, name)
+
+			return
+		}
+		top.keyed(name, v)
 
 		return
 	}

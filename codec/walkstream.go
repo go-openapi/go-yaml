@@ -52,6 +52,8 @@ type walkState struct {
 	declared map[string]ast.Node
 	share    bool
 	budget   int
+	// stringKeys names every key of an "any" mapping by its text. See codec.UseStringKeys.
+	stringKeys bool
 	// strs holds the text of the strings built by typedBuilder.
 	strs codecutils.Arena
 	// yield pauses the walk at the end of a document, and is nil for a walk
@@ -95,10 +97,11 @@ func newWalkState(d *Decoder, src []byte) *walkState {
 	p := parser.New(append(d.parserOptions(), parser.WithOmitNodePaths())...)
 	budget := codecutils.AliasBudget(len(src))
 	st := &walkState{
-		p:        p,
-		declared: p.DeclaredAnchors(),
-		share:    d.shareAliases,
-		budget:   budget,
+		p:          p,
+		declared:   p.DeclaredAnchors(),
+		share:      d.shareAliases,
+		budget:     budget,
+		stringKeys: d.useStringKeys,
 	}
 	st.b = typedBuilder{
 		mode:            d.tagMode(),
@@ -107,6 +110,7 @@ func newWalkState(d *Decoder, src []byte) *walkState {
 		strs:            &st.strs,
 		share:           d.shareAliases,
 		budget:          budget,
+		stringKeys:      d.useStringKeys,
 		declared:        st.declared,
 		opts:            d.opts,
 	}
@@ -239,7 +243,7 @@ func (st *walkState) reset(v reflect.Value) {
 	dst := v.Elem()
 	if codecutils.HoldsAnything(dst) {
 		st.anyInto = dst
-		st.values = &valueBuilder{share: st.share, budget: st.budget, declared: st.declared}
+		st.values = &valueBuilder{share: st.share, budget: st.budget, declared: st.declared, stringKeys: st.stringKeys}
 
 		return
 	}
