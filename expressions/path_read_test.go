@@ -5,6 +5,7 @@ package expressions_test
 
 import (
 	"bytes"
+	"strings"
 	"testing"
 
 	"github.com/go-openapi/go-yaml/ast"
@@ -95,4 +96,19 @@ func TestDecodeFromNodeResolvesAnAliasFromOutsideTheNode(t *testing.T) {
 	var got []int
 	require.NoError(t, codec.NewDecoder(bytes.NewReader(nil)).DecodeFromNode(body.Values[1].Value, &got))
 	require.Equal(t, []int{1, 2}, got)
+}
+
+// TestReadAndFilterReturnTheirErrors covers the errors Read and Filter pass on: a document that does not parse, a
+// value that does not decode into v, and a target Filter cannot encode.
+func TestReadAndFilterReturnTheirErrors(t *testing.T) {
+	p, err := expressions.PathString("$.a")
+	require.NoError(t, err)
+
+	var n int
+	require.Error(t, p.Read(strings.NewReader("a: [1\n"), &n), "a document that does not parse")
+	require.Error(t, p.Read(strings.NewReader("a: x\n"), &n), "a string into an int")
+
+	require.Error(t, p.Filter(map[string]any{"a": func() {}}, &n), "a func has no YAML")
+	require.Error(t, p.Filter(map[string]string{"a": "x"}, &n), "a string into an int")
+	require.ErrorIs(t, p.Filter(map[string]string{"b": "x"}, &n), expressions.ErrNotFoundNode)
 }
