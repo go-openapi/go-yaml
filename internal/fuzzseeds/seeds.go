@@ -109,11 +109,12 @@ var reducedReports = []string{
 	"",
 }
 
-// corpusPath is the generated YAML corpus, held beside the generator that
-// writes it.
+// corpusPath is a copy of the generated YAML corpus, which
+// github.com/go-openapi/conformance-suites/yaml/corpus embeds.
 //
-// Read by path rather than imported: internal/testintegration is its own
-// module and it depends on this one, so the import can only go the other way.
+// Read by path rather than imported: importing that module would add a
+// requirement for every user of this one. internal/testintegration requires it,
+// and its TestTheCorpusCopyIsTheEmbeddedOne keeps this copy equal to it.
 // A nested go.mod also keeps that directory out of a published copy of this
 // module, so the file is often absent -- All then returns the suite seeds
 // alone rather than failing.

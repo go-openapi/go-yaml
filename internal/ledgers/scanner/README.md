@@ -25,8 +25,8 @@ it empty. `offsetMissLedger` is not, and its entry says what the remaining 18 mi
 `stateLedger` is different in a way that has misled before, so read this before touching a number in it.
 
 It runs over `internal/fuzzseeds`, which reads the corpus at
-`internal/testintegration/yamlcorpus/testdata/yaml-smoke.jsonl.gz`. That corpus is regenerated whenever `yamlgen`
-learns to draw a new shape, and it grows. **A count that moved does not mean the scanner moved.** On 2026-09-08 the
+`internal/testintegration/yamlcorpus/testdata/yaml-smoke.jsonl.gz`. That file copies the corpus of
+`github.com/go-openapi/conformance-suites/yaml/corpus`, rewritten whenever that requirement moves, and it grows. **A count that moved does not mean the scanner moved.** On 2026-09-08 the
 corpus went from 621 KB to 992 KB and all three live entries drifted, with the scanner standing still.
 
 So before re-baselining:
