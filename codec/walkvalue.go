@@ -172,9 +172,14 @@ func (b *valueBuilder) Enter(node ast.Node, at parser.Cursor) error {
 		b.placeAnchors(node)
 	}
 
-	if key, isKey := node.(ast.MapKeyNode); isKey && key.IsMergeKey() {
+	if key, isKey := node.(ast.MapKeyNode); isKey && b.standsForAKey(at) && key.IsMergeKey() {
 		// "<<" names no key of its own. merge folds its entries into the
 		// mapping when the value below it arrives.
+		//
+		// Asked of a key alone. A TagNode is a MapKeyNode wherever it stands,
+		// and reports "!!merge" a merge key by its URI, so "a: !!merge" took
+		// the value for a "<<": the frame was never pushed, and the Leave that
+		// closed it emptied the stack.
 		b.markMerge()
 
 		return parser.ErrSkipNode
@@ -266,6 +271,20 @@ func (b *valueBuilder) Leave(node ast.Node, _ parser.Closing) error {
 	}
 
 	return b.err
+}
+
+// standsForAKey reports whether the node at is a mapping key, or a node inside
+// the "?", anchor or tag written on one. The walk marks only the outermost node
+// of a key: "? &k <<" enters the anchor under the "?" with IsKey false, and the
+// "?" pushed a property frame marked asKey.
+func (b *valueBuilder) standsForAKey(at parser.Cursor) bool {
+	if at.IsKey() {
+		return true
+	}
+
+	n := len(b.stack)
+
+	return n > 0 && b.stack[n-1].kind == frameProperty && b.stack[n-1].asKey
 }
 
 // placeAnchors records node on the anchors standing around it, innermost first, that have recorded no node yet.

@@ -3475,6 +3475,52 @@ func TestFixedAMergeKeyWrittenTheLongWayMergesUnderItsProperties(t *testing.T) {
 	})
 }
 
+// TestFixedAMergeTagOnAnEmptyValueIsNoMergeKey: "a: !!merge" is the key a
+// holding null, on every decode path and in ToJSON.
+//
+// valueBuilder.Enter and jsonTokener.Enter asked IsMergeKey of any MapKeyNode,
+// and a TagNode is one wherever it stands, reporting "!!merge" a merge key by
+// its URI. So the tag on a value was taken for a "<<": decoding into a
+// map[string]any panicked with "index out of range [-1]", the frame never
+// pushed being popped, and ToJSON wrote {"a":}. A fuzz seed of the corpus of
+// go-openapi/conformance-suites found it, a mutant cut short after
+// "!!merge &k1".
+//
+// null is what the decoders read once the tag stops counting as a key. The
+// grouper refuses "!!merge" over any scalar that is not "<<"; an empty node
+// gets past it, since nothing follows the tag. Refusing it as well is the
+// stricter reading, and not what this pins.
+func TestFixedAMergeTagOnAnEmptyValueIsNoMergeKey(t *testing.T) {
+	for _, src := range []string{"a: !!merge\n", "a:\n  !!merge &k1\n", "a:\n  &k1 !!merge\n"} {
+		var walked any
+		require.NoErrorf(t, codec.Unmarshal([]byte(src), &walked), "the walk: %q", src)
+		assert.Equalf(t, map[string]any{"a": nil}, walked, "the walk: %q", src)
+
+		var tree map[string]any
+		require.NoErrorf(t, codec.Unmarshal([]byte(src), &tree), "the tree: %q", src)
+		assert.Equalf(t, map[string]any{"a": nil}, tree, "the tree: %q", src)
+
+		var typed struct {
+			A any `yaml:"a"`
+		}
+		require.NoErrorf(t, codec.Unmarshal([]byte(src), &typed), "the typed walk: %q", src)
+		assert.Nilf(t, typed.A, "the typed walk: %q", src)
+
+		out, err := codec.ToJSON([]byte(src))
+		require.NoErrorf(t, err, "ToJSON: %q", src)
+		assert.JSONEqf(t, `{"a":null}`, string(out), "ToJSON: %q", src)
+	}
+
+	t.Run("an anchored merge key still merges in ToJSON", func(t *testing.T) {
+		for _, key := range []string{"&k !!merge <<", "!!merge &k <<", "&k <<"} {
+			src := "%YAML 1.1\n---\nb: &m {x: 1}\nc:\n  " + key + ": *m\n"
+			out, err := codec.ToJSON([]byte(src))
+			require.NoErrorf(t, err, "ToJSON: %q", src)
+			assert.JSONEqf(t, `{"b":{"x":1},"c":{"x":1}}`, string(out), "ToJSON: %q", src)
+		}
+	})
+}
+
 // TestFixedACollectionKeyWrittenAloneInFlow: a flow mapping holds a collection
 // as a key with no value, as it holds a scalar that way.
 //

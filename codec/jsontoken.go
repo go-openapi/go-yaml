@@ -353,9 +353,12 @@ func (t *jsonTokener) Enter(node ast.Node, at parser.Cursor) error {
 		return t.collectMerge(node, at)
 	}
 
-	if key, isKey := node.(ast.MapKeyNode); isKey && key.IsMergeKey() {
+	if key, isKey := node.(ast.MapKeyNode); isKey && t.standsForAKey(at) && key.IsMergeKey() {
 		// "<<" names no key of its own. closeMapping hands over the merged
 		// entries at the end of the mapping, once the mapping's own keys are known.
+		//
+		// Asked of a key alone, as in valueBuilder.Enter: a "!!merge" TagNode
+		// standing as a value is no "<<", and "a: !!merge" came out as {"a":}.
 		//
 		// An anchor written as the key, "&a <<: *b", is entered before the "<<" under it and left after it.
 		// Setting merge on its mark stops closeKey from naming an entry when the anchor closes.
@@ -1188,6 +1191,20 @@ func (t *jsonTokener) treeEntries(n *ast.MappingNode) ([]treeEntry, bool) {
 	}
 
 	return entries, true
+}
+
+// standsForAKey reports whether the node at is a mapping key, or a node inside
+// the anchor or "?" written on one: enterKey opened a mark for that wrapper and
+// closeKey has not closed it. The walk marks only the outermost node of a key,
+// and "&a !!merge <<" enters the tag under the anchor with IsKey false.
+func (t *jsonTokener) standsForAKey(at parser.Cursor) bool {
+	if at.IsKey() {
+		return true
+	}
+
+	n := len(t.keys)
+
+	return n > 0 && t.keys[n-1].depth < at.Depth()
 }
 
 // enterKey hands a mapping key over, or opens the wrapper around one.
