@@ -78,10 +78,10 @@ err := yaml.Unmarshal([]byte("a: 1\na: 2\nb: 3\n"), &m)
 // errors.Is(err, yamlerrors.ErrDuplicateKey) is true, and m is map[a:2 b:3].
 ```
 
-The decode of the document stops there. A struct field or a map entry after
-that mapping keeps its zero value. A mapping decoded into an `any` is dropped
-whole, because the decoder hands it to its parent only once it closes without
-an error. On a stream, the next `Decode` reads the next document.
+The decode of the document stops there. Everything decoded before the stop
+stands, into a struct, a map or an `any` alike, and a field or an entry after
+that mapping is not decoded. A `<<` in the mapping merges nothing. On a stream,
+the next `Decode` reads the next document.
 
 ## A struct your validator refuses
 

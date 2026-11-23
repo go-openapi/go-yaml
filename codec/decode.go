@@ -371,6 +371,11 @@ func (d *Decoder) setToMapValue(node ast.Node, m *codecutils.KeyedMap, merged bo
 
 		v, err := d.nodeToValue(n.Value)
 		if err != nil {
+			if errors.Is(err, yamlerrors.ErrDuplicateKey) {
+				// The value stands as decoded up to its own repeat.
+				m.Put(key, v)
+			}
+
 			return err
 		}
 		m.Put(key, v)
@@ -418,6 +423,11 @@ func (d *Decoder) setToOrderedMapValue(node ast.Node, m *MapSlice, merged bool) 
 		}
 		value, err := d.nodeToValue(n.Value)
 		if err != nil {
+			if errors.Is(err, yamlerrors.ErrDuplicateKey) {
+				// The value stands as decoded up to its own repeat.
+				_ = m.Set(key, value)
+			}
+
 			return err
 		}
 
@@ -635,33 +645,56 @@ func (d *Decoder) nodeToValue(node ast.Node) (any, error) {
 		return map[string]any{key: v}, nil
 	case *ast.MappingNode:
 		// Under UseStringKeys an any keys its entries by name.
-		if err := astutils.RefuseRepeats(n, d.useStringKeys); err != nil {
-			return nil, err
-		}
+		// A repeat stops the document after this mapping, as on the walk: the entries are decoded first,
+		// the last value of the key wins, and the mapping is returned beside the error.
+		repeatErr := astutils.RefuseRepeats(n, d.useStringKeys)
 		if d.useOrderedMap {
 			var m MapSlice
 			if len(n.Values) > 0 {
 				m.items = make([]MapItem, 0, len(n.Values))
 			}
 			if err := astutils.EachEntryOwnFirst(n, func(value ast.Node, isMerge bool) error {
-				return d.setToOrderedMapValue(value, &m, isMerge)
+				if isMerge && repeatErr != nil {
+					// The walk merges nothing once it finds a repeat.
+					return repeatErr
+				}
+
+				return skipUnhashableBeside(repeatErr, d.setToOrderedMapValue(value, &m, isMerge))
 			}); err != nil {
+				if errors.Is(err, yamlerrors.ErrDuplicateKey) {
+					return m, err
+				}
+
 				return nil, err
 			}
-			return m, nil
+			return m, repeatErr
 		}
 		m := codecutils.NewKeyedMap(len(n.Values))
 		if err := astutils.EachEntryOwnFirst(n, func(value ast.Node, isMerge bool) error {
-			return d.setToMapValue(value, m, isMerge)
+			if isMerge && repeatErr != nil {
+				// The walk merges nothing once it finds a repeat.
+				return repeatErr
+			}
+
+			return skipUnhashableBeside(repeatErr, d.setToMapValue(value, m, isMerge))
 		}); err != nil {
+			if errors.Is(err, yamlerrors.ErrDuplicateKey) {
+				return m.Value(), err
+			}
+
 			return nil, err
 		}
-		return m.Value(), nil
+		return m.Value(), repeatErr
 	case *ast.SequenceNode:
 		v := make([]any, 0, len(n.Values))
 		for _, value := range n.Values {
 			vv, err := d.nodeToValue(value)
 			if err != nil {
+				if errors.Is(err, yamlerrors.ErrDuplicateKey) {
+					// The element stands as decoded up to its own repeat, and so does the sequence.
+					return append(v, vv), err
+				}
+
 				return nil, err
 			}
 			v = append(v, vv)
@@ -817,6 +850,19 @@ func refuseBadOrderedMap(n *ast.TagNode) error {
 }
 
 func (d *Decoder) getMapNode(node ast.Node, isMerge bool) (ast.MapNode, error) {
+	return d.mapNodeOf(node, isMerge, true)
+}
+
+// decodableMapNode returns the mapping named by node, as getMapNode does, but leaves a repeated key in it.
+//
+// decodeMap and rangeMapEntries call it. They decode the mapping first and return the repeat after,
+// so the mapping stands as decoded, as it does on the walk.
+func (d *Decoder) decodableMapNode(node ast.Node, isMerge bool) (ast.MapNode, error) {
+	return d.mapNodeOf(node, isMerge, false)
+}
+
+// mapNodeOf returns the mapping named by node. With refuse, a mapping that repeats a key is an error.
+func (d *Decoder) mapNodeOf(node ast.Node, isMerge, refuse bool) (ast.MapNode, error) {
 	d.stepIn()
 	defer d.stepOut()
 	if d.isExceededMaxDepth() {
@@ -829,8 +875,10 @@ func (d *Decoder) getMapNode(node ast.Node, isMerge bool) (ast.MapNode, error) {
 		// returns.
 		return nil, yamlerrors.NewSyntax("a mapping holds no node", nil)
 	}
-	if err := astutils.RefuseDuplicateKeys(node); err != nil {
-		return nil, err
+	if refuse {
+		if err := astutils.RefuseDuplicateKeys(node); err != nil {
+			return nil, err
+		}
 	}
 
 	switch n := node.(type) {
@@ -839,15 +887,15 @@ func (d *Decoder) getMapNode(node ast.Node, isMerge bool) (ast.MapNode, error) {
 	case *ast.AnchorNode:
 		anchorName := n.Name.GetToken().Value
 		d.anchorNodeMap[anchorName] = n.Value
-		return d.getMapNode(n.Value, isMerge)
+		return d.mapNodeOf(n.Value, isMerge, refuse)
 	case *ast.AliasNode:
 		target, name := d.aliasTarget(n)
 		if target == nil {
 			return nil, yamlerrors.NewUnknownAnchor(name, n.GetToken())
 		}
-		return d.getMapNode(target, isMerge)
+		return d.mapNodeOf(target, isMerge, refuse)
 	case *ast.TagNode:
-		return d.getMapNode(n.Value, isMerge)
+		return d.mapNodeOf(n.Value, isMerge, refuse)
 	case *ast.SequenceNode:
 		if !isMerge {
 			return nil, yamlerrors.NewUnexpectedNodeType(node.Type(), ast.MappingType, node.GetToken())
@@ -1355,9 +1403,11 @@ func (d *Decoder) decodeValue(dst reflect.Value, src ast.Node) error {
 			return nil
 		}
 		srcVal, err := d.nodeToValue(src)
-		if err != nil {
+		if err != nil && !errors.Is(err, yamlerrors.ErrDuplicateKey) {
 			return err
 		}
+		// A repeat comes back beside the value decoded up to it, which stands.
+		repeatErr := err
 		v := reflect.ValueOf(srcVal)
 		if v.IsValid() && !v.Type().AssignableTo(valueType) {
 			// An interface with methods holds only a type that implements them. Setting a "string" into a
@@ -1371,7 +1421,7 @@ func (d *Decoder) decodeValue(dst reflect.Value, src ast.Node) error {
 		}
 
 		// The value is written. Falling out of the switch decoded the node again, and set it again.
-		return nil
+		return repeatErr
 	case reflect.Map:
 		if ast.IsNull(src) {
 			// A null leaves the map as it stands, as for a field. Only a root map reaches here with one:
@@ -2038,15 +2088,16 @@ func (d *Decoder) rangeMapEntries(src ast.Node, ignoreMergeKey bool, visit mapEn
 		return yamlerrors.ErrExceededMaxDepth
 	}
 
-	mapNode, err := d.getMapNode(src, false)
+	mapNode, err := d.decodableMapNode(src, false)
 	if err != nil {
 		return err
 	}
 	// A struct names its fields, so two keys of one name are one field.
+	// A repeat stops the document after this mapping, as on the walk: every entry is visited first,
+	// the last value of the key wins, and the error is returned at the end.
+	var repeatErr error
 	if m, isMapping := mapNode.(*ast.MappingNode); isMapping {
-		if err := astutils.RefuseRepeats(m, true); err != nil {
-			return err
-		}
+		repeatErr = astutils.RefuseRepeats(m, true)
 	}
 
 	var merges []ast.Node
@@ -2074,6 +2125,10 @@ func (d *Decoder) rangeMapEntries(src ast.Node, ignoreMergeKey bool, visit mapEn
 		}
 	}
 
+	if repeatErr != nil {
+		// The walk applies the merges once the mapping closes, after it finds the repeat, so it merges nothing.
+		return repeatErr
+	}
 	for _, from := range merges {
 		if err := d.rangeMergedEntries(from, ignoreMergeKey, visit); err != nil {
 			return err
@@ -2292,9 +2347,8 @@ func inlineMapNode(entries map[string]ast.Node, fields *structfields.Fields, tak
 }
 
 // stopsTheDocument reports whether err ends the decoding of its document, at any depth. These errors stop it:
-//   - a repeated key, which makes the document invalid YAML. The walk finds it when the mapping closes,
-//     so the mapping's own entries are decoded and the stop applies to what comes after it.
-//     The tree checks before it decodes the mapping;
+//   - a repeated key, which makes the document invalid YAML. Both paths decode the mapping's own entries
+//     first and return the repeat before its merges, so the stop applies to what comes after it;
 //   - the limits, ErrExceededMaxDepth and the alias budget;
 //   - an unknown field, when the caller set DisallowUnknownField.
 //
@@ -2798,6 +2852,39 @@ func (d *Decoder) admitMapKey(mapValue reflect.Value, keyMap map[any]struct{}, k
 	return false, d.validateDuplicateKey(keyMap, k.Interface(), key)
 }
 
+// mapEntryKey decodes the key of a map entry and admits it, as decodeMap writes it. skip reports an entry to leave
+// out: a key already written under a merge, or, while the mapping holds a repeat, a key Go cannot hash.
+// The repeat comes first, as on the walk.
+func (d *Decoder) mapEntryKey(
+	mapValue reflect.Value, keyMap map[any]struct{}, key ast.Node, folded bool, repeatErr error,
+) (k reflect.Value, decodeKeyAs reflect.Type, skip bool, err error) {
+	k, decodeKeyAs, err = d.decodeMapKey(mapValue.Type().Key(), key)
+	if err == nil {
+		skip, err = d.admitRepeatedMapKey(mapValue, keyMap, k, key, folded, repeatErr != nil)
+	}
+	if err != nil && skipUnhashableBeside(repeatErr, err) == nil {
+		return k, decodeKeyAs, true, nil
+	}
+
+	return k, decodeKeyAs, skip, err
+}
+
+// admitRepeatedMapKey admits the key k as admitMapKey does. When the parse recorded a repeat in the mapping,
+// repeated is true and the later value replaces the earlier one, as under AllowDuplicateMapKey:
+// decodeMap returns the repeat once the mapping is decoded. The key must still be one Go can hash.
+func (d *Decoder) admitRepeatedMapKey(
+	mapValue reflect.Value, keyMap map[any]struct{}, k reflect.Value, key ast.Node, folded, repeated bool,
+) (bool, error) {
+	if !repeated {
+		return d.admitMapKey(mapValue, keyMap, k, key, folded)
+	}
+	if k.IsValid() && !k.Comparable() {
+		return false, yamlerrors.NewUnhashableKey(codecutils.DynamicTypeOf(k), key.GetToken())
+	}
+
+	return false, nil
+}
+
 // validateDuplicateKey rejects two entries that land on one key of the Go
 // destination. The parse does not see them: "1: a" and "\"1\": b" are two YAML
 // keys and one key of a map[string]T, and "1: a" and "1.0: b" are two YAML keys
@@ -2915,19 +3002,14 @@ func (d *Decoder) decodeMap(dst reflect.Value, src ast.Node) error {
 		return yamlerrors.ErrExceededMaxDepth
 	}
 
-	mapNode, err := d.getMapNode(src, d.merging)
+	mapNode, err := d.mapNodeOf(src, d.merging, d.merging)
 	if err != nil {
 		return err
 	}
 	mapType := dst.Type()
-	if m, isMapping := mapNode.(*ast.MappingNode); isMapping && !d.merging && mapType.Key().Kind() == reflect.String {
-		// A string-keyed map holds one entry for two keys of one name. admitMapKey
-		// checks a key of another type, on its decoded value:
-		// 1 and 1.0 are two names and one float64.
-		if err := astutils.RefuseRepeats(m, true); err != nil {
-			return err
-		}
-	}
+	// A repeat stops the document after this mapping, as on the walk: the entries are decoded first,
+	// the last value of the key wins, and the error is returned at the end.
+	repeatErr := d.mapRepeat(mapNode, mapType)
 	mapValue := dst
 	if mapValue.IsNil() {
 		mapValue = reflect.MakeMap(mapType)
@@ -2946,6 +3028,10 @@ func (d *Decoder) decodeMap(dst reflect.Value, src ast.Node) error {
 	for _, entry := range astutils.MapEntriesOwnFirst(mapNode) {
 		key := entry.Key
 		value := entry.Value
+		if entry.Merged && repeatErr != nil {
+			// The walk applies the merges once the mapping closes, after it finds the repeat, so it merges nothing.
+			break
+		}
 		if entry.Merged {
 			// The merge type gives the own keys of a mapping precedence over the
 			// keys brought in by a "<<", and an earlier "<<" precedence over a
@@ -2964,14 +3050,11 @@ func (d *Decoder) decodeMap(dst reflect.Value, src ast.Node) error {
 			continue
 		}
 
-		k, decodeKeyAs, err := d.decodeMapKey(keyType, key)
+		k, decodeKeyAs, skip, err := d.mapEntryKey(mapValue, keyMap, key, folded, repeatErr)
 		if err != nil {
 			return err
 		}
-
-		if seen, err := d.admitMapKey(mapValue, keyMap, k, key, folded); err != nil {
-			return err
-		} else if seen {
+		if skip {
 			continue
 		}
 		if valueType.Kind() == reflect.Pointer && ast.IsNull(value) {
@@ -2983,6 +3066,8 @@ func (d *Decoder) decodeMap(dst reflect.Value, src ast.Node) error {
 		dstValue, err := d.createDecodedNewValue(valueType, reflect.Value{}, value)
 		d.entryKey = prevEntry
 		if stopsTheDocument(err) {
+			keepBeforeRepeat(err, dst, mapValue, k, dstValue, decodeKeyAs)
+
 			return err
 		}
 		if err != nil && foundErr == nil {
@@ -3009,8 +3094,46 @@ func (d *Decoder) decodeMap(dst reflect.Value, src ast.Node) error {
 		mapValue.SetMapIndex(k, dstValue)
 	}
 	dst.Set(mapValue)
+	if repeatErr != nil {
+		// The repeat stops the document, so it goes up even after a field error.
+		return repeatErr
+	}
 
 	return foundErr
+}
+
+// mapRepeat returns the error for a key the parse recorded as repeated in mapNode, read into a map of mapType.
+//
+// A string-keyed map holds one entry for two keys of one name, and so refuses a repeat by name.
+// A map keyed by value refuses a repeat by value. admitMapKey checks a key of another type on its decoded
+// value: 1 and 1.0 are two names and one float64. Under a merge, mapNodeOf has refused the repeats already.
+func (d *Decoder) mapRepeat(mapNode ast.MapNode, mapType reflect.Type) error {
+	m, isMapping := mapNode.(*ast.MappingNode)
+	if !isMapping || d.merging {
+		return nil
+	}
+
+	return astutils.RefuseRepeats(m, mapType.Key().Kind() == reflect.String)
+}
+
+// skipUnhashableBeside drops err when it is a key Go cannot hash and the mapping holds a repeat. The repeat comes
+// first, as on the walk, and the entry under that key is skipped.
+func skipUnhashableBeside(repeatErr, err error) error {
+	if repeatErr != nil && errors.Is(err, yamlerrors.ErrUnhashableKey) {
+		return nil
+	}
+
+	return err
+}
+
+// keepBeforeRepeat writes the entry k and the map into dst when err is a repeat inside the entry's value.
+// The value stands as decoded up to its own repeat, and so does the map, as on the walk.
+func keepBeforeRepeat(err error, dst, mapValue, k, value reflect.Value, decodeKeyAs reflect.Type) {
+	if !errors.Is(err, yamlerrors.ErrDuplicateKey) || !value.IsValid() || !k.IsValid() || decodeKeyAs.Kind() != k.Kind() {
+		return
+	}
+	mapValue.SetMapIndex(k, value)
+	dst.Set(mapValue)
 }
 
 // mergeIntoMap decodes value, the mapping brought in by a "<<", into a map of its own. It copies into mapValue

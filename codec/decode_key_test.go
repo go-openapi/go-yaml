@@ -1075,3 +1075,52 @@ func twoCollectionKeysRefusalCases() iter.Seq[twoCollectionKeysRefusalCase] {
 		{"{a: 1, a: 2}\n", `[1:8] mapping key "a" already defined at [1:2]`},
 	})
 }
+
+// TestARepeatStopsTheDocumentAfterItsMapping checks that a repeated key stops the document once its own mapping is
+// decoded, on the walk and on the tree, for every kind of destination. The mapping holding the repeat stands, with
+// the last value of the key, and so does everything decoded before it. Nothing after it is decoded.
+func TestARepeatStopsTheDocumentAfterItsMapping(t *testing.T) {
+	const src = "x: 1\nin:\n  a: 1\n  a: 2\n  b: 3\ny: 4\n"
+
+	type inner struct{ A, B int }
+	type outer struct {
+		X  int
+		In inner
+		Y  int
+	}
+
+	for _, path := range []struct {
+		name string
+		opts []codec.DecodeOption
+	}{
+		{"walk", nil},
+		{"tree", []codec.DecodeOption{treeOnly()}},
+	} {
+		t.Run(path.name+"/struct", func(t *testing.T) {
+			var v outer
+			require.ErrorIs(t, codec.Unmarshal([]byte(src), &v, path.opts...), yamlerrors.ErrDuplicateKey)
+			assert.Equal(t, outer{X: 1, In: inner{A: 2, B: 3}}, v)
+		})
+		t.Run(path.name+"/map of any", func(t *testing.T) {
+			var v map[string]any
+			require.ErrorIs(t, codec.Unmarshal([]byte(src), &v, path.opts...), yamlerrors.ErrDuplicateKey)
+			assert.Equal(t, map[string]any{"x": uint64(1), "in": map[string]any{"a": uint64(2), "b": uint64(3)}}, v)
+		})
+		t.Run(path.name+"/any", func(t *testing.T) {
+			var v any
+			require.ErrorIs(t, codec.Unmarshal([]byte(src), &v, path.opts...), yamlerrors.ErrDuplicateKey)
+			assert.Equal(t, map[string]any{"x": uint64(1), "in": map[string]any{"a": uint64(2), "b": uint64(3)}}, v)
+		})
+		t.Run(path.name+"/root map", func(t *testing.T) {
+			var v map[string]int
+			require.ErrorIs(t, codec.Unmarshal([]byte("a: 1\na: 2\nb: 3\n"), &v, path.opts...), yamlerrors.ErrDuplicateKey)
+			assert.Equal(t, map[string]int{"a": 2, "b": 3}, v)
+		})
+		t.Run(path.name+"/ordered map", func(t *testing.T) {
+			var v any
+			err := codec.Unmarshal([]byte(src), &v, append([]codec.DecodeOption{codec.UseOrderedMap()}, path.opts...)...)
+			require.ErrorIs(t, err, yamlerrors.ErrDuplicateKey)
+			assert.Equal(t, "{[{x 1} {in {[{a 2} {b 3}]}}]}", fmt.Sprint(v))
+		})
+	}
+}

@@ -98,8 +98,8 @@ func AllowFieldPrefixes(prefixes ...string) DecodeOption {
 //
 // By default a repeated key fails the decode with [github.com/go-openapi/go-yaml/errors.ErrDuplicateKey],
 // as YAML 1.2.2 section 3.2.1.1 requires.
-// The decoder finds the repeat when the mapping closes, so a struct or a map still holds the whole mapping,
-// with the last value, and nothing after it in the document is decoded.
+// The decoder finds the repeat when the mapping closes, so a struct, a map or an any still holds the whole
+// mapping, with the last value and without its "<<" merges, and nothing after it in the document is decoded.
 // Under this option a Go map and a struct field hold the last value,
 // and a [MapSlice] holds it at the place the key was first written.
 //

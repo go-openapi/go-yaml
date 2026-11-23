@@ -5,6 +5,7 @@ package codec
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"math/big"
 	"slices"
@@ -224,7 +225,8 @@ func (b *valueBuilder) Enter(node ast.Node, at parser.Cursor) error {
 func (b *valueBuilder) Leave(node ast.Node, _ parser.Closing) error {
 	if b.err != nil {
 		// After a visitor fails, the walk passes no more nodes, but still leaves the nodes it had open.
-		// The frames below stay as they were, because nothing reads them again.
+		// The frames below stay as they were, because nothing reads them again. After a repeat, unwind has
+		// already handed their values over.
 		return b.err
 	}
 
@@ -242,7 +244,11 @@ func (b *valueBuilder) Leave(node ast.Node, _ parser.Closing) error {
 		// The parser attaches the repeated keys to the mapping as it closes, so
 		// Leave reads them here and not as the mapping opens.
 		// Under UseStringKeys, keys that spell alike name one entry, as on the tree.
+		// A repeat stops the document after its mapping: the mapping stands as decoded, with the last value
+		// of the repeated key, and so does everything decoded before it. unwind hands them all over.
 		if err := astutils.RefuseRepeats(node, b.stringKeys); err != nil {
+			b.stack = append(b.stack, frame)
+
 			return b.fail(err)
 		}
 		if frame.keyErr != nil {
@@ -894,9 +900,73 @@ func (b *valueBuilder) mergingValue(key bool) bool {
 func (b *valueBuilder) fail(err error) error {
 	if b.err == nil {
 		b.err = err
+		if errors.Is(err, yamlerrors.ErrDuplicateKey) {
+			// A repeat stops the document, and what decoded before it stands.
+			b.unwind()
+		}
 	}
 
 	return b.err
+}
+
+// unwind hands the value of each open frame to the frame below it, innermost first, once a repeated key has
+// stopped the document.
+//
+// What decoded before the stop stands, as it does for a destination decoded in place:
+// "x: 1" then "in: {a: 1, a: 2}" into an any gives {x: 1, in: {a: 2}} and the repeat's error.
+// The walk passes no more nodes after a failure, so a value goes up only where a frame waits for one:
+// a mapping holding a key, a sequence, or an anchor or a tag. A collection written as a key is dropped,
+// and so is a value for a "<<", which unwind does not merge.
+func (b *valueBuilder) unwind() {
+	for len(b.stack) > 0 {
+		frame := b.stack[len(b.stack)-1]
+		b.stack = b.stack[:len(b.stack)-1]
+
+		var v any
+		switch frame.kind {
+		case frameMapping:
+			if frame.merging {
+				// The "<<" counts as an entry written, as on the tree, though unwind merges nothing.
+				frame.entries++
+			}
+			v = frame.value()
+		case frameSequence:
+			v = frame.seq
+		case frameProperty:
+			if frame.mergeKey || !frame.got {
+				continue
+			}
+			v = frame.received
+		default:
+			panic(fmt.Sprintf("codec: unknown frame kind %d", frame.kind))
+		}
+		if frame.asKey {
+			continue
+		}
+
+		if len(b.stack) == 0 {
+			b.docs = append(b.docs, v)
+
+			return
+		}
+		top := &b.stack[len(b.stack)-1]
+		switch top.kind {
+		case frameMapping:
+			// A mapping waiting on a "<<" takes nothing: unwind merges nothing.
+			if top.hasKey && !top.merging {
+				top.put(v)
+				top.key, top.hasKey = "", false
+			}
+		case frameSequence:
+			if !top.mergeSource {
+				top.seq = append(top.seq, v)
+			}
+		case frameProperty:
+			top.received, top.got = v, true
+		default:
+			panic(fmt.Sprintf("codec: unknown frame kind %d", top.kind))
+		}
+	}
 }
 
 // scalarValue returns the Go value of a scalar node.

@@ -393,8 +393,11 @@ func (b *typedBuilder) forwardLeave(node ast.Node, at parser.Closing) error {
 // and closes the subtree once the builder has built a value.
 func (b *typedBuilder) forwarded(err error) error {
 	// Read before closeAny, which drops the builder once it has made a value.
-	if b.values.err != nil {
-		return b.fail(b.values.err)
+	// A failed builder has handed its open values up, so closeAny writes what it decoded before the error.
+	if failed := b.values.err; failed != nil {
+		b.closeAny()
+
+		return b.fail(failed)
 	}
 	b.closeAny()
 
