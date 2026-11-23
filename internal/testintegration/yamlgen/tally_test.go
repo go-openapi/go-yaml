@@ -10,7 +10,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/go-openapi/go-yaml/internal/testintegration/yamlgen"
+	"github.com/go-openapi/conformance-suites/yaml/yamlgen"
 )
 
 // tally counts how often each ledger entry was drawn, and how often it actually
@@ -66,7 +66,7 @@ func (c *tally) report(t *testing.T, p yamlgen.Property) {
 	c.mx.Lock()
 	defer c.mx.Unlock()
 
-	entries := yamlgen.Entries(p)
+	entries := yamlgen.Entries(ledger, p)
 	names := make([]string, 0, len(entries))
 	for _, d := range entries {
 		names = append(names, d.Name)
@@ -142,7 +142,7 @@ func (c *tally) stale() []string {
 	var out []string
 
 	pins := map[string]string{}
-	for _, d := range yamlgen.Ledger {
+	for _, d := range ledger {
 		pins[d.Name] = d.Pin
 	}
 

@@ -17,6 +17,9 @@ require (
 require (
 	github.com/gabriel-vasile/mimetype v1.4.15 // indirect
 	github.com/go-openapi/conformance-suites v0.0.0
+	github.com/go-openapi/conformance-suites/yaml/consensus v0.0.0
+	github.com/go-openapi/conformance-suites/yaml/corpus v0.0.0
+	github.com/go-openapi/conformance-suites/yaml/yamlgen v0.0.0
 	github.com/go-playground/locales v0.14.1 // indirect
 	github.com/go-playground/universal-translator v0.18.1 // indirect
 	github.com/leodido/go-urn v1.5.0 // indirect
@@ -26,3 +29,9 @@ require (
 )
 
 replace github.com/go-openapi/conformance-suites => ../../../conformance-suites
+
+replace github.com/go-openapi/conformance-suites/yaml/consensus => ../../../conformance-suites/yaml/consensus
+
+replace github.com/go-openapi/conformance-suites/yaml/corpus => ../../../conformance-suites/yaml/corpus
+
+replace github.com/go-openapi/conformance-suites/yaml/yamlgen => ../../../conformance-suites/yaml/yamlgen

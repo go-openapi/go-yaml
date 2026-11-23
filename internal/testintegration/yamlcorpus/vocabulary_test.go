@@ -15,24 +15,12 @@ import (
 	"strings"
 	"testing"
 
+	yamlembed "github.com/go-openapi/conformance-suites/yaml/corpus"
+	"github.com/go-openapi/conformance-suites/yaml/yamlgen/yamlbuild"
 	"github.com/go-openapi/testify/v2/require"
 
-	"github.com/go-openapi/go-yaml/internal/testintegration/yamlcorpus"
 	yamlparser "github.com/go-openapi/go-yaml/parser"
 )
-
-// The parser's error vocabulary, and how much of it the corpus reaches.
-//
-// # Why this is a measurement and not a test
-//
-// A complaint the corpus never provokes is an error path with no test behind
-// it. The count used to be a number in a log line, counted by hand once and
-// never again; this reads the templates out of the source, so it moves when the
-// parser does.
-//
-// It is coverage and says nothing about correctness. Whether a refusal is
-// *right* is the grammar oracle's question, and whether the wording is right is
-// Refusals(). This asks only whether anything reaches the path at all.
 
 // messageTemplates reads every literal the parser and scanner build a syntax
 // error from.
@@ -136,23 +124,23 @@ func TestTheParserVocabularyGapIsMeasured(t *testing.T) {
 
 	signature := map[string]string{}
 	for _, tmpl := range templates {
-		signature[yamlcorpus.RefusalSignature(errors.New(verbs.Replace(tmpl)))] = tmpl
+		signature[yamlbuild.RefusalSignature(errors.New(verbs.Replace(tmpl)))] = tmpl
 	}
 
-	_, cases, err := yamlcorpus.SmokeSuite()
+	_, cases, err := yamlembed.SmokeSuite()
 	require.NoError(t, err)
 
 	drawn := map[string]bool{}
 
 	for _, c := range cases {
 		if _, perr := yamlparser.ParseBytes(c.Src, yamlparser.WithComments()); perr != nil {
-			drawn[yamlcorpus.RefusalSignature(perr)] = true
+			drawn[yamlbuild.RefusalSignature(perr)] = true
 		}
 	}
 
-	for _, r := range yamlcorpus.Refusals() {
+	for _, r := range yamlbuild.Refusals() {
 		if _, perr := yamlparser.ParseBytes([]byte(r.Src), yamlparser.WithComments()); perr != nil {
-			drawn[yamlcorpus.RefusalSignature(perr)] = true
+			drawn[yamlbuild.RefusalSignature(perr)] = true
 		}
 	}
 

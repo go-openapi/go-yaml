@@ -7,8 +7,8 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/go-openapi/conformance-suites/yaml/yamlgen"
 	"github.com/go-openapi/go-yaml"
-	"github.com/go-openapi/go-yaml/internal/testintegration/yamlgen"
 	"github.com/go-openapi/go-yaml/parser"
 )
 

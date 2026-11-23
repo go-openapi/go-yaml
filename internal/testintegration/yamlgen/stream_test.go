@@ -12,8 +12,8 @@ import (
 
 	"pgregory.net/rapid"
 
+	"github.com/go-openapi/conformance-suites/yaml/yamlgen"
 	"github.com/go-openapi/go-yaml/codec"
-	"github.com/go-openapi/go-yaml/internal/testintegration/yamlgen"
 )
 
 // TestAStreamReadsBackAsItsDocuments is presentation invariance for a stream:
@@ -44,7 +44,7 @@ func TestAStreamReadsBackAsItsDocuments(t *testing.T) {
 		const applies = yamlgen.Parses | yamlgen.Decode | yamlgen.StreamDecode
 
 		for _, v := range docs {
-			if known := yamlgen.Known(applies, v, style); known != nil {
+			if known := yamlgen.Known(ledger, applies, v, style); known != nil {
 				tally.record(known.Name, true)
 
 				return
@@ -156,7 +156,7 @@ func TestAStreamDecodesIntoAGoTypePerDocument(t *testing.T) {
 			if holdsACollectionKey(v) {
 				return
 			}
-			if known := yamlgen.Known(applies, v, style); known != nil {
+			if known := yamlgen.Known(ledger, applies, v, style); known != nil {
 				tally.record(known.Name, true)
 
 				return

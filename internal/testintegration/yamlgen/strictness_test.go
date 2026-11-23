@@ -10,8 +10,7 @@ import (
 	yamloracle "github.com/go-openapi/conformance-suites/yaml"
 	"github.com/go-openapi/testify/v2/require"
 
-	"github.com/go-openapi/go-yaml/internal/testintegration/perlref"
-	"github.com/go-openapi/go-yaml/internal/testintegration/yamlgen"
+	"github.com/go-openapi/conformance-suites/yaml/consensus/perlref"
 	"github.com/go-openapi/go-yaml/parser"
 )
 
@@ -41,7 +40,7 @@ import (
 func TestValidDocumentsTheLibraryRefusesAreStillRefused(t *testing.T) {
 	var open int
 
-	for _, s := range yamlgen.Strict {
+	for _, s := range strict {
 		t.Run(s.Name, func(t *testing.T) {
 			require.Truef(t, yamloracle.Stream([]byte(s.Src)).OK,
 				"%q is not valid YAML 1.2 after all, so this entry accuses the library of nothing.\nrule claimed: %s",
@@ -70,7 +69,7 @@ func TestValidDocumentsTheLibraryRefusesAreStillRefused(t *testing.T) {
 		})
 	}
 
-	t.Logf("%d of %d valid documents are still refused", open, len(yamlgen.Strict))
+	t.Logf("%d of %d valid documents are still refused", open, len(strict))
 }
 
 // requireTheReferenceParserAgrees holds a register entry's syntax claim to the

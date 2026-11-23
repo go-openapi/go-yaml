@@ -6,11 +6,12 @@ package yamlgen_test
 import (
 	"testing"
 
-	yamloracle "github.com/go-openapi/conformance-suites/yaml"
 	"pgregory.net/rapid"
 
+	yamloracle "github.com/go-openapi/conformance-suites/yaml"
+
+	"github.com/go-openapi/conformance-suites/yaml/yamlgen"
 	"github.com/go-openapi/go-yaml"
-	"github.com/go-openapi/go-yaml/internal/testintegration/yamlgen"
 	"github.com/go-openapi/go-yaml/parser"
 )
 
@@ -89,7 +90,7 @@ func TestRenderWritesValidYAML(t *testing.T) {
 		rendered := file.String()
 		invalid := !oracle.Stream([]byte(rendered)).OK
 
-		if known := yamlgen.Known(yamlgen.RenderValid, value, style); known != nil {
+		if known := yamlgen.Known(ledger, yamlgen.RenderValid, value, style); known != nil {
 			tally.record(known.Name, invalid)
 
 			return
@@ -138,7 +139,7 @@ func TestRenderPreservesValue(t *testing.T) {
 		err = yaml.Unmarshal([]byte(rendered), &got)
 		diverged := err != nil || !sameValue(w.Means, got)
 
-		if known := yamlgen.Known(yamlgen.Render, value, style); known != nil {
+		if known := yamlgen.Known(ledger, yamlgen.Render, value, style); known != nil {
 			tally.record(known.Name, diverged)
 
 			return
@@ -222,7 +223,7 @@ func TestRenderKeepsEveryComment(t *testing.T) {
 
 		lost := commentsAreLost([]byte(src))
 
-		if known := yamlgen.Known(yamlgen.CommentsKept, value, style); known != nil {
+		if known := yamlgen.Known(ledger, yamlgen.CommentsKept, value, style); known != nil {
 			tally.record(known.Name, lost)
 
 			return
@@ -257,7 +258,7 @@ func TestRenderReachesAFixedPoint(t *testing.T) {
 
 		unsettled := renderDoesNotSettle([]byte(src))
 
-		if known := yamlgen.Known(yamlgen.Settle, value, style); known != nil {
+		if known := yamlgen.Known(ledger, yamlgen.Settle, value, style); known != nil {
 			tally.record(known.Name, unsettled)
 
 			return

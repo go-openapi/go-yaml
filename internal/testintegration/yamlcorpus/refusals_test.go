@@ -9,10 +9,11 @@ import (
 	"testing"
 
 	yamloracle "github.com/go-openapi/conformance-suites/yaml"
+	yamlembed "github.com/go-openapi/conformance-suites/yaml/corpus"
+	"github.com/go-openapi/conformance-suites/yaml/yamlgen/yamlbuild"
 	"github.com/go-openapi/testify/v2/assert"
 	"github.com/go-openapi/testify/v2/require"
 
-	"github.com/go-openapi/go-yaml/internal/testintegration/yamlcorpus"
 	"github.com/go-openapi/go-yaml/parser"
 )
 
@@ -27,7 +28,7 @@ import (
 func TestEveryRefusalSaysWhy(t *testing.T) {
 	oracle := yamloracle.NewRecognizer(1024)
 
-	for _, r := range yamlcorpus.Refusals() {
+	for _, r := range yamlbuild.Refusals() {
 		t.Run(r.Name, func(t *testing.T) {
 			assert.Equal(t, r.WellFormed, oracle.Stream([]byte(r.Src)).OK,
 				"the document is %q and WellFormed says otherwise", r.Src)
@@ -62,7 +63,7 @@ func TestEveryRefusalSaysWhy(t *testing.T) {
 // 53 to 55 signatures and agree on 50 of them, so the handful at the bottom are
 // reachable rather than reliable.
 func TestTheCorpusDrawsEveryComplaint(t *testing.T) {
-	_, cases, err := yamlcorpus.SmokeSuite()
+	_, cases, err := yamlembed.SmokeSuite()
 	require.NoError(t, err)
 
 	seen := map[string]int{}
@@ -74,7 +75,7 @@ func TestTheCorpusDrawsEveryComplaint(t *testing.T) {
 			continue
 		}
 		refused++
-		seen[yamlcorpus.RefusalSignature(perr)]++
+		seen[yamlbuild.RefusalSignature(perr)]++
 	}
 
 	got := make([]string, 0, len(seen))
@@ -120,7 +121,7 @@ func TestARefusalSignatureKeepsTheParserAndDropsTheDocument(t *testing.T) {
 		_, err := parser.ParseBytes([]byte(src), parser.WithComments())
 		require.Error(t, err, "%q", src)
 
-		return yamlcorpus.RefusalSignature(err)
+		return yamlbuild.RefusalSignature(err)
 	}
 
 	t.Run("the document falls out", func(t *testing.T) {

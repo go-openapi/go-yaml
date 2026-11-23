@@ -16,6 +16,8 @@ import (
 
 	"github.com/go-openapi/conformance-suites/stance"
 	"github.com/go-openapi/conformance-suites/suite"
+	yamlembed "github.com/go-openapi/conformance-suites/yaml/corpus"
+	"github.com/go-openapi/conformance-suites/yaml/yamlgen/yamlbuild"
 
 	"github.com/go-openapi/go-yaml/codec"
 	"github.com/go-openapi/go-yaml/internal/testintegration/yamlcorpus"
@@ -77,7 +79,7 @@ func TestMeasureK(t *testing.T) {
 		{3000, 12, 16},
 		{6000, 12, 0},
 	} {
-		build := yamlcorpus.Build{
+		build := yamlbuild.Build{
 			Tier: "measure", Seed: 1,
 			Documents: r.documents, MutantsEach: r.mutants, PerSignature: r.quota,
 		}
@@ -118,7 +120,7 @@ func TestMeasureK(t *testing.T) {
 // refusals are most of what a mutant is worth and they still count everywhere,
 // because a document that does not parse does not compose either.
 func TestTheCorpusNoLongerAccusesACorrectParser(t *testing.T) {
-	_, cases, err := yamlcorpus.SmokeSuite()
+	_, cases, err := yamlembed.SmokeSuite()
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -14,8 +14,10 @@ import (
 	"github.com/go-openapi/conformance-suites/stance"
 	"github.com/go-openapi/conformance-suites/suite"
 
+	yamlembed "github.com/go-openapi/conformance-suites/yaml/corpus"
+	"github.com/go-openapi/conformance-suites/yaml/yamlgen"
+	"github.com/go-openapi/conformance-suites/yaml/yamlgen/yamlbuild"
 	"github.com/go-openapi/go-yaml/internal/testintegration/yamlcorpus"
-	"github.com/go-openapi/go-yaml/internal/testintegration/yamlgen"
 	"github.com/go-openapi/go-yaml/parser"
 )
 
@@ -208,7 +210,7 @@ func corpus(t *testing.T) []suite.Case {
 	t.Helper()
 
 	if !*blindFull {
-		_, cases, err := yamlcorpus.SmokeSuite()
+		_, cases, err := yamlembed.SmokeSuite()
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -218,7 +220,7 @@ func corpus(t *testing.T) []suite.Case {
 
 	var buf bytes.Buffer
 
-	build := yamlcorpus.Full()
+	build := yamlbuild.Full()
 	if err := build.Write(&buf); err != nil {
 		t.Fatal(err)
 	}

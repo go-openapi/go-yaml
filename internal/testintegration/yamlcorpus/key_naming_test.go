@@ -13,26 +13,6 @@ import (
 	"github.com/go-openapi/go-yaml/codec"
 )
 
-// How a mapping key is named, and when two of them are one.
-//
-// The rule, implemented 2026-09-10: a key is named by the canonical spelling of
-// its *type*, and two keys conflict when their type and their name agree.
-//
-//	an integer   expanded decimal      007 -> "7", 0x10 -> "16", +1 -> "1"
-//	a float      shortest, with .0     1e3 -> "1000.0", 1.00 -> "1.0"
-//	the specials YAML's own spelling   .Inf -> ".inf", .NaN -> ".nan"
-//	null         "null"                ~ and an empty key alike
-//	a boolean    "true" / "false"      True -> "true"
-//
-// Naming per type is what makes uniqueness per type expressible: a float always
-// carries its ".0", so it never lands in the integers' namespace and 1 beside
-// 1.0 is two keys rather than a collision.
-//
-// Into an `any`, a mapping holds its keys by what they resolve to once any key
-// is not a string, so 1 and 1.0 are uint64(1) and float64(1) there. The names
-// are what a string-keyed destination holds and what ToJSON writes, and the
-// tests below read them through [named].
-
 func read(t *testing.T, src string) any {
 	t.Helper()
 

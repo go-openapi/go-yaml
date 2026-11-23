@@ -12,12 +12,6 @@ import (
 	"github.com/go-openapi/go-yaml/parser"
 )
 
-// A "%YAML 1.1" directive and the scalar directly under it.
-//
-// Found by replaying the corpus's 1.1 meanings against the library: thirteen of
-// the fourteen cases agreed and generated/677 did not, and it is the only one
-// of them whose document is a bare scalar at the root.
-
 func reading(t *testing.T, src string) any {
 	t.Helper()
 

@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/go-openapi/conformance-suites/stance"
+	"github.com/go-openapi/conformance-suites/yaml/yamlgen/yamlbuild"
 
 	yaml "github.com/go-openapi/go-yaml"
 	"github.com/go-openapi/go-yaml/codec"
@@ -61,7 +62,7 @@ func TestTheLibraryMatchesItsDeclaredStance(t *testing.T) {
 
 	var agreed []string
 
-	for _, p := range yamlcorpus.Patterns() {
+	for _, p := range yamlbuild.Patterns() {
 		src := build(t, p.Name)
 
 		doc := stance.Doc{
@@ -113,7 +114,7 @@ func TestTheLibraryMatchesItsDeclaredStance(t *testing.T) {
 // model is underneath, which is what TestACycleParsesAndMayStillBeRefused says
 // and what the decoder's refusal is measured against.
 func TestTheParserAgreesWithEveryPattern(t *testing.T) {
-	for _, p := range yamlcorpus.Patterns() {
+	for _, p := range yamlbuild.Patterns() {
 		src := build(t, p.Name)
 
 		_, err := parser.ParseBytes(src, parser.WithComments())
@@ -166,15 +167,15 @@ func TestTheCycleIsRefusedRatherThanNilled(t *testing.T) {
 // be run, rather than to prose about a document nobody has.
 func TestEveryDepartureNamesAShape(t *testing.T) {
 	names := map[string]bool{}
-	for _, p := range yamlcorpus.Patterns() {
+	for _, p := range yamlbuild.Patterns() {
 		names[p.Name] = true
 	}
 
 	// Any family may expose a departure, not only the anchors that exposed the
 	// first two.
 	for _, group := range [][]stance.Shape{
-		yamlcorpus.KeyShapes(), yamlcorpus.TagShapes(), yamlcorpus.SchemaShapes(),
-		yamlcorpus.MergeShapes(), yamlcorpus.DirectiveShapes(),
+		yamlbuild.KeyShapes(), yamlbuild.TagShapes(), yamlbuild.SchemaShapes(),
+		yamlbuild.MergeShapes(), yamlbuild.DirectiveShapes(),
 	} {
 		for _, s := range group {
 			names[s.Name] = true
@@ -232,8 +233,8 @@ func departureSource(t *testing.T, name string) []byte {
 	t.Helper()
 
 	for _, group := range [][]stance.Shape{
-		yamlcorpus.KeyShapes(), yamlcorpus.TagShapes(), yamlcorpus.SchemaShapes(),
-		yamlcorpus.MergeShapes(), yamlcorpus.DirectiveShapes(),
+		yamlbuild.KeyShapes(), yamlbuild.TagShapes(), yamlbuild.SchemaShapes(),
+		yamlbuild.MergeShapes(), yamlbuild.DirectiveShapes(),
 	} {
 		for _, s := range group {
 			if s.Name == name {
@@ -248,7 +249,7 @@ func departureSource(t *testing.T, name string) []byte {
 func build(t *testing.T, name string) []byte {
 	t.Helper()
 
-	for _, s := range yamlcorpus.Shapes(around()) {
+	for _, s := range yamlbuild.Shapes(around()) {
 		if s.Name == name {
 			return s.Src
 		}
@@ -268,7 +269,7 @@ func build(t *testing.T, name string) []byte {
 // library gets right, and saying so is as much a measurement as saying it does
 // not -- a ledger with only failures in it is a list of complaints.
 func TestTheLibraryHonoursTheTagRule(t *testing.T) {
-	for _, s := range yamlcorpus.TagShapes() {
+	for _, s := range yamlbuild.TagShapes() {
 		doc := stance.Doc{
 			Name: s.Name, Src: s.Src, WellFormed: true,
 			VerdictAt: stance.Construct, Tags: s.Intent,

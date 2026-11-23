@@ -13,9 +13,9 @@ import (
 	"github.com/go-openapi/testify/v2/assert"
 	"github.com/go-openapi/testify/v2/require"
 
+	"github.com/go-openapi/conformance-suites/yaml/yamlgen"
+	"github.com/go-openapi/conformance-suites/yaml/yamlgen/yamlbuild"
 	yaml "github.com/go-openapi/go-yaml"
-	"github.com/go-openapi/go-yaml/internal/testintegration/yamlcorpus"
-	"github.com/go-openapi/go-yaml/internal/testintegration/yamlgen"
 )
 
 // TestTheEnumeratedShapesReadIntoAGoType runs every enumerated document through
@@ -37,8 +37,8 @@ func TestTheEnumeratedShapesReadIntoAGoType(t *testing.T) {
 	var structs, compared int
 
 	for _, group := range [][]stance.Shape{
-		yamlcorpus.KeyShapes(), yamlcorpus.TagShapes(), yamlcorpus.SchemaShapes(),
-		yamlcorpus.MergeShapes(), yamlcorpus.DirectiveShapes(),
+		yamlbuild.KeyShapes(), yamlbuild.TagShapes(), yamlbuild.SchemaShapes(),
+		yamlbuild.MergeShapes(), yamlbuild.DirectiveShapes(),
 	} {
 		for _, s := range group {
 			var loose any

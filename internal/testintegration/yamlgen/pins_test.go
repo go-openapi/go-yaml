@@ -12,8 +12,6 @@ import (
 
 	"github.com/go-openapi/testify/v2/assert"
 	"github.com/go-openapi/testify/v2/require"
-
-	"github.com/go-openapi/go-yaml/internal/testintegration/yamlgen"
 )
 
 // TestEveryLedgerEntryNamesItsPin holds [yamlgen.Divergence.Pin] to a test that
@@ -35,7 +33,7 @@ func TestEveryLedgerEntryNamesItsPin(t *testing.T) {
 	live := testsIn(t, "defects_test.go")
 	retired := testsIn(t, "fixed_test.go")
 
-	for _, d := range yamlgen.Ledger {
+	for _, d := range ledger {
 		t.Run(d.Name, func(t *testing.T) {
 			require.NotEmptyf(t, d.Pin, "no pin, so nothing reproduces %q on its own", d.Name)
 

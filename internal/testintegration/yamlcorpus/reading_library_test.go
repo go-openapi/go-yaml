@@ -13,17 +13,11 @@ import (
 
 	"github.com/go-openapi/conformance-suites/stance"
 
+	"github.com/go-openapi/conformance-suites/yaml/yamlgen"
+	"github.com/go-openapi/conformance-suites/yaml/yamlgen/yamlbuild"
 	"github.com/go-openapi/go-yaml/codec"
 	"github.com/go-openapi/go-yaml/internal/testintegration/yamlcorpus"
-	"github.com/go-openapi/go-yaml/internal/testintegration/yamlgen"
 )
-
-// Scoring the library under each reading it implements.
-//
-// The tables differ in one field. Every verdict is the same -- "0777" is a
-// valid document whichever schema resolves it -- so nothing about
-// accept-or-refuse moves, and a corpus that only recorded verdicts would score
-// both consumers identically and find nothing. What moves is the value.
 
 // asking rewrites a document so that it asks for the version a table reads.
 //
@@ -98,7 +92,7 @@ func TestTheLibraryMeansWhatTheCorpusSaysUnderEachReading(t *testing.T) {
 			// it after a tag and loses the value after an anchor, where the
 			// grammar, the reference parser, libfyaml and go.yaml.in/yaml/v3
 			// all read it. The corpus's meaning is right and the library cannot
-			// reach it. See yamlgen.Ledger's two entries and
+			// reach it. See the two entries of ledger in yamlgen/ledger_test.go and
 			// yamlgen_test.TestDefectATabAfterANodesPropertiesIsMishandled.
 			if propertyFollowedByTab(string(c.Src)) {
 				declared++
@@ -156,7 +150,7 @@ func TestTheLibraryMeansWhatTheCorpusSaysUnderEachReading(t *testing.T) {
 				continue
 			}
 
-			if !sameMeaning(meaning.JSON, encoded, slices.Contains(c.Tags, string(yamlcorpus.TagInexactFloat))) {
+			if !sameMeaning(meaning.JSON, encoded, slices.Contains(c.Tags, string(yamlbuild.TagInexactFloat))) {
 				t.Errorf("%s under %s\n  document: %q\n  library:  %s\n  corpus:   %s",
 					c.Name, table.Reads, strings.TrimRight(string(c.Src), "\n"), encoded, meaning.JSON)
 			}

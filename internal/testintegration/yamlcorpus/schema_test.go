@@ -7,11 +7,9 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/go-openapi/conformance-suites/stance"
-	yamloracle "github.com/go-openapi/conformance-suites/yaml"
+	"github.com/go-openapi/conformance-suites/yaml/yamlgen/yamlbuild"
 
 	yaml "github.com/go-openapi/go-yaml"
-	"github.com/go-openapi/go-yaml/internal/testintegration/yamlcorpus"
 )
 
 // resolved is what this library makes of each scalar, measured rather than
@@ -67,7 +65,7 @@ var resolved = map[string]string{
 
 // TestTheSchemaPositionIsWhatItWas holds the measurement still.
 func TestTheSchemaPositionIsWhatItWas(t *testing.T) {
-	for _, r := range yamlcorpus.Resolutions() {
+	for _, r := range yamlbuild.Resolutions() {
 		t.Run(r.Scalar, func(t *testing.T) {
 			want, ok := resolved[r.Scalar]
 			if !ok {
@@ -136,7 +134,7 @@ var resolved11 = map[string]struct{ typ, value string }{
 // and the decoder materializing what the tokens were typed as, and a test that
 // called the parser would check none of that.
 func TestTheSchemaPositionUnderYAML11(t *testing.T) {
-	for _, r := range yamlcorpus.Resolutions() {
+	for _, r := range yamlbuild.Resolutions() {
 		t.Run(r.Scalar, func(t *testing.T) {
 			want, ok := resolved11[r.Scalar]
 			if !ok {
@@ -205,54 +203,5 @@ func TestALeadingZeroKeepsItsQuantity(t *testing.T) {
 
 	if string(out) != "mode: 777\n" {
 		t.Errorf("0777 round-trips to %q, and was measured as \"mode: 777\\n\"", string(out))
-	}
-}
-
-// TestEverySchemaShapeIsAValidDocument keeps the family honest about what it is
-// testing.
-//
-// None of these raises a question about syntax: every one is a document YAML
-// accepts under every schema, and the whole disagreement is about what the
-// scalar denotes. A shape the grammar refused would be a syntax test wearing a
-// schema's clothes.
-func TestEverySchemaShapeIsAValidDocument(t *testing.T) {
-	rec := yamloracle.NewRecognizer(256)
-
-	for _, s := range yamlcorpus.SchemaShapes() {
-		if got := rec.Stream(s.Src); !got.OK {
-			t.Errorf("%s: the grammar refuses %q", s.Name, string(s.Src))
-		}
-	}
-}
-
-// TestEverySchemaTagIsPlaced holds the family to the vocabulary, the way the
-// anchor patterns are held to theirs.
-func TestEverySchemaTagIsPlaced(t *testing.T) {
-	vocabulary := yamlcorpus.Vocabulary()
-
-	var docs []stance.Doc
-	for _, s := range yamlcorpus.SchemaShapes() {
-		docs = append(docs, stance.Doc{Name: s.Name, Tags: s.Intent})
-	}
-
-	if unplaced := vocabulary.Unplaced(docs); len(unplaced) > 0 {
-		t.Errorf("the schema shapes use tags no stage places: %v", unplaced)
-	}
-}
-
-// TestNoSchemaQuestionIsSettled is the assertion that keeps this family from
-// quietly becoming a judgement.
-//
-// Not one of these tags may be a rule. A parser implementing the JSON schema
-// and a parser implementing 1.1 disagree about nearly every scalar here and
-// both are conformant, so a rule would be this corpus asserting one schema and
-// calling every other implementation defective.
-func TestNoSchemaQuestionIsSettled(t *testing.T) {
-	rules := yamlcorpus.AnchorRules()
-
-	for tag := range yamlcorpus.SchemaVocabulary() {
-		if _, settled := rules.Of(tag); settled {
-			t.Errorf("%s is settled by a rule, and which schema a parser implements is not ours to settle", tag)
-		}
 	}
 }

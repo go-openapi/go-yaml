@@ -7,45 +7,10 @@ import (
 	"testing"
 
 	"github.com/go-openapi/conformance-suites/stance"
-	yamloracle "github.com/go-openapi/conformance-suites/yaml"
+	"github.com/go-openapi/conformance-suites/yaml/yamlgen/yamlbuild"
 
 	"github.com/go-openapi/go-yaml/internal/testintegration/yamlcorpus"
 )
-
-// TestTheGrammarHasNoOpinionAboutMerge is why the family is enumerated.
-//
-// Every merge shape is a document the grammar accepts, the ones a merging
-// parser must refuse included. "<<" is an ordinary plain scalar to a grammar --
-// there is no production for it and there could not be, since 1.2 does not
-// define the type at all.
-func TestTheGrammarHasNoOpinionAboutMerge(t *testing.T) {
-	rec := yamloracle.NewRecognizer(1024)
-
-	for _, s := range yamlcorpus.MergeShapes() {
-		if got := rec.Stream(s.Src); !got.OK {
-			t.Errorf("%s: the grammar refuses it, so it is testing syntax: %q", s.Name, string(s.Src))
-		}
-	}
-}
-
-// TestNoMergeQuestionIsSettled is the assertion that keeps this family from
-// becoming a judgement.
-//
-// No version of the specification we test against defines "<<", so a rule here
-// would be the corpus picking a version of the language and calling every other
-// implementation defective. libfyaml reads "<<" as an ordinary key and this
-// library merges; both are right.
-func TestNoMergeQuestionIsSettled(t *testing.T) {
-	rules := yamlcorpus.KeyRules()
-	rules = append(rules, yamlcorpus.AnchorRules()...)
-	rules = append(rules, yamlcorpus.TagRules()...)
-
-	for tag := range yamlcorpus.MergeVocabulary() {
-		if _, settled := rules.Of(tag); settled {
-			t.Errorf("%s is settled by a rule, and merge is not ours to settle", tag)
-		}
-	}
-}
 
 // TestTwoMergeKeysAreAlsoADuplicate checks the families interlock rather than
 // sitting side by side.
@@ -56,14 +21,14 @@ func TestNoMergeQuestionIsSettled(t *testing.T) {
 // the specification forbids two equal keys. One document, two reasons, and the
 // corpus can state both.
 func TestTwoMergeKeysAreAlsoADuplicate(t *testing.T) {
-	for _, s := range yamlcorpus.MergeShapes() {
+	for _, s := range yamlbuild.MergeShapes() {
 		if s.Name != "two merge keys in one mapping" {
 			continue
 		}
 
 		var duplicate bool
 		for _, tag := range s.Intent {
-			duplicate = duplicate || tag == yamlcorpus.TagDuplicateKey
+			duplicate = duplicate || tag == yamlbuild.TagDuplicateKey
 		}
 
 		if !duplicate {
@@ -117,7 +82,7 @@ func TestTheMergeStandsAreMeasuredUnderBothVersions(t *testing.T) {
 	// staleness is a question about the pair rather than about either run.
 	departed := map[string]bool{}
 
-	for _, s := range yamlcorpus.MergeShapes() {
+	for _, s := range yamlbuild.MergeShapes() {
 		t.Run(s.Name, func(t *testing.T) {
 			doc := stance.Doc{
 				Name: s.Name, Src: s.Src, WellFormed: true,
@@ -159,7 +124,7 @@ func TestTheMergeStandsAreMeasuredUnderBothVersions(t *testing.T) {
 
 	// A departure that has stopped departing under every reading is a stale
 	// entry, and a stale entry describes a defect somebody has already fixed.
-	for _, s := range yamlcorpus.MergeShapes() {
+	for _, s := range yamlbuild.MergeShapes() {
 		if _, known := declared[s.Name]; known && !departed[s.Name] {
 			t.Errorf("no longer departs under either reading, so its entry is stale: %s", s.Name)
 		}

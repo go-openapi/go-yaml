@@ -11,8 +11,8 @@ import (
 	"github.com/go-openapi/testify/v2/assert"
 	"github.com/go-openapi/testify/v2/require"
 
+	"github.com/go-openapi/conformance-suites/yaml/yamlgen"
 	"github.com/go-openapi/go-yaml/codec"
-	"github.com/go-openapi/go-yaml/internal/testintegration/yamlgen"
 )
 
 // sameValue is ObjectsAreEqual with NaN equal to itself.

@@ -21,13 +21,6 @@ import (
 	"github.com/go-openapi/go-yaml/parser"
 )
 
-// Shapes the generator found that no longer diverge.
-//
-// A fixed defect leaves this much behind: the document that showed it, now
-// asserting the behavior that is correct. It is worth keeping separately from
-// the fix's own tests, because the generator reached these through a path
-// nobody chose, and the same path will be walked again.
-
 // TestFixedSingleQuotedKeyKeepsItsEscaping: a mapping key read from a
 // single-quoted scalar is written back with its quote still doubled.
 //
@@ -1785,7 +1778,7 @@ func TestFixedABlockScalarInASequenceKeepsAnEmptyKeyApart(t *testing.T) {
 // core schema resolves: "!!int - 8" was refused as `value is not allowed in
 // this context` and "!foo - 1" was read as [1].
 //
-// This was yamlgen.Lax's last entry, and it is the one register whose emptiness
+// This was lax's last entry, and it is the one register whose emptiness
 // says nothing: the mutation hunt is what fills it.
 func TestFixedABlockSequenceOnItsTagsLineIsRefused(t *testing.T) {
 	t.Run("every spelling of the tag, and one message", func(t *testing.T) {

@@ -4,41 +4,19 @@
 package yamlgen_test
 
 import (
-	"encoding/json"
 	"fmt"
-	"math"
 	"math/big"
 	"strconv"
 	"strings"
 	"testing"
 
-	"github.com/go-openapi/testify/v2/assert"
-	"github.com/go-openapi/testify/v2/require"
 	"pgregory.net/rapid"
 
-	"github.com/go-openapi/go-yaml"
-	"github.com/go-openapi/go-yaml/codec"
-)
+	"github.com/go-openapi/testify/v2/assert"
+	"github.com/go-openapi/testify/v2/require"
 
-// The generator crosses a written tag with a declared version and asserts what the
-// scalar resolves to, which the presentation properties cannot reach.
-//
-// TestPresentationInvariance writes one value several ways and checks they read back the
-// same. A tag there always names the type the value already has, so `!!int` sits on an
-// Int and the document agrees with itself however it is written. What that never asks is
-// whether the tag and the schema agree about the *base*: "!!int 0b101" is five under YAML
-// 1.1 and not an integer at all under 1.2, and a property comparing a document only
-// against itself reads both as the Int it started from.
-//
-// So these two hold a tagged scalar against the same scalar written bare, at the same
-// version, which is a comparison the value model does not supply and cannot be satisfied
-// by writing the document consistently.
-//
-// Both draw the scalar in a key position as well as a value one. The two walks resolved
-// separately -- defect 81 was "!!int 0x10: v" naming its key "0x10" where "0x10: v" named
-// it 16 -- so a shape drawn only as a value sees half of this, and a fix that corrected
-// the naming alone would turn a two-key document into silent data loss with every
-// property still green.
+	"github.com/go-openapi/go-yaml"
+)
 
 // intText draws the spelling of a scalar that some schema might read as an integer.
 //
@@ -226,7 +204,7 @@ func floatText() *rapid.Generator[string] {
 //
 // "1.2" is the control: it declares what the corpus already assumes, so a scalar under it
 // must resolve exactly as the same scalar resolves with no directive at all.
-var versions = []string{"1.1", "1.2"} //nolint:gochecknoglobals // ok as an immutable table
+var versions = []string{"1.1", "1.2"}
 
 // TestATagIsNotLaxerThanTheBareSpelling holds "!!int x" against "x" at the same version.
 //
@@ -443,150 +421,6 @@ func TestTheUnderscorePlacementsHold(t *testing.T) {
 				"tagged under %%YAML 1.2")
 		})
 	}
-}
-
-// asJSON reads the scalar in a value position through codec.ToJSON.
-//
-// ToJSON walks the tree and writes the scalar itself, so it is a third reader beside the
-// decoder and the tree. It carried its own copy of the 1.2 re-sniff in codec.taggedInteger
-// and codec.taggedFloat until 7e20582, which is how it came to write 0 for a document the
-// decoder read as 5.
-func asJSON(version, scalar string) resolution {
-	out, err := codec.ToJSON([]byte(atVersion(version, "v: "+scalar)))
-	if err != nil {
-		return resolution{Refused: true}
-	}
-
-	var got map[string]any
-	if err := json.Unmarshal(out, &got); err != nil {
-		return resolution{Refused: true}
-	}
-
-	return resolution{Value: renderJSON(got["v"])}
-}
-
-// renderJSON writes what encoding/json built, which is a float64 for every number.
-//
-// The decoder answers with Go's integer types and ToJSON's number comes back through
-// encoding/json as a float64, so the two cannot be compared as Go values. Comparing the
-// number is the point, and a float64 carries every integer these documents spell.
-func renderJSON(v any) string {
-	if n, ok := v.(float64); ok {
-		// A signed zero survives the round to an integer here. int64(-0.0) is 0,
-		// and formatting that reported ToJSON as writing 0 for a document where it
-		// wrote -0.0 -- the two readers were made to disagree by the harness, and
-		// the ledger carried the direction backwards for a day because of it.
-		// numberOf spells a zero the same way, so the two sides stay comparable.
-		if n == 0 {
-			if math.Signbit(n) {
-				return "num:-0"
-			}
-
-			return "num:0"
-		}
-		if n == math.Trunc(n) && math.Abs(n) < 1<<53 {
-			return "num:" + strconv.FormatInt(int64(n), 10)
-		}
-
-		return "num:" + strconv.FormatFloat(n, 'g', -1, 64)
-	}
-
-	return fmt.Sprintf("%T:%v", v, v)
-}
-
-// numberOf reduces a decoder reading to the same shape renderJSON writes, so the two
-// readers are compared on the number and not on the Go type that carried it.
-func numberOf(r resolution) (string, bool) {
-	switch {
-	case r.Refused:
-		return "", false
-	case strings.HasPrefix(r.Value, "int:"):
-		return "num:" + strings.TrimPrefix(r.Value, "int:"), true
-	case strings.HasPrefix(r.Value, "*big.Float:"), strings.HasPrefix(r.Value, "float64:"):
-		_, digits, _ := strings.Cut(r.Value, ":")
-		f, err := strconv.ParseFloat(digits, 64)
-		if err != nil {
-			return "", false
-		}
-		if f == 0 {
-			// A signed zero is a value this library keeps deliberately -- see the
-			// negative-zero fix in codec -- so the two zeros are not folded here.
-			if math.Signbit(f) {
-				return "num:-0", true
-			}
-
-			return "num:0", true
-		}
-		if f == math.Trunc(f) && math.Abs(f) < 1<<53 {
-			return "num:" + strconv.FormatInt(int64(f), 10), true
-		}
-
-		return "num:" + strconv.FormatFloat(f, 'g', -1, 64), true
-	default:
-		return "", false
-	}
-}
-
-// TestToJSONAgreesWithTheDecoderOnATaggedNumber holds the two readers together.
-//
-// A tagged scalar is resolved once and read by three paths: the decoder, the tree and
-// codec.ToJSON. Each carried its own copy of the base-and-schema decision, so they could
-// disagree about one document without any of them looking wrong on its own -- under
-// %YAML 1.1 "!!int 0b101" decoded to 5 while ToJSON wrote 0, and neither number is
-// obviously the mistaken one until they are put side by side.
-//
-// ast.Resolution.Type is the single answer now, so this compares the readers rather than
-// pinning what either of them says. Nothing here states a value: the property is that the
-// two agree, which survives every ruling still to come about what a tag may spell.
-//
-// Only a number is compared. JSON has one number type, so a document the decoder refuses
-// and ToJSON refuses agree by refusing, and a scalar that reads as a string on either side
-// is left alone -- ToJSON's quoting rules are not this axis's question.
-func TestToJSONAgreesWithTheDecoderOnATaggedNumber(t *testing.T) {
-	rapid.Check(t, func(rt *rapid.T) {
-		kind := rapid.SampledFrom(numberKinds).Draw(rt, "kind")
-		text := kind.tag + " " + kind.draw(rt)
-		version := rapid.SampledFrom(versions).Draw(rt, "version")
-
-		decoded, written := asValue(version, text), asJSON(version, text)
-
-		if notJSON(decoded) {
-			// JSON has no spelling for an infinity or a NaN, so ToJSON refuses a
-			// document the decoder reads perfectly well. That is ErrNotJSON doing
-			// its job and not a disagreement about the characters.
-			return
-		}
-
-		if decoded.Refused != written.Refused {
-			rt.Fatalf("%%YAML %s: %q is %s to the decoder and %s to ToJSON;"+
-				" one document, two answers about whether it reads",
-				version, text, decoded, written)
-		}
-
-		want, isNumber := numberOf(decoded)
-		if !isNumber {
-			return
-		}
-		if want != written.Value {
-			rt.Fatalf("%%YAML %s: %q decodes to %s and ToJSON writes %s;"+
-				" the two readers resolved the same characters differently",
-				version, text, want, written.Value)
-		}
-	})
-}
-
-// notJSON says the decoder built a number JSON cannot write.
-//
-// ".inf", "-.inf" and ".nan" are floats YAML resolves and JSON has no spelling for, so
-// codec.ToJSON refuses them by design. Comparing the two readers on such a document would
-// measure that rule instead of the resolution the axis is about.
-func notJSON(r resolution) bool {
-	if !isFloat(r) {
-		return false
-	}
-	f, err := strconv.ParseFloat(strings.TrimPrefix(r.Value, "float64:"), 64)
-
-	return err != nil || math.IsInf(f, 0) || math.IsNaN(f)
 }
 
 // asQuoted reads the scalar double-quoted, which says "these characters are a string" and

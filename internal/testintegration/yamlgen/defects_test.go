@@ -18,17 +18,6 @@ import (
 	"github.com/go-openapi/go-yaml/parser"
 )
 
-// Shapes the generator found that still diverge.
-//
-// A case here pins today's behavior rather than the correct behavior, so that a
-// fix breaks the test that says it was broken, and the matching entry in
-// [yamlgen.Ledger] is what keeps the property tests from failing on it
-// meanwhile. When both go the case moves to fixed_test.go with its assertions
-// inverted, which is where all of them are now.
-//
-// Write the next one here. The two helpers below are what a case needs, and
-// they are kept for it rather than moved.
-
 // wellFormed asserts src is a YAML 1.2 document before anything is asked of the
 // library, so that a case here is a claim about the library and not about a
 // document nobody has to read.
@@ -48,14 +37,6 @@ func renderOnce(t *testing.T, src string) string {
 
 	return file.String()
 }
-
-// The three defects Style.ExplicitKeys found on its first deep run.
-//
-// A mapping entry has two spellings -- "key: value" and "? key" over
-// ": value" -- and the generator had only ever written the short one. All three
-// of these are the long form and nothing else: the same document written short
-// reads, libfyaml 1.0.0b1 reads every one, the reference parser passes them,
-// and yamloracle.NewRecognizer accepts them.
 
 // secondDocument reads a two-document stream and returns what the second one
 // holds, which is where this defect shows.

@@ -13,17 +13,9 @@ import (
 	"github.com/go-openapi/testify/v2/assert"
 	"github.com/go-openapi/testify/v2/require"
 
-	"github.com/go-openapi/go-yaml/internal/testintegration/yamlgen"
+	"github.com/go-openapi/conformance-suites/yaml/yamlgen"
 	"github.com/go-openapi/go-yaml/parser"
 )
-
-// The cost of a parse, measured as a curve rather than as a number.
-//
-// Every other test in this package asks what a document means or whether it is
-// one. None of them notices a parser that takes 67 seconds over 400,000
-// brackets, because it reads them correctly -- so the parse can go quadratic
-// with the whole corpus green and no verdict anywhere disagreeing. The shapes
-// come from [yamlgen.DeepDocument]; the measurement is here.
 
 // costSpan is how much bigger the large document is than the small one.
 //

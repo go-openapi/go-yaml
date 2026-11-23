@@ -8,7 +8,8 @@ import (
 
 	"github.com/go-openapi/conformance-suites/stance"
 
-	"github.com/go-openapi/go-yaml/internal/testintegration/yamlgen"
+	"github.com/go-openapi/conformance-suites/yaml/yamlgen"
+	"github.com/go-openapi/conformance-suites/yaml/yamlgen/yamlbuild"
 )
 
 // GoYAML is what this library does with the questions YAML leaves open, at the
@@ -19,7 +20,7 @@ import (
 // against a wish reports the wish's failures as the library's.
 //
 // Only genuinely open questions are here. Where the specification settles
-// something, [AnchorRules] carries it and this table gets no vote -- so a
+// something, [yamlbuild.AnchorRules] carries it and this table gets no vote -- so a
 // difference between what the rules require and what the library does is a
 // defect, and it goes in [Departures] rather than being written in here as
 // though it were a position.
@@ -27,9 +28,9 @@ var GoYAML = stance.Table{
 	Name:     "go-openapi/go-yaml decoder into any",
 	Because:  "decodes into Go values, which hold more shapes than JSON does and fewer than YAML admits",
 	At:       stance.Construct,
-	Reads:    Reading,
-	Speaks:   Vocabulary(),
-	Requires: allRules(),
+	Reads:    yamlbuild.Reading,
+	Speaks:   yamlbuild.Vocabulary(),
+	Requires: yamlbuild.AllRules(),
 	Stands: map[stance.Tag]stance.Stand{
 		// Changed 2026-09-10 by Fred's ruling, and the entry it replaced was
 		// measuring an accident. "first: &x [1, 2]\n*x : keyed\n" did decode,
@@ -46,7 +47,7 @@ var GoYAML = stance.Table{
 		// The parse is unaffected: the document is well-formed and composes,
 		// and only the construction into Go stops. This table's verdict is at
 		// stance.Construct, which is the stage that stops.
-		TagKeyNotAScalar: stance.Refuses,
+		yamlbuild.TagKeyNotAScalar: stance.Refuses,
 
 		// Changed 2026-08-27, and it is the entry this table exists for.
 		//
@@ -64,7 +65,7 @@ var GoYAML = stance.Table{
 		//
 		// libfyaml 1.0.0b1 and go.yaml.in/yaml/v3 both refuse these documents
 		// too. PyYAML 6.0.1 accepts and builds the cycle.
-		TagCyclicMeaning: stance.Refuses,
+		yamlbuild.TagCyclicMeaning: stance.Refuses,
 
 		// Measured on the tag family. Everything the specification leaves to
 		// the application, this library reads: a local tag, a handle a %TAG
@@ -72,10 +73,10 @@ var GoYAML = stance.Table{
 		// them is a position anybody would call surprising, and the value of
 		// writing them down is that a change to any of them fails a test rather
 		// than surprising a consumer.
-		TagLocal:         stance.Accepts,
-		TagNamedHandle:   stance.Accepts,
-		TagPercentEscape: stance.Accepts,
-		TagYAMLDirective: stance.Accepts,
+		yamlbuild.TagLocal:         stance.Accepts,
+		yamlbuild.TagNamedHandle:   stance.Accepts,
+		yamlbuild.TagPercentEscape: stance.Accepts,
+		yamlbuild.TagYAMLDirective: stance.Accepts,
 
 		// Merge keys, measured on a document that declares no version, which is
 		// every shape in MergeShapes. Since 8acf11b this library resolves "<<"
@@ -90,17 +91,17 @@ var GoYAML = stance.Table{
 		// same bytes are a document here and an error under "%YAML 1.1" --
 		// which is why GoYAML11 keeps its own stand on this tag rather than
 		// sharing this map wholesale.
-		TagMergeKey:        stance.Accepts,
-		TagMergeSequence:   stance.Accepts,
-		TagMergeInline:     stance.Accepts,
-		TagMergeNonMapping: stance.Accepts,
-		TagMergeQuoted:     stance.Accepts,
+		yamlbuild.TagMergeKey:        stance.Accepts,
+		yamlbuild.TagMergeSequence:   stance.Accepts,
+		yamlbuild.TagMergeInline:     stance.Accepts,
+		yamlbuild.TagMergeNonMapping: stance.Accepts,
+		yamlbuild.TagMergeQuoted:     stance.Accepts,
 
 		// A "<<" written as a flow entry's key alone is an ordinary key holding
 		// null under the core schema, so this reading accepts it and GoYAML11
 		// refuses it. See TagMergeKeyAlone, and Departures for what the library
 		// does under the directive today.
-		TagMergeKeyAlone: stance.Accepts,
+		yamlbuild.TagMergeKeyAlone: stance.Accepts,
 
 		// Directives, measured, and one of them is a defect rather than a
 		// position. See Departures: this library reads a document with one
@@ -110,7 +111,7 @@ var GoYAML = stance.Table{
 		// The minor-version entry is a genuine position. The spec only *should*
 		// have a processor accept a version beyond its own, so refusing 1.9 is
 		// a choice, and libfyaml makes the same one.
-		TagYAMLMinorVersion: stance.Refuses,
+		yamlbuild.TagYAMLMinorVersion: stance.Refuses,
 
 		// A tag naming a type the scalar cannot be read as. All six refuse, and
 		// each names the text and the tag: "cannot read \"abc\" as !!int".
@@ -132,12 +133,12 @@ var GoYAML = stance.Table{
 		// tag is an assertion, and an assertion that does not hold is reported.
 		// A laxer policy is to follow as an option, and will fall back to the
 		// text rather than to a zero.
-		TagBoolNotABoolean:   stance.Refuses,
-		TagTimestampNotADate: stance.Refuses,
-		TagBinaryNotBase64:   stance.Refuses,
-		TagIntNotAnInteger:   stance.Refuses,
-		TagFloatNotANumber:   stance.Refuses,
-		TagNullNotNull:       stance.Refuses,
+		yamlbuild.TagBoolNotABoolean:   stance.Refuses,
+		yamlbuild.TagTimestampNotADate: stance.Refuses,
+		yamlbuild.TagBinaryNotBase64:   stance.Refuses,
+		yamlbuild.TagIntNotAnInteger:   stance.Refuses,
+		yamlbuild.TagFloatNotANumber:   stance.Refuses,
+		yamlbuild.TagNullNotNull:       stance.Refuses,
 
 		// The collection member of the family, from 12dd678. "!!omap" builds a
 		// codec.MapSliceSeq and refuses every shape the type definition does
@@ -150,7 +151,7 @@ var GoYAML = stance.Table{
 		// set per "!!omap" and records the repeat in the sequence's
 		// ast.SequenceNode.Duplicates, with the entry's index, and every reader
 		// refuses it from that record.
-		TagOMapNotASequenceOfPairs: stance.Refuses,
+		yamlbuild.TagOMapNotASequenceOfPairs: stance.Refuses,
 
 		// And a tag over the wrong kind of node, from 878bc41: "!!seq does not
 		// support this kind of node", for a collection tag on a scalar or on the
@@ -162,7 +163,7 @@ var GoYAML = stance.Table{
 		// default, so "k: !!map" reads. A written null is a scalar and is
 		// refused, which is the boundary the two shapes at the end of the family
 		// hold.
-		TagKindMismatch: stance.Refuses,
+		yamlbuild.TagKindMismatch: stance.Refuses,
 
 		// The representation family, which this table answers the same way
 		// throughout: a Go value holds every one of these, so the decoder
@@ -173,20 +174,20 @@ var GoYAML = stance.Table{
 		// codec.MapSliceSeq, an integer past a machine word as a *big.Int and a
 		// float past float64's range as a *big.Float. Each is one of the
 		// answers its tag names, and none of them is the language's.
-		TagBinaryRepresentation:     stance.Accepts,
-		TagTimestampRepresentation:  stance.Accepts,
-		TagOrderedMapRepresentation: stance.Accepts,
-		TagWideInteger:              stance.Accepts,
-		TagFloatOutOfRange:          stance.Accepts,
-		TagInexactFloat:             stance.Accepts,
-		TagNonFiniteFloat:           stance.Accepts,
+		yamlbuild.TagBinaryRepresentation:     stance.Accepts,
+		yamlbuild.TagTimestampRepresentation:  stance.Accepts,
+		yamlbuild.TagOrderedMapRepresentation: stance.Accepts,
+		yamlbuild.TagWideInteger:              stance.Accepts,
+		yamlbuild.TagFloatOutOfRange:          stance.Accepts,
+		yamlbuild.TagInexactFloat:             stance.Accepts,
+		yamlbuild.TagNonFiniteFloat:           stance.Accepts,
 
 		// Whether the meaning can be written as JSON is not a question a
 		// decoder into Go answers: it holds a NaN and an infinity, and it
 		// refuses a collection key through TagKeyNotAScalar, which is the tag
 		// that carries that refusal. A JSON-bound consumer declares Refuses
 		// here, and codec.ToJSON is one.
-		TagNotJSONRepresentable: stance.Accepts,
+		yamlbuild.TagNotJSONRepresentable: stance.Accepts,
 	},
 }
 
@@ -319,8 +320,8 @@ var GoYAML11 = stance.Table{
 	Because:  "reads a document that asks for 1.1, where a plain scalar resolves by 1.1's productions",
 	At:       stance.Construct,
 	Reads:    yamlgen.Reading11,
-	Speaks:   Vocabulary(),
-	Requires: allRules(),
+	Speaks:   yamlbuild.Vocabulary(),
+	Requires: yamlbuild.AllRules(),
 	Stands:   elevenStands(),
 }
 
@@ -333,12 +334,12 @@ var GoYAML11 = stance.Table{
 // would drift from the first the moment either moved.
 func elevenStands() map[stance.Tag]stance.Stand {
 	out := maps.Clone(GoYAML.Stands)
-	out[TagMergeNonMapping] = stance.Refuses
+	out[yamlbuild.TagMergeNonMapping] = stance.Refuses
 	// The merge key requires its ":", so "{a: 1, <<}" is invalid merge syntax
 	// under this reading and an ordinary key holding null under the core one.
 	// Fred's ruling of 2026-09-08; go.yaml.in/yaml/v3 v3.0.5 refuses it too,
 	// for the adjacent reason that the merge value is not a mapping.
-	out[TagMergeKeyAlone] = stance.Refuses
+	out[yamlbuild.TagMergeKeyAlone] = stance.Refuses
 
 	return out
 }
@@ -362,8 +363,8 @@ var GoYAMLParser = stance.Table{
 	Name:     "go-openapi/go-yaml parser",
 	Because:  "answers whether a document is well formed, and nothing about what it means",
 	At:       stance.Parse,
-	Reads:    Reading,
-	Speaks:   Vocabulary(),
-	Requires: allRules(),
+	Reads:    yamlbuild.Reading,
+	Speaks:   yamlbuild.Vocabulary(),
+	Requires: yamlbuild.AllRules(),
 	Stands:   GoYAML.Stands,
 }

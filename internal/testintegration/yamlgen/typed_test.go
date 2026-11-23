@@ -9,8 +9,8 @@ import (
 
 	"pgregory.net/rapid"
 
+	"github.com/go-openapi/conformance-suites/yaml/yamlgen"
 	yaml "github.com/go-openapi/go-yaml"
-	"github.com/go-openapi/go-yaml/internal/testintegration/yamlgen"
 )
 
 // TestDecodingIntoAGoTypeGivesTheSameValue reads each document twice, once into
@@ -70,7 +70,7 @@ func TestDecodingIntoAGoTypeGivesTheSameValue(t *testing.T) {
 		want := yamlgen.Normalize(reflect.ValueOf(loose))
 		diverged := err != nil || !sameThroughAType(want, yamlgen.Normalize(into.Elem()))
 
-		if known := yamlgen.Known(yamlgen.DecodeTyped, value, style); known != nil {
+		if known := yamlgen.Known(ledger, yamlgen.DecodeTyped, value, style); known != nil {
 			tally.record(known.Name, diverged)
 
 			return
