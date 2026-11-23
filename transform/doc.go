@@ -28,6 +28,6 @@
 // [github.com/go-openapi/go-yaml/transform/colorize] draws a document in color through the renderer of package
 // [github.com/go-openapi/go-yaml/ast], not through this package.
 //
-// ⚠️ The package is new, and its shape may change. One rule holds: a transform that copies every piece copies
-// the document. TestIdentityRebuildsTheCorpus checks it over every corpus document the parse accepts.
+// A transform that copies every piece copies the document. TestIdentityRebuildsTheCorpus checks it over every
+// corpus document the parse accepts.
 package transform
