@@ -38,7 +38,7 @@ document has one entry; `---` starts another.
 | `WithMergeKeys` | resolves a bare `<<` as a merge key at any version, and changes nothing else |
 | `WithLaxTags` | reads `!!int abc` as the text `abc` instead of refusing the document |
 | `WithAllowDuplicateMapKey` | accepts a repeated key instead of refusing it: a decoder keeps the last value, `ToJSON` keeps the first |
-| `WithJSONCompatible` | rejects a document JSON cannot hold, with `ErrNotJSON`: `1:` and `"1":` in one mapping both write the JSON name `"1"` |
+| `WithJSONCompatible` | rejects a document JSON cannot hold, with `ErrNotJSON`: a collection as a key, `.inf`, a cycle. `1:` and `"1":` in one mapping write one JSON name; the parse records that pair in `Duplicates`, and `ToJSON` rejects it |
 | `WithJSONSyntax` | rejects a document not written as JSON, with `ErrNotJSONSyntax`: `a: b`, a comment, an anchor, a single quote, a trailing `,` |
 | `WithOmitNodePaths` | stops recording each node's path |
 | `WithChunkSize` | how many tokens one chunk of the token arena holds |

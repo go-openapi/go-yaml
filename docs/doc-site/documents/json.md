@@ -46,8 +46,9 @@ The errors carry a position, so they print like any other — see
 
 A non-string scalar key is stringified, which can produce a duplicate JSON name:
 `'1.0': 1` and `!!float 1: 2` are two YAML keys and one JSON name.
-`parser.WithJSONCompatible` reports that pair as `ErrNotJSON` rather than letting
-it through.
+`ToJSON` and the decoder reject that pair with `ErrNotJSON`. A parse under
+`parser.WithJSONCompatible` does not: it records the pair in the mapping's
+`Duplicates`, with `JSONNameOnly` set.
 
 ## Repeated keys
 
