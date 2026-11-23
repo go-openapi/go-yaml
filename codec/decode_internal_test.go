@@ -155,6 +155,23 @@ func TestARefusedExpansionNamesAnAlias(t *testing.T) {
 	})
 }
 
+// entryNamed returns the value under name in v, a mapping decoded into an any: a map[string]any or a MapSlice.
+func entryNamed(t *testing.T, v any, name string) any {
+	t.Helper()
+	switch m := v.(type) {
+	case map[string]any:
+		return m[name]
+	case MapSlice:
+		value, _ := m.Get(name)
+
+		return value
+	default:
+		t.Fatalf("%T is no mapping", v)
+
+		return nil
+	}
+}
+
 type aliasPair struct {
 	N int `yaml:"n"`
 }
@@ -173,6 +190,52 @@ func TestAliasesAreIndependent(t *testing.T) {
 		m["first"].(map[string]any)["n"] = 999
 		assert.NotEqual(t, 999, m["second"].(map[string]any)["n"], "writing through first wrote through second")
 		assert.NotEqual(t, 999, m["base"].(map[string]any)["n"], "writing through first wrote through the anchor")
+	})
+
+	t.Run("into an any, walking, every kind of mapping", func(t *testing.T) {
+		for name, tc := range map[string]struct {
+			src  string
+			opts []DecodeOption
+			set  func(first any)
+		}{
+			"keys other than strings": {
+				src: "base: &b {1: x}\nfirst: *b\nsecond: *b\n",
+				set: func(first any) { first.(map[any]any)[uint64(1)] = "changed" },
+			},
+			"UseOrderedMap": {
+				src: "base: &b {n: x}\nfirst: *b\nsecond: *b\n", opts: []DecodeOption{UseOrderedMap()},
+				set: func(first any) { m := first.(MapSlice); _ = m.Set("n", "changed") },
+			},
+			"an omap": {
+				src: "base: &b !!omap [{n: x}]\nfirst: *b\nsecond: *b\n",
+				set: func(first any) { m := MapSlice(first.(MapSliceSeq)); _ = m.Set("n", "changed") },
+			},
+		} {
+			t.Run(name, func(t *testing.T) {
+				var v any
+				dec := NewDecoder(bytes.NewReader([]byte(tc.src)), tc.opts...)
+				require.NoError(t, dec.Decode(&v))
+				require.NotNil(t, dec.stream, "the document was not walked")
+				var second, base string
+				read := func() {
+					var w struct {
+						Base   any `yaml:"base"`
+						Second any `yaml:"second"`
+					}
+					out, err := Marshal(v)
+					require.NoError(t, err)
+					require.NoError(t, Unmarshal(out, &w))
+					second, base = fmt.Sprint(w.Second), fmt.Sprint(w.Base)
+				}
+				read()
+				wantSecond, wantBase := second, base
+				first := entryNamed(t, v, "first")
+				tc.set(first)
+				read()
+				assert.Equal(t, wantSecond, second, "writing through first wrote through second")
+				assert.Equal(t, wantBase, base, "writing through first wrote through the anchor")
+			})
+		}
 	})
 
 	t.Run("into an any, tree", func(t *testing.T) {

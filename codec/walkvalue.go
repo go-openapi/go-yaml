@@ -442,16 +442,17 @@ func (b *valueBuilder) copyValue(v any, at ast.Node) any {
 		}
 
 		return out
-	case MapSlice:
-		out := MapSlice{items: make([]MapItem, len(t.items))}
-		if t.items == nil {
-			out.items = nil
-		}
-		for i, item := range t.items {
-			out.items[i] = MapItem{Key: item.Key, Value: b.copyValue(item.Value, at)}
+	case map[any]any:
+		out := make(map[any]any, len(t))
+		for k, e := range t {
+			out[k] = b.copyValue(e, at)
 		}
 
 		return out
+	case MapSlice:
+		return b.copyItems(t, at)
+	case MapSliceSeq:
+		return MapSliceSeq(b.copyItems(MapSlice(t), at))
 	case []any:
 		out := make([]any, len(t))
 		for i, e := range t {
@@ -470,6 +471,19 @@ func (b *valueBuilder) copyValue(v any, at ast.Node) any {
 		// these cannot write through one and see the other.
 		return v
 	}
+}
+
+// copyItems returns a copy of m, its values copied by copyValue. A key is a scalar, and copyItems keeps it.
+func (b *valueBuilder) copyItems(m MapSlice, at ast.Node) MapSlice {
+	if m.items == nil {
+		return m
+	}
+	out := MapSlice{items: make([]MapItem, len(m.items))}
+	for i, item := range m.items {
+		out.items[i] = MapItem{Key: item.Key, Value: b.copyValue(item.Value, at)}
+	}
+
+	return out
 }
 
 // deliver puts v into the frame enclosing node, or into docs at the top level.
