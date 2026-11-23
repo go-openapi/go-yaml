@@ -576,3 +576,37 @@ func TestParseReadsATaggedMappingEntryOnTheTagsOwnLine(t *testing.T) {
 		}
 	})
 }
+
+// TestATagBeforeAnImplicitKeyTagsTheKey parses a tag standing before an implicit key on its line, and finds it on the
+// key, as yaml.v3 and YAML 1.2 read it.
+//
+// A collection tag or a "!!" tag no schema defines stood on its own, and the parser put it on the mapping the key
+// opens: "&a1 !!se q: 1" anchored and tagged the mapping. A tag on a line of its own still tags the mapping.
+func TestATagBeforeAnImplicitKeyTagsTheKey(t *testing.T) {
+	t.Parallel()
+
+	for _, src := range []string{"!!se q: 1\n", "&a1 !!se q: 1\n", "!!map q: 1\n", "!!omap 'q': 1\n", "a:\n  !!se q: 1\n"} {
+		file, err := parser.ParseBytes([]byte(src))
+		require.NoErrorf(t, err, "%q", src)
+
+		body := file.Docs[0].Body
+		if outer, ok := body.(*ast.MappingNode); ok && len(outer.Values) == 1 && outer.Values[0].Key.GetToken().Value == "a" {
+			body = outer.Values[0].Value
+		}
+		mapping, ok := body.(*ast.MappingNode)
+		require.Truef(t, ok, "%q: the tag went to the mapping, %T", src, body)
+
+		key := ast.Unwrap(mapping.Values[0].Key)
+		assert.Equalf(t, "q", key.GetToken().Value, "%q", src)
+		_, tagged := mapping.Values[0].Key.(*ast.TagNode)
+		_, anchored := mapping.Values[0].Key.(*ast.AnchorNode)
+		assert.Truef(t, tagged || anchored, "%q: the key holds no property", src)
+	}
+
+	t.Run("a tag on its own line tags the mapping", func(t *testing.T) {
+		file, err := parser.ParseBytes([]byte("!!map\nq: 1\n"))
+		require.NoError(t, err)
+		_, tagged := file.Docs[0].Body.(*ast.TagNode)
+		assert.True(t, tagged)
+	})
+}

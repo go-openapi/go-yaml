@@ -536,9 +536,15 @@ func (g *Grouper) taggedScalar(tag, next *TapeToken, explicitKey bool) (*TapeTok
 
 		return g.group2(TokenGroupScalarTag, tag, next), true
 	default:
-		// A reserved tag that resolves to a collection, or one we do not read:
-		// it stands on its own and the parser reads what it tags.
-		return nil, true
+		// A reserved tag that resolves to a collection, or one we do not read. Before a scalar on its line it tags
+		// the scalar, as any tag does: "!!se q: 1" tags the key q, as yaml.v3 and YAML 1.2 read it. Left on its own,
+		// it went to the mapping the key opens. Before anything else it stands on its own, and the parser reads
+		// what it tags: an alias, which go-yaml reads under "!!omap *a", and a block scalar, which a key cannot be.
+		if !isInlineScalar(next) {
+			return nil, true
+		}
+
+		return g.group2(TokenGroupScalarTag, tag, next), true
 	}
 }
 
@@ -1183,6 +1189,16 @@ func IsPlainMergeSpelling(tk *TapeToken) bool {
 // anchoredMergeKey reports whether tk is an anchor joined to a "<<", as in "!!merge &a <<".
 func anchoredMergeKey(tk *TapeToken) bool {
 	return tk.GroupType() == TokenGroupAnchor && tk.Group.Len() == 2 && tk.Group.At(1).Type() == token.MergeKeyType
+}
+
+// isInlineScalar reports whether tk is a scalar written on its line, plain or quoted: one an implicit key can be.
+func isInlineScalar(tk *TapeToken) bool {
+	switch tk.Type() {
+	case token.AnchorType, token.AliasType, token.LiteralType, token.FoldedType, token.ImplicitNullType:
+		return false
+	default:
+		return isScalarType(tk)
+	}
 }
 
 func isScalarType(tk *TapeToken) bool {
