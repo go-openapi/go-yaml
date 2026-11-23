@@ -11,7 +11,8 @@ import (
 
 func builder() *expressions.PathBuilder { return &expressions.PathBuilder{} }
 
-func TestPathBuilder(t *testing.T) {
+// TestPathBuilderSpellsThePathItBuilds builds paths step by step and requires the text each one writes back.
+func TestPathBuilderSpellsThePathItBuilds(t *testing.T) {
 	tests := []struct {
 		expected string
 		path     *expressions.Path

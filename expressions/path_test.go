@@ -17,8 +17,11 @@ import (
 	"github.com/go-openapi/testify/v2/require"
 )
 
+// TestPathAddressesEachKindOfStep reads a store document through each kind of step -- child, index, [*],
+// recursive descent, a quoted name -- with PathString, String, Read and Filter.
+//
 //nolint:gocognit // inline subtests, one per path operation
-func TestPath(t *testing.T) {
+func TestPathAddressesEachKindOfStep(t *testing.T) {
 	yml := `
 store:
   book:
@@ -182,7 +185,8 @@ store:
 	})
 }
 
-func TestPath_FilterFile(t *testing.T) {
+// TestFilterFileFindsTheAddressedNode decodes the node FilterFile finds in a parsed document, and the error for one it does not.
+func TestFilterFileFindsTheAddressedNode(t *testing.T) {
 	tests := []struct {
 		name        string
 		path        string
@@ -258,7 +262,8 @@ key2: value2
 	}
 }
 
-func TestPath_ReservedKeyword(t *testing.T) {
+// TestAQuotedNameMayHoldAReservedCharacter addresses keys that hold '.', '*' or a quote, written single-quoted in the path.
+func TestAQuotedNameMayHoldAReservedCharacter(t *testing.T) {
 	tests := []struct {
 		name     string
 		path     string
@@ -330,7 +335,8 @@ a.b.c:
 	}
 }
 
-func TestPath_Invalid(t *testing.T) {
+// TestAMissingKeyReturnsErrNotFoundNode addresses a key the document does not hold, through Read and ReadNode.
+func TestAMissingKeyReturnsErrNotFoundNode(t *testing.T) {
 	tests := []struct {
 		path string
 		src  string
@@ -367,7 +373,9 @@ func TestPath_Invalid(t *testing.T) {
 	}
 }
 
-func TestPath_ReadNode(t *testing.T) {
+// TestReadNodeFindsTheAddressedNode reads the addressed node from a stream with ReadNode, and decodes the YAML it
+// renders.
+func TestReadNodeFindsTheAddressedNode(t *testing.T) {
 	tests := []struct {
 		name     string
 		path     string

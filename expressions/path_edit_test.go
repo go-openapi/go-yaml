@@ -89,7 +89,8 @@ func runPathEdits(t *testing.T, tests []pathEditCase, edits pathEdits) {
 	}
 }
 
-func TestPath_Merge(t *testing.T) {
+// TestMergeIntoTheAddressedNode merges a mapping into the addressed node, from a reader, a file and a node.
+func TestMergeIntoTheAddressedNode(t *testing.T) {
 	tests := []pathEditCase{
 		{
 			path: "$.c",
@@ -152,7 +153,8 @@ a:
 	})
 }
 
-func TestPath_Replace(t *testing.T) {
+// TestReplaceTheAddressedNode replaces the addressed node, from a reader, a file and a node.
+func TestReplaceTheAddressedNode(t *testing.T) {
 	tests := []pathEditCase{
 		{
 			path: "$.a",
@@ -293,7 +295,7 @@ building:
 	})
 }
 
-// TestPath_ReplaceWithNode_BlockValues replaces block mappings, block
+// TestReplaceWithNodeWritesBlockValues replaces block mappings, block
 // sequences and block scalars, then checks the text the file renders as and
 // the value the replaced slot reads back as.
 //
@@ -308,7 +310,7 @@ building:
 // document written with four-space steps comes back with two. Use
 // ast.NewRenderer with WithIndent and WithIndentSequence to write it some
 // other way.
-func TestPath_ReplaceWithNode_BlockValues(t *testing.T) {
+func TestReplaceWithNodeWritesBlockValues(t *testing.T) {
 	tests := []struct {
 		name string
 		path string

@@ -14,12 +14,9 @@ import (
 	"github.com/go-openapi/go-yaml/expressions"
 )
 
-// TestPathStringRejectsAnIndexThatNeverCloses checks the paths that used to
-// panic.
-//
-// The index parser read digits to the end of the path and then looked at the
-// character after them without checking there was one, so "$[0" ran off the end
-// of the buffer and crashed instead of being refused.
+// TestPathStringRejectsAnIndexThatNeverCloses parses paths whose index has no closing ']', such as "$[0". The
+// index parser reads digits to the end of the path, and must reject the path with ErrInvalidPathString without
+// reading past its end.
 func TestPathStringRejectsAnIndexThatNeverCloses(t *testing.T) {
 	for _, src := range []string{"$[0", "$[*", "$[12", "$.a[3", "$[", "$.a['b"} {
 		t.Run(src, func(t *testing.T) {
@@ -45,10 +42,10 @@ func TestPathStringRejectsAnIndexTooLargeForAUint(t *testing.T) {
 // walks bytes, still addresses a key holding characters that take more than
 // one.
 func TestPathStringReadsKeysThatAreNotASCII(t *testing.T) {
-	const src = "日本語: 1\nprix: 2\n'a.b': 3\n" //nolint:gosmopolitan // non-ASCII keys are what the test reads
+	const src = "日本語: 1\nprix: 2\n'a.b': 3\n" //nolint:gosmopolitan // the test reads non-ASCII keys
 
 	tests := map[string]any{
-		"$.日本語":   uint64(1), //nolint:gosmopolitan // non-ASCII keys are what the test reads
+		"$.日本語":   uint64(1), //nolint:gosmopolitan // the test reads non-ASCII keys
 		"$.prix":  uint64(2),
 		"$.'a.b'": uint64(3),
 	}
@@ -65,7 +62,8 @@ func TestPathStringReadsKeysThatAreNotASCII(t *testing.T) {
 	}
 }
 
-func TestInvalidPath(t *testing.T) {
+// TestPathStringRequiresTheRoot rejects a path that does not start at '$'.
+func TestPathStringRequiresTheRoot(t *testing.T) {
 	tests := []struct {
 		name string
 		path string

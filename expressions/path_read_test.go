@@ -17,11 +17,8 @@ import (
 // TestPathReadAgreesWithUnmarshal checks that reading a value through a path
 // gives what unmarshalling the whole document gives.
 //
-// Path.Read used to render the node it found back to YAML and read that text
-// again. What the spelling does not carry was lost on the way: a block scalar
-// written "|" is clipped, so the break ending its last line belongs to the
-// value, and the node renders without it. "a: |\n  x\n  y\n" read as "x\ny"
-// through a path and "x\ny\n" through Unmarshal.
+// Read decodes the node it finds, without rendering it back to YAML. A rendering would drop the break a "|" block
+// scalar keeps at its end: "a: |\n  x\n  y\n" would read as "x\ny" through a path and "x\ny\n" through Unmarshal.
 func TestPathReadAgreesWithUnmarshal(t *testing.T) {
 	tests := []struct {
 		name string
@@ -71,11 +68,9 @@ func TestPathFilterKeepsTheTrailingBreak(t *testing.T) {
 // TestPathReadResolvesAnAliasFromOutsideTheNode covers an alias whose anchor
 // stands outside what the path returns.
 //
-// Path.Read parses the document, keeps the one node the path addresses and
-// decodes that. The anchor is elsewhere in the file, so the decoder used to
-// look the name up in a table built from a node that does not hold it and
-// report `could not find alias "x"`. The parser now points the alias at what it
-// names as it reads, so the node carries its own answer.
+// Read decodes only the node the path addresses, and the anchor stands elsewhere in the file. The parser points
+// each alias at the node it names as it reads, so the decoder resolves the alias from the node alone, without
+// `could not find alias "x"`.
 func TestPathReadResolvesAnAliasFromOutsideTheNode(t *testing.T) {
 	const src = "anchored: &x\n  a: 1\n  b: 2\nelsewhere:\n  here: *x\n"
 
@@ -87,8 +82,8 @@ func TestPathReadResolvesAnAliasFromOutsideTheNode(t *testing.T) {
 	require.Equal(t, map[string]int{"a": 1, "b": 2}, got)
 }
 
-// TestDecodeFromNodeResolvesAnAliasFromOutsideTheNode is the same fix reached
-// through the API a caller holding a node uses directly.
+// TestDecodeFromNodeResolvesAnAliasFromOutsideTheNode checks the same alias through codec.DecodeFromNode, which a
+// caller holding a node uses directly.
 func TestDecodeFromNodeResolvesAnAliasFromOutsideTheNode(t *testing.T) {
 	f, err := parser.ParseBytes([]byte("anchored: &x [1, 2]\nelsewhere: *x\n"))
 	require.NoError(t, err)
