@@ -840,6 +840,28 @@ func (r *Renderer) entry(n Node) rendered {
 	return piece.hangingBy(markerWidth)
 }
 
+// sequenceEntry renders a node placed after a "- ", and reports whether it opened on a blank line, which the
+// caller writes above the "- ".
+//
+// [Renderer.entry] keeps that blank line after the marker and indents what follows by the indent, as a "?" key
+// needs. Moved above the "- ", the text stands after the dash again and hangs by the marker's width. Indented by 4,
+// a blank line over "- ? a" over "  : 1" came back with the ':' two columns past the '?', and did not parse.
+func (r *Renderer) sequenceEntry(n Node) (rendered, bool) {
+	piece := r.render(n)
+	if carriesOwnIndent(r.deref(n)) {
+		if piece.leads {
+			return piece.withoutLead(), true
+		}
+
+		return piece, false
+	}
+	if piece.leads {
+		return piece.withoutLead().hangingBy(markerWidth), true
+	}
+
+	return piece.hangingBy(markerWidth), false
+}
+
 // markerWidth is the width of the "- " and "? " markers, after which an entry
 // starts on the marker's line.
 const markerWidth = 2
@@ -875,10 +897,10 @@ func (r *Renderer) sequence(n *SequenceNode) rendered {
 
 		// A blank line inside an entry surfaces as a leading break on the
 		// entry's own text. It belongs above the "- ", not after it.
-		entry := er.entry(value)
+		entry, lifted := er.sequenceEntry(value)
 		var blank string
-		if entry.leads {
-			blank, entry = "\n", entry.withoutLead()
+		if lifted {
+			blank = "\n"
 		}
 		if head := headOf(n, i); r.comments && !head.Blank() {
 			if blank == "" {
