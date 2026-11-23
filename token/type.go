@@ -229,6 +229,8 @@ func (c CharacterType) String() string {
 		return "Miscellaneous"
 	case CharacterTypeEscaped:
 		return "Escaped"
+	case CharacterTypeInvalid:
+		return "Invalid"
 	default:
 		// nothing to do
 	}
