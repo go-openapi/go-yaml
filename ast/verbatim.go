@@ -1891,7 +1891,8 @@ func (r *Renderer) writeInPlaceOf(vw *verbatimWriter, n Node, underKey bool) {
 	// It goes on the lines below, indented from the line the copy is on rather
 	// than from the tree's depth, so it lines up with the document around it.
 	if underKey && r.startsBlock(n) {
-		vw.raw("\n" + indentBlockWith(text, vw.lineIndent()+r.blockStep(n)))
+		brk := vw.breakNear(vw.cursor)
+		vw.raw(brk + withBreak(indentBlockWith(text, vw.lineIndent()+r.blockStep(n)), brk))
 		vw.dropping = true
 
 		return
@@ -2013,10 +2014,11 @@ func (r *Renderer) writeEntry(vw *verbatimWriter, entry Node, coll collection, i
 		// that entry's own are read for a removed node: the text in front of it
 		// on its line is its indentation, and a sequence entry's "-", which the
 		// tree holds and writes later.
+		brk := vw.breakNear(int(next.from))
 		vw.settleGap(lineStartIn(vw.src, int(next.from)))
 		vw.upTo(int(next.from))
-		vw.raw(text)
-		vw.raw("\n" + indent)
+		vw.raw(withBreak(text, brk))
+		vw.raw(brk + indent)
 
 		return
 	}
@@ -2029,9 +2031,10 @@ func (r *Renderer) writeEntry(vw *verbatimWriter, entry Node, coll collection, i
 	if !found {
 		return
 	}
+	brk := vw.breakNear(int(previous.from))
 	vw.upTo(vw.restOfLine())
 	if !vw.atLineStart {
-		vw.raw("\n")
+		vw.raw(brk)
 	}
 	// The text in front of the entry before is the indentation to repeat --
 	// but only its width where it holds an indicator. A block sequence needs its
@@ -2042,8 +2045,59 @@ func (r *Renderer) writeEntry(vw *verbatimWriter, entry Node, coll collection, i
 		lead = asIndent(lead)
 	}
 	vw.raw(lead)
-	vw.raw(text)
-	vw.raw("\n")
+	vw.raw(withBreak(text, brk))
+	if vw.cursor < len(vw.src) || endsOnABreak(vw.src) {
+		// A document that ends without a line break keeps ending without one: the entry takes the last line, and
+		// the break goes in front of it, where the line before needs one.
+		vw.raw(brk)
+	}
+}
+
+// breakNear is the line break the document uses near at: the one ending the line before at, or failing that the
+// first one after it, or "\n" in a document of one line. A document written with "\r\n" or "\r" gets its own
+// breaks back around a node a caller put in, where a "\n" mixed one break into another.
+func (vw *verbatimWriter) breakNear(at int) string {
+	at = min(max(at, 0), len(vw.src))
+	for i := at - 1; i >= 0; i-- {
+		if isBreak(vw.src[i]) {
+			return breakAt(vw.src, i)
+		}
+	}
+	for i := at; i < len(vw.src); i++ {
+		if isBreak(vw.src[i]) {
+			return breakAt(vw.src, i)
+		}
+	}
+
+	return "\n"
+}
+
+// breakAt is the line break that ends at src[i], a break character: "\r\n", "\r" or "\n".
+func breakAt(src []byte, i int) string {
+	switch {
+	case src[i] == '\n' && i > 0 && src[i-1] == '\r':
+		return "\r\n"
+	case src[i] == '\r' && i+1 < len(src) && src[i+1] == '\n':
+		return "\r\n"
+	case src[i] == '\r':
+		return "\r"
+	default:
+		return "\n"
+	}
+}
+
+// endsOnABreak reports whether src ends with a line break.
+func endsOnABreak(src []byte) bool {
+	return len(src) > 0 && isBreak(src[len(src)-1])
+}
+
+// withBreak writes the "\n" breaks of text, laid out by the renderer, as brk.
+func withBreak(text, brk string) string {
+	if brk == "\n" {
+		return text
+	}
+
+	return strings.ReplaceAll(text, "\n", brk)
 }
 
 // ErrInsert is returned by [Renderer.Verbatim] and [Renderer.VerbatimFile] when

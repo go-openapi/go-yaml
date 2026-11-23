@@ -177,12 +177,15 @@ func TestVerbatimPlacesAnInsertedEntry(t *testing.T) {
 		{"four-space indentation", "root:\n    a: 1\n", true, 1, "root:\n    a: 1\n    x: 9\n"},
 		{"a comment beside the last entry", "a: 1\nb: 2  # note\n", false, 2, "a: 1\nb: 2  # note\nx: 9\n"},
 		{"a blank line between entries", "a: 1\n\nb: 2\n", false, 2, "a: 1\n\nb: 2\nx: 9\n"},
-		{"no trailing line break", "a: 1", false, 1, "a: 1\nx: 9\n"},
-		{"carriage returns", "a: 1\r\nb: 2\r\n", false, 2, "a: 1\r\nb: 2\r\nx: 9\n"},
+		// A document ending without a line break still does, and one written with "\r\n" or "\r" gets its own
+		// break around the entry: a "\n" there mixed two kinds of break in one document.
+		{"no trailing line break", "a: 1", false, 1, "a: 1\nx: 9"},
+		{"carriage returns", "a: 1\r\nb: 2\r\n", false, 2, "a: 1\r\nb: 2\r\nx: 9\r\n"},
+		{"carriage returns, at the front", "a: 1\r\nb: 2\r\n", false, 0, "x: 9\r\na: 1\r\nb: 2\r\n"},
 		// A lone CR ends the line the entry before stands on. Read as spacing, it
 		// sent the search for the end of that line on through the next document,
 		// and the entry went in after that document.
-		{"lines broken by a lone CR", "a: 1 # c\r---\rb: 2\r", false, 1, "a: 1 # c\rx: 9\n---\rb: 2\r"},
+		{"lines broken by a lone CR", "a: 1 # c\r---\rb: 2\r", false, 1, "a: 1 # c\rx: 9\r---\rb: 2\r"},
 		{"outside a nested mapping", "root:\n  a: 1\n", false, 1, "root:\n  a: 1\nx: 9\n"},
 
 		{"a flow mapping, at the front", "{a: 1, b: 2}\n", false, 0, "{x: 9, a: 1, b: 2}\n"},
@@ -295,150 +298,19 @@ func onlyValueOf(t *testing.T, body ast.Node) ast.Node {
 	return mapping.Values[0].Value
 }
 
-// placement records how an entry inserted at one position fared over the corpus:
-// how many documents were measured, and how many came out wrong.
-//
-// The denominator is recorded with the failures because the two answer different
-// questions, and a failure count on its own answers neither. tested follows the
-// corpus -- it counts documents holding a block mapping whose entries open lines
-// of their own, so a parser fix that accepts one more adds it here with the
-// renderer standing still. unreadable and disturbed follow the placement. On
-// 2026-09-10 a rebase took front and middle from 60 to 59 with nothing changed
-// in writeEntry, and reading which of the two had moved needed the diff.
-//
-// With both on the page: unreadable up and tested flat is the placement; both up
-// together is the parser; unreadable up and tested down is the harness.
-type placement struct {
-	tested     int
-	unreadable int
-	disturbed  int
-}
-
-// insertionCensus holds what each position measures. tested may not fall; the
-// other two are held exactly while it stands still and capped while it grows,
-// which is what mustHold does.
-//
-// What still fails are shapes the placement does not reach: a mapping standing
-// as the key of an explicit "?" pair, one written compactly after a "-", and
-// comments around a block scalar, where the line one entry ends on is not the
-// line the next one begins.
-//
-// Appending was 86 unreadable and 1293 disturbed until writeEntry took the rest
-// of the previous entry's line from the cursor instead of from its extent -- a
-// token's extent runs to the end of its tile, which can be a line further on.
-//
-// 1747 to 1750 when the scanner stopped refusing a block scalar whose last line
-// holds nothing but spaces. All three new documents end on such a line, so
-// appending after it disturbs one, which took back from 187 to 190; front and
-// middle did not move.
-// Re-baselined on 2026-09-11: tested 1750 -> 1764, back 190 -> 191 disturbed,
-// front and middle 57 unreadable throughout. Two things moved it together --
-// be17078 lets three more render sources parse, and the "!!omap" corpus shapes
-// arrived. Read the ratios: 10.86% -> 10.83% disturbed at the back and 3.26% ->
-// 3.23% unreadable at the front, so both counts followed the corpus and the
-// placement stood still.
-//
-// 1775 -> 1776 when a tab inside a plain scalar began to move the column, and
-// the one document it adds is unreadable at the front and the middle and
-// disturbed at the back. seed/17697 writes `Nul<TAB>l, 0841: ...` inside a
-// flow sequence. The key 0841 now stands at its true column, which passes the
-// column test in firstPlainMapping, and that test compares the column with
-// everything in front of the key on its line, blanks or not. It admits a
-// single pair inside a flow sequence, where an inserted entry has no line of
-// its own to go on.
-//
-// 1776 -> 1775 when a "<<" after a plain scalar's text stayed in that text.
-// seed/10138 writes ` i    <<:` under a sequence entry, and read only because
-// the scanner cut "<<" out as a merge key and dropped the "i". It is refused
-// now, as go.yaml.in/yaml/v3 refuses it, and it read at every placement, so
-// the other counts stand.
-//
-// 1775 -> 1776 when a tab between a quoted key and its ':' stopped being read
-// as indentation. seed/10532 writes `"\n"<TAB>: ` over a block scalar, was
-// refused, and now reads as v3 reads it; an entry inserts cleanly at every
-// placement, so the other counts stand.
-//
-// 1776 stays 1776 when the compact corpus was regenerated as yamlcorpus/46, with
-// bigFloatMaxExp capped at 995, and the documents behind the count changed:
-// every seed reshuffled. 58 -> 56 unreadable at the front and the middle and
-// 192 -> 189 disturbed at the back followed the new documents, and the renderer
-// did not move. An equal count does not mean the same documents.
-//
-// At the back, 13 -> 12 unreadable and 189 -> 190 disturbed is one document:
-// seed/3300, written with lone "\r" breaks, whose entry went in after its second
-// document until a "\r" began to end the line, and now lands in the first. It
-// counts as disturbed with the 60 other documents written that way, since
-// withoutMarkerLines splits on "\n" and cannot take the entry's line out of one.
-//
-// 1776 -> 1779 when a plain scalar inside a flow collection began to run onto a
-// line left of the last ':', and a flow mapping entry stopped taking a second
-// pair as its value. Three corpus documents holding such a continued value read
-// now. Unreadable went 56 -> 63 at the front and the middle and 12 -> 59 at the
-// back, and back disturbed 190 -> 135, for the reason seed/17697 gives above:
-// the entry goes in as a block line inside a single pair of a flow sequence.
-// The parser read that rendering as a nested pair and refuses it now, and
-// yaml/yaml-reference-parser refuses each of the 51 renderings that moved.
-//
-// 1779 stays 1779 when an entry inserted into a pair of a flow sequence began to
-// go in as a flow entry, the pair braced into the flow mapping it becomes, and
-// an entry inserted before a comment in a flow collection stopped landing
-// against the "#". Unreadable fell 63 -> 1 at the front and the middle and
-// 59 -> 4 at the back. Disturbed rose 0 -> 64, 17 -> 81 and 135 -> 190, and
-// that is the measure: withoutMarkerLines takes out the line the marker stands
-// on, and a flow entry shares its line with the entries around it, so each
-// document that reads now counts as disturbed -- every one of the 64 at the
-// front, 79 of the 81 in the middle and 110 of the 190 at the back. What still
-// fails is seed/10848, a mapping standing as an explicit "?" key, and at the
-// back an entry after a "|+" scalar holding one empty line and after a
-// double-quoted scalar over two lines. yaml/yaml-reference-parser reads both of
-// those renderings, and the parser refuses them.
-//
-// At the back, 4 -> 2 unreadable is the parser and not the renderer: a keep
-// scalar holding only empty lines, "keep: |+" over a blank line, was refused
-// once a key followed it, and the two documents ending on one now read with the
-// entry after them. Neither changed a line, so disturbed stands.
-//
-// 1779 -> 1781 when a tab inside a double-quoted scalar stopped moving the
-// column twice. Two seeds holding one read now, and at the back 2 -> 0
-// unreadable: the two documents ending on "bar" over " \t \t baz \t \t \"" took
-// the entry after them as standing on the scalar's line. Nothing else moved.
-//
-// 1781 -> 1780 when a node property standing before an explicit key's "?" on
-// the same line began to be refused. seed/10848 writes "!!null ?", which
-// yaml/yaml-reference-parser and libfyaml refuse, and it was the document left
-// unreadable at the front and the middle: the entry went in after the tag and
-// the tag was copied in front of the line it pushed down. Nothing fails now.
-//
-// 1780 -> 1784 when a property in front of an implicit key stopped moving the
-// column its value is measured from. Four documents that were refused now read,
-// which is the parser and not the renderer, and they insert cleanly at every
-// placement: unreadable and disturbed stand.
-//
-// 1784 -> 1812 on the regeneration to yamlcorpus/47, which draws a float
-// written with more digits than a float64 keeps and reshuffled every seed
-// behind it. The counts follow the corpus: 28 more documents reach the
-// insertion, unreadable stands at 0, disturbed stands at 64 and 81 in front and
-// in the middle, and at the back moves 190 -> 192, which is 10.65% -> 10.60% of
-// the documents measured.
-var insertionCensus = map[string]placement{
-	"front":  {tested: 1812, unreadable: 0, disturbed: 64},
-	"middle": {tested: 1812, unreadable: 0, disturbed: 81},
-	"back":   {tested: 1812, unreadable: 0, disturbed: 192},
-}
+// insertableDocuments is how many corpus documents hold a mapping an entry can be inserted into. The count may not
+// fall: fewer documents measured is the harness or the parser losing ground, and zero failures over them proves less.
+const insertableDocuments = 1812
 
 // TestInsertingIntoTheCorpus puts one entry into every document the corpus holds
 // and asks for it back.
 //
-// Three things are counted: the rendered document still parses, it holds the
-// entry that was put in, and every line the caller did not touch is unchanged.
-// The third is the one the design exists for, and the one a trimmed comparison
-// cannot see.
+// Each document must still parse, hold the entry that was put in, and be the source byte for byte once the entry is
+// taken out again: see insertedCleanly. None may fail.
 func TestInsertingIntoTheCorpus(t *testing.T) {
 	t.Parallel()
 
 	for _, where := range []string{"front", "middle", "back"} {
-		recorded := insertionCensus[where]
-
 		t.Run("inserted at the "+where, func(t *testing.T) {
 			t.Parallel()
 
@@ -476,23 +348,20 @@ func TestInsertingIntoTheCorpus(t *testing.T) {
 
 					continue
 				}
-				if withoutMarkerLines(out.String()) != src.text {
+				if !insertedCleanly(out.String(), src.text) {
 					disturbed++
 				}
 			}
 
 			require.Positive(t, tried)
-			t.Logf("inserted at the %s: %d documents measured (recorded %d), %d no longer parse, %d lost the entry, %d changed a line the caller did not touch",
-				where, tried, recorded.tested, unreadable, lost, disturbed)
+			t.Logf("inserted at the %s: %d documents measured, %d no longer parse, %d lost the entry, %d changed a line the caller did not touch",
+				where, tried, unreadable, lost, disturbed)
 
+			require.GreaterOrEqualf(t, tried, insertableDocuments,
+				"%d documents reach the insertion where %d did: the harness or the parser lost ground", tried, insertableDocuments)
+			require.Zerof(t, unreadable, "%d documents no longer parse", unreadable)
 			require.Zerof(t, lost, "%d documents dropped the entry that was put in", lost)
-			require.GreaterOrEqualf(t, tried, recorded.tested,
-				"%d documents reach the insertion where %d did: fewer documents are being measured, which is the harness or the parser and not the placement",
-				tried, recorded.tested)
-			mustHold(t, "the count of documents that no longer parse",
-				unreadable, recorded.unreadable, tried, recorded.tested)
-			mustHold(t, "the count of documents that changed a line the caller did not touch",
-				disturbed, recorded.disturbed, tried, recorded.tested)
+			require.Zerof(t, disturbed, "%d documents changed a line the caller did not touch", disturbed)
 		})
 	}
 }
@@ -570,17 +439,99 @@ func insertMarkerAt(t *testing.T, mapping *ast.MappingNode, at int) {
 	mapping.Values = append(mapping.Values[:at], append([]*ast.MappingValueNode{added}, mapping.Values[at:]...)...)
 }
 
-// withoutMarkerLines drops every line the marker was written on.
-func withoutMarkerLines(rendered string) string {
-	lines := strings.Split(rendered, "\n")
-	kept := lines[:0]
-	for _, line := range lines {
-		if !strings.Contains(line, corpusMarker) {
-			kept = append(kept, line)
+// insertedCleanly reports whether rendered is src with the marker entry put in and nothing else changed.
+//
+// A block entry adds its line: the indentation, the entry and the break ending it, or the break in front of it where
+// it is the document's last line and the document ends without one. A flow entry adds itself and one comma. Put into
+// a single pair of a flow sequence, "[a: 1]", it also adds the braces that make the pair the flow mapping it becomes,
+// "[{a: 1, x: 9}]": a flow sequence entry holds one pair, and two need a mapping.
+func insertedCleanly(rendered, src string) bool {
+	left, cut := withoutMarker(rendered)
+	if left == src {
+		return true
+	}
+
+	return withoutBracesAround(left, cut) == src
+}
+
+// withoutBracesAround takes out the '{' that opens the flow mapping holding offset at, and the '}' closing it.
+func withoutBracesAround(text string, at int) string {
+	at = min(max(at, 0), len(text))
+	open := -1
+	for i, depth := at-1, 0; i >= 0; i-- {
+		switch text[i] {
+		case '}', ']':
+			depth++
+		case '[':
+			depth--
+		case '{':
+			if depth == 0 {
+				open = i
+			}
+			depth--
+		}
+		if open >= 0 || depth < 0 {
+			break
+		}
+	}
+	if open < 0 {
+		return text
+	}
+	for i, depth := open+1, 0; i < len(text); i++ {
+		switch text[i] {
+		case '{', '[':
+			depth++
+		case ']':
+			depth--
+		case '}':
+			if depth == 0 {
+				return text[:open] + text[open+1:i] + text[i+1:]
+			}
+			depth--
 		}
 	}
 
-	return strings.Join(kept, "\n")
+	return text
+}
+
+// withoutMarker takes out the marker entry, its line or its comma, as insertedCleanly describes, and returns where
+// the cut was.
+func withoutMarker(rendered string) (string, int) {
+	at := strings.Index(rendered, corpusMarker)
+	if at < 0 {
+		return rendered, 0
+	}
+	entry := corpusMarker + ": 1"
+	for _, flow := range []string{entry + ", ", ", " + entry, entry} {
+		i := strings.Index(rendered, flow)
+		if i < 0 {
+			continue
+		}
+		before := strings.TrimRight(rendered[:i], " \t-")
+		if strings.HasSuffix(before, "{") || strings.HasSuffix(before, "[") || strings.HasSuffix(before, ",") ||
+			strings.HasPrefix(rendered[i+len(flow):], "}") || strings.HasPrefix(rendered[i+len(flow):], "]") {
+			return rendered[:i] + rendered[i+len(flow):], i
+		}
+	}
+
+	start := strings.LastIndexAny(rendered[:at], "\r\n") + 1
+	end := at + len(entry)
+	switch {
+	case strings.HasPrefix(rendered[end:], "\r\n"):
+		end += 2
+	case strings.HasPrefix(rendered[end:], "\n"), strings.HasPrefix(rendered[end:], "\r"):
+		end++
+	case end == len(rendered):
+		// The last line, with no break after it: the break in front of it is the one it added.
+		switch {
+		case strings.HasSuffix(rendered[:start], "\r\n"):
+			start -= 2
+		case strings.HasSuffix(rendered[:start], "\n"), strings.HasSuffix(rendered[:start], "\r"):
+			start--
+		}
+	}
+
+	return rendered[:start] + rendered[end:], start
 }
 
 // TestVerbatimWritesAnInsertedCollectionInFlow puts a collection into a flow
