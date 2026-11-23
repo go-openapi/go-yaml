@@ -507,9 +507,10 @@ func (g *Grouper) taggedScalar(tag, next *TapeToken, explicitKey bool) (*TapeTok
 		next.RawToken().Type = token.StringType
 	}
 	if !strings.HasPrefix(value, "!!") {
-		// A tag the document defines. It tags a scalar, and a flow indicator is
-		// not one.
-		if isFlowType(next) {
+		// A tag the document defines. It tags a scalar, and neither a flow
+		// indicator nor a ':' is one: in "! : x" the tag stands on the empty
+		// key, and the ':' is that key's.
+		if isFlowType(next) || next.Type() == token.MappingValueType {
 			return nil, true
 		}
 

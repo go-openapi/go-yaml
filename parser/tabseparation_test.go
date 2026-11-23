@@ -91,6 +91,9 @@ func TestATabIsSeparationAndNotIndentation(t *testing.T) {
 			"-\t!!str k: 1\n",
 			"?\t&a : 1\n",
 			"?\t!!null : 1\n",
+			"-\t!t : 1\n",
+			"?\t!t : 1\n",
+			"?\t!<!foo> : 1\n",
 		} {
 			_, err := parser.ParseBytes([]byte(src))
 			require.Errorf(t, err, "%q", src)

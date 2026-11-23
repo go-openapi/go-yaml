@@ -73,6 +73,11 @@ func TestParseEmptyKeysCarryingProperties(t *testing.T) {
 	sources := map[string]string{
 		"anchored, at the top level":       "&a : a\n",
 		"tagged, at the top level":         "!!null : a\n",
+		"local tag, at the top level":      "!t : a\nb: 1\n",
+		"non-specific tag, at the top":     "! : a\nb: 1\n",
+		"local tag, in a flow mapping":     "{!t : 1, b: 2}\n",
+		"non-specific tag, in a flow map":  "{! : 1, b: 2}\n",
+		"non-specific tag, in a flow seq":  "[! : 1, b]\n",
 		"tagged key and tagged value":      "!!str : !!null\n",
 		"anchored, nested under a key":     "x:\n  &a : a\n  b: 1\n",
 		"tagged, nested under a key":       "x:\n  !!null : a\n  b: 1\n",
@@ -108,10 +113,13 @@ func TestRenderPropertyKeysKeepTheirSeparator(t *testing.T) {
 		source string
 		want   string
 	}{
-		"anchor on the empty key": {source: "&a : v\n", want: "&a : v\n"},
-		"tag on the empty key":    {source: "!!str : v\n", want: "!!str : v\n"},
-		"alias as the key":        {source: "k: &r v\n*r : a\n", want: "k: &r v\n*r : a\n"},
-		"anchor and empty value":  {source: "-\n  &c : &a\n", want: "- &c : &a\n"},
+		"anchor on the empty key":           {source: "&a : v\n", want: "&a : v\n"},
+		"tag on the empty key":              {source: "!!str : v\n", want: "!!str : v\n"},
+		"local tag on the empty key":        {source: "!t : v\n", want: "!t : v\n"},
+		"non-specific tag on the empty key": {source: "! : v\n", want: "! : v\n"},
+		"in a flow mapping":                 {source: "{! : v, !t : w}\n", want: "{! : v, !t : w}\n"},
+		"alias as the key":                  {source: "k: &r v\n*r : a\n", want: "k: &r v\n*r : a\n"},
+		"anchor and empty value":            {source: "-\n  &c : &a\n", want: "- &c : &a\n"},
 
 		// A scalar after the property ends the key, and then the ':' is its own.
 		"anchor on a named key": {source: "&a k : v\n", want: "&a k: v\n"},

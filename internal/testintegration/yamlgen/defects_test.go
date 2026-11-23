@@ -87,22 +87,13 @@ func readTheStream(t *testing.T, src string) []any {
 	}
 }
 
-// TestDefectAPropertiedEmptyKeyIsMishandled pins the three arrangements.
+// TestDefectAPropertiedEmptyKeyIsMishandled pins the two arrangements left.
 //
-// No generated document reaches these: the tagger leaves keys untagged until
-// the family is fixed, since a ledger entry wide enough to excuse it would
-// excuse every document holding a tagged key. The emitter can write them --
-// keyIn puts a key's properties in front of it since 2026-09-08 -- so the draw
-// is one line away once the parser reads them.
-//
-// A tag written verbatim on a key that writes nothing swallows the entry: the
-// document comes back as the tagged empty node instead of as a mapping holding
-// it. The shorthand spelling of the same tag reads correctly, and so does the
-// verbatim tag on a key that writes something -- so it is the two spellings
-// parting company over an empty key.
-//
-// Giving the entry a value turns the loss into an error, which is the sharper
-// half: `!<tag:yaml.org,2002:null> : 1` is refused outright.
+// An empty key carrying both an anchor and a tag is refused in two places: a
+// tag written ahead of the anchor, and either order below another entry.
+// yaml/yaml-reference-parser, libfyaml and go.yaml.in/yaml/v3 read each as a
+// mapping keyed by null. The verbatim spelling of a tag on an empty key, the
+// third arrangement, is fixed: see TestFixedAVerbatimTagOnAnEmptyKeyKeepsTheMapping.
 //
 // Reached on 2026-09-08 by TestPresentationInvariance, which read two
 // presentations of one value differently once the tagger began walking keys.
@@ -111,38 +102,6 @@ func TestDefectAPropertiedEmptyKeyIsMishandled(t *testing.T) {
 		var got any
 		require.NoError(t, codec.Unmarshal([]byte("!!null :\n"), &got))
 		assert.Equal(t, map[any]any{nil: nil}, got)
-	})
-
-	t.Run("and so does the verbatim spelling on a key that writes something", func(t *testing.T) {
-		var got any
-		require.NoError(t, codec.Unmarshal([]byte("!<tag:yaml.org,2002:null> null:\n"), &got))
-		assert.Equal(t, map[any]any{nil: nil}, got)
-	})
-
-	t.Run("today the verbatim spelling on an empty key gives the scalar", func(t *testing.T) {
-		for _, tc := range []struct {
-			src  string
-			want any
-		}{
-			{src: "!<tag:yaml.org,2002:null> :\n", want: nil},
-			{src: "!<tag:yaml.org,2002:str> :\n", want: ""},
-			{src: "!<!foo> :\n", want: nil},
-		} {
-			var got any
-			require.NoErrorf(t, codec.Unmarshal([]byte(tc.src), &got), "%q", tc.src)
-			assert.Equalf(t, tc.want, got, "today: the mapping is gone: %q", tc.src)
-		}
-	})
-
-	t.Run("today an entry with a value is refused outright", func(t *testing.T) {
-		var got any
-		err := codec.Unmarshal([]byte("!<tag:yaml.org,2002:null> : 1\n"), &got)
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), "value is not allowed in this context")
-
-		err = codec.Unmarshal([]byte("a: 1\n!<tag:yaml.org,2002:null> :\n"), &got)
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), "non-map value is specified")
 	})
 
 	t.Run("today a tag ahead of an anchor is refused", func(t *testing.T) {

@@ -3724,3 +3724,31 @@ func TestFixedToJSONWritesAnEmptyOmapAsNull(t *testing.T) {
 		assert.JSONEqf(t, want, string(out), "ToJSON: %q", src)
 	}
 }
+
+// TestFixedAVerbatimTagOnAnEmptyKeyKeepsTheMapping pins that "!<tag:yaml.org,2002:null> :" is the mapping {null:
+// null}, as "!!null :" is, and that "!<tag:yaml.org,2002:null> : 1" reads.
+//
+// The grouper joined a tag that does not start with "!!" -- a verbatim tag, a local tag, the non-specific "!" -- to
+// whatever came next on its line short of a flow indicator, the ':' included. The entry was taken for a tagged scalar:
+// "!<tag:yaml.org,2002:null> :" came back as the scalar alone, and given a value the entry was refused with "value is
+// not allowed in this context"; "{! : x}" was refused, and "{! : }" broke the verbatim renderer. The tag now stands on
+// the empty key, and the ':' is the key's. yaml/yaml-reference-parser, libfyaml and go.yaml.in/yaml/v3 read each as a
+// mapping.
+func TestFixedAVerbatimTagOnAnEmptyKeyKeepsTheMapping(t *testing.T) {
+	for _, tc := range []struct {
+		src  string
+		want any
+	}{
+		{"!<tag:yaml.org,2002:null> :\n", map[any]any{nil: nil}},
+		{"!<tag:yaml.org,2002:str> :\n", map[string]any{"": nil}},
+		{"!<!foo> :\n", map[any]any{nil: nil}},
+		{"!<tag:yaml.org,2002:null> : 1\n", map[any]any{nil: uint64(1)}},
+		{"a: 1\n!<tag:yaml.org,2002:null> :\n", map[any]any{"a": uint64(1), nil: nil}},
+		{"{! : x}\n", map[any]any{nil: "x"}},
+		{"%TAG !e! tag:yaml.org,2002:\n---\n!e!str : x\n", map[string]any{"": "x"}},
+	} {
+		var got any
+		require.NoErrorf(t, codec.Unmarshal([]byte(tc.src), &got), "%q", tc.src)
+		assert.Equalf(t, tc.want, got, "%q", tc.src)
+	}
+}
