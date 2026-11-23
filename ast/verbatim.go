@@ -253,6 +253,11 @@ type verbatimWriter struct {
 	// keys counts the mapping keys being written, since a key may hold a
 	// collection whose entries have keys of their own.
 	keys int
+	// pending holds the tokens the descent writes after the node it is in, innermost last: the ':' of an entry while
+	// its key is written, and the '}' or ']' of a flow collection while its entries are. A comment beside the node
+	// may stand after one of them, "hr: # c" or "{a: []}" over "# c", and writing the comment copied the token as
+	// filler in front of it, where a transform saw no token. See writePendingBefore.
+	pending []pendingToken
 	// flow counts the flow collections being written. A mapping that is not
 	// written in flow but stands inside one is a pair of a flow sequence, as in
 	// "[a: b]", and takes an inserted entry the way a flow mapping does.
@@ -1143,22 +1148,27 @@ func (r *Renderer) write(vw *verbatimWriter, n Node) {
 		r.writeMapping(vw, v)
 	case *MappingValueNode:
 		r.writeTokenOf(vw, v.CollectEntry, v)
+		release := vw.hold(v.Start, v)
 		vw.keys++
 		r.writeInPlaceOf(vw, v.Key, false)
 		vw.keys--
+		release()
 		r.writeTokenOf(vw, v.Start, v)
 		r.writeInPlaceOf(vw, v.Value, true)
 	case *MappingKeyNode:
 		r.writeTokenOf(vw, v.Start, v)
 		r.write(vw, v.Value)
 	case *SequenceNode:
+		release := func() {}
 		if v.IsFlowStyle {
 			r.writeTokenOf(vw, v.Start, v)
 			vw.flow++
+			release = vw.hold(v.End, v)
 		}
 		for i, value := range v.Values {
 			r.writeSequenceEntry(vw, v, value, i)
 		}
+		release()
 		if v.IsFlowStyle {
 			vw.flow--
 			r.writeTokenOf(vw, v.End, v)
@@ -1231,12 +1241,17 @@ func (r *Renderer) writeMapping(vw *verbatimWriter, v *MappingNode) {
 	if v.IsFlowStyle || pair {
 		vw.flow++
 	}
+	release := func() {}
+	if v.IsFlowStyle {
+		release = vw.hold(v.End, v)
+	}
 	for i, entry := range v.Values {
 		r.writeEntry(vw, entry, collection{
 			siblings: siblings,
 			flow:     v.IsFlowStyle || pair,
 		}, i)
 	}
+	release()
 	if v.IsFlowStyle || pair {
 		vw.flow--
 	}
@@ -1346,6 +1361,9 @@ func (r *Renderer) writeComments(vw *verbatimWriter, n Node, span extent, above 
 			if vw.fn != nil && comment.edit == commentAsWritten &&
 				int(tk.Position.Offset()) >= vw.cursor &&
 				(!span.found() || (tk.Position.Offset() < span.from) == above) {
+				if !above {
+					r.writePendingBefore(vw, int(tk.Position.Offset()))
+				}
 				vw.upToToken(tk, comment)
 			}
 
@@ -1366,6 +1384,45 @@ func (r *Renderer) writeComments(vw *verbatimWriter, n Node, span extent, above 
 		for _, comment := range comments {
 			vw.writeAddedComment(comment, span, n)
 		}
+	}
+}
+
+// pendingToken is a token the descent writes once the node it is in is done, and the node it belongs to.
+type pendingToken struct {
+	tk *token.Token
+	n  Node
+}
+
+// hold records tk, of n, as pending until the returned func runs.
+func (vw *verbatimWriter) hold(tk *token.Token, n Node) func() {
+	if tk == nil || !tk.FromSource() {
+		return func() {}
+	}
+	depth := len(vw.pending)
+	vw.pending = append(vw.pending, pendingToken{tk: tk, n: n})
+
+	return func() { vw.pending = vw.pending[:depth] }
+}
+
+// writePendingBefore writes, as the tokens they are, the pending tokens that stand before offset at, earliest first.
+// The comment standing there is written next, and the copy up to it would otherwise take them as filler.
+func (r *Renderer) writePendingBefore(vw *verbatimWriter, at int) {
+	for {
+		next := -1
+		for i, p := range vw.pending {
+			if p.tk == nil || int(p.tk.Position.Offset()) >= at || int(p.tk.Position.Offset()) < vw.cursor {
+				continue
+			}
+			if next < 0 || p.tk.Position.Offset() < vw.pending[next].tk.Position.Offset() {
+				next = i
+			}
+		}
+		if next < 0 {
+			return
+		}
+		p := vw.pending[next]
+		vw.pending[next].tk = nil
+		r.writeTokenOf(vw, p.tk, p.n)
 	}
 }
 

@@ -125,26 +125,14 @@ func TestVerbatimWritesANodeBack(t *testing.T) {
 	require.Positive(t, checked)
 }
 
-// unlabeledSuite records how many Test Suite documents hold a token the verbatim
-// descent never labels, and how many were measured to find them.
+// suiteDocumentsAccepted is how many Test Suite documents the parser accepts and the descent is measured over. It may
+// not fall.
 //
-// The denominator is recorded with the count because a count on its own cannot
-// say whether the descent changed or the set of accepted documents did. tested
-// follows the parser: a fix that accepts one more suite document adds it here
-// with the renderer standing still. unlabeled follows the descent, and is held
-// exactly while tested stands still.
-//
-// The ten are comments and trailing whitespace: spec-example-6-9-separated-comment,
-// various-trailing-comments, trailing-whitespace-in-streams/00 and their kind.
-// The token is behind the cursor by the time the descent asks for it, so
-// upToToken writes nothing and no node claims those bytes.
-//
-// The fuzz corpus is regenerated as yamlgen learns shapes, so its number is
-// logged and not gated.
-//
-// 10 -> 7 when a block scalar's blank content began to cover the lines it holds: the three of
-// trailing-whitespace-in-streams went to no token.
-var unlabeledSuite = struct{ unlabeled, tested int }{unlabeled: 7, tested: 308}
+// Every token the tree holds reaches a transform as the token it is, in every suite document and every seed. It was
+// 10 suite documents and 1,259 seeds until a ':' or a flow collection's closer stopped going out as filler in front of
+// a comment written after it, "hr: # c", and a block scalar's blank content began to cover the lines it holds. A token
+// of no width, the content of an empty block scalar, holds no byte to label and is not counted.
+const suiteDocumentsAccepted = 308
 
 // TestVerbatimRebuildsEveryDocument is the verbatim census: for every document
 // the parser accepts, src == VerbatimFile(ParseBytes(src)).
@@ -202,7 +190,7 @@ func TestVerbatimRebuildsEveryDocument(t *testing.T) {
 
 		var held []int32
 		for _, doc := range file.Docs {
-			held = append(held, ast.SourceTokenEnds(doc)...)
+			held = append(held, ast.SourceTextEnds(doc)...)
 		}
 		missing := slices.ContainsFunc(held, func(end int32) bool {
 			return !slices.Contains(written, end)
@@ -227,16 +215,15 @@ func TestVerbatimRebuildsEveryDocument(t *testing.T) {
 	require.Positive(t, accepted)
 	t.Logf("verbatim: %d of %d accepted documents rebuilt byte for byte -- which a run with Renderer.write deleted also manages, so read the next line",
 		rebuilt, accepted)
-	t.Logf("descent: a token the tree holds arrives unlabeled in %d of %d suite documents (recorded %d of %d) and %d seeds",
-		suiteUnlabeled, suiteN, unlabeledSuite.unlabeled, unlabeledSuite.tested, seedUnlabeled)
+	t.Logf("descent: a token the tree holds arrives unlabeled in %d of %d suite documents and %d seeds",
+		suiteUnlabeled, suiteN, seedUnlabeled)
 
 	require.Equalf(t, accepted, rebuilt,
 		"%d documents do not come back as they were written, starting with %v", accepted-rebuilt, differing)
-	require.GreaterOrEqualf(t, suiteN, unlabeledSuite.tested,
-		"%d suite documents are measured where %d were: fewer are accepted than were, so re-measure before reading the count below",
-		suiteN, unlabeledSuite.tested)
-	mustHold(t, "the count of suite documents holding a token that arrives unlabeled",
-		suiteUnlabeled, unlabeledSuite.unlabeled, suiteN, unlabeledSuite.tested)
+	require.GreaterOrEqualf(t, suiteN, suiteDocumentsAccepted,
+		"%d suite documents are measured where %d were: fewer are accepted than were", suiteN, suiteDocumentsAccepted)
+	require.Zerof(t, suiteUnlabeled, "%d suite documents hold a token that arrives unlabeled: %v", suiteUnlabeled, unlabeled)
+	require.Zerof(t, seedUnlabeled, "%d seeds hold a token that arrives unlabeled", seedUnlabeled)
 }
 
 // TestVerbatimKeepsWhatARebuildFromValuesWouldLose pins the four distortions

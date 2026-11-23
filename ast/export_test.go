@@ -30,6 +30,19 @@ func SourceTokenEnds(n Node) []int32 {
 	return ends
 }
 
+// SourceTextEnds returns SourceTokenEnds less the tokens of no width: a block scalar's empty content, which holds no
+// byte for a transform to label.
+func SourceTextEnds(n Node) []int32 {
+	var ends []int32
+	walkSourceTokens(n, func(tk *token.Token) {
+		if tk.EndOffset() > tk.Position.Offset() {
+			ends = append(ends, tk.EndOffset())
+		}
+	})
+
+	return ends
+}
+
 // EveryComment returns every comment under n, in every slot of every node. It
 // is the walk the verbatim renderer collects its edits by, exported so that a
 // test can edit a whole document's comments without repeating the list of slots.
