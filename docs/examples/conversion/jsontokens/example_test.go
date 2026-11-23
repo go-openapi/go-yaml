@@ -46,7 +46,7 @@ func Example() {
 	// key    "host"      "/db/host" 3:6
 	// string "localhost" "/db/host" 3:12
 	// }      ""          "/db"      3:21
-	// }      ""          ""         3:21
+	// }      ""          ""         3:22
 }
 
 // Example_find stops at the first value under a pointer, and the parse stops with it.

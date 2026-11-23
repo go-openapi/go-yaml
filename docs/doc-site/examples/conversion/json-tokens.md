@@ -28,8 +28,9 @@ and column, without converting the rest.
 - `At`, the position of its first byte in the YAML source.
 
 `ts.Path()` returns the RFC 6901 pointer of the token the loop is on. A key and
-its value share the pointer of their member. The closing `}` of the document
-carries the position of the token before it, since the YAML wrote no brace.
+its value share the pointer of their member. The YAML wrote no brace to
+close the document, so its `}` takes the position just past the last byte the
+mapping holds: 3:22, after the `}` of `db`.
 
 ## Stop when you have it
 

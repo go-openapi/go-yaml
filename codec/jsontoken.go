@@ -4,10 +4,12 @@
 package codec
 
 import (
+	"bytes"
 	"fmt"
 	"iter"
 	"slices"
 	"strconv"
+	"unicode/utf8"
 
 	"github.com/go-openapi/go-yaml/ast"
 	"github.com/go-openapi/go-yaml/codec/internal/astutils"
@@ -93,6 +95,9 @@ type JSONToken struct {
 	// At gives the position of the token's first byte in the source. Offset is a
 	// 0-based byte index, so src[At.Offset():] begins at the token, and Line
 	// and Column count from 1 with Column counting characters.
+	//
+	// A block collection writes no "}" or "]", so its closer takes the position just past the last byte the
+	// collection encloses.
 	At token.Position
 	// Kind gives the kind of the token.
 	Kind JSONTokenKind
@@ -300,6 +305,10 @@ type jsonTokener struct {
 	// lastAt holds the position of the token handed over most recently. closeAt places a block collection's
 	// closer there: a block has no "}" or "]" of its own, so the closer goes at the end of what it encloses.
 	lastAt token.Position
+	// lastEndFrom holds the start of the token whose text reaches furthest into the source, and lastEndOffset
+	// the offset just past that text. closeAt places a block collection's closer there.
+	lastEndFrom   token.Position
+	lastEndOffset int32
 	// omaps holds the "!!omap" nodes being handed over, innermost last.
 	// foldOrderedMapTokens rewrites their tokens on the way out.
 	omaps []omapMark
@@ -318,6 +327,12 @@ type jsonTokener struct {
 func (t *jsonTokener) Enter(node ast.Node, at parser.Cursor) error {
 	if t.stopped {
 		return t.halted()
+	}
+
+	t.reach(node.GetToken())
+	if alias, ok := node.(*ast.AliasNode); ok && alias.Value != nil {
+		// The alias's own token is the "*". The walk does not enter the name under it.
+		t.reach(alias.Value.GetToken())
 	}
 
 	if _, isDirective := node.(*ast.DirectiveNode); isDirective && at.IsRoot() {
@@ -812,17 +827,61 @@ func (t *jsonTokener) close(kind JSONTokenKind, at token.Position) {
 // closeAt returns the position of a collection's closing token.
 //
 // A flow collection wrote a "}" or a "]", and the closer takes its position. A
-// block collection wrote neither, so the closer takes the position of the last
-// token it encloses. This keeps a document's tokens in non-decreasing order.
-// The node's own position would put the closer back at the collection's first
-// token, before everything it closes.
+// block collection wrote neither, so the closer takes the position just past
+// the last byte it encloses: "}" closes "name: api" at 1:10. This keeps a
+// document's tokens in non-decreasing order, and the closer stands at a
+// position of its own. The node's own position would put the closer back at
+// the collection's first token, before everything it closes.
 func (t *jsonTokener) closeAt(end *token.Token) token.Position {
 	if end != nil {
+		t.reach(end)
+
 		return end.Position
+	}
+	if t.lastEndOffset > 0 {
+		return t.endPosition()
 	}
 
 	return t.lastAt
 }
+
+// reach records tk as the token reaching furthest into the source, when tk was cut from the source and ends
+// beyond the token recorded so far. It runs on every node, so it records offsets only, and endPosition counts.
+func (t *jsonTokener) reach(tk *token.Token) {
+	if tk == nil || !tk.FromSource() {
+		return
+	}
+	end := tk.EndOffset()
+	if end <= t.lastEndOffset || end <= tk.Position.Offset() || int(end) > len(t.state.src) {
+		return
+	}
+
+	t.lastEndFrom, t.lastEndOffset = tk.Position, end
+}
+
+// endPosition returns the position just past the text of the token reach recorded.
+//
+// Column counts characters, so endPosition counts the bytes that start a character,
+// from the token's start on its own line, or from the last line break inside it.
+func (t *jsonTokener) endPosition() token.Position {
+	text := t.state.src[t.lastEndFrom.Offset():t.lastEndOffset]
+	line, column := t.lastEndFrom.Line, t.lastEndFrom.Column
+	if i := bytes.LastIndexByte(text, '\n'); i >= 0 {
+		line += int32(bytes.Count(text, lineBreak))
+		column = 1
+		text = text[i+1:]
+	}
+	for _, c := range text {
+		if utf8.RuneStart(c) {
+			column++
+		}
+	}
+
+	return token.At(line, column, t.lastEndOffset, 0)
+}
+
+// lineBreak is the separator endPosition counts.
+var lineBreak = []byte{'\n'}
 
 // fail records the conversion's first error and stops the conversion.
 func (t *jsonTokener) fail(err error) {

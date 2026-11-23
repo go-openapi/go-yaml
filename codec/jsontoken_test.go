@@ -364,9 +364,10 @@ func jsonTokensRefuseAStreamWhenAskedToCases() iter.Seq[jsonTokensRefuseAStreamW
 // stands before what it closes.
 //
 // A flow collection wrote a "}" or a "]" and the closer stands on it. A block
-// collection wrote neither, so it stands at the last token it encloses. A
-// consumer ordering tokens by position needs that: reading the node's own
-// position puts the closer back at the collection's first token.
+// collection wrote neither, so it stands just past the last byte it encloses,
+// at a position of its own. A consumer ordering tokens by position needs that:
+// reading the node's own position puts the closer back at the collection's
+// first token. Column counts characters, so "é" moves it by one.
 func TestJSONTokensCloseWhereTheCollectionEnds(t *testing.T) {
 	for tc := range jsonTokensCloseWhereTheCollectionEndsCases() {
 		t.Run(tc.name, func(t *testing.T) {
@@ -402,8 +403,13 @@ type jsonTokensCloseWhereTheCollectionEndsCase struct {
 
 func jsonTokensCloseWhereTheCollectionEndsCases() iter.Seq[jsonTokensCloseWhereTheCollectionEndsCase] {
 	return slices.Values([]jsonTokensCloseWhereTheCollectionEndsCase{
-		{"a block mapping", "a: 1\nb: 2\n", "L2C4"},
-		{"a block sequence", "items:\n  - x\n  - y\n", "L3C5 L3C5"},
+		{"a block mapping", "a: 1\nb: 2\n", "L2C5"},
+		{"a block sequence", "items:\n  - x\n  - y\n", "L3C6 L3C6"},
+		{"a block mapping ending in a flow one", "a: {b: 1}\n", "L1C9 L1C10"},
+		{"a quoted value", "a: \"x\"\n", "L1C7"},
+		{"a wide character", "a: \u00e9\n", "L1C5"},
+		{"a literal block", "a: |\n  x\nb: 1\n", "L3C5"},
+		{"an alias", "a: &x 1\nb: *x\n", "L2C6"},
 		{"a flow mapping", "{a: 1}\n", "L1C6"},
 		{"a flow sequence", "[1, 2]\n", "L1C6"},
 	})
