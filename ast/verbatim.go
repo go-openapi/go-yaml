@@ -297,6 +297,14 @@ func (vw *verbatimWriter) upTo(end int) {
 		vw.cursor = 0
 	}
 	vw.applyEdits(end)
+	if vw.removalAt(end) && opensItsLine(vw.src, end) {
+		// A comment being removed opens at end, alone on its line, and skipComment takes the line from its start.
+		// Copied to end, the line's indentation was written first and stayed: after an empty block scalar, whose
+		// content holds no text, "  - a: >4" over "  # c7" over "  - b: 1" came back with "    - b: 1".
+		if start := vw.startOfLine(end); start >= vw.cursor {
+			end = start
+		}
+	}
 	if end <= vw.cursor {
 		return
 	}

@@ -577,3 +577,20 @@ func literalOf(t *testing.T, n ast.Node) *ast.LiteralNode {
 
 	return nil
 }
+
+// TestRemovingACommentBelowAnEmptyBlockScalarTakesItsLine removes a comment alone on its line right below a block
+// scalar with no content. The copy wrote the source up to the "#" before the removal took the line, so the line's
+// indentation stayed and joined the next one: "  - a: >4" over "  # c7" over "  - b: 1" came back with
+// "    - b: 1", which no longer parses.
+func TestRemovingACommentBelowAnEmptyBlockScalarTakesItsLine(t *testing.T) {
+	t.Parallel()
+
+	for src, want := range map[string]string{
+		"o:\n  - a: >4\n  # c7\n  - b: 1\n": "o:\n  - a: >4\n  - b: 1\n",
+		"o:\n  - a: |\n  # c7\n  - b: 1\n":  "o:\n  - a: |\n  - b: 1\n",
+		"a: >\n# c7\nb: 1\n":                "a: >\nb: 1\n",
+	} {
+		removed, _ := renderEdited(t, src, func(c *ast.CommentNode) { c.Remove() })
+		require.Equalf(t, want, removed, "%q", src)
+	}
+}
