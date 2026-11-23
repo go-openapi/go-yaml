@@ -3,14 +3,8 @@
 
 package token
 
-// String create token for String.
-func String(value string, org string, pos Position) *Token {
-	tk := MakeString(value, org, pos)
-
-	return &tk
-}
-
-// MakeString builds a string token without settling where it lives.
+// MakeString returns a plain scalar holding value, at pos, its end measured from org.
+// It returns the token as a value: a scanner copies it into a slice without an allocation.
 func MakeString[T Text](value string, org T, pos Position) Token {
 	ext := MeasureOrigin(org, pos)
 
@@ -23,16 +17,8 @@ func MakeString[T Text](value string, org T, pos Position) Token {
 	}
 }
 
-// SequenceEntry create token for SequenceEntry.
-func SequenceEntry(org string, pos Position) *Token {
-	tk := MakeSequenceEntry(org, pos)
-
-	return &tk
-}
-
-// MakeSequenceEntry builds the token SequenceEntry builds, without settling where it lives.
-// A caller handing it straight to a scanner wants this one: the pointer form
-// puts the token on the heap for a value that is copied and dropped.
+// MakeSequenceEntry returns the '-' of a block sequence entry, at pos, its end measured from org.
+// It returns the token as a value: a scanner copies it into a slice without an allocation.
 func MakeSequenceEntry[T Text](org T, pos Position) Token {
 	ext := MeasureOrigin(org, pos)
 
@@ -45,16 +31,8 @@ func MakeSequenceEntry[T Text](org T, pos Position) Token {
 	}
 }
 
-// MappingKey create token for MappingKey.
-func MappingKey(pos Position) *Token {
-	tk := MakeMappingKey(pos)
-
-	return &tk
-}
-
-// MakeMappingKey builds the token MappingKey builds, without settling where it lives.
-// A caller handing it straight to a scanner wants this one: the pointer form
-// puts the token on the heap for a value that is copied and dropped.
+// MakeMappingKey returns the '?' of an explicit mapping key, at pos.
+// It returns the token as a value: a scanner copies it into a slice without an allocation.
 func MakeMappingKey(pos Position) Token {
 	return Token{
 		Type:     MappingKeyType,
@@ -65,16 +43,8 @@ func MakeMappingKey(pos Position) Token {
 	}
 }
 
-// MappingValue create token for MappingValue.
-func MappingValue(pos Position) *Token {
-	tk := MakeMappingValue(pos)
-
-	return &tk
-}
-
-// MakeMappingValue builds the token MappingValue builds, without settling where it lives.
-// A caller handing it straight to a scanner wants this one: the pointer form
-// puts the token on the heap for a value that is copied and dropped.
+// MakeMappingValue returns the ':' of a mapping entry, at pos.
+// It returns the token as a value: a scanner copies it into a slice without an allocation.
 func MakeMappingValue(pos Position) Token {
 	return Token{
 		Type:     MappingValueType,
@@ -85,16 +55,8 @@ func MakeMappingValue(pos Position) Token {
 	}
 }
 
-// CollectEntry create token for CollectEntry.
-func CollectEntry(org string, pos Position) *Token {
-	tk := MakeCollectEntry(org, pos)
-
-	return &tk
-}
-
-// MakeCollectEntry builds the token CollectEntry builds, without settling where it lives.
-// A caller handing it straight to a scanner wants this one: the pointer form
-// puts the token on the heap for a value that is copied and dropped.
+// MakeCollectEntry returns the ',' between two entries of a flow collection, at pos, its end measured from org.
+// It returns the token as a value: a scanner copies it into a slice without an allocation.
 func MakeCollectEntry[T Text](org T, pos Position) Token {
 	ext := MeasureOrigin(org, pos)
 
@@ -107,16 +69,8 @@ func MakeCollectEntry[T Text](org T, pos Position) Token {
 	}
 }
 
-// SequenceStart create token for SequenceStart.
-func SequenceStart(org string, pos Position) *Token {
-	tk := MakeSequenceStart(org, pos)
-
-	return &tk
-}
-
-// MakeSequenceStart builds the token SequenceStart builds, without settling where it lives.
-// A caller handing it straight to a scanner wants this one: the pointer form
-// puts the token on the heap for a value that is copied and dropped.
+// MakeSequenceStart returns the '[' that opens a flow sequence, at pos, its end measured from org.
+// It returns the token as a value: a scanner copies it into a slice without an allocation.
 func MakeSequenceStart[T Text](org T, pos Position) Token {
 	ext := MeasureOrigin(org, pos)
 
@@ -129,16 +83,8 @@ func MakeSequenceStart[T Text](org T, pos Position) Token {
 	}
 }
 
-// SequenceEnd create token for SequenceEnd.
-func SequenceEnd(org string, pos Position) *Token {
-	tk := MakeSequenceEnd(org, pos)
-
-	return &tk
-}
-
-// MakeSequenceEnd builds the token SequenceEnd builds, without settling where it lives.
-// A caller handing it straight to a scanner wants this one: the pointer form
-// puts the token on the heap for a value that is copied and dropped.
+// MakeSequenceEnd returns the ']' that closes a flow sequence, at pos, its end measured from org.
+// It returns the token as a value: a scanner copies it into a slice without an allocation.
 func MakeSequenceEnd[T Text](org T, pos Position) Token {
 	ext := MeasureOrigin(org, pos)
 
@@ -151,16 +97,8 @@ func MakeSequenceEnd[T Text](org T, pos Position) Token {
 	}
 }
 
-// MappingStart create token for MappingStart.
-func MappingStart(org string, pos Position) *Token {
-	tk := MakeMappingStart(org, pos)
-
-	return &tk
-}
-
-// MakeMappingStart builds the token MappingStart builds, without settling where it lives.
-// A caller handing it straight to a scanner wants this one: the pointer form
-// puts the token on the heap for a value that is copied and dropped.
+// MakeMappingStart returns the '{' that opens a flow mapping, at pos, its end measured from org.
+// It returns the token as a value: a scanner copies it into a slice without an allocation.
 func MakeMappingStart[T Text](org T, pos Position) Token {
 	ext := MeasureOrigin(org, pos)
 
@@ -173,16 +111,8 @@ func MakeMappingStart[T Text](org T, pos Position) Token {
 	}
 }
 
-// MappingEnd create token for MappingEnd.
-func MappingEnd(org string, pos Position) *Token {
-	tk := MakeMappingEnd(org, pos)
-
-	return &tk
-}
-
-// MakeMappingEnd builds the token MappingEnd builds, without settling where it lives.
-// A caller handing it straight to a scanner wants this one: the pointer form
-// puts the token on the heap for a value that is copied and dropped.
+// MakeMappingEnd returns the '}' that closes a flow mapping, at pos, its end measured from org.
+// It returns the token as a value: a scanner copies it into a slice without an allocation.
 func MakeMappingEnd[T Text](org T, pos Position) Token {
 	ext := MeasureOrigin(org, pos)
 
@@ -195,17 +125,15 @@ func MakeMappingEnd[T Text](org T, pos Position) Token {
 	}
 }
 
-// Comment create token for Comment.
+// Comment returns a pointer to the token [MakeComment] returns.
 func Comment(value string, org string, pos Position) *Token {
 	tk := MakeComment(value, org, pos)
 
 	return &tk
 }
 
-// MakeComment builds a comment token without settling where it lives, as [MakeString]
-// does for a string. The scanner copies the token into its own storage, so a
-// caller that reaches for the pointer form pays a heap allocation for a value
-// that is read once and thrown away.
+// MakeComment returns a comment holding value, the text after its '#', at pos, its end measured from org.
+// It returns the token as a value: a scanner copies it into a slice without an allocation.
 func MakeComment[T Text](value string, org T, pos Position) Token {
 	ext := MeasureOrigin(org, pos)
 
@@ -218,16 +146,8 @@ func MakeComment[T Text](value string, org T, pos Position) Token {
 	}
 }
 
-// Anchor create token for Anchor.
-func Anchor(org string, pos Position) *Token {
-	tk := MakeAnchor(org, pos)
-
-	return &tk
-}
-
-// MakeAnchor builds the token Anchor builds, without settling where it lives.
-// A caller handing it straight to a scanner wants this one: the pointer form
-// puts the token on the heap for a value that is copied and dropped.
+// MakeAnchor returns the '&' of an anchor, at pos, its end measured from org.
+// It returns the token as a value: a scanner copies it into a slice without an allocation.
 func MakeAnchor[T Text](org T, pos Position) Token {
 	ext := MeasureOrigin(org, pos)
 
@@ -240,16 +160,8 @@ func MakeAnchor[T Text](org T, pos Position) Token {
 	}
 }
 
-// Alias create token for Alias.
-func Alias(org string, pos Position) *Token {
-	tk := MakeAlias(org, pos)
-
-	return &tk
-}
-
-// MakeAlias builds the token Alias builds, without settling where it lives.
-// A caller handing it straight to a scanner wants this one: the pointer form
-// puts the token on the heap for a value that is copied and dropped.
+// MakeAlias returns the '*' of an alias, at pos, its end measured from org.
+// It returns the token as a value: a scanner copies it into a slice without an allocation.
 func MakeAlias[T Text](org T, pos Position) Token {
 	ext := MeasureOrigin(org, pos)
 
@@ -262,16 +174,15 @@ func MakeAlias[T Text](org T, pos Position) Token {
 	}
 }
 
-// Tag create token for Tag.
+// Tag returns a pointer to the token [MakeTag] returns.
 func Tag(value string, org string, pos Position) *Token {
 	tk := MakeTag(value, org, pos)
 
 	return &tk
 }
 
-// MakeTag builds the token Tag builds, without settling where it lives.
-// A caller handing it straight to a scanner wants this one: the pointer form
-// puts the token on the heap for a value that is copied and dropped.
+// MakeTag returns a tag holding value, at pos, its end measured from org.
+// It returns the token as a value: a scanner copies it into a slice without an allocation.
 func MakeTag[T Text](value string, org T, pos Position) Token {
 	ext := MeasureOrigin(org, pos)
 
@@ -284,17 +195,8 @@ func MakeTag[T Text](value string, org T, pos Position) Token {
 	}
 }
 
-// Literal create token for Literal.
-func Literal(value string, org string, pos Position) *Token {
-	tk := MakeLiteral(value, org, pos)
-
-	return &tk
-}
-
-// MakeLiteral builds a literal token without settling where it lives, as [MakeString]
-// does for a string. The scanner copies the token into its own storage, so a
-// caller that reaches for the pointer form pays a heap allocation for a value
-// that is read once and thrown away.
+// MakeLiteral returns the '|' header of a literal block scalar, holding value, at pos, its end measured from org.
+// It returns the token as a value: a scanner copies it into a slice without an allocation.
 func MakeLiteral[T Text](value string, org T, pos Position) Token {
 	ext := MeasureOrigin(org, pos)
 
@@ -307,17 +209,8 @@ func MakeLiteral[T Text](value string, org T, pos Position) Token {
 	}
 }
 
-// Folded create token for Folded.
-func Folded(value string, org string, pos Position) *Token {
-	tk := MakeFolded(value, org, pos)
-
-	return &tk
-}
-
-// MakeFolded builds a folded token without settling where it lives, as [MakeString]
-// does for a string. The scanner copies the token into its own storage, so a
-// caller that reaches for the pointer form pays a heap allocation for a value
-// that is read once and thrown away.
+// MakeFolded returns the '>' header of a folded block scalar, holding value, at pos, its end measured from org.
+// It returns the token as a value: a scanner copies it into a slice without an allocation.
 func MakeFolded[T Text](value string, org T, pos Position) Token {
 	ext := MeasureOrigin(org, pos)
 
@@ -330,16 +223,8 @@ func MakeFolded[T Text](value string, org T, pos Position) Token {
 	}
 }
 
-// SingleQuote create token for SingleQuote.
-func SingleQuote(value string, org string, pos Position) *Token {
-	tk := MakeSingleQuote(value, org, pos)
-
-	return &tk
-}
-
-// MakeSingleQuote builds the token SingleQuote builds, without settling where it lives.
-// A caller handing it straight to a scanner wants this one: the pointer form
-// puts the token on the heap for a value that is copied and dropped.
+// MakeSingleQuote returns a single-quoted scalar holding value, its quotes resolved, at pos, its end measured from org.
+// It returns the token as a value: a scanner copies it into a slice without an allocation.
 func MakeSingleQuote[T Text](value string, org T, pos Position) Token {
 	ext := MeasureOrigin(org, pos)
 
@@ -352,16 +237,8 @@ func MakeSingleQuote[T Text](value string, org T, pos Position) Token {
 	}
 }
 
-// DoubleQuote create token for DoubleQuote.
-func DoubleQuote(value string, org string, pos Position) *Token {
-	tk := MakeDoubleQuote(value, org, pos)
-
-	return &tk
-}
-
-// MakeDoubleQuote builds the token DoubleQuote builds, without settling where it lives.
-// A caller handing it straight to a scanner wants this one: the pointer form
-// puts the token on the heap for a value that is copied and dropped.
+// MakeDoubleQuote returns a double-quoted scalar holding value, its escapes resolved, at pos, its end measured from org.
+// It returns the token as a value: a scanner copies it into a slice without an allocation.
 func MakeDoubleQuote[T Text](value string, org T, pos Position) Token {
 	ext := MeasureOrigin(org, pos)
 
@@ -374,16 +251,8 @@ func MakeDoubleQuote[T Text](value string, org T, pos Position) Token {
 	}
 }
 
-// Directive create token for Directive.
-func Directive(org string, pos Position) *Token {
-	tk := MakeDirective(org, pos)
-
-	return &tk
-}
-
-// MakeDirective builds the token Directive builds, without settling where it lives.
-// A caller handing it straight to a scanner wants this one: the pointer form
-// puts the token on the heap for a value that is copied and dropped.
+// MakeDirective returns the '%' of a directive, at pos, its end measured from org.
+// It returns the token as a value: a scanner copies it into a slice without an allocation.
 func MakeDirective[T Text](org T, pos Position) Token {
 	ext := MeasureOrigin(org, pos)
 
@@ -396,27 +265,8 @@ func MakeDirective[T Text](org T, pos Position) Token {
 	}
 }
 
-// Space create token for Space.
-func Space(pos Position) *Token {
-	return &Token{
-		Type:     SpaceType,
-		Value:    string(SpaceCharacter),
-		end:      extentOf(string(SpaceCharacter), pos),
-		Position: pos,
-		spans:    uint64(pos.Line),
-	}
-}
-
-// MergeKey create token for MergeKey.
-func MergeKey(org string, pos Position) *Token {
-	tk := MakeMergeKey(org, pos)
-
-	return &tk
-}
-
-// MakeMergeKey builds the token MergeKey builds, without settling where it lives.
-// A caller handing it straight to a scanner wants this one: the pointer form
-// puts the token on the heap for a value that is copied and dropped.
+// MakeMergeKey returns the '<<' merge key, at pos, its end measured from org.
+// It returns the token as a value: a scanner copies it into a slice without an allocation.
 func MakeMergeKey[T Text](org T, pos Position) Token {
 	ext := MeasureOrigin(org, pos)
 
@@ -429,16 +279,8 @@ func MakeMergeKey[T Text](org T, pos Position) Token {
 	}
 }
 
-// DocumentHeader create token for DocumentHeader.
-func DocumentHeader(org string, pos Position) *Token {
-	tk := MakeDocumentHeader(org, pos)
-
-	return &tk
-}
-
-// MakeDocumentHeader builds the token DocumentHeader builds, without settling where it lives.
-// A caller handing it straight to a scanner wants this one: the pointer form
-// puts the token on the heap for a value that is copied and dropped.
+// MakeDocumentHeader returns the '---' that opens a document, at pos, its end measured from org.
+// It returns the token as a value: a scanner copies it into a slice without an allocation.
 func MakeDocumentHeader[T Text](org T, pos Position) Token {
 	ext := MeasureOrigin(org, pos)
 
@@ -451,16 +293,8 @@ func MakeDocumentHeader[T Text](org T, pos Position) Token {
 	}
 }
 
-// DocumentEnd create token for DocumentEnd.
-func DocumentEnd(org string, pos Position) *Token {
-	tk := MakeDocumentEnd(org, pos)
-
-	return &tk
-}
-
-// MakeDocumentEnd builds the token DocumentEnd builds, without settling where it lives.
-// A caller handing it straight to a scanner wants this one: the pointer form
-// puts the token on the heap for a value that is copied and dropped.
+// MakeDocumentEnd returns the '...' that ends a document, at pos, its end measured from org.
+// It returns the token as a value: a scanner copies it into a slice without an allocation.
 func MakeDocumentEnd[T Text](org T, pos Position) Token {
 	ext := MeasureOrigin(org, pos)
 
