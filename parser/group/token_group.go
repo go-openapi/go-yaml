@@ -541,7 +541,15 @@ func (g *Grouper) taggedScalar(tag, next *TapeToken, explicitKey bool) (*TapeTok
 		// the scalar, as any tag does: "!!se q: 1" tags the key q, as yaml.v3 and YAML 1.2 read it. Left on its own,
 		// it went to the mapping the key opens. Before anything else it stands on its own, and the parser reads
 		// what it tags: an alias, which go-yaml reads under "!!omap *a", and a block scalar, which a key cannot be.
-		if !isInlineScalar(next) {
+		//
+		// An anchor between the tag and the scalar names the scalar, so the tag tags it too: "!!seq &a k: 1" tags the
+		// key k, as "!!seq k: 1" does. The anchor group was read as no inline scalar, so the tag went to the mapping,
+		// and an entry inserted in front of the key was written between the tag and the anchor.
+		named := next
+		if next.GroupType() == TokenGroupAnchor {
+			named = next.Group.Last()
+		}
+		if !isInlineScalar(named) {
 			return nil, true
 		}
 

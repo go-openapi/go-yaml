@@ -590,10 +590,15 @@ func TestParseReadsATaggedMappingEntryOnTheTagsOwnLine(t *testing.T) {
 //
 // A collection tag or a "!!" tag no schema defines stood on its own, and the parser put it on the mapping the key
 // opens: "&a1 !!se q: 1" anchored and tagged the mapping. A tag on a line of its own still tags the mapping.
+//
+// So did such a tag written ahead of an anchor, "!!se &a1 q: 1": the anchor group was read as no inline scalar.
 func TestATagBeforeAnImplicitKeyTagsTheKey(t *testing.T) {
 	t.Parallel()
 
-	for _, src := range []string{"!!se q: 1\n", "&a1 !!se q: 1\n", "!!map q: 1\n", "!!omap 'q': 1\n", "a:\n  !!se q: 1\n"} {
+	for _, src := range []string{
+		"!!se q: 1\n", "&a1 !!se q: 1\n", "!!map q: 1\n", "!!omap 'q': 1\n", "a:\n  !!se q: 1\n",
+		"!!se &a1 q: 1\n", "!!seq &a1 q: 1\n", "!!se &a1 'q': 1\n", "a:\n  !!se &a1 q: 1\n",
+	} {
 		file, err := parser.ParseBytes([]byte(src))
 		require.NoErrorf(t, err, "%q", src)
 
@@ -616,5 +621,11 @@ func TestATagBeforeAnImplicitKeyTagsTheKey(t *testing.T) {
 		require.NoError(t, err)
 		_, tagged := file.Docs[0].Body.(*ast.TagNode)
 		assert.True(t, tagged)
+	})
+
+	t.Run("a block scalar after the anchor stays outside the tag", func(t *testing.T) {
+		// The parser reads what the tag stands on, as before the anchor was looked through.
+		_, err := parser.ParseBytes([]byte("!!seq &a |\n x\n"))
+		require.NoError(t, err)
 	})
 }
