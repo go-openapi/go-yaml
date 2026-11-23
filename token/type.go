@@ -3,130 +3,128 @@
 
 package token
 
-// Character type for character.
+// Character is a byte that opens, closes or separates a YAML construct.
 type Character byte
 
 const (
-	// SequenceEntryCharacter character for sequence entry.
+	// SequenceEntryCharacter is '-', which opens an entry of a block sequence.
 	SequenceEntryCharacter Character = '-'
-	// MappingKeyCharacter character for mapping key.
+	// MappingKeyCharacter is '?', which opens an explicit mapping key.
 	MappingKeyCharacter Character = '?'
-	// MappingValueCharacter character for mapping value.
+	// MappingValueCharacter is ':', which separates a mapping key from its value.
 	MappingValueCharacter Character = ':'
-	// CollectEntryCharacter character for collect entry.
+	// CollectEntryCharacter is ',', which separates two entries of a flow collection.
 	CollectEntryCharacter Character = ','
-	// SequenceStartCharacter character for sequence start.
+	// SequenceStartCharacter is '[', which opens a flow sequence.
 	SequenceStartCharacter Character = '['
-	// SequenceEndCharacter character for sequence end.
+	// SequenceEndCharacter is ']', which closes a flow sequence.
 	SequenceEndCharacter Character = ']'
-	// MappingStartCharacter character for mapping start.
+	// MappingStartCharacter is '{', which opens a flow mapping.
 	MappingStartCharacter Character = '{'
-	// MappingEndCharacter character for mapping end.
+	// MappingEndCharacter is '}', which closes a flow mapping.
 	MappingEndCharacter Character = '}'
-	// CommentCharacter character for comment.
+	// CommentCharacter is '#', which opens a comment.
 	CommentCharacter Character = '#'
-	// AnchorCharacter character for anchor.
+	// AnchorCharacter is '&', which opens an anchor.
 	AnchorCharacter Character = '&'
-	// AliasCharacter character for alias.
+	// AliasCharacter is '*', which opens an alias.
 	AliasCharacter Character = '*'
-	// TagCharacter character for tag.
+	// TagCharacter is '!', which opens a tag.
 	TagCharacter Character = '!'
-	// LiteralCharacter character for literal.
+	// LiteralCharacter is '|', which opens a literal block scalar.
 	LiteralCharacter Character = '|'
-	// FoldedCharacter character for folded.
+	// FoldedCharacter is '>', which opens a folded block scalar.
 	FoldedCharacter Character = '>'
-	// SingleQuoteCharacter character for single quote.
+	// SingleQuoteCharacter is the single quote that opens and closes a single-quoted scalar.
 	SingleQuoteCharacter Character = '\''
-	// DoubleQuoteCharacter character for double quote.
+	// DoubleQuoteCharacter is the double quote that opens and closes a double-quoted scalar.
 	DoubleQuoteCharacter Character = '"'
-	// DirectiveCharacter character for directive.
+	// DirectiveCharacter is '%', which opens a directive.
 	DirectiveCharacter Character = '%'
-	// SpaceCharacter character for space.
+	// SpaceCharacter is the space, which separates tokens and indents a block.
 	SpaceCharacter Character = ' '
-	// LineBreakCharacter character for line break.
+	// LineBreakCharacter is the line feed, which ends a line.
 	LineBreakCharacter Character = '\n'
 )
 
 // Type identifies what a token is.
 //
-// There are 34 of them, so one byte holds any, and a token spends one byte on
-// saying what it is.
+// There are 34 types, so one byte holds any, and [Token] spends one byte on its type.
 type Type uint8
 
 const (
-	// UnknownType reserve for invalid type.
+	// UnknownType is the zero Type, which no token the scanner cuts carries.
 	UnknownType Type = iota
-	// DocumentHeaderType type for DocumentHeader token.
+	// DocumentHeaderType marks the '---' that opens a document.
 	DocumentHeaderType
-	// DocumentEndType type for DocumentEnd token.
+	// DocumentEndType marks the '...' that ends a document.
 	DocumentEndType
-	// SequenceEntryType type for SequenceEntry token.
+	// SequenceEntryType marks the '-' of a block sequence entry.
 	SequenceEntryType
-	// MappingKeyType type for MappingKey token.
+	// MappingKeyType marks the '?' of an explicit mapping key.
 	MappingKeyType
-	// MappingValueType type for MappingValue token.
+	// MappingValueType marks the ':' of a mapping entry.
 	MappingValueType
-	// MergeKeyType type for MergeKey token.
+	// MergeKeyType marks the '<<' merge key, where the merge key is in force.
 	MergeKeyType
-	// CollectEntryType type for CollectEntry token.
+	// CollectEntryType marks the ',' between two entries of a flow collection.
 	CollectEntryType
-	// SequenceStartType type for SequenceStart token.
+	// SequenceStartType marks the '[' that opens a flow sequence.
 	SequenceStartType
-	// SequenceEndType type for SequenceEnd token.
+	// SequenceEndType marks the ']' that closes a flow sequence.
 	SequenceEndType
-	// MappingStartType type for MappingStart token.
+	// MappingStartType marks the '{' that opens a flow mapping.
 	MappingStartType
-	// MappingEndType type for MappingEnd token.
+	// MappingEndType marks the '}' that closes a flow mapping.
 	MappingEndType
-	// CommentType type for Comment token.
+	// CommentType marks a comment.
 	CommentType
-	// AnchorType type for Anchor token.
+	// AnchorType marks the '&' of an anchor.
 	AnchorType
-	// AliasType type for Alias token.
+	// AliasType marks the '*' of an alias.
 	AliasType
-	// TagType type for Tag token.
+	// TagType marks a tag.
 	TagType
-	// LiteralType type for Literal token.
+	// LiteralType marks the '|' header of a literal block scalar.
 	LiteralType
-	// FoldedType type for Folded token.
+	// FoldedType marks the '>' header of a folded block scalar.
 	FoldedType
-	// SingleQuoteType type for SingleQuote token.
+	// SingleQuoteType marks a single-quoted scalar.
 	SingleQuoteType
-	// DoubleQuoteType type for DoubleQuote token.
+	// DoubleQuoteType marks a double-quoted scalar.
 	DoubleQuoteType
-	// DirectiveType type for Directive token.
+	// DirectiveType marks the '%' of a directive.
 	DirectiveType
-	// SpaceType type for Space token.
+	// SpaceType marks a run of spaces.
 	SpaceType
-	// NullType type for Null token.
+	// NullType marks a plain scalar that resolves to null: "null" or "~", in any case the schema allows.
 	NullType
-	// ImplicitNullType type for implicit Null token.
-	// This is used when explicit keywords such as null or ~ are not specified.
-	// It is distinguished during encoding and output as an empty string.
+	// ImplicitNullType marks a null the document left out, as in "e:". Its token has no text in the document,
+	// and a writer writes nothing for it.
 	ImplicitNullType
-	// InfinityType type for Infinity token.
+	// InfinityType marks a plain scalar that resolves to an infinity, such as ".inf".
 	InfinityType
-	// NanType type for Nan token.
+	// NanType marks a plain scalar that resolves to not-a-number, ".nan".
 	NanType
-	// IntegerType type for Integer token.
+	// IntegerType marks a plain scalar that resolves to a decimal integer.
 	IntegerType
-	// BinaryIntegerType type for BinaryInteger token.
+	// BinaryIntegerType marks a plain scalar that resolves to an integer written in base 2, "0b1010".
 	BinaryIntegerType
-	// OctetIntegerType type for OctetInteger token.
+	// OctetIntegerType marks a plain scalar that resolves to an integer written in base 8, "0o17", or "017" under 1.1.
 	OctetIntegerType
-	// HexIntegerType type for HexInteger token.
+	// HexIntegerType marks a plain scalar that resolves to an integer written in base 16, "0x1F".
 	HexIntegerType
-	// FloatType type for Float token.
+	// FloatType marks a plain scalar that resolves to a float.
 	FloatType
-	// StringType type for String token.
+	// StringType marks a plain scalar that resolves to a string.
 	StringType
-	// BoolType type for Bool token.
+	// BoolType marks a plain scalar that resolves to a boolean.
 	BoolType
-	// InvalidType type for invalid token.
+	// InvalidType marks text the scanner could not read as any token.
 	InvalidType
 )
 
-// String type identifier to text.
+// String returns the name of t, such as "MappingValue", or "" for a value outside the constants.
 //
 //nolint:cyclop // one case per token type
 func (t Type) String() string {
@@ -204,23 +202,23 @@ func (t Type) String() string {
 	}
 }
 
-// CharacterType type for character category.
+// CharacterType is the class of character a token is written with. See [Type.CharacterType].
 type CharacterType int
 
 const (
-	// CharacterTypeIndicator type of indicator character.
+	// CharacterTypeIndicator marks an indicator, such as ':' or '['.
 	CharacterTypeIndicator CharacterType = iota
-	// CharacterTypeWhiteSpace type of white space character.
+	// CharacterTypeWhiteSpace marks a space.
 	CharacterTypeWhiteSpace
-	// CharacterTypeMiscellaneous type of miscellaneous character.
+	// CharacterTypeMiscellaneous marks any other character, as a scalar is.
 	CharacterTypeMiscellaneous
-	// CharacterTypeEscaped type of escaped character.
+	// CharacterTypeEscaped marks an escaped character.
 	CharacterTypeEscaped
-	// CharacterTypeInvalid type for a invalid token.
+	// CharacterTypeInvalid marks text the scanner could not read.
 	CharacterTypeInvalid
 )
 
-// String character type identifier to text.
+// String returns the name of c, such as "Indicator", or "" for a value outside the constants.
 func (c CharacterType) String() string {
 	switch c {
 	case CharacterTypeIndicator:
@@ -237,31 +235,31 @@ func (c CharacterType) String() string {
 	return ""
 }
 
-// Indicator type for indicator.
+// Indicator is the kind of syntax an indicator character opens, as YAML 1.2.2 section 5.3 groups them.
 type Indicator int
 
 const (
-	// NotIndicator not indicator.
+	// NotIndicator marks a token that is not an indicator.
 	NotIndicator Indicator = iota
-	// BlockStructureIndicator indicator for block structure ( '-', '?', ':' ).
+	// BlockStructureIndicator marks block structure: '-', '?', ':'.
 	BlockStructureIndicator
-	// FlowCollectionIndicator indicator for flow collection ( '[', ']', '{', '}', ',' ).
+	// FlowCollectionIndicator marks a flow collection: '[', ']', '{', '}', ','.
 	FlowCollectionIndicator
-	// CommentIndicator indicator for comment ( '#' ).
+	// CommentIndicator marks a comment: '#'.
 	CommentIndicator
-	// NodePropertyIndicator indicator for node property ( '!', '&', '*' ).
+	// NodePropertyIndicator marks a node property: '!', '&', '*'.
 	NodePropertyIndicator
-	// BlockScalarIndicator indicator for block scalar ( '|', '>' ).
+	// BlockScalarIndicator marks a block scalar: '|', '>'.
 	BlockScalarIndicator
-	// QuotedScalarIndicator indicator for quoted scalar ( ''', '"' ).
+	// QuotedScalarIndicator marks a quoted scalar: a single or a double quote.
 	QuotedScalarIndicator
-	// DirectiveIndicator indicator for directive ( '%' ).
+	// DirectiveIndicator marks a directive: '%'.
 	DirectiveIndicator
-	// InvalidUseOfReservedIndicator indicator for invalid use of reserved keyword ( '@', '`' ).
+	// InvalidUseOfReservedIndicator marks a character YAML reserves and does not allow to start a plain scalar: '@', '`'.
 	InvalidUseOfReservedIndicator
 )
 
-// String indicator to text.
+// String returns the name of i, such as "FlowCollection", or "" for a value outside the constants.
 func (i Indicator) String() string {
 	switch i {
 	case NotIndicator:
@@ -290,9 +288,8 @@ func (i Indicator) String() string {
 // Indicator returns the indicator a token of type t is, or NotIndicator where
 // it is not one.
 //
-// A token's indicator follows from its type and is not recorded on the token:
-// there is one answer for each type, and TestIndicatorFollowsFromType holds
-// this to the answer every token used to carry.
+// A token's indicator follows from its type, so the token does not record it.
+// TestEveryTypeHasAnIndicator checks every type.
 func (t Type) Indicator() Indicator {
 	switch t {
 	case SequenceEntryType, MappingKeyType, MappingValueType:
@@ -318,10 +315,9 @@ func (t Type) Indicator() Indicator {
 // whatever base it was written: 16 for HexIntegerType, 8 for OctetIntegerType,
 // 2 for BinaryIntegerType and 10 for IntegerType.
 //
-// [ScalarType] settles which of the four a plain scalar is, under the schema
-// the document is read with, and [ParseWholeNumber] reads the digits back with
-// that base. A caller holding a type from anywhere else -- a tag, say -- asks
-// this before treating it as the base.
+// [ScalarType] picks which of the four a plain scalar is, under the schema the document is read with,
+// and [ParseWholeNumber] reads the digits back in that base.
+// Check IsInteger before taking the base from a type that came from elsewhere, such as a tag.
 func (t Type) IsInteger() bool {
 	switch t {
 	case IntegerType, BinaryIntegerType, OctetIntegerType, HexIntegerType:

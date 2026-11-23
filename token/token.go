@@ -9,49 +9,38 @@ import (
 	"unsafe"
 )
 
-// New create reserved keyword token or number token and other string token.
+// New returns a pointer to the token [Make] returns.
 func New(value string, org string, pos Position) *Token {
 	tk := Make(value, org, pos)
 
 	return &tk
 }
 
-// Make builds the token for value without settling where it lives. New puts it
-// on the heap; a caller holding its tokens in a slice of values keeps this one
-// out of the heap altogether, which is why New is thin enough to inline.
+// Make returns the token for value at pos, typed as Schema12 resolves a plain scalar: a keyword, a number or a
+// string. Its end is measured from org, the text the scanner read for it.
+//
+// Make returns the token as a value, so a caller that keeps its tokens in a slice allocates none.
 func Make[T Text](value string, org T, pos Position) Token {
 	return Assemble(ScalarType(value, Schema12), value, pos, MeasureOrigin(org, pos))
 }
 
-// Token type for token
 // Token is one lexical token of a YAML document.
 //
-// The fields are ordered widest first so that the three narrow ones share a
-// single word rather than padding out to one each. Read order would take 80
-// bytes where this takes 72.
+// It takes 56 bytes and passes in eight registers. README.md in this directory describes the layout, and why a
+// new field belongs in spans.
 type Token struct {
-	// Value is a string extracted with only meaningful characters, with spaces and such removed.
+	// Value is the token's text with the syntax resolved: a quoted scalar without its quotes and escapes, a block
+	// scalar folded and chomped, a plain scalar as written.
 	Value string
-	// Position is where the token stands in the source.
+	// Position records where the token starts in the source.
 	Position Position
 	// end is the offset just past the token's text, so that src[Offset:end] is
 	// what the document wrote it as. Read it with [Token.EndOffset].
 	end int32
-	// spans packs three numbers that would otherwise take a register each:
-	// the line the token ends on, the line breaks its comments take up, and
-	// whether a blank line stands above it. Read them with [Token.EndLine()],
-	// [Token.CommentBreaksAbove()] and [Token.BlankLineAbove()].
-	//
-	// A token crosses a function boundary in registers only if it decomposes
-	// into nine or fewer of them, and Go counts fields rather than words: three
-	// small numbers cost three registers written plainly and one packed. The
-	// scanner hands a token back on every call, so what that costs is paid
-	// hundreds of thousands of times for a document.
-	//
-	// Layout, from the low bit: EndLine in 32, CommentBreaksAbove in 31,
-	// BlankLineAbove in 1.
+	// spans packs five facts in one word. Read them with [Token.EndLine], [Token.CommentBreaksAbove],
+	// [Token.TrailingBreaks], [Token.BlankLineAbove] and [Token.FromSource]. See the constants below.
 	spans uint64
-	// Type is a token type.
+	// Type identifies what the token is.
 	Type Type
 }
 
@@ -124,7 +113,7 @@ func (t *Token) Detached() *Token {
 	return &detached
 }
 
-// Clone copy token ( preserve Prev/Next reference ).
+// Clone returns a copy of t, or nil for a nil t. The copy keeps [Token.FromSource]; see [Token.Detached].
 func (t *Token) Clone() *Token {
 	if t == nil {
 		return nil
@@ -143,10 +132,10 @@ func (t *Token) Dump(w io.Writer) {
 	)
 }
 
-// Tokens type of token collection.
+// Tokens is a sequence of tokens, in the order the scanner cut them.
 type Tokens []*Token
 
-// Add append new some tokens.
+// Add appends tks to t.
 func (t *Tokens) Add(tks ...*Token) {
 	for _, tk := range tks {
 		t.add(tk)
@@ -165,31 +154,19 @@ func (t *Tokens) add(tk *Token) {
 	*t = append(*t, tk)
 }
 
-// Text is the two ways a caller holds what a token was written as: the
-// document's own string, or the buffer a scanner filled reading it.
+// Text holds what a token was written as: the document's own string, or the buffer a scanner filled reading it.
 //
-// The token keeps neither. It records how far the text reaches and how many
-// lines it spans, and everything below that takes a Text only measures it. So a
-// scanner hands over its buffer as it stands: turning it into a string first
-// copies the bytes to count them, which for a token longer than the compiler
-// will keep on the stack is an allocation for every token read.
+// The token keeps neither. The functions that take a Text measure it, so a scanner passes its buffer as it
+// stands: converting it to a string would copy the bytes, an allocation for every token too long for the stack.
 type Text interface{ ~string | ~[]byte }
 
 // isBlank reports whether c is whitespace or part of a line break.
 func isBlank(c byte) bool { return c == ' ' || c == '\t' || c == '\r' || c == '\n' }
 
-// The token's packed spans, from the low bit: EndLine in 32, CommentBreaksAbove
-// in 16, TrailingBreaks in 15, BlankLineAbove in 1.
+// The layout of Token.spans, from the low bit: EndLine in 32 bits, CommentBreaksAbove in 16, TrailingBreaks in 14,
+// BlankLineAbove in 1 and FromSource in 1. TrailingBreaks stops at 16,383.
 //
-// Five facts in one field rather than five, because a call passes nine
-// registers, Go counts a struct's fields rather than its words, and
-// Scanner.NextToken returns a token and a bool -- so the token has eight and
-// the bool has the ninth. A field of its own for any of these puts the bool on
-// the stack, which TestTokenFitsTheRegisterABI holds the line on.
-//
-// TrailingBreaks gives up a bit to FromSource and now counts to 16,383 rather
-// than 32,767, clamping above that as it always has. A token followed by more
-// than sixteen thousand blank lines is not a document anyone wrote.
+// TestTokenFitsTheRegisterABI checks that a token still passes in registers. See README.md in this directory.
 const (
 	endLineBits  = 32
 	commentBits  = 16
@@ -210,10 +187,8 @@ const (
 // on, so EndLine equals Position.Line for all but block scalars, multi-line
 // quoted scalars and comments.
 //
-// It is what a reader wants when it asks how far a token reaches, and it is
-// settled where the token is built rather than counted again from
-// the origin text at every site that asks. Leading and trailing whitespace does
-// not count: those breaks belong to the gap around the token, not to the token.
+// The scanner records it as it builds the token, so no caller counts it again. Leading and trailing whitespace
+// does not count: those breaks belong to the gap around the token.
 //
 // A token the parser makes up for a value the document leaves out ends where it
 // starts, having no text in the document at all.
@@ -227,18 +202,15 @@ func (t Token) CommentBreaksAbove() int32 {
 	return int32(t.spans >> commentShift & commentMask)
 }
 
-// BlankLineAbove reports whether the author left an empty line above this
-// token. The renderer writes one back where it finds one, which is how a
-// document keeps the spacing it was written with.
+// BlankLineAbove reports whether the author left an empty line above this token. The renderer writes one back
+// there, so a document keeps the spacing it was written with.
 func (t Token) BlankLineAbove() bool { return t.spans>>blankLineShift&1 != 0 }
 
 // TrailingBreaks counts the line breaks the whitespace after the token takes
 // up, before whatever is written next.
 //
-// [Token.EndLine] leaves them out: they are the gap after the token, not the
-// token. A reader that wants how far the token's text reaches including that
-// gap adds this, and one asking whether the token is followed by a break tests
-// it against zero.
+// [Token.EndLine] leaves them out: they are the gap after the token. Add TrailingBreaks to EndLine for the line
+// the gap ends on, and test it against zero to know whether a line break follows the token.
 func (t Token) TrailingBreaks() int32 {
 	return int32(t.spans >> trailingShift & trailingMask)
 }
@@ -297,9 +269,9 @@ func trailingRun[T Text](org T) (int, int32) {
 // TrailingBreaksIn counts the line breaks in the blank run org ends with: what
 // stands between the token's last line and whatever is read next.
 //
-// A scanner that knows the line its cursor is on needs only this, since the
+// A scanner that tracks the line its cursor is on needs only this, since the
 // token's text ends that many breaks above the cursor. Reading the whole
-// origin, as [MeasureOrigin] does, is for a caller with no cursor to count
+// origin, as [MeasureOrigin] does, serves a caller with no cursor to count
 // back from.
 func TrailingBreaksIn[T Text](org T) int32 {
 	_, trailing := trailingRun(org)
@@ -310,9 +282,8 @@ func TrailingBreaksIn[T Text](org T) int32 {
 // Extent is how far a token reaches through the source, past the offset its
 // [Position] gives.
 //
-// A scanner knows all three as it cuts a token, and [Assemble] takes them
-// rather than working them out again. A caller that has only the text the
-// token was written as reads them with [MeasureOrigin].
+// A scanner has all three as it cuts a token and passes them to [Assemble]. A caller holding only the text
+// the token was written as reads them with [MeasureOrigin].
 type Extent struct {
 	// End is the byte just past the token's text, so that src[Offset:End] is
 	// what the document wrote the token as.
@@ -333,12 +304,9 @@ func (e Extent) spans() uint64 {
 
 // MeasureOrigin reads a token's origin once and returns the extent it gives.
 //
-// org is everything the scanner read since the previous token -- the blanks in
-// front of the token, its text, and the blanks after it. Three walks over that
-// are enough: forward over the leading blanks, backward over the trailing ones
-// counting their breaks, and once across the text between them. extentOf,
-// breaksIn and trailingBreaksIn together walked it six times, three of those
-// over the same leading blank run, and every Make call paid for all six.
+// org is everything the scanner read since the previous token: the blanks in front of the token, its text, and
+// the blanks after it. MeasureOrigin walks it three times: forward over the leading blanks, backward over the
+// trailing ones counting their breaks, and across the text between them.
 func MeasureOrigin[T Text](org T, pos Position) Extent {
 	i := 0
 	for i < len(org) && isBlank(org[i]) {
@@ -369,9 +337,8 @@ func MeasureOrigin[T Text](org T, pos Position) Extent {
 
 // Assemble builds a token from parts a caller already holds, reading nothing.
 //
-// The scanner knows a token's type, its value, where it stands and how far it
-// reaches by the time it cuts it, so it has no origin to measure: see
-// [MeasureOrigin] for the caller that does. [Make] is the two together.
+// The scanner has a token's type, value, position and extent by the time it cuts it, so it has no origin to
+// measure. [MeasureOrigin] measures one, and [Make] calls both.
 func Assemble(typ Type, value string, pos Position, ext Extent) Token {
 	return Token{
 		Type:     typ,
@@ -385,8 +352,7 @@ func Assemble(typ Type, value string, pos Position, ext Extent) Token {
 // extentOf is the offset just past a token's text, given the source it was
 // written as and where it starts.
 //
-// The whitespace an origin opens with belongs to the gap before the token
-// rather than to the token, and pos.Offset already points past it.
+// The whitespace an origin opens with belongs to the gap before the token, and pos.Offset already points past it.
 func extentOf[T Text](org T, pos Position) int32 {
 	i := 0
 	for i < len(org) && (org[i] == ' ' || org[i] == '\t' || org[i] == '\n' || org[i] == '\r') {
@@ -396,8 +362,7 @@ func extentOf[T Text](org T, pos Position) int32 {
 	return pos.Offset() + int32(len(org)-i)
 }
 
-// EndOffset is the byte just past the token's text, so that src[Offset:EndOffset]
-// is what the document wrote the token as, with the whitespace before it left
-// out. A token the parser makes up for a value the document leaves out ends
+// EndOffset returns the byte just past the token's text, so src[Offset:EndOffset] holds the text the document
+// wrote, without the whitespace before it. A token the parser builds for a value the document leaves out ends
 // where it starts.
 func (t Token) EndOffset() int32 { return t.end }

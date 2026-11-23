@@ -5,30 +5,21 @@ package token
 
 import "fmt"
 
-// Position type for position in YAML document
-// Position is where a token stands in the source.
+// Position records where a token starts in the source.
 //
-// Line and Column count from 1 and count characters, which is what YAML
-// measures indentation in. Offset counts from 0 and counts bytes, so
-// src[Offset:] is the token: it addresses the source a caller handed in, and a
-// caret drawn from it lands on the right character.
+// Line and Column count from 1, in characters, as YAML measures indentation. Offset counts from 0, in bytes, so
+// src[Offset:] starts with the token, and a caret drawn from Line and Column lands on its first character.
 //
-// Offset addresses the token for 97.1% of the YAML Test Suite's tokens; Line
-// and Column for 94.2%. Two kinds of token are still reported early: block
-// scalar content, whose offset is counted back from the cursor by the length
-// of the folded value, and the Invalid token an error carries.
-// scanner/offset_test.go holds the count of each.
+// Offset can start earlier than the token's text for two kinds of token: block scalar content, and the Invalid
+// token an error carries. README.md in this directory gives the counts.
 //
-// The four are int32. A document large enough to overflow one does not fit in
-// memory to begin with, and a token holds this by value rather than pointing at
-// it, so its width is the token's width.
+// The four numbers are int32. A token holds its Position by value, so the width of each number adds to the
+// token's width.
 type Position struct {
 	Line   int32
 	Column int32
-	// where packs Offset in its low 32 bits and IndentNum in its high 32,
-	// which keeps a token inside the nine registers an argument or a result
-	// may use: Go counts a struct's fields rather than its words, so four
-	// int32 here cost four registers and two of them cost one.
+	// where packs Offset in its low 32 bits and IndentNum in its high 32, so the two take one register where two
+	// fields would take two. See README.md in this directory.
 	//
 	// Read them with [Position.Offset] and [Position.IndentNum].
 	where uint64
@@ -37,12 +28,10 @@ type Position struct {
 // offsetMask selects the low 32 bits of Position.where, which hold Offset.
 const offsetMask = 1<<32 - 1
 
-// Offset is the byte the token starts at, counting from 0, so that src[Offset:]
-// is the token.
+// Offset returns the byte the token starts at, counting from 0.
 func (p Position) Offset() int32 { return int32(p.where & offsetMask) }
 
-// IndentNum is the number of spaces the line the token stands on is indented
-// by.
+// IndentNum returns the number of spaces the token's line is indented by.
 func (p Position) IndentNum() int32 { return int32(p.where >> 32) }
 
 // SetOffset records the byte the token starts at.
@@ -50,7 +39,8 @@ func (p *Position) SetOffset(offset int32) {
 	p.where = p.where&^offsetMask | uint64(uint32(offset))
 }
 
-// At builds a position, which the packed fields keep a literal from doing.
+// At returns the position at line, column, offset and indentNum. A composite literal cannot set Offset and
+// IndentNum, which share a packed field.
 func At(line, column, offset, indentNum int32) Position {
 	return Position{
 		Line:   line,
@@ -59,7 +49,7 @@ func At(line, column, offset, indentNum int32) Position {
 	}
 }
 
-// String position to text.
+// String returns p as "[line:L,column:C,offset:O]".
 func (p *Position) String() string {
 	return fmt.Sprintf("[line:%d,column:%d,offset:%d]", p.Line, p.Column, p.Offset())
 }

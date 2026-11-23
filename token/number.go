@@ -13,22 +13,16 @@ import (
 // IntegerBase returns the type whose base an integer scalar's digits are
 // written in, and false where schema reads them as no whole number.
 //
-// schema is the one the document is read under, and it decides the answer:
-// "017" is OctetIntegerType under 1.1 and IntegerType under 1.2, "0b101" is
-// BinaryIntegerType under the first and StringType under the second.
+// The answer depends on schema, the one the document is read under: "017" is OctetIntegerType under 1.1 and
+// IntegerType under 1.2, and "0b101" is BinaryIntegerType under 1.1 and StringType under 1.2.
 //
-// It reads the text rather than a type the scanner handed over, so that a
-// quoted scalar and a plain one holding the same characters get the same
-// answer. Keying on the scanner's type instead made `!!int "017"` 17 in a
-// document where `!!int 017` was 15 -- both integers, no error, and two units
-// gone. §3.3.2 gives the "!" non-specific tag only to a node lacking an
-// explicit tag, so the two are one node and nothing may tell them apart.
+// IntegerBase reads the text, not the type the scanner gave the token, so a quoted and a plain scalar holding the
+// same characters get the same answer. YAML 1.2.2 section 3.3.2 makes `!!int "017"` and `!!int 017` one node, and
+// both read as 15 under 1.1.
 //
-// Use it with [ParseWholeNumber] or [ParseBigInteger], which read the digits
-// with the base the type names. Sniffing the base from the text alone --
-// strconv.ParseInt with base 0 -- reads Go's rules for an integer literal and
-// not YAML's: Go takes a sign on a hex number, a capital "X", a "0b" prefix and
-// "_" separators, and the 1.2 core schema writes none of them.
+// Use it with [ParseWholeNumber] or [ParseBigInteger], which read the digits in the base the type names. Do not
+// use strconv.ParseInt with base 0: it reads Go's integer literals, which take a sign on a hex number, a capital
+// "X", a "0b" prefix and "_" separators, none of which the 1.2 core schema writes.
 func IntegerBase(text string, schema Schema) (Type, bool) {
 	if typ := ScalarType(text, schema); typ.IsInteger() {
 		return typ, true
@@ -40,8 +34,8 @@ func IntegerBase(text string, schema Schema) (Type, bool) {
 // FloatBase returns the type whose spelling rules a float scalar's text
 // follows, and false where schema reads it as no number at all.
 //
-// It answers as [IntegerBase] does, from the text and the document's schema,
-// and takes the three number families a float tag may stand over: FloatType,
+// Like [IntegerBase], it reads the text under the document's schema. It takes the three number families a float
+// tag may stand over: FloatType,
 // the InfinityType and NanType spellings, and an integer type, since a whole
 // number is a real number. "!!float 017" is 15.0 under 1.1 and 17.0 under 1.2,
 // each following the base its own schema gave the digits.
@@ -68,13 +62,11 @@ const (
 	kindFloat   numberKind = "float"
 )
 
-// isNumber reports whether either YAML schema could take value for a number,
-// which is the question the encoder asks. A plain scalar some reader resolves
-// to a number has to be quoted, or a string written out here comes back as one.
+// isNumber reports whether either YAML schema could read value as a number. IsNeedQuoted quotes such a string,
+// so that it reads back as a string under either schema.
 //
-// It is deliberately broader than [numberType], which reads the 1.2 core schema
-// alone -- the same reason reservedEncKeywordTypes carries YAML 1.1's spellings
-// of true and false. 1.1 adds three forms 1.2 does not have: the "_" separator,
+// It accepts more than [numberType] under Schema12, as reservedEncKeywordTypes holds YAML 1.1's spellings of
+// true and false. 1.1 adds three forms 1.2 does not have: the "_" separator,
 // binary written "0b...", and sexagesimal written "1:30:00". Its leading-zero
 // octal needs nothing here, since 1.2 reads "0755" as a decimal number anyway.
 func isNumber(value string) bool {
@@ -129,11 +121,9 @@ func isSexagesimal(value string) bool {
 
 // mayBeNumber reports whether value can start a number.
 //
-// Every form toNumber accepts -- decimal, 0x, 0o, 0b, a float written with a
-// leading '.', and any of them signed -- starts with a digit, a '+', a '-' or
-// a '.'. Any other first byte skips the strconv calls below, each of which
-// allocates a *strconv.NumError when it fails. Most scalars in a document are
-// not numbers, so most of those calls were made only to be thrown away.
+// Every number form of either schema -- decimal, 0x, 0o, 0b, a float written with a leading '.', any of them
+// signed -- starts with a digit, a '+', a '-' or a '.'. [ScalarType] skips the number grammar for any other
+// first byte, which most scalars in a document have.
 func mayBeNumber(value string) bool {
 	if value == "" {
 		return false
@@ -146,8 +136,7 @@ func mayBeNumber(value string) bool {
 	}
 }
 
-// numberShape is what a number's text says about it: which kind of number it
-// is, in which base, and which characters carry the digits.
+// numberShape records what a number's text holds: its kind, its base, and the characters that carry the digits.
 //
 // digits is a slice of the text -- the sign and any base prefix taken off, and
 // nothing else -- so reading a number costs no allocation.
@@ -164,9 +153,7 @@ type numberShape struct {
 // It reads the grammar and only the grammar. A number too wide for int64,
 // uint64 or float64 is still a number: the spec calls an integer an "arbitrary
 // sized finite mathematical integer" and leaves a float's range to the
-// implementation, so what to do about one that does not fit is the decoder's --
-// see [ParseBigInteger]. strconv.ParseFloat and strconv.ParseUint used to stand
-// here and typed such a number as a string.
+// implementation. [ParseBigInteger] and [ParseBigFloat] read one that does not fit a native type.
 //
 // The grammar, from the core schema's resolution table:
 //
@@ -390,7 +377,7 @@ const sexagesimalBase = 60
 // them: d0:d1:d2 is d0*60^2 + d1*60 + d2, and "1:2:3:4" is 223384. The type
 // does not say what is being counted -- 1.1 gives a time and an angle as
 // examples -- so nothing here treats it as a duration. time.ParseDuration
-// could not read it anyway: it wants a unit on every group ("190h20m30s") and
+// could not read it anyway: it needs a unit on every group ("190h20m30s") and
 // this form carries none.
 func shapeOfSexagesimal(body string, negative bool) (numberShape, bool) {
 	i, whole := countDigits11(body, 0)
@@ -498,12 +485,9 @@ func countDigits(s string, i int) int {
 // shapeOfTypedNumber returns the shape of text as a number of type typ, taking
 // the base from the type rather than resolving the text again.
 //
-// The type is what the schema settled: base 16 stands behind "0x", base 8
-// behind "0o" or a leading zero, base 2 behind "0b" and base 60 between colons,
-// and only the schema that typed the scalar knows which spellings it allowed.
-// So conversion reads the digits and does not re-decide what they are -- which
-// is how "0100" comes back as 64 in a document that said "%YAML 1.1" and as
-// 100 in one that did not.
+// The schema that typed the scalar set the base: 16 behind "0x", 8 behind "0o" or a leading zero, 2 behind
+// "0b" and 60 between colons. Conversion reads the digits in that base and does not resolve the text again,
+// so "0100" reads as 64 in a "%YAML 1.1" document and as 100 in a 1.2 one.
 func shapeOfTypedNumber(text string, typ Type) (numberShape, bool) {
 	if text == "" {
 		return numberShape{}, false
@@ -556,15 +540,11 @@ func shapeOfTypedNumber(text string, typ Type) (numberShape, bool) {
 // ParseBool returns what a boolean scalar means, and reports false where text
 // is not one.
 //
-// strconv.ParseBool stood here and does not know YAML's spellings: it reads
-// "1", "t" and "T" as true, none of which YAML resolves to a boolean at all,
-// and it refuses "yes", "y" and "on", which YAML 1.1 reads as true. A scalar
-// typed BoolType and converted through it came back false whenever the document
-// wrote one of those.
+// Do not use strconv.ParseBool for a YAML boolean: it reads "1", "t" and "T" as true, which YAML resolves to no
+// boolean, and rejects "yes", "y" and "on", which YAML 1.1 reads as true.
 //
-// Both schemas' spellings are read here. That needs no schema of its own, since
-// none of them means true under one and false under the other, and a scalar
-// only reaches this once a schema has typed it a boolean.
+// ParseBool reads both schemas' spellings and needs no schema: no spelling is true under one and false under the
+// other, and a scalar reaches it only once a schema has typed it BoolType.
 func ParseBool(text string) (bool, bool) {
 	b, ok := boolValues[text]
 
@@ -575,10 +555,8 @@ func ParseBool(text string) (bool, bool) {
 // carries a sign, a uint64 where it does not. It reports false where text is
 // not an integer of type typ.
 //
-// typ is the token's type, which says how the digits are written. A scalar is
-// typed without being converted, so this is where the conversion happens: once
-// each time it is asked for, rather than once for every number in the document
-// whether or not anything reads it.
+// typ is the token's type, which gives the base the digits are written in. The scanner types a scalar without
+// converting it, and ParseInteger converts it when a caller asks, so a number nothing reads is never converted.
 func ParseInteger(text string, typ Type) (any, bool) {
 	u, negative, ok := ParseWholeNumber(text, typ)
 
@@ -588,8 +566,8 @@ func ParseInteger(text string, typ Type) (any, bool) {
 	case !ok:
 		return nil, false
 	case !negative || u == 0:
-		// "-0" is the integer 0, whose canonical form 10.2.1.3 gives without a
-		// sign. As an int64 it was a second key to a Go map beside "0".
+		// "-0" is the integer 0, whose canonical form YAML 1.2.2 section 10.2.1.3 writes without a sign.
+		// As an int64 it would be a second Go map key beside "0".
 		return u, true
 	case u == 1<<63:
 		return int64(-1 << 63), true // the smallest int64, which -int64(u) cannot hold
@@ -602,10 +580,9 @@ func ParseInteger(text string, typ Type) (any, bool) {
 // whether it is negative, or false where text is not an integer of type typ or
 // is one no machine word holds.
 //
-// It is [ParseInteger] without the interface: that one answers int64 or uint64
-// depending on the number, so it boxes every integer of a document on the way
-// out, and a caller writing the digits back out unboxes them again. Reading
-// citm_catalog into JSON spent an eighth of everything it allocated there.
+// It returns what [ParseInteger] returns, without the interface. ParseInteger returns an int64 or a uint64 in an
+// any, which boxes every integer of a document, so a caller that writes the digits back out uses this one.
+// README.md in this directory gives the cost of the boxing.
 //
 // The magnitude is returned rather than the value so that the smallest int64
 // fits: its magnitude is 1<<63, which int64 cannot hold.
@@ -652,8 +629,7 @@ func bigDigits(shape numberShape) (*big.Int, bool) {
 // The scanner types a scalar by the grammar its text follows and never by
 // whether a native type has room for it, so a document may carry an integer
 // wider than int64 or uint64. YAML 1.2 calls the type "arbitrary sized finite
-// mathematical integers", and this is where one that outgrows [ParseInteger]
-// is read exactly rather than lost.
+// mathematical integers", and ParseBigInteger reads one that outgrows [ParseInteger] exactly.
 func ParseBigInteger(text string, typ Type) (*big.Int, bool) {
 	shape, ok := shapeOfTypedNumber(text, typ)
 	if !ok || shape.typ == kindFloat {
@@ -904,9 +880,8 @@ func nonZeroMantissa(digits string) bool {
 // numberType reports which kind of number value is, and false where it is not
 // one.
 //
-// The text is read and checked but not converted, and nothing here allocates:
-// typing a scalar costs no memory. What the number means is the caller's, from
-// [Token.Value] or [ast.ScalarNode.Text].
+// It reads and checks the text without converting it, and allocates nothing. The caller converts the number,
+// from [Token.Value] or [github.com/go-openapi/go-yaml/ast.ScalarNode.Text].
 func numberType(value string, schema Schema) (numberKind, bool) {
 	shape, ok := shapeOfNumber(value, schema)
 	if !ok {
@@ -916,9 +891,6 @@ func numberType(value string, schema Schema) (numberKind, bool) {
 	return shape.typ, true
 }
 
-// errNotInBase says the digits hold a character the base does not admit. It is
-// a value rather than something built where it is returned: the caller reads
-// whether there was an error and not which one.
 // inBase reports whether every character of digits is one base admits. digits
 // carries no sign, no base prefix and no underscore -- shapeOfNumber has taken
 // all three off -- so anything that is not a digit of the base fails.
@@ -936,8 +908,7 @@ func inBase(digits string, base int) bool {
 	return true
 }
 
-// digitValue is what c is worth as a digit, or 16 where it is not one, which no
-// base here admits.
+// digitValue returns the value of c as a digit, or 16 where c is no digit, which no base here admits.
 func digitValue(c byte) int {
 	const notADigit = 16
 

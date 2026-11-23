@@ -20,10 +20,9 @@ var (
 		"False",
 		"FALSE",
 	}
-	// For compatibility with other YAML 1.1 parsers
-	// Note that we use these solely for encoding the bool value with quotes.
-	// go-yaml should not treat these as reserved keywords at parsing time.
-	// as go-yaml is supposed to be compliant only with YAML 1.2.
+	// reservedLegacyBoolKeywords holds YAML 1.1's other spellings of true and false. Schema11 reads them as
+	// booleans and Schema12 as strings. IsNeedQuoted quotes them under either schema, so a 1.1 reader keeps a
+	// string "yes" a string.
 	reservedLegacyBoolKeywords = []string{
 		"y",
 		"Y",
@@ -66,33 +65,28 @@ var (
 	// reservedKeywordTypes maps each keyword YAML 1.2 resolves to a type of its
 	// own -- null, true, .inf, .nan -- to that type.
 	reservedKeywordTypes = map[string]Type{}
-	// reservedEncKeywordTypes is the keyword map used at encoding time.
-	// This is supposed to be a superset of reservedKeywordTypes,
-	// and used to quote legacy keywords present in YAML 1.1 or lesser for compatibility reasons,
-	// even though this library is supposed to be YAML 1.2-compliant.
+	// reservedEncKeywordTypes holds every keyword of either schema: reservedKeywordTypes and
+	// reservedLegacyBoolKeywords. IsNeedQuoted quotes a string that spells one.
 	reservedEncKeywordTypes = map[string]Type{}
 	// reserved11KeywordTypes is reservedKeywordTypes with YAML 1.1's spellings
 	// of true and false added: "no" and "off" name the boolean there and a
 	// string here.
 	reserved11KeywordTypes = map[string]Type{}
-	// boolValues gives what each spelling of a boolean means. It holds both
-	// schemas' spellings, which is safe because none means true under one and
-	// false under the other -- so reading a boolean needs no schema, only the
-	// type the schema already settled.
+	// boolValues maps each spelling of a boolean, under either schema, to its value. No spelling is true under
+	// one schema and false under the other, so ParseBool needs no schema, only a BoolType token.
 	boolValues = map[string]bool{}
 )
 
 // Schema is the tag resolution a plain scalar is read against.
 //
-// YAML resolves an untagged scalar by matching its text against a schema's
-// table, so what "0100" or "no" means is a question about a schema and not
-// about the text alone. A scanner is told which one to read; see
-// [github.com/go-openapi/go-yaml/internal/scanner.Scanner.SetSchema].
+// YAML resolves an untagged plain scalar by matching its text against the schema's table.
+// Under Schema12 "0100" is the integer 100 and "no" a string; under Schema11 they are 64 and false.
+// [github.com/go-openapi/go-yaml/internal/scanner.Scanner.SetSchema] sets the schema a scanner reads with.
 type Schema uint8
 
 const (
-	// Schema12 is the YAML 1.2 core schema, spec §10.3.2. It is the zero
-	// value, so a scalar is read against 1.2 unless something says otherwise.
+	// Schema12 is the YAML 1.2 core schema, YAML 1.2.2 section 10.3.2. It is the zero value, so a scalar is
+	// read against 1.2 unless a "%YAML 1.1" directive or an option sets Schema11.
 	Schema12 Schema = iota
 
 	// Schema11 is YAML 1.1's resolution, which a document may ask for with a
@@ -122,8 +116,7 @@ func keywordTypes(schema Schema) map[string]Type {
 // "~", "null", ".inf", "false", "-.INF" -- so a value of any other length
 // cannot be one, and testing a bit is cheaper than hashing the value.
 //
-// It is built from the map in init rather than written out, so adding a
-// keyword widens the gate on its own.
+// init builds it from the map, so adding a keyword updates it.
 var reservedKeywordLengths uint64
 
 // reserved11KeywordLengths is [reservedKeywordLengths] for
@@ -187,15 +180,13 @@ func init() {
 	}
 }
 
-// ScalarType is the type schema resolves a plain scalar's text to: the type of
-// a reserved keyword, of a number, or StringType where the text is neither.
+// ScalarType returns the type schema resolves a plain scalar's text to: the type of a reserved keyword, of a
+// number, or StringType where the text is neither.
 //
-// A quoted scalar is a string whatever it spells, so this is asked only of text
-// written plainly.
+// A quoted scalar is a string whatever it spells, so call ScalarType only for a plain scalar.
 func ScalarType(value string, schema Schema) Type {
-	// Both questions are asked of every plain scalar the scanner cuts, so both
-	// sit behind a test a string answers from its header: its length for the
-	// keywords, its first byte for a number.
+	// The scanner calls this for every plain scalar it cuts. A length test guards the keyword lookup and a
+	// first-byte test guards the number grammar, so most strings skip both.
 	if isReservedLength(len(value), schema) {
 		if typ, ok := keywordTypes(schema)[value]; ok {
 			return typ

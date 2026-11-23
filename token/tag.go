@@ -10,8 +10,8 @@ import "strings"
 // "!<tag:yaml.org,2002:int>" name one tag and not two.
 const YAMLTagPrefix = "tag:yaml.org,2002:"
 
-// ReservedTagOf returns the reserved tag a URI names, and reports false for
-// every other URI -- a tag the document defines, or one of another namespace.
+// ReservedTagOf returns the reserved tag a URI names, or false for every other URI: a tag the document defines,
+// or a tag of another namespace.
 //
 // A document usually writes the shorthand "!!int" and means
 // tag:yaml.org,2002:int. Expanding the shorthand before matching here resolves
@@ -31,39 +31,38 @@ func ReservedTagOf(uri string) (ReservedTagKeyword, bool) {
 	return keyword, true
 }
 
-// ReservedTagKeyword type of reserved tag keyword.
+// ReservedTagKeyword is a tag of the YAML type repository, in its "!!" shorthand, such as "!!int".
 type ReservedTagKeyword string
 
 const (
-	// IntegerTag `!!int` tag.
+	// IntegerTag is "!!int".
 	IntegerTag ReservedTagKeyword = "!!int"
-	// FloatTag `!!float` tag.
+	// FloatTag is "!!float".
 	FloatTag ReservedTagKeyword = "!!float"
-	// NullTag `!!null` tag.
+	// NullTag is "!!null".
 	NullTag ReservedTagKeyword = "!!null"
-	// SequenceTag `!!seq` tag.
+	// SequenceTag is "!!seq".
 	SequenceTag ReservedTagKeyword = "!!seq"
-	// MappingTag `!!map` tag.
+	// MappingTag is "!!map".
 	MappingTag ReservedTagKeyword = "!!map"
-	// StringTag `!!str` tag.
+	// StringTag is "!!str".
 	StringTag ReservedTagKeyword = "!!str"
-	// BinaryTag `!!binary` tag.
+	// BinaryTag is "!!binary".
 	BinaryTag ReservedTagKeyword = "!!binary"
-	// OrderedMapTag `!!omap` tag.
+	// OrderedMapTag is "!!omap".
 	OrderedMapTag ReservedTagKeyword = "!!omap"
-	// SetTag `!!set` tag.
+	// SetTag is "!!set".
 	SetTag ReservedTagKeyword = "!!set"
-	// TimestampTag `!!timestamp` tag.
+	// TimestampTag is "!!timestamp".
 	TimestampTag ReservedTagKeyword = "!!timestamp"
-	// BooleanTag `!!bool` tag.
+	// BooleanTag is "!!bool".
 	BooleanTag ReservedTagKeyword = "!!bool"
-	// MergeTag `!!merge` tag.
+	// MergeTag is "!!merge".
 	MergeTag ReservedTagKeyword = "!!merge"
 )
 
-// reservedTags holds the tags YAML 1.2 reserves. A tag outside it is
-// the document's own, and a scalar carrying one keeps the type its text says
-// rather than the one the tag would resolve to.
+// reservedTags holds the tags YAML 1.2 reserves. A tag outside it belongs to the document, and a scalar carrying
+// one keeps the type of its text.
 var reservedTags = map[ReservedTagKeyword]struct{}{
 	IntegerTag:    {},
 	FloatTag:      {},

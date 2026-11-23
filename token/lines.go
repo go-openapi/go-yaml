@@ -3,16 +3,12 @@
 
 package token
 
-// Lookback carries what the tokens already read say about the next one: whether
-// the author left a blank line above it, and how many line breaks the comments
-// above it take up.
+// Lookback derives two facts about each token from the tokens read before it: whether the author left a blank
+// line above it, and how many line breaks the comments above it take up.
 //
-// Both answers depend only on the last two tokens, on whether the scalar before
-// those is the content of a block header, and on a running count of the breaks
-// in the comments just read. Lookback keeps those four things and updates them
-// as each token goes past, so a stream can be read once and forward -- nothing
-// has to walk back over the tokens already emitted, and nothing has to hold
-// them.
+// Both depend only on the last two tokens, on whether the scalar before those is a block header's content, and on
+// a running count of the breaks in the comments just read. Lookback keeps those four and updates them as each
+// token goes past, so a stream is read once, forward, and no token already emitted is held or read again.
 type Lookback struct {
 	// prev and prev2 are copies, not the tokens themselves: a scanner holding
 	// its tokens in a slice of values reuses the room a token stood in as soon
@@ -22,7 +18,7 @@ type Lookback struct {
 	hasPrev  bool
 	hasPrev2 bool
 
-	// blockHeader answers, for the prefix ending one and two tokens back,
+	// blockHeader records, for the prefix ending one and two tokens back,
 	// whether it ends on a literal or folded header once the comments between
 	// are skipped. Index 0 is the prefix through prev, 1 the prefix before
 	// prev, 2 the prefix before prev2.
@@ -73,23 +69,21 @@ func (l *Lookback) read(tk *Token) {
 // blankLineAbove reports whether the author left an empty line above t.
 func (l *Lookback) blankLineAbove(t *Token) bool {
 	prev := &l.prev
-	// blockHeader for the prefix before prev, which says whether prev is block
-	// scalar content.
+	// blockHeader for the prefix before prev, which records whether prev is block scalar content.
 	header := l.blockHeader[1]
 
 	var adjustment int32
-	// A sequence entry's '-' says nothing about a gap: the gap the author left
-	// is above the '-', so the comparison steps back past it. The lines between
+	// A sequence entry's '-' opens no gap of its own: the gap the author left is above the '-', so the comparison
+	// steps back past it. The lines between
 	// the '-' and t are then the entry's own layout --
 	// -
 	//   b: c
 	// -- and not part of that gap.
 	//
-	// Only where t stands inside the entry. An empty entry is followed by a
-	// token belonging to whatever encloses it, and stepping back handed that
-	// token the gap written above the '-': ": &1" over a blank over "-" over
-	// "? \"\"" reported a blank line above the '?', which has none, and none
-	// above the second '-' of "-" over a blank over "- a", which has one.
+	// It steps back only where t stands inside the entry. An empty entry is followed by a token belonging to
+	// whatever encloses it, and stepping back would give that token the gap written above the '-': ": &1" over a
+	// blank over "-" over "? \"\"" would report a blank line above the '?', which has none, and none above the
+	// second '-' of "-" over a blank over "- a", which has one.
 	if prev.Type == SequenceEntryType && standsInsideEntry(prev, t) {
 		adjustment = t.Position.Line - prev.Position.Line
 		if l.hasPrev2 {
@@ -111,8 +105,8 @@ func (l *Lookback) blankLineAbove(t *Token) bool {
 		// above t.
 		adjustment += int32(linesSpannedBy(prev, header))
 	case NullType, ImplicitNullType:
-		// Due to the way that comment parsing works its assumed that when a null value does not have new line in origin
-		// it was squashed therefore difference is ignored.
+		// A null counts a gap only where its own source text holds a line break. Otherwise a comment between the
+		// null and t is written back on the null's line, and the lines it took are no blank line:
 		// foo:
 		//  bar:
 		//  # comment
@@ -152,23 +146,18 @@ func (l *Lookback) commentBreaksAbove(tk *Token) int32 {
 }
 
 // linesSpannedBy returns how many lines past its first the scalar tk occupies.
-// isContent says whether tk holds the content of a literal or folded block.
+// isContent reports whether tk holds the content of a literal or folded block.
 //
-// EndLine counts the lines the scalar has content on, settled where the token
-// was built: the breaks inside the token, with the whitespace around it left to
-// whatever it separates.
+// EndLine counts the lines the scalar has content on, recorded when the token was built: the breaks inside the
+// token, without the whitespace around it.
 //
 // A block scalar reaches past EndLine by the blank lines its chomping indicator
 // keeps, and its value records those. Every trailing break past the one ending
 // the last line of content stands for a blank line the scalar is written on, so
 // ">+" and "|+" reach that many lines further down the document.
 //
-// This counted the value's breaks instead, which measures the source only for a
-// literal block. Folding rewrites the line structure -- "  x\n\n  y\n" comes
-// back as "x\ny\n" -- so a folded scalar's value holds fewer breaks than the
-// source has lines, and the scalar came out one line short for every line its
-// content folded away. The miscount stayed out of sight until a folded scalar
-// started reporting the line its content begins on.
+// The value's breaks measure the source only for a literal block. Folding rewrites the line structure --
+// "  x\n\n  y\n" folds to "x\ny\n" -- so a folded scalar's value holds fewer breaks than its source has lines.
 func linesSpannedBy(tk *Token, isContent bool) int {
 	lines := int(tk.EndLine() - tk.Position.Line)
 	if !isContent {
@@ -178,8 +167,8 @@ func linesSpannedBy(tk *Token, isContent bool) int {
 	return lines + max(int(TrailingBreaksIn(tk.Value))-1, 0)
 }
 
-// originBreaksBefore counts the breaks in the whole of prev's source text,
-// which needs the token before that one to say where prev's text began.
+// originBreaksBefore counts the breaks in the whole of prev's source text. It reads the token before prev, where
+// prev's text begins.
 func (l *Lookback) originBreaksBefore(prev *Token) int32 {
 	if !l.hasPrev2 {
 		return prev.BreaksAfterLeading()

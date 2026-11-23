@@ -11,8 +11,8 @@ import (
 
 // isTimestamp reports whether value reads as a timestamp, or as a clock time such as "12:30".
 //
-// A clock time is no timestamp, and YAML 1.1 reads it as a base 60 integer. It is quoted to keep the
-// quoting go.yaml.in/yaml/v3 applies.
+// A clock time is no timestamp, and YAML 1.1 reads it as a base 60 integer. IsNeedQuoted quotes it, as
+// go.yaml.in/yaml/v3 does.
 func isTimestamp(value string) bool {
 	if _, ok := ParseTimestamp(value); ok {
 		return true
@@ -87,15 +87,12 @@ func printableAbove7F(r rune) bool {
 // isLeadingZeroDecimal reports whether value is a run of decimal digits written
 // with a leading zero, such as "088253".
 //
-// This library resolves integers as YAML 1.1 does, where "0" followed by digits
-// is octal and "088253" is not octal at all -- so it reads a string, as PyYAML
-// does. YAML 1.2's core schema resolves [-+]?[0-9]+ and reads the integer
-// 88253. The two schemas also disagree on the value of "0777": 511 here and in
-// go.yaml.in/yaml/v3, 777 under 1.2 core.
+// Under Schema11, "0" followed by digits is octal, so "088253" is no number and reads as a string, as PyYAML
+// reads it. Schema12 resolves [-+]?[0-9]+ and reads the integer 88253. The two also give "0777" different values:
+// 511 under Schema11 and in go.yaml.in/yaml/v3, 777 under Schema12.
 //
-// Encoding such a value quoted means a reader following either schema reads
-// back the string that was written. This is why the encoder already quotes the
-// 1.1 bool keywords -- "y", "yes", "on" -- that this library does not resolve.
+// IsNeedQuoted quotes such a value, so a reader under either schema reads back the string written. It quotes 1.1's
+// boolean spellings, "y", "yes", "on", for the same reason.
 func isLeadingZeroDecimal(value string) bool {
 	digits := value
 	if digits != "" && (digits[0] == '+' || digits[0] == '-') {
@@ -118,10 +115,8 @@ func isLeadingZeroDecimal(value string) bool {
 // line, reads as a "---" or "..." marker: three dashes or three dots followed by
 // a blank or by nothing.
 //
-// A document's own scalar and a key of its top mapping start their line, so
-// "---" encoded plain read back as a document holding null, "..." as an empty
-// stream, and "... x" did not parse. "--- x" was quoted already, only through
-// the "- " rule below.
+// A document's own scalar and a key of its top mapping start their line. Written plain, "---" reads back as a
+// document holding null, "..." as an empty stream, and "... x" does not parse. IsNeedQuoted quotes all three.
 func opensADocumentMarker(value string) bool {
 	if !strings.HasPrefix(value, "---") && !strings.HasPrefix(value, "...") {
 		return false
@@ -133,7 +128,11 @@ func opensADocumentMarker(value string) bool {
 	return value[len("---")] == ' ' || value[len("---")] == '\t'
 }
 
-// IsNeedQuoted checks whether the value needs quote for passed string or not.
+// IsNeedQuoted reports whether value needs quotes to read back as the string it is, written as a plain scalar.
+//
+// It quotes the empty string, a lone "-", a keyword or a number under either schema, a decimal with a leading
+// zero, a timestamp or a clock time, a document marker, a leading indicator or blank, a trailing blank or ':',
+// a '#' or a backslash anywhere, ": " or "- " inside, and a value [NeedsQuotedSpelling] reports.
 func IsNeedQuoted(value string) bool {
 	if value == "" {
 		return true

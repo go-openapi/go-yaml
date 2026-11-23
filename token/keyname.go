@@ -33,11 +33,12 @@ const (
 	// keys.
 	KeyTimestamp
 	// KeyBinary is a "!!binary", named by its canonical base64 text
-	// ([CanonicalBase64]). YAML tells binary data from a string, so "!!binary
-	// AA==" and the string "AA==" are two keys.
+	// ([CanonicalBase64]). YAML distinguishes binary data from a string, so "!!binary AA==" and the string
+	// "AA==" are two keys.
 	KeyBinary
 )
 
+// String returns the name of k, such as "integer" or "timestamp".
 func (k KeyKind) String() string {
 	switch k {
 	case KeyString:
@@ -67,14 +68,11 @@ func (k KeyKind) String() string {
 // 16 and 7; every spelling of a null names "null" and of a boolean "true" or
 // "false".
 //
-// A float always carries a '.' or an exponent, and that is what the rest rests
-// on: keeping the floats out of the integers' namespace lets "1" and "1.0" be
-// two keys and still be told apart by name.
+// A float name always carries a '.' or an exponent, so no float spells an integer: "1" and "1.0" are two keys
+// with two names.
 //
-// The parser reads this to tell one key from another, and
-// [github.com/go-openapi/go-yaml/codec] to name an entry in JSON or in a
-// string-keyed map. They have to agree, which is why it is here and not in
-// either.
+// The parser calls KeyName to compare keys, and [github.com/go-openapi/go-yaml/codec] to name an entry in JSON
+// or in a string-keyed map, so both name a key the same way.
 //
 // A name that is the text itself is returned as the text, so a key spelled the
 // way its type spells it -- which is nearly every key of nearly every document
@@ -127,8 +125,8 @@ func integerKeyName(text string, typ Type) string {
 }
 
 // floatKeyName writes a float key by its value, as [KeyNameOfFloat] names one,
-// and as [KeyNameOfBigFloat] names one too wide for a float64. Named by the
-// text instead, "1e400" and "10e399" passed the duplicate check as two keys.
+// and as [KeyNameOfBigFloat] names one too wide for a float64. Named by its text, "1e400" and "10e399" would
+// pass the duplicate check as two keys.
 func floatKeyName(text string, typ Type) string {
 	if f, ok := ParseFloat(text, typ); ok {
 		return KeyNameOfFloat(f, 64)
@@ -158,9 +156,9 @@ func floatKeyName(text string, typ Type) string {
 // expanding it gives 99999999999999991611392 rather than the digits the
 // document wrote. libfyaml 1.0.0a8 names a float this same way.
 //
-// A negative zero is "0.0". 10.2.1.4 gives zero one canonical form, and Go's ==
-// already holds -0.0 and 0.0 as one map key, so naming them apart let the
-// parser pass a pair the decoder then merged, dropping the first value.
+// A negative zero is "0.0". YAML 1.2.2 section 10.2.1.4 gives zero one canonical form, and Go's == holds -0.0
+// and 0.0 as one map key. Named apart, the pair would pass the parser's duplicate check, and the decoder would
+// merge them and drop the first value.
 func KeyNameOfFloat(f float64, bitSize int) string {
 	switch {
 	case math.IsInf(f, 1):

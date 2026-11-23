@@ -307,10 +307,9 @@ func MakeDocumentEnd[T Text](org T, pos Position) Token {
 	}
 }
 
-// Invalid returns the token a scanner stopped on.
+// Invalid returns the token a scanner stopped on, holding the text it could not read.
 //
-// What is wrong with it belongs to the error the scanner reports, not to the
-// token: a message on every token costs every token the room for one.
+// The token carries no message: the scanner's error does, so no token spends room on one.
 func Invalid(org string, pos Position) *Token {
 	ext := MeasureOrigin(org, pos)
 
