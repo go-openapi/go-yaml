@@ -72,6 +72,16 @@ func TestIsNeedQuoted(t *testing.T) {
 		"~",
 		"-",
 		"- --foo",
+		// An indicator followed by whitespace or by nothing, which a plain
+		// scalar may not start with.
+		"-\tx",
+		"-\t\t_",
+		"?",
+		"? x",
+		"?\tx",
+		// A ':' followed by a tab opens a mapping value, as one followed by a
+		// space does.
+		"a:\tb",
 		// A document marker, where the scalar starts its line.
 		"---",
 		"...",
@@ -89,6 +99,12 @@ func TestIsNeedQuoted(t *testing.T) {
 		"Hello World",
 		// A date alone takes two-digit month and day fields: https://yaml.org/type/timestamp.html
 		"2001-1-2",
+		// An indicator followed by a character that is not whitespace starts a
+		// plain scalar, and so does one in the middle of the text.
+		"-x",
+		"?x",
+		"a -\tb",
+		"x\t-\ty",
 	}
 	for _, test := range notNeedQuotedTests {
 		assert.Falsef(t, token.IsNeedQuoted(test), "expected %q not to need quoting", test)

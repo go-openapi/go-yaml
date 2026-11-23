@@ -130,9 +130,10 @@ func opensADocumentMarker(value string) bool {
 
 // IsNeedQuoted reports whether value needs quotes to read back as the string it is, written as a plain scalar.
 //
-// It quotes the empty string, a lone "-", a keyword or a number under either schema, a decimal with a leading
-// zero, a timestamp or a clock time, a document marker, a leading indicator or blank, a trailing blank or ':',
-// a '#' or a backslash anywhere, ": " or "- " inside, and a value [NeedsQuotedSpelling] reports.
+// It quotes the empty string, a keyword or a number under either schema, a decimal with a leading zero, a timestamp
+// or a clock time, a document marker, a leading indicator or blank, a leading "-" or "?" followed by a blank or by
+// nothing, a trailing blank or ':', a '#' or a backslash anywhere, ": ", ":\t" or "- " inside, and a value
+// [NeedsQuotedSpelling] reports.
 func IsNeedQuoted(value string) bool {
 	if value == "" {
 		return true
@@ -146,7 +147,7 @@ func IsNeedQuoted(value string) bool {
 	if isLeadingZeroDecimal(value) {
 		return true
 	}
-	if value == "-" {
+	if opensWithAnIndicator(value) {
 		return true
 	}
 	if opensADocumentMarker(value) {
@@ -172,13 +173,35 @@ func IsNeedQuoted(value string) bool {
 		switch c {
 		case '#', '\\':
 			return true
-		case ':', '-':
+		case '-':
 			if i+1 < len(value) && value[i+1] == ' ' {
+				return true
+			}
+		case ':':
+			// A ':' followed by a space or a tab ends a plain scalar and opens
+			// a mapping value, so "a:\tb" written plain reads as {a: b}.
+			if i+1 < len(value) && (value[i+1] == ' ' || value[i+1] == '\t') {
 				return true
 			}
 		}
 	}
 	return false
+}
+
+// opensWithAnIndicator reports whether value starts with "-" or "?" followed by
+// a space, a tab or nothing.
+//
+// YAML 1.2 lets a plain scalar start with either only when the next character
+// is not whitespace (ns-plain-first). Otherwise the character is the indicator
+// of a sequence entry or an explicit key: "-\tx" written plain reads as a
+// sequence holding "x", "? x" as a mapping keyed by "x", and "?" alone as a
+// mapping keyed by null. Only "-" alone and "- " were caught before.
+func opensWithAnIndicator(value string) bool {
+	if value[0] != '-' && value[0] != '?' {
+		return false
+	}
+
+	return len(value) == 1 || value[1] == ' ' || value[1] == '\t'
 }
 
 // LiteralBlockHeader returns the block scalar header value needs, or "" where

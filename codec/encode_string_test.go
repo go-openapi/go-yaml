@@ -75,6 +75,26 @@ func TestMarshalQuotesAStringThatStartsOrEndsWithATab(t *testing.T) {
 	}
 }
 
+// TestMarshalQuotesAStringThatStartsWithAnIndicator marshals strings that open with "-" or "?" followed by
+// whitespace or nothing, and one where ":" is followed by a tab. Written plain, each read back as a sequence or a
+// mapping: "-\tx" as a sequence holding "x", "? x" as a mapping keyed by "x", "a:\tb" as {a: b}. Each is quoted, as
+// an entry of a sequence and as a key, and reads back as it was.
+//
+// The JSON corpus of github.com/go-openapi/conformance-suites found the first through codec.FromJSON, which writes
+// a string as Marshal does.
+func TestMarshalQuotesAStringThatStartsWithAnIndicator(t *testing.T) {
+	for _, s := range []string{"-\tx", "-\t\t_", "?", "? x", "?\tx", "a:\tb", "- x", "-"} {
+		out, err := codec.Marshal([]any{s, map[string]string{s: "key"}})
+		require.NoError(t, err)
+
+		var back []any
+		require.NoError(t, codec.Unmarshal(out, &back), "%q", out)
+		require.Len(t, back, 2, "%q", out)
+		assert.Equal(t, s, back[0], "%q", out)
+		assert.Equal(t, map[string]any{s: "key"}, back[1], "%q", out)
+	}
+}
+
 // TestMarshalWritesAKeyHoldingALineBreak marshals map keys holding line breaks. An implicit key cannot span lines, so
 // the key is double-quoted; written as a "|" block, it did not parse.
 // TestMarshalAStringSpelledAsATimestampReadsBackAsAString marshals strings that look like timestamps,
