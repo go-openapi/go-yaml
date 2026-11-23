@@ -16,6 +16,7 @@ import (
 
 	"github.com/go-openapi/go-yaml/ast"
 	"github.com/go-openapi/go-yaml/codec"
+	yamlerrors "github.com/go-openapi/go-yaml/errors"
 	"github.com/go-openapi/go-yaml/parser"
 	"github.com/go-openapi/testify/v2/assert"
 	"github.com/go-openapi/testify/v2/require"
@@ -1073,4 +1074,97 @@ func TestATextUnmarshalerReadsWhatAStringFieldReads(t *testing.T) {
 			})
 		}
 	}
+}
+
+var errRefusedByType = errors.New("refused by the type")
+
+type refusingBytes struct{}
+
+func (*refusingBytes) UnmarshalYAML([]byte) error { return errRefusedByType }
+
+type refusingCallback struct{}
+
+func (*refusingCallback) UnmarshalYAML(func(any) error) error { return errRefusedByType }
+
+type refusingNode struct{}
+
+func (*refusingNode) UnmarshalYAML(ast.Node) error { return errRefusedByType }
+
+type refusingText struct{}
+
+func (*refusingText) UnmarshalText([]byte) error { return errRefusedByType }
+
+type refusingCustom struct{}
+
+type mismatchingCallback struct{}
+
+func (*mismatchingCallback) UnmarshalYAML(unmarshal func(any) error) error {
+	var n int
+
+	return unmarshal(&n)
+}
+
+// TestAnUnmarshalerErrorCarriesItsPosition checks that an error returned by a type that decodes itself comes back as
+// ErrUnmarshaler at the node it was decoding, with the type's own error reachable, on the walk and on the tree.
+func TestAnUnmarshalerErrorCarriesItsPosition(t *testing.T) {
+	const src = "a: 1\n\nv: x\nb: 2\n"
+
+	custom := codec.CustomUnmarshaler(func(*refusingCustom, []byte) error { return errRefusedByType })
+
+	for _, path := range []struct {
+		name string
+		opts []codec.DecodeOption
+	}{
+		{"walk", nil},
+		{"tree", []codec.DecodeOption{treeOnly()}},
+	} {
+		for _, tc := range []struct {
+			name   string
+			decode func(opts ...codec.DecodeOption) (int, error)
+		}{
+			{"UnmarshalYAML([]byte)", decodeRefusing[refusingBytes]},
+			{"UnmarshalYAML(func(any) error)", decodeRefusing[refusingCallback]},
+			{"UnmarshalYAML(ast.Node)", decodeRefusing[refusingNode]},
+			{"UnmarshalText", decodeRefusing[refusingText]},
+			{"CustomUnmarshaler", func(opts ...codec.DecodeOption) (int, error) {
+				return decodeRefusing[refusingCustom](append(opts, custom)...)
+			}},
+		} {
+			t.Run(path.name+"/"+tc.name, func(t *testing.T) {
+				b, err := tc.decode(path.opts...)
+				require.ErrorIs(t, err, yamlerrors.ErrUnmarshaler)
+				require.ErrorIs(t, err, errRefusedByType)
+
+				ye, ok := errors.AsType[*yamlerrors.Error](err)
+				require.TrueT(t, ok)
+				require.NotNil(t, ye.GetToken())
+				assert.EqualT(t, 3, ye.GetToken().Position.Line)
+				assert.EqualT(t, 4, ye.GetToken().Position.Column)
+				assert.StringContainsT(t, err.Error(), "[3:4] refused by the type")
+
+				// The error is a field error: the field after it still decodes.
+				assert.EqualT(t, 2, b)
+			})
+		}
+
+		t.Run(path.name+"/an error of ours passes through", func(t *testing.T) {
+			var v struct {
+				V mismatchingCallback `yaml:"v"`
+			}
+			err := codec.Unmarshal([]byte(src), &v, path.opts...)
+			require.ErrorIs(t, err, yamlerrors.ErrTypeMismatch)
+			assert.NotErrorIs(t, err, yamlerrors.ErrUnmarshaler)
+		})
+	}
+}
+
+func decodeRefusing[T any](opts ...codec.DecodeOption) (int, error) {
+	var v struct {
+		A int `yaml:"a"`
+		V T   `yaml:"v"`
+		B int `yaml:"b"`
+	}
+	err := codec.Unmarshal([]byte("a: 1\n\nv: x\nb: 2\n"), &v, opts...)
+
+	return v.B, err
 }

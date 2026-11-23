@@ -31,10 +31,10 @@ strips the quotes, and returns an error for a mapping or a sequence.
 
 {{< code file="decoding/selfdecode/example_test.go" lang="text" output="Example_error" >}}
 
-The decoder returns the method's error as it is: `errors.Is` reaches `errSize`,
-and the error carries no line or column. The decode goes on, so `Cache` is
-filled. To report a position, return the error from a
-[Validator](../validate/) instead, which places it on the struct or the field.
+The decoder wraps the method's error in `errors.ErrUnmarshaler` at the value the
+method was decoding, so it prints the line and column and the source around
+them. `errors.Is` still reaches `errSize`. The decode goes on, so `Cache` is
+filled.
 
 ## A type you do not own
 

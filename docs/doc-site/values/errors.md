@@ -45,7 +45,7 @@ the token and therefore the position.
 The conditions the library distinguishes: syntax, type mismatch, overflow,
 duplicate key, unknown field, unknown anchor, recursive alias, excessive
 aliasing, exceeded depth, unhashable key, not-JSON, not-JSON syntax, unexpected
-node type, and validation.
+node type, validation, and an error from a type that decodes itself.
 
 ## A value that does not fit its field
 
@@ -95,6 +95,15 @@ err := codec.Unmarshal(src, &v, codec.Validator(validate.Struct))
 // errors.Is(err, yamlerrors.ErrValidation) is true, and
 // errors.As(err, &validator.ValidationErrors{}) reaches go-playground's errors.
 ```
+
+## A type that decodes itself
+
+An error returned by `UnmarshalYAML`, `UnmarshalText`, or a function passed to
+`codec.RegisterCustomUnmarshaler` comes back as `ErrUnmarshaler`, at the value
+the type was decoding, and wraps the type's own error. An error the decoder
+raised for the type, such as a type mismatch inside the `unmarshal` callback,
+comes back as it is, with its own position. Like a value that does not fit its
+field, it does not stop the decode.
 
 ## Pointing at a value your own code rejected
 

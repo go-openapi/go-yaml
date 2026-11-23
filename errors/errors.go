@@ -102,6 +102,12 @@ var (
 	// [github.com/go-openapi/go-yaml/codec.Validator] returned an error for.
 	// The validator's own error stays reachable with [errors.Is] and [errors.As].
 	ErrValidation = stderrors.New("validation failed")
+	// ErrUnmarshaler reports an error returned by a type that decodes itself: an UnmarshalYAML method,
+	// UnmarshalText, UnmarshalJSON under UseJSONUnmarshaler, or a function passed to
+	// [github.com/go-openapi/go-yaml/codec.RegisterCustomUnmarshaler].
+	// The error carries the position of the node the type was decoding,
+	// and the type's own error stays reachable with [errors.Is] and [errors.As].
+	ErrUnmarshaler = stderrors.New("unmarshaler failed")
 )
 
 // The errors the codec returns as they are, with no position. Most report a
@@ -155,7 +161,7 @@ type Error struct {
 	actual   string       // the YAML names of the node types, for an unexpected node type
 	expected string
 
-	// cause is the error this one wraps, for a validation error: the validator's.
+	// cause is the error this one wraps: the validator's for a validation error, the type's for an unmarshaler error.
 	cause error
 
 	token  *token.Token
@@ -301,6 +307,11 @@ func NewValidation(err error, tk *token.Token) *Error {
 	return &Error{kind: ErrValidation, msg: err.Error(), cause: err, token: tk}
 }
 
+// NewUnmarshaler reports err, returned by a type that decodes itself, at tk.
+func NewUnmarshaler(err error, tk *token.Token) *Error {
+	return &Error{kind: ErrUnmarshaler, msg: err.Error(), cause: err, token: tk}
+}
+
 // NewUnexpectedNodeType reports a node of type actual where expected was
 // required, at tk.
 func NewUnexpectedNodeType(actual, expected ast.NodeType, tk *token.Token) *Error {
@@ -316,15 +327,15 @@ func NewUnexpectedNodeType(actual, expected ast.NodeType, tk *token.Token) *Erro
 // against [ErrSyntax] and its siblings.
 func (e *Error) Unwrap() error { return e.kind }
 
-// Is lets [errors.Is] match the error a validation error wraps, as well as its
-// kind. [Error.Unwrap] returns the kind, so this is the way to the validator's
+// Is lets [errors.Is] match the error a validation or an unmarshaler error wraps,
+// as well as its kind. [Error.Unwrap] returns the kind, so this is the way to the validator's
 // own error.
 func (e *Error) Is(target error) bool {
 	return e.cause != nil && stderrors.Is(e.cause, target)
 }
 
-// As lets [errors.As] reach the error a validation error wraps, such as
-// github.com/go-playground/validator/v10's ValidationErrors.
+// As lets [errors.As] reach the error a validation or an unmarshaler error wraps,
+// such as github.com/go-playground/validator/v10's ValidationErrors.
 func (e *Error) As(target any) bool {
 	return e.cause != nil && stderrors.As(e.cause, target)
 }

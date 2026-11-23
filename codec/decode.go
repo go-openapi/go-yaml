@@ -1173,7 +1173,24 @@ func decodesItself(ptr reflect.Value, useJSONUnmarshaler bool) bool {
 	return false
 }
 
+// decodeByUnmarshaler decodes src into dst through the interface or the registered function dst decodes itself with.
+//
+// An error the type returns comes back as ErrUnmarshaler at src, so it carries a position.
+// An error that already is one of this package's, such as a type mismatch from the unmarshal
+// callback of a GoYAMLUnmarshaler, comes back unchanged with its own position.
 func (d *Decoder) decodeByUnmarshaler(dst reflect.Value, src ast.Node) error {
+	err := d.callUnmarshaler(dst, src)
+	if err == nil {
+		return nil
+	}
+	if _, ours := errors.AsType[*yamlerrors.Error](err); ours {
+		return err
+	}
+
+	return yamlerrors.NewUnmarshaler(err, src.GetToken())
+}
+
+func (d *Decoder) callUnmarshaler(dst reflect.Value, src ast.Node) error {
 	ptrValue := dst.Addr()
 	if unmarshaler, exists := d.unmarshalerFromCustomUnmarshalerMap(ptrValue.Type()); exists {
 		b, err := d.unmarshalableDocument(src)

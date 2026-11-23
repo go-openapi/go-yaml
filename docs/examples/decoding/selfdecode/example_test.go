@@ -81,7 +81,10 @@ func Example_error() {
 	// endsnippet:error
 
 	// Output:
-	// invalid size: "10" has no unit
+	// [1:9] invalid size: "10" has no unit
+	// >  1 | upload: 10
+	//                ^
+	//    2 | cache: 1KiB
 	// true
 	// {Upload:0 Cache:1024}
 }
