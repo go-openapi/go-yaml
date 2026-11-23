@@ -77,12 +77,15 @@ var stateLedger = map[string]disagreement{ //nolint:gochecknoglobals // ok to st
 	// same corpus it took both disagreements away. The corpus now holds no
 	// read where the mark and the trimmed length differ inside a block scalar, so nothing here tests the paragraph
 	// above any more; a seed that brings one back raises the count.
-	"buf.notSpaceCharPos==trimmed/plain": {0, 312943},
+	//
+	// The plain and whole-buffer reads rose by 49, and the extents by 9, on 2026-11-23, when a '}' or a ']' inside a
+	// flow collection began to end a plain scalar wherever it stands: "[b}]" scans "b" and then the '}'.
+	"buf.notSpaceCharPos==trimmed/plain": {0, 312992},
 	"buf.notSpaceCharPos==trimmed/block": {0, 2764},
 
 	// A mark past the end of the buffer made bufferedSrc slice a byte the last token wrote.
 	// Fixed; nothing may raise this.
-	"buf.notSpaceCharPos<=len(buf)": {0, 315707},
+	"buf.notSpaceCharPos<=len(buf)": {0, 315756},
 
 	// Both entries count a space opening a line where indentNum has stopped tracking the column. They have different
 	// causes, and only the second is a surprise.
@@ -115,7 +118,7 @@ var stateLedger = map[string]disagreement{ //nolint:gochecknoglobals // ok to st
 	// it is, and the line the text ends on. It does not read the origin back to work the extent out.
 	// This compares that extent against token.MeasureOrigin's, which token.Make used.
 	// Nothing may raise it: a disagreement is a token pointing at the wrong stretch of source.
-	"token.extentMatchesTheOrigin": {0, 47457},
+	"token.extentMatchesTheOrigin": {0, 47466},
 }
 
 // TestStateLedger holds the scanner's state pairs to what they were measured at.

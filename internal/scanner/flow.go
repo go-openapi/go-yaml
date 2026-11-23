@@ -63,15 +63,22 @@ func (s *Scanner) scanFlowMapStart(ctx *Context) bool {
 	return true
 }
 
+// scanFlowMapEnd hands a '}' over as a token inside any flow collection, and leaves it to a plain scalar outside one.
+//
+// A plain scalar inside a flow collection holds no flow indicator (ns-plain-safe(c) in YAML 1.2), so a '}' ends it
+// even where no flow mapping is open. Kept as text, "[b}]" read as the sequence ["b}"] where yaml.v3 and the spec
+// refuse it. The parser rejects the '}' that closes no mapping.
 func (s *Scanner) scanFlowMapEnd(ctx *Context) bool {
-	if s.startedFlowMapNum <= 0 {
+	if !s.isFlowMode() {
 		return false
 	}
 
 	s.addBufferedTokenIfExists(ctx)
 	ctx.addOriginBuf('}')
 	ctx.addTokenValue(token.MakeMappingEnd(ctx.origin(), s.pos()))
-	s.startedFlowMapNum--
+	if s.startedFlowMapNum > 0 {
+		s.startedFlowMapNum--
+	}
 	s.progressColumn(ctx, 1)
 	ctx.clear()
 
@@ -94,15 +101,19 @@ func (s *Scanner) scanFlowArrayStart(ctx *Context) bool {
 	return true
 }
 
+// scanFlowArrayEnd hands a ']' over as a token, as [Scanner.scanFlowMapEnd] does a '}': "{a: b]}" read the value
+// "b]". Outside a flow collection a ']' continues a plain scalar under way, and opens nothing otherwise.
 func (s *Scanner) scanFlowArrayEnd(ctx *Context) bool {
-	if ctx.existsBuffer() && s.startedFlowSequenceNum <= 0 {
+	if ctx.existsBuffer() && !s.isFlowMode() {
 		return false
 	}
 
 	s.addBufferedTokenIfExists(ctx)
 	ctx.addOriginBuf(']')
 	ctx.addTokenValue(token.MakeSequenceEnd(ctx.origin(), s.pos()))
-	s.startedFlowSequenceNum--
+	if s.startedFlowSequenceNum > 0 {
+		s.startedFlowSequenceNum--
+	}
 	s.progressColumn(ctx, 1)
 	ctx.clear()
 

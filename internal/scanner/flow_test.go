@@ -181,5 +181,30 @@ func flowCollectionTestCases() iter.Seq[testscanner.Case] {
 				},
 			},
 		},
+		{
+			// A plain scalar in a flow collection holds no flow indicator, so the '}' ends it with no mapping open.
+			// It read as the scalar "b}". The parser rejects the '}'.
+			Name: "sequence/a-brace-ends-a-plain-scalar",
+			YAML: `[b}]`,
+			Tokens: []testscanner.WantToken{
+				{Type: token.SequenceStartType, Value: "[", Origin: "["},
+				{Type: token.StringType, Value: "b", Origin: "b"},
+				{Type: token.MappingEndType, Value: "}", Origin: "}"},
+				{Type: token.SequenceEndType, Value: "]", Origin: "]"},
+			},
+		},
+		{
+			// As above, a ']' with no sequence open: it read as the value "b]".
+			Name: "mapping/a-bracket-ends-a-plain-scalar",
+			YAML: `{a: b]}`,
+			Tokens: []testscanner.WantToken{
+				{Type: token.MappingStartType, Value: "{", Origin: "{"},
+				{Type: token.StringType, Value: "a", Origin: "a"},
+				{Type: token.MappingValueType, Value: ":", Origin: ":"},
+				{Type: token.StringType, Value: "b", Origin: " b"},
+				{Type: token.SequenceEndType, Value: "]", Origin: "]"},
+				{Type: token.MappingEndType, Value: "}", Origin: "}"},
+			},
+		},
 	})
 }

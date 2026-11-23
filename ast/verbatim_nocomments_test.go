@@ -41,7 +41,10 @@ import (
 //
 // 12679 -> 12668 the same day, when a "%YAML" with no version began to be refused: eleven seeds open on a bare
 // "%YAML", and ns-yaml-directive requires the version.
-var withoutCommentsCensus = struct{ tested, differing int }{tested: 12668, differing: 0}
+//
+// 12668 -> 12662 on 2026-11-23, when a '}' or a ']' closing no collection inside a flow collection began to be
+// refused: six seeds hold one, "[... 1}]" among them, and go.yaml.in/yaml/v3 refuses each of them.
+var withoutCommentsCensus = struct{ tested, differing int }{tested: 12662, differing: 0}
 
 func TestVerbatimRebuildsTheCorpusParsedWithoutComments(t *testing.T) {
 	t.Parallel()

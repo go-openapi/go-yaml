@@ -104,3 +104,19 @@ func TestARefusedDocumentLeavesEveryNodeItEntered(t *testing.T) {
 		})
 	}
 }
+
+// TestAClosingBracketOfTheOtherKindIsRefusedInAFlowCollection parses a '}' inside a flow sequence and a ']' inside a
+// flow mapping, each closing nothing. They read as part of a plain scalar, "[b}]" as ["b}"], where yaml.v3 and
+// ns-plain-safe(c) refuse them. A plain scalar outside a flow collection still holds both.
+func TestAClosingBracketOfTheOtherKindIsRefusedInAFlowCollection(t *testing.T) {
+	t.Parallel()
+
+	for _, src := range []string{"[b}]\n", "[b }]\n", "{a: b]}\n", "[null, !!int 3: 0.0}]\n", "{[a}: 1}\n"} {
+		_, err := parser.ParseBytes([]byte(src))
+		require.Errorf(t, err, "%q", src)
+	}
+	for _, src := range []string{"a: b}c\n", "a: b]c\n", "[{a: 1}]\n", "{a: [1]}\n"} {
+		_, err := parser.ParseBytes([]byte(src))
+		require.NoErrorf(t, err, "%q", src)
+	}
+}
