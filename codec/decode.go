@@ -2119,10 +2119,34 @@ func (d *Decoder) rangeMergedEntries(src ast.Node, ignoreMergeKey bool, visit ma
 // field tagged "true" and "1.0: x" one tagged "1.0". The same
 // document reads that way into a map[string]any. Requiring the key to be an ast string
 // dropped every one of those instead.
-func (d *Decoder) entryName(keyNode ast.Node) (string, bool, error) { //nolint:unparam // signature kept stable: callers already handle the error
+func (d *Decoder) entryName(keyNode ast.Node) (string, bool, error) {
+	if tag := keyTag(keyNode); tag != nil && !tag.IsMergeKey() {
+		// ast.KeyName names a key by its text, which leaves the tag unread: "!!float x: 1" named the field "x",
+		// where a map refuses the key with `cannot read "x" as !!float`. The key is read as a map's key is.
+		if _, err := d.nodeToValue(tag); err != nil {
+			return "", false, err
+		}
+	}
 	name, kind := ast.KeyName(keyNode)
 
 	return name, kind != token.KeyOther, nil
+}
+
+// keyTag returns the tag written on a mapping key, under the "?" and the anchor that may stand around it, or nil.
+// A "!!merge" is one too, and the callers leave it to the merge.
+func keyTag(key ast.Node) *ast.TagNode {
+	for {
+		switch n := key.(type) {
+		case *ast.MappingKeyNode:
+			key = n.Value
+		case *ast.AnchorNode:
+			key = n.Value
+		case *ast.TagNode:
+			return n
+		default:
+			return nil
+		}
+	}
 }
 
 // decodeInlineFields reads the three kinds of `,inline` field that an index path

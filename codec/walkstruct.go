@@ -1073,6 +1073,18 @@ func (b *typedBuilder) openKeptEntry(key ast.Node) error {
 	if shapeOf(key).named {
 		return b.fail(errNeedsTheTree)
 	}
+	if tag := keyTag(key); tag != nil && !tag.IsMergeKey() {
+		// openEntry names the entry by the key's text, which leaves the tag unread: "!!float x: 1" was the key
+		// "x" here, and refused with `cannot read "x" as !!float` on the tree and the walk into an any. The key is
+		// read as the tree reads every key, so a tag that cannot read its scalar fails here too.
+		d, err := b.nodeDecoder()
+		if err != nil {
+			return b.fail(err)
+		}
+		if _, err := d.nodeToValue(tag); err != nil {
+			return b.fail(err)
+		}
+	}
 	if err := b.openEntry(&b.stack[len(b.stack)-1], key); !errors.Is(err, parser.ErrSkipNode) {
 		return err
 	}

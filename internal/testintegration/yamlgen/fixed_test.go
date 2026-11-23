@@ -3632,3 +3632,40 @@ func TestFixedAnAnchoredTaggedFlowKeyAloneKeepsItsTag(t *testing.T) {
 		assert.JSONEqf(t, string(wantJSON), string(out), "ToJSON: %q", tc.src)
 	}
 }
+
+// TestFixedATaggedKeyItsTagCannotReadIsRefusedOnEveryPath: "!!float x: 1" is
+// refused with `cannot read "x" as !!float` into a map[string]any and into a
+// struct, on the walk and on the tree, as it is into an any.
+//
+// The typed walk kept a tagged key whole and named its entry by the key's text,
+// and the tree named a struct's field the same way, so both read the field "x"
+// and left the tag unread. A map or an any read the key, and refused it. The
+// YAML corpus of go-openapi/conformance-suites found it once it drew tags on
+// keys, in "!<tag:yaml.org,2002:float>" and in a declared handle.
+func TestFixedATaggedKeyItsTagCannotReadIsRefusedOnEveryPath(t *testing.T) {
+	tree := codec.CustomUnmarshaler[chan int](func(*chan int, []byte) error { return nil })
+
+	for _, src := range []string{
+		"!!float x: 1\n", "!<tag:yaml.org,2002:float> x: 1\n", "!<tag:yaml.org,2002:int> x: 1\n",
+		"? !!float x\n: 1\n", "&a !!float x: 1\n", "%TAG !x! tag:yaml.org,2002:\n---\n!x!float x: 1\n",
+	} {
+		var asAny any
+		require.Errorf(t, codec.Unmarshal([]byte(src), &asAny), "an any: %q", src)
+
+		var walked, treed map[string]any
+		require.Errorf(t, codec.Unmarshal([]byte(src), &walked), "a map, the walk: %q", src)
+		require.Errorf(t, codec.Unmarshal([]byte(src), &treed, tree), "a map, the tree: %q", src)
+
+		var walkedStruct, treedStruct struct{ X any }
+		require.Errorf(t, codec.Unmarshal([]byte(src), &walkedStruct), "a struct, the walk: %q", src)
+		require.Errorf(t, codec.Unmarshal([]byte(src), &treedStruct, tree), "a struct, the tree: %q", src)
+	}
+
+	t.Run("a tag that reads its key still names the entry", func(t *testing.T) {
+		var got struct {
+			X float64 `yaml:"1.5"`
+		}
+		require.NoError(t, codec.Unmarshal([]byte("!!float 1.5: 2\n"), &got))
+		assert.InDelta(t, 2.0, got.X, 0)
+	})
+}
