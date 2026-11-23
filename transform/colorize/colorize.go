@@ -11,8 +11,6 @@
 //	file, err := parser.ParseBytes(src, parser.WithComments())
 //	r := ast.NewRenderer(ast.WithSource(src), ast.WithTransform(colorize.New(colorize.Default())))
 //	err = r.VerbatimFile(os.Stdout, file)
-//
-// ⚠️ Provisional: the rendering hook was designed against this package, and the two may change together.
 package colorize
 
 import (
