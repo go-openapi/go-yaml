@@ -785,6 +785,45 @@ func (r *Renderer) fitsOnKeyLine(n Node) bool {
 	}
 }
 
+// quotedIfColonEnds returns n with a plain scalar ending in ':' turned single-quoted, under the anchors and tags
+// written on it, and n itself otherwise.
+//
+// A "?" key is followed by its ':', on the next line in a block and after a space in a flow collection, where the
+// line break turns into one. A plain "a:" followed by a space ends at its own ':': "{? a:: 1}" was written
+// "{? a: : 1}", which reads the key "a" and then a stray ':'. A plain scalar ending in ':' resolves to a string, so
+// "'a:'" holds the same value.
+func quotedIfColonEnds(n Node) Node {
+	switch nn := n.(type) {
+	case *StringNode:
+		if nn.Token == nil || nn.Token.Type == token.SingleQuoteType || nn.Token.Type == token.DoubleQuoteType ||
+			!strings.HasSuffix(nn.Value, ":") || strings.Contains(nn.Value, "\n") {
+			return n
+		}
+		tk := *nn.Token
+		tk.Type = token.SingleQuoteType
+		quoted := *nn
+		quoted.Token = &tk
+
+		return &quoted
+	case *AnchorNode:
+		if inner := quotedIfColonEnds(nn.Value); inner != nn.Value {
+			wrapped := *nn
+			wrapped.Value = inner
+
+			return &wrapped
+		}
+	case *TagNode:
+		if inner := quotedIfColonEnds(nn.Value); inner != nn.Value {
+			wrapped := *nn
+			wrapped.Value = inner
+
+			return &wrapped
+		}
+	}
+
+	return n
+}
+
 func (r *Renderer) mappingKey(n *MappingKeyNode) rendered {
 	r = r.withMargin(false)
 
@@ -794,7 +833,7 @@ func (r *Renderer) mappingKey(n *MappingKeyNode) rendered {
 		r = r.hoisting(lit)
 	}
 
-	value := r.entry(n.Value)
+	value := r.entry(quotedIfColonEnds(n.Value))
 	if value.empty() {
 		return leaf(above + n.Start.Value)
 	}

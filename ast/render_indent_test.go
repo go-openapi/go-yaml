@@ -78,3 +78,27 @@ func TestABlankLineAboveASequenceEntryKeepsItsHang(t *testing.T) {
 		}
 	}
 }
+
+// TestAPlainKeyEndingInAColonUnderAQuestionMarkReadsBack renders a "?" key holding a plain scalar that ends in ':'.
+// In a flow collection the ':' after the key follows a space, which ends the plain scalar at its own ':':
+// "{? a:: 1}" rendered "{? a: : 1}" and did not parse. The key is written single-quoted, which holds the same string.
+func TestAPlainKeyEndingInAColonUnderAQuestionMarkReadsBack(t *testing.T) {
+	t.Parallel()
+
+	for src, want := range map[string]string{
+		"{? a:: 1}\n":       "{? 'a:' : 1}\n",
+		"{? &x a:: 1}\n":    "{? &x 'a:' : 1}\n",
+		"{? !!str a:: 1}\n": "{? !!str 'a:' : 1}\n",
+		"[? a:: 1]\n":       "[? 'a:' : 1]\n",
+		"{a:: 1}\n":         "{a:: 1}\n",
+	} {
+		f, err := parser.ParseBytes([]byte(src))
+		require.NoError(t, err)
+
+		out := ast.NewRenderer().File(f)
+		require.Equalf(t, want, out, "%q", src)
+
+		_, err = parser.ParseBytes([]byte(out))
+		require.NoErrorf(t, err, "%q", out)
+	}
+}
