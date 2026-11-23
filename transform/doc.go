@@ -1,8 +1,8 @@
 // SPDX-FileCopyrightText: Copyright 2025 go-swagger maintainers
 // SPDX-License-Identifier: Apache-2.0
 
-// Package transform rewrites a YAML document a piece at a time: a [Transformer] decides what to write for each
-// part of the document, and [Walk] reads the document and calls it.
+// Package transform rewrites a YAML document a piece at a time: [Walk] reads the document and calls a
+// [Transformer], which writes each piece unchanged or rewritten.
 //
 // A document reaches a Transformer as a run of [Piece] values, in the order the document wrote them. The pieces
 // tile the source: [Copy] on every one of them writes the file back byte for byte, comments, blank lines and

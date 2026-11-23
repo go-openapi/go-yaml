@@ -8,74 +8,63 @@ import (
 	"github.com/go-openapi/go-yaml/token"
 )
 
-// Piece is one stretch of a document and what the parse made of it.
+// Piece is one stretch of a document, with the token and the node the parse read there.
 //
-// The pieces tile the source: Lead and Text of every piece, written out one
-// after the other, give the document back byte for byte. A transform that
-// writes each piece unchanged is therefore a copy, and one that writes some of
-// them differently changes only those.
+// The pieces tile the source: Lead and Text of every piece, written out one after the other, give the document
+// back byte for byte. A transform that writes each piece unchanged copies the document, and one that writes some
+// of them differently changes only those.
 type Piece struct {
 	// Lead is the source between the piece before and this one's text: the
 	// indentation of a line and the spaces separating a token from the one
 	// before it. Nothing in it belongs to the token.
 	//
-	// Write it out unchanged. A colorizer that wrapped it would paint the
-	// indentation, and a formatter that rewrites the layout is the one caller
-	// with a reason to replace it.
+	// Write it out unchanged, unless the transform rewrites the layout. A colorizer that wrapped it would paint
+	// the indentation.
 	Lead []byte
 
 	// Text is the token as the document wrote it.
 	//
-	// ⚠️ It runs to where the next token starts, so a token that the scanner
-	// read past carries what followed it: the "1" of "- 1\n  - 2" arrives as
-	// "1\n  ". Nothing records where a token's own characters end. Read
-	// [Piece.Token].Value for the value alone, and see [Piece.Trimmed] for the
-	// text with the run of space after it cut off.
+	// ⚠️ It runs to the end of the token's extent, which can hold blanks after the token's own characters: the "2"
+	// of "b: 2  # c" arrives as "2  ". Read [Piece.Token].Value for the value alone, and see [Piece.Trimmed] for
+	// the text without the blanks after it.
 	Text []byte
 
 	// At is where Text starts in the source, and Lead runs from At-len(Lead).
 	At int
 
-	// Token carries the scanner's reading of Text: its type, its position and
-	// its value. It is nil only for the piece closing a document that ends in
-	// text the scanner opens no token on.
+	// Token holds the scanner's reading of Text: its type, its position and its value. It is nil only for the
+	// piece closing a document that ends in text the scanner opens no token on.
 	Token *token.Token
 
 	// Node is the node the parse opened on this piece, and nil where the parse
 	// opened none: a comment, an indicator, an indentation, a "---".
 	//
-	// Where a node stands on the piece, Node.Type() says what the parse made of
-	// the text -- [ast.IntegerType] for a plain "1", [ast.StringType] for a
-	// quoted one -- which is more than the token type says.
+	// Node.Type() gives the type the parse resolved the text to -- [ast.IntegerType] for a plain "1",
+	// [ast.StringType] for a quoted one -- which the token type does not always give.
 	//
 	// [ast.Node.GetPath] returns "" unless the walk was given [WithNodePaths]:
 	// recording a path for every node costs memory that grows with the document,
 	// and a piece is named by its own token.
 	//
-	// ⚠️ Read it during the call and do not keep it. The node belongs to the
-	// parse, which reclaims its cells as the walk moves past; a node kept for
-	// one more piece reads whichever node was built over it. The walk writes
-	// each piece while its node still stands, and
-	// TestANodeStillPointsWhereTheWalkNamedIt holds that over the corpus --
-	// keeping one past the call is the caller's side of the same bargain. Copy
-	// what is wanted, or copy [Piece.Text].
+	// ⚠️ Read it during the call and do not keep it. The parse reuses a node's cells once the walk moves past
+	// it, so a node kept for one more piece reads whichever node the parse built over it. The walk hands each
+	// piece over while its node still stands, and TestANodeStillPointsWhereTheWalkNamedIt checks that over the
+	// corpus. Copy what you need from the node, or copy [Piece.Text].
 	Node ast.Node
 
-	// Role names the piece over the whole document rather than only where a
-	// node stands. A colorizer switches on it.
+	// Role names what the piece holds, for every piece, where Node is set only on some. Switch on it to treat
+	// keys, values, comments and indicators apart.
 	Role Role
 
 	// Depth counts the nodes enclosing Node: collections, and the anchors, tags
 	// and "?" keys written on them. A document's own body is at depth 0, and so
 	// is a piece no node stands on.
 	//
-	// Use it to indent: a transform that rewrites a collection knows how deep it
-	// sits without keeping a stack of its own.
+	// Use it to indent: a transform that rewrites a collection reads its depth here, with no stack of its own.
 	Depth int
 
-	// Key reports that Node is a mapping key, so Role is RoleKey. A key and its
-	// value are two pieces of one entry, and nothing on the node tells them
-	// apart.
+	// Key reports that Node is a mapping key, so Role is RoleKey. A key and its value are two pieces of one
+	// entry, and the node alone cannot distinguish them.
 	Key bool
 }
 
@@ -104,42 +93,41 @@ func (p Piece) Filler() []byte {
 	return p.Text[len(p.Trimmed()):]
 }
 
-// Role is what a piece stands for in the document.
+// Role names what a piece holds: a key, a value, a comment, an indicator, and so on.
 //
-// It covers the whole source rather than only the parts a node stands on. A
-// colorizer needs that much: a comment and a "-" carry no node, and both want a
-// color of their own.
+// Every piece has one, including the comments and the "-" and ":" indicators, which carry no node.
 type Role uint8
 
 const (
 	// RoleFill marks source no token opened: the text after the last token of a
 	// document.
 	RoleFill Role = iota
-	// RoleKey is a mapping key, or the "?" and the collection standing as one.
+	// RoleKey marks a mapping key, or the "?" and the collection written as one.
 	RoleKey
-	// RoleValue is a scalar standing as a value or a sequence entry. Read
+	// RoleValue marks a scalar written as a value or a sequence entry. Read
 	// [Piece.Node].Type() for what the parse resolved it to.
 	RoleValue
-	// RoleAnchor is an "&" and the name after it.
+	// RoleAnchor marks an "&" and the name after it.
 	RoleAnchor
-	// RoleAlias is a "*" and the name after it.
+	// RoleAlias marks a "*" and the name after it.
 	RoleAlias
-	// RoleTag is a "!" tag, shorthand or verbatim.
+	// RoleTag marks a "!" tag, shorthand or verbatim.
 	RoleTag
-	// RoleComment is a "#" comment and the line break closing it.
+	// RoleComment marks a "#" comment and the line break closing it.
 	RoleComment
-	// RoleIndicator is a character the structure is written with: "-", ":",
+	// RoleIndicator marks a character that writes the structure: "-", ":",
 	// "?", ",", and the brackets and braces of a flow collection.
 	RoleIndicator
-	// RoleMarker is a "---" or a "...".
+	// RoleMarker marks a "---" or a "...".
 	RoleMarker
-	// RoleDirective is a "%YAML" or "%TAG" line.
+	// RoleDirective marks a "%YAML" or "%TAG" line.
 	RoleDirective
-	// RoleText is text the parse read and opened no node on: the body of a
+	// RoleText marks text the parse read and opened no node on: the body of a
 	// block scalar, and a directive's arguments.
 	RoleText
 )
 
+// String returns the name of r, such as "key" or "comment".
 func (r Role) String() string {
 	switch r {
 	case RoleKey:

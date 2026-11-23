@@ -3,18 +3,16 @@
 
 // Package colorize writes a YAML document back out with ANSI colors.
 //
-// It is a [github.com/go-openapi/go-yaml/ast.TransformFunc] and nothing else:
-// it wraps the text of each stretch in the escapes its [Style] names and writes
-// everything else through. Take the source out again by rendering with the zero
-// [Theme].
+// [New] returns a [github.com/go-openapi/go-yaml/ast.TransformFunc], a hook for the renderer of package ast: it
+// wraps the text of each stretch in the escapes of its [Style] and writes everything else unchanged. Render with
+// the zero [Theme] to write the source back as it was.
 //
 //	src, _ := os.ReadFile(name)
 //	file, err := parser.ParseBytes(src, parser.WithComments())
 //	r := ast.NewRenderer(ast.WithSource(src), ast.WithTransform(colorize.New(colorize.Default())))
 //	err = r.VerbatimFile(os.Stdout, file)
 //
-// ⚠️ Provisional. It is the trial the rendering hook was designed against, and
-// both are free to change together.
+// ⚠️ Provisional: the rendering hook was designed against this package, and the two may change together.
 package colorize
 
 import (
@@ -34,7 +32,7 @@ type Style struct {
 	Suffix string
 }
 
-// Theme says how each part of a document is drawn.
+// Theme holds the Style of each part of a document.
 //
 // A field left at its zero value draws that part uncolored, so a theme naming
 // two fields colors two things.
@@ -129,9 +127,8 @@ func New(t Theme) ast.TransformFunc {
 // styleOf picks a style for a stretch, from the node the renderer is writing
 // and the token it was cut from.
 //
-// The node is what the parse resolved, which is more than the characters say: a
-// quoted "1" is a String where a plain 1 is an Integer. The token says what the
-// document wrote where no node stands on it -- a "-", a "---", a ",".
+// The node gives the type the parse resolved, which the characters alone do not: a quoted "1" is a String where a
+// plain 1 is an Integer. Where no node stands, the token gives what the document wrote: a "-", a "---", a ",".
 func (t Theme) styleOf(s ast.Written) Style {
 	switch node := s.Node.(type) {
 	case *ast.CommentNode:

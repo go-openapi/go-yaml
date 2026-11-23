@@ -14,9 +14,9 @@ import (
 
 // Transformer writes a document out one piece at a time.
 //
-// Piece is called once for every piece of the source, in the order the document
-// wrote them. Writing [Piece.Lead] and [Piece.Text] unchanged copies the
-// document; writing something else for some of the pieces is the transform.
+// [Walk] calls Piece once for every piece of the source, in the order the document wrote them. Writing
+// [Piece.Lead] and [Piece.Text] unchanged copies the document; a transform writes something else for some of the
+// pieces.
 type Transformer interface {
 	Piece(w io.Writer, p Piece) error
 }
@@ -29,8 +29,7 @@ func (f Func) Piece(w io.Writer, p Piece) error { return f(w, p) }
 
 // Copy writes a piece as the document wrote it.
 //
-// It is the identity transform, and a transform that leaves a piece alone
-// should call it rather than write the two slices itself.
+// It is the identity transform. Call it for a piece a transform leaves alone.
 func Copy(w io.Writer, p Piece) error {
 	if _, err := w.Write(p.Lead); err != nil {
 		return err
@@ -49,11 +48,9 @@ type config struct {
 	nodePaths bool
 }
 
-// WithYAMLVersion says which version of the specification the document is read
-// as where it names none itself. See [parser.WithYAMLVersion]; it decides how a
-// plain scalar resolves, and so which [ast.NodeType] a piece carries.
-//
-// Walk passes it to the parse, whose scanner is the one the tokens come from.
+// WithYAMLVersion sets the version of the specification a document is read under where it declares none. See
+// [parser.WithYAMLVersion]. The version sets how a plain scalar resolves, so it sets the [ast.NodeType] of a
+// piece's node: "yes" is a boolean under 1.1 and a string under 1.2.
 func WithYAMLVersion(v parser.YAMLVersion) Option {
 	return func(c *config) { c.version = v }
 }
@@ -70,10 +67,8 @@ func WithNodePaths() Option {
 
 // WithParserOptions passes options on to the parse.
 //
-// ⚠️ [parser.WithComments] is not one to pass: a comment reaches a transform as
-// a piece of its own whatever the parse does with it, and asking the parse to
-// keep comments changes nothing here except to make a directive standing after
-// one go over twice.
+// ⚠️ Do not pass [parser.WithComments]: a comment reaches a transform as a piece of its own without it, and with
+// it a directive written after a comment reaches the transform twice.
 //
 // [parser.WithOmitNodePaths] is not one either: Walk passes it already. Use
 // [WithNodePaths] to have the paths recorded instead.
@@ -83,11 +78,10 @@ func WithParserOptions(opts ...parser.Option) Option {
 
 // Walk reads src through and calls t for each piece of it, writing to w.
 //
-// The pieces tile the source, so a t that calls [Copy] for every piece writes
-// src back byte for byte. Nothing is held between pieces: what a transform
-// keeps is its own, and the walk itself holds one token.
+// The pieces tile the source, so a t that calls [Copy] for every piece writes src back byte for byte. The walk
+// holds one token between pieces, and a transform keeps whatever else it needs itself.
 //
-// Where the parse refuses the document, Walk returns its error and whatever was
+// Where the parse rejects the document, Walk returns its error and whatever was
 // written up to that point stands. Write to a buffer where a partial document
 // is worse than none.
 func Walk(w io.Writer, src []byte, t Transformer, opts ...Option) error {
@@ -104,7 +98,7 @@ func Walk(w io.Writer, src []byte, t Transformer, opts ...Option) error {
 	}, cfg.parse...)
 	if !cfg.nodePaths {
 		// The paths cost memory that grows with the document, and a piece is named by its own token.
-		// See [WithNodePaths] for a caller that wants them.
+		// See [WithNodePaths] for a caller that needs them.
 		parse = append(parse, parser.WithOmitNodePaths())
 	}
 	if _, err := parser.New(parse...).Walk(src, wk); err != nil {
@@ -135,13 +129,12 @@ type label struct {
 
 // walker joins the token stream to the node stream.
 //
-// The tokens read the document -- they tile it, which nothing the parse hands
-// over does -- and the nodes say what the parse made of the ones it opened on.
-// So the tokens drive the output and a node only labels one.
+// The tokens tile the document, and the nodes cover only part of it, so the tokens drive the output and each
+// node labels the token it opens on.
 //
-// Both streams come from one parse: [parser.WithTokens] hands over each token
-// the scanner cuts and [parser.Parser.Walk] hands over each node. Scanning the
-// source a second time was a tenth of what a transform cost.
+// Both streams come from one parse: [parser.WithTokens] hands over each token the scanner cuts and
+// [parser.Parser.Walk] hands over each node. Scanning the source a second time would add a tenth to a
+// transform's cost.
 //
 // A node arriving at offset X flushes every token before X and leaves the one at
 // X held, because a node deeper in the document may open on the same token and
@@ -157,11 +150,11 @@ type walker struct {
 	// corpus the queue reached 67 tokens, and take restarts it whenever the transform catches up.
 	queue []token.Token
 	qat   int
-	// parsed says the parse is over, so an empty queue is the end of the document and not a wait.
+	// parsed records that the parse is over, so an empty queue is the end of the document and not a wait.
 	parsed bool
 
-	// held is the token taken from the queue and not yet written, and holding
-	// says whether there is one. done says the tokens have run out.
+	// held is the token taken from the queue and not yet written, and holding records whether there is one. done
+	// records that the tokens have run out.
 	held    token.Token
 	holding bool
 	done    bool
@@ -199,11 +192,9 @@ func (wk *walker) Enter(node ast.Node, at parser.Cursor) error {
 
 // Leave labels what the node holds and writes the node's own piece out.
 //
-// Two jobs, and the second is what keeps a piece honest. A tag opens before the
-// node it types is parsed, so TagNode.Value is nil in Enter and stands here.
-// And the parse reuses a node's cells once the walk moves past it, so a piece
-// carrying a node has to reach the transform while the node is still the one
-// the walk named -- Leave is the last moment that holds.
+// It has two jobs. A tag opens before the node it types is parsed, so TagNode.Value is nil in Enter and set
+// here. And the parse reuses a node's cells once the walk moves past it, so a piece carrying a node must reach
+// the transform while the node is still the one the walk named; Leave is the last call where it is.
 func (wk *walker) Leave(node ast.Node, at parser.Closing) error {
 	if wk.err != nil || node == nil {
 		return wk.err
@@ -214,14 +205,14 @@ func (wk *walker) Leave(node ast.Node, at parser.Closing) error {
 	return wk.err
 }
 
-// emitLabeled writes the piece node labeled, while node is still live.
+// emitLabeled writes the piece node labeled, while node is still the one the walk named.
 //
 // The walk hands a node over and reclaims its cells behind the descent, so a
 // piece held past this reads whichever node the parse built over it: 610 of the
 // corpus's 88,473 labeled pieces carried a node that had moved, one of them
 // naming the string 'a: b: c' with the text of an anchor 23 bytes further on.
 //
-// Two guards, and neither compares nodes. The label has to still be there --
+// It applies two guards, and neither compares nodes. The label has to still be there --
 // the deepest node at an offset leaves first and takes the label with it, so a
 // shallower one arriving here finds nothing and writes nothing. And the held
 // token has to be the one node opened on: a collection opens on its first
@@ -230,10 +221,8 @@ func (wk *walker) Leave(node ast.Node, at parser.Closing) error {
 //
 // ⚠️ Do not add a node comparison. The walk hands its cells out again behind
 // the descent, so two nodes of one document are frequently the same pointer: an
-// invariant keyed that way reported 5,226 repeats over 12,597 documents and
-// every one was false. The offset and the label's presence say everything this
-// needs, and a probe over the corpus found no case where comparing nodes would
-// have changed the answer.
+// invariant keyed that way reported 5,226 repeats over 12,597 documents and every one was false. The offset and
+// the label's presence are enough: over the corpus, comparing nodes changes no answer.
 func (wk *walker) emitLabeled(node ast.Node) {
 	tk := node.GetToken()
 	if tk == nil {
@@ -371,13 +360,11 @@ func implicitNull(n ast.Node, tk *token.Token) bool {
 // extent is the stretch of the source a token covers, and false where the
 // scanner placed it outside the text still to write.
 //
-// The scanner's extents tile the source: a token starts where the text written
-// so far ends, or after it, and ends inside the document. One that does not is
-// a scanner fault and fails the walk. Clamped into place, as this did until the
-// last documents breaking the tiling were fixed, it wrote the document back byte
-// for byte and hid the fault -- "- single multiline\n - sequence entry\n" is 37
-// bytes, and its scalar claimed to end at 56. extentLedger in
-// internal/ledgers/scanner/extent_test.go records any document that breaks it.
+// The scanner's extents tile the source: a token starts where the text written so far ends, or after it, and
+// ends inside the document. One that does not is a scanner fault, and extent fails the walk on it. Clamping it
+// into place would write the document back byte for byte and hide the fault: "- single multiline\n - sequence
+// entry\n" is 37 bytes, and a scanner fault once had its scalar end at 56. extentLedger in
+// internal/ledgers/scanner/extent_test.go records any document that breaks the tiling.
 func (wk *walker) extent(tk *token.Token) (int, int, bool) {
 	from, end := int(tk.Position.Offset()), int(tk.EndOffset())
 	if from < wk.prev || end < from || end > len(wk.src) {
@@ -392,9 +379,9 @@ func (wk *walker) extent(tk *token.Token) (int, int, bool) {
 
 // compactAt is how many written tokens the queue holds before it moves the rest to the front.
 //
-// Restarting only where the transform has caught up exactly is not enough: it runs a few tokens behind
-// almost always -- 5 at the high-water mark over a flat 10,000-key document -- so the restart never fired
-// and the slice grew to hold every token of the document.
+// Restarting only where the transform has caught up exactly is not enough: it runs a few tokens behind almost
+// always -- 5 at the high-water mark over a flat 10,000-key document -- so the restart would never run and the
+// slice would grow to hold every token of the document.
 const compactAt = 32
 
 // take receives one token from the parse. It is [parser.WithTokens]'s hook.
