@@ -32,8 +32,33 @@ func (s *Scanner) scanQuote(ctx *Context, ch rune) (bool, error) {
 	}
 
 	ctx.clear()
+	s.leaveQuotedLines(ctx)
 
 	return true, nil
+}
+
+// leaveQuotedLines settles the line state after a quoted scalar that ran over more than one line.
+//
+// At each break inside the scalar, progressLine marks the next character as opening a line, and the scan reads the
+// rest of that line with progressColumn, which leaves the mark standing and counts no indentation. Past the closing
+// quote the scan stood mid-line taking itself for the start of one: the space before "# lala" in "a: \"double" over
+// "  quotes\" # lala" counted as indentation. The closing quote is a character of the line, so the mark goes, and the
+// line's indentation is the spaces it opens with.
+func (s *Scanner) leaveQuotedLines(ctx *Context) {
+	if !s.isFirstCharAtLine || s.column == 1 {
+		return
+	}
+	s.isFirstCharAtLine = false
+
+	start := ctx.idx
+	for start > 0 && ctx.src[start-1] != '\n' && ctx.src[start-1] != '\r' {
+		start--
+	}
+	var indent int32
+	for i := start; i < ctx.idx && ctx.src[i] == ' '; i++ {
+		indent++
+	}
+	s.indentNum = indent
 }
 
 // TODO(perf): rechallenge with SVAR - we discarded it only because our current corpus doesn't quote.

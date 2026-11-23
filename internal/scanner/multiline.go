@@ -71,6 +71,12 @@ func (s *Scanner) scanMultiLine(ctx *Context, c rune) error {
 	case c == '\t' && !state.isIndentColumn(s.column):
 		// Past the indentation, so the tab is content and is kept as written.
 		ctx.addBufWithTab(c)
+		if s.isFirstCharAtLine {
+			// Among the line's leading whitespace, the tab counts one column of it, as the scan loop's tab arm
+			// counts one: indentNum and the column moved apart at it, and "  \t bar" under ">" read indentNum 2
+			// at column 4.
+			s.indentNum++
+		}
 		s.progressColumn(ctx, 1)
 
 	default:

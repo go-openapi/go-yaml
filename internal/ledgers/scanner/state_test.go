@@ -89,32 +89,18 @@ var stateLedger = map[string]disagreement{ //nolint:gochecknoglobals // ok to st
 	// Fixed; nothing may raise this.
 	"buf.notSpaceCharPos<=len(buf)": {0, 791536},
 
-	// Both entries count a space opening a line where indentNum has stopped tracking the column. They have different
-	// causes, and only the second is a surprise.
+	// Both entries count a space opening a line where indentNum has stopped tracking the column, the second where a
+	// tab stands in the run before it. Nothing may raise either.
 	//
-	// The /tab bucket counts the spaces that follow a tab among a line's leading whitespace. updateIndent takes such
-	// a tab, sets indentHasTab and returns without counting it, because s-indent(n) is s-space x n and a tab is
-	// separation and not indentation.
+	// The /tab bucket read 3 of 7 until a tab that is content, in the leading whitespace of a block scalar's line,
+	// began to count its column: the scan loop's tab arm counts one there, and scanMultiLine moved the column over it
+	// and left indentNum alone, so "  \t bar" under ">" read indentNum 2 at column 4.
 	//
-	// 4 of 11, from 11 of 11 on 2026-09-11, when a tab began to move the column. The scan loop's tab arm counts a
-	// tab opening a line in indentNum, and it left the column alone, so indentNum stood one ahead of column-1 on
-	// every such line: "\t # c1" read indentNum 1 at column 1. Moving the column puts the two back in step, and 7 of
-	// the 11 agree now. The 4 left stand inside a block scalar's content, "  \t bar" under ">" among them, where
-	// scanMultiLine moves the column over the tab and leaves indentNum alone. Before that the bucket read 100%
-	// throughout -- 11 of 11, 12 of 12, 5 of 5 -- and its comment had the direction of the gap the wrong way round.
-	//
-	// The /spaces bucket is the one worth watching, and it holds one cause: a quoted scalar spanning a line break.
-	// The quote scanners call progressLine, marking the next character as opening a line, then read the rest of the
-	// scalar with progressColumn, which never reaches updateIndent. So isFirstCharAtLine is still true after the line
-	// has been read into. 6 of 30,174, 0.02%, from 6 of 30,360, 6 of 30,348, 8 of 19,953, 0.04% and 7 of 11,748, 0.06%:
-	// the corpus keeps growing faster than the cause, and the count has now fallen while the denominator rose by half.
-	// The denominator fell for the first time on 2026-09-10, by 186, and the corpus did not move: 16dd5be ends a plain
-	// scalar at a comment whatever its column, so fewer lines open inside one.
-	"indent.indentNum==column-1/tab": {3, 7},
-	//
-	// 8 of 30,818 on 2026-11-20 from 7 of 29,756: the regenerations of 2026-09-20 and 2026-11-18 moved it. Over the
-	// corpus of 2026-09-11 the scanner of 2026-11-20 still reads 7 of 29,720.
-	"indent.indentNum==column-1/spaces": {8, 100143},
+	// The /spaces bucket read 8 of 100,143 until a quoted scalar running over several lines stopped leaving the line
+	// marked as opening: past the closing quote, the space before "# lala" in "a: \"double" over "  quotes\" # lala"
+	// counted as indentation.
+	"indent.indentNum==column-1/tab":    {0, 7},
+	"indent.indentNum==column-1/spaces": {0, 100135},
 
 	// bufferedToken assembles a token's extent from what the scanner already holds: where the origin began, how long
 	// it is, and the line the text ends on. It does not read the origin back to work the extent out.
