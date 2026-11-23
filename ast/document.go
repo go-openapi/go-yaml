@@ -14,9 +14,9 @@ import (
 type File struct {
 	Name string
 	Docs []*DocumentNode
-	// text and read hold what Read is handing out. They are the file's own
-	// rather than each node's: a cursor on every node cost 8 bytes of every
-	// node in the document to serve a reader nothing asks a node for.
+	// text and read hold what Read is handing out. They belong to the file
+	// instead of each node: a cursor on every node would cost 8 bytes of every
+	// node in the document, and no caller needs a reader on a single node.
 	text []byte
 	read int
 }

@@ -48,18 +48,18 @@ func (m *MapNodeIter) KeyValue() *MappingValueNode {
 //
 // YAML 1.2.2 §3.2.1.1: two keys are equal when they resolve to the same node,
 // so "7" and "007" are one key written twice while "1" and "1.0" are two. The
-// parser records the repeats it finds and refuses nothing; whoever loads the
-// document decides what to do about them, which is what lets a linter read a
-// document that a decoder will not.
+// parser records the repeats it finds and rejects none of them; whoever loads
+// the document handles them, so a linter can read a document that a decoder
+// rejects.
 type DuplicateKey struct {
-	// Name is the key as its type spells it, which is what makes it the same
-	// key: token.KeyName writes an integer in decimal whatever base the
+	// Name is the key as its type spells it, and two keys with one Name are the
+	// same key: token.KeyName writes an integer in decimal whatever base the
 	// document used.
 	Name string
-	// At is where the repeat stands and FirstAt where the key was first
-	// written, so a complaint can name both.
+	// At is the position of the repeat and FirstAt the position where the key
+	// was first written, so an error can name both.
 	At, FirstAt token.Position
-	// NameOnly marks two keys that YAML tells apart and their name does not:
+	// NameOnly marks two keys that YAML holds distinct but that share a name:
 	// "1" and "\"1\"" are an integer and a string, and both are named "1". A
 	// reader that keys its entries by value, such as an any or a MapSlice,
 	// holds both and reads no repeat; one that keys them by name, such as a
@@ -67,12 +67,12 @@ type DuplicateKey struct {
 	// [DuplicateKey.Repeats].
 	NameOnly bool
 	// JSONNameOnly marks a NameOnly repeat recorded by a parse under
-	// parser.WithJSONCompatible, which asked for a document JSON can hold.
-	// Every reader refuses it, with ErrNotJSON.
+	// parser.WithJSONCompatible, which requires a document JSON can hold.
+	// Every reader rejects it, with ErrNotJSON.
 	JSONNameOnly bool
 	// Allowed marks a repeat the parse was told to allow, with
 	// parser.WithAllowDuplicateMapKey. A load keeps one of the entries instead
-	// of refusing the document: a decoder filling a map keeps the last, a
+	// of rejecting the document: a decoder filling a map keeps the last, a
 	// converter writing JSON keeps the first.
 	Allowed bool
 	// Index is the position in the sequence of the "!!omap" entry that repeats

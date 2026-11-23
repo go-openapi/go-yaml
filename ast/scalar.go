@@ -20,13 +20,13 @@ import (
 // "a:" with nothing after it, the entry of a bare "-". A comment the parser
 // hangs there is a comment the document did write -- "k: # note" holds the note
 // on the null -- and it is copied back from the bytes it was read from. One a
-// caller adds has no bytes and nowhere to go: [Renderer.Verbatim] laid the null
-// out as though it had been inserted, so "- " over "- 1" came back with an entry
-// that was never there, reading [nil nil 1] where the document holds [nil 1].
+// caller adds has no bytes and nowhere to go: [Renderer.Verbatim] would lay the
+// null out as though it had been inserted, so "- " over "- 1" would come back
+// with an entry that was never there, reading [nil nil 1] where the document holds [nil 1].
 //
 // A null a caller built, and one the document spells out, both take a comment:
-// only an implicit one is refused, and only for a comment with no source of its
-// own.
+// SetComment rejects only an implicit one, and only for a comment with no
+// source of its own.
 func (n *NullNode) SetComment(node *CommentGroupNode) error {
 	if node != nil && !fromSourceGroup(node) && n.Token != nil && n.Token.Type == token.ImplicitNullType {
 		return errors.New("this null stands for a node the document does not hold, so a comment on it has nowhere to go")
@@ -254,7 +254,7 @@ func escapeSingleQuote(s string) string {
 // quotedString writes a quoted scalar so that reading it back gives the same
 // value.
 //
-// A single-quoted scalar has no escapes: what it holds is what it says, and a
+// A single-quoted scalar has no escapes: its value is the text it spells, and a
 // line break written inside one is folded away -- one break becomes a space,
 // and n+1 breaks become n breaks, with the whitespace around them dropped. Most
 // values holding a break therefore have no single-quoted spelling at all, so
@@ -394,7 +394,7 @@ func (n *LiteralNode) GetToken() *token.Token {
 	return n.Start
 }
 
-// GetValue returns the block scalar's content, folded and chomped as its header says: "|" over "  x" over "  y" is
+// GetValue returns the block scalar's content, folded and chomped as its header sets: "|" over "  x" over "  y" is
 // "x\ny\n". Use [LiteralNode.String] for the block as it is written, header included.
 func (n *LiteralNode) GetValue() any {
 	if n.Value == nil {

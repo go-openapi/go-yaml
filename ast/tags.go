@@ -10,14 +10,14 @@ import (
 	"github.com/go-openapi/go-yaml/token"
 )
 
-// TagVerdict says what a tag made of the node it stands on.
+// TagVerdict records whether a tag applies to the node it stands on.
 //
 // YAML 1.2.2 §3.1.2 builds a representation from the serialization, and a node
 // whose tag the processor cannot apply has no representation to build. The
-// specification calls what is left a partial representation and then says
-// nothing about what a processor owes the caller, so "!!int abc" is this
-// library's to decide. It is decided once, here, and every consumer reads the
-// answer rather than working it out again: the decoder and the JSON converter
+// specification calls the remainder a partial representation and leaves open
+// what a processor returns to the caller, so this library sets the outcome of
+// "!!int abc". [TagNode.Resolve] sets it once, and every consumer reads its
+// result instead of working it out again: the decoder and the JSON converter
 // each had their own tag switch, and they disagreed about "!!timestamp" and
 // "!!binary".
 type TagVerdict uint8
@@ -54,14 +54,14 @@ func (v TagVerdict) String() string {
 	}
 }
 
-// Resolution is what a tag made of the node it stands on, from [TagNode.Resolve].
+// Resolution holds the result of [TagNode.Resolve] for a tag and the node it stands on.
 type Resolution struct {
 	// Tag is the type the tag names. It is "" where Verdict is TagUnresolved.
 	Tag token.ReservedTagKeyword
-	// Verdict says whether the node under the tag is what the tag names.
+	// Verdict records whether the node under the tag has the type the tag names.
 	Verdict TagVerdict
-	// Text is what the scalar under the tag was written with, before the schema
-	// read anything into it: "!!str 0x10" carries "0x10" and not "16". It is ""
+	// Text holds the characters of the scalar under the tag, before the schema
+	// read anything into them: "!!str 0x10" carries "0x10" and not "16". It is ""
 	// where the node is not a scalar.
 	Text string
 	// Schema is the scalar schema the document is read under, from
@@ -71,18 +71,18 @@ type Resolution struct {
 	// the base the document wrote them in: "017" is octal under %YAML 1.1 and
 	// decimal without it.
 	//
-	// Sniffing Text under one fixed schema instead is how three consumers came
-	// to disagree: under 1.1 "!!int 0b101" decoded to 5 and ToJSON wrote 0.
+	// Do not read Text under one fixed schema. Three consumers did and
+	// disagreed: under 1.1 "!!int 0b101" decoded to 5 and ToJSON wrote 0.
 	Schema token.Schema
-	// Lax says the document was read with
+	// Lax reports whether the document was read with
 	// [github.com/go-openapi/go-yaml/parser.WithLaxTags]. A consumer that finds
 	// TagValueMismatch and can fall back reads Text as a string instead of
-	// refusing; a kind mismatch is reported whatever this says, since no text
-	// stands in for a sequence.
+	// rejecting the document; a kind mismatch is an error whatever Lax holds,
+	// since no text stands in for a sequence.
 	Lax bool
-	// Empty says there is no text under the tag: the document left the node out
-	// as in "k: !!int", or wrote an empty scalar. Such a node takes the tag's
-	// own default rather than failing to be read.
+	// Empty reports whether the tag has no text under it: the document left the
+	// node out as in "k: !!int", or wrote an empty scalar. Such a node takes the
+	// tag's own default instead of failing to read.
 	//
 	// Both spellings land here because the parser writes the missing node two
 	// ways -- handNull builds a null where the document ends, and
@@ -92,13 +92,13 @@ type Resolution struct {
 	Empty bool
 }
 
-// Resolve reports what the tag made of the node under it.
+// Resolve checks the tag against the node under it and returns the result.
 //
 // Read it to decide whether a tagged node can be loaded at all, and read
-// [Resolution.Text] for the characters the scalar was written with. Producing a
-// Go value or JSON from those characters stays with whoever wants one: the
-// decoder wants a time.Time where the JSON converter wants the date as it was
-// written, and both want the same answer to whether the date is a date.
+// [Resolution.Text] for the characters the scalar was written with. Resolve
+// builds no Go value or JSON from those characters; each consumer does: the
+// decoder builds a time.Time where the JSON converter writes the date as it was
+// written, and both take the same verdict on whether the date is a date.
 //
 // It reads the node and holds nothing, so it costs the same on a tree built by
 // hand as on one that came from a parse.
@@ -123,10 +123,9 @@ func (n *TagNode) Resolve() Resolution {
 		}
 		if !standsOnItsKind(tag, unwrapAnchor(n.Value)) {
 			// A tag naming one collection kind, standing on the other: "!!map"
-			// over a sequence, "!!seq" over a mapping. The check above asks
-			// only whether the node is a scalar, so the two collection kinds
-			// were never told apart and "a: !!map [1]" read as the sequence it
-			// is written as.
+			// over a sequence, "!!seq" over a mapping. The check above tests
+			// only whether the node is a scalar, so without this check
+			// "a: !!map [1]" would read as the sequence it is written as.
 			res.Verdict = TagKindMismatch
 		}
 
@@ -142,13 +141,13 @@ func (n *TagNode) Resolve() Resolution {
 		// The tag stands on no value: the document left the node out, wrote an
 		// empty scalar, or wrote a null. It takes the tag's own default -- 0
 		// for "!!int", false for "!!bool", the zero time for "!!timestamp".
-		// Reading that as a failure made "k: !!bool" an error where "k: !!int"
-		// was 0.
+		// Reading that as a failure would make "k: !!bool" an error where
+		// "k: !!int" is 0.
 		//
 		// "!!str" and "!!null" are the exceptions. Every scalar is a string,
 		// including the four characters of a null, so "!!str Null" is "Null"
 		// and not the empty string; and a null under "!!null" is the value the
-		// tag names rather than the absence of one.
+		// tag names, not the absence of one.
 		res.Empty = true
 
 		return res
@@ -170,7 +169,7 @@ func readsTheText(tag token.ReservedTagKeyword) bool {
 	return tag == token.StringTag || tag == token.NullTag
 }
 
-// collectionTag reports whether the tag names a kind rather than a scalar type.
+// collectionTag reports whether the tag names a kind, not a scalar type.
 func collectionTag(tag token.ReservedTagKeyword) bool {
 	switch tag {
 	case token.MappingTag, token.SequenceTag, token.SetTag, token.OrderedMapTag, token.MergeTag:
@@ -180,11 +179,10 @@ func collectionTag(tag token.ReservedTagKeyword) bool {
 	}
 }
 
-// readsAs reports whether text is what tag says it is.
+// readsAs reports whether text parses as the type tag names.
 //
-// The question is only whether a value is there to be had, not what it is: a
-// consumer that wants the value reads it from [Resolution.Text] in whatever
-// shape it needs.
+// It checks only that a value parses and returns no value: a consumer that
+// needs the value reads it from [Resolution.Text] in whatever shape it needs.
 func readsAs(tag token.ReservedTagKeyword, text string, schema token.Schema) bool {
 	switch tag {
 	case token.StringTag:
@@ -224,7 +222,7 @@ func readsAsNull(text string) bool {
 }
 
 // readsAsBool takes the spellings either schema resolves, and tries the text
-// once more in lower case: the tag says boolean whatever the case, so
+// once more in lower case: the tag names a boolean whatever the case, so
 // "!!bool Yes" and "!!bool YES" are the same request.
 func readsAsBool(text string) bool {
 	if _, ok := token.ParseBool(text); ok {
@@ -238,15 +236,15 @@ func readsAsBool(text string) bool {
 // readsAsInteger takes any base Go reads, and a number too wide for a machine
 // word.
 //
-// A float does not count. "!!int 1.9" used to resolve and truncate to 1, which
-// carried "!!int .inf" and "!!int .nan" in with it: neither has an integer to
-// truncate to, and codec.castToInteger converted them with Go's int(v), whose
-// result for a value outside the integer range the Go specification leaves to
-// the implementation. On amd64 that made "!!int .inf", "!!int -.inf" and
-// "!!int .nan" one value, -9223372036854775808, and "!!int 1e400" zero.
+// A float does not count. Resolving "!!int 1.9" and truncating it to 1 would
+// carry "!!int .inf" and "!!int .nan" in with it: neither has an integer to
+// truncate to, and the Go specification leaves the result of int(v) for a value
+// outside the integer range to the implementation. On amd64 int(v) makes
+// "!!int .inf", "!!int -.inf" and "!!int .nan" one value,
+// -9223372036854775808, and "!!int 1e400" zero.
 //
 // tag:yaml.org,2002:int names the whole numbers, and 1.9 is not one of them, so
-// this reports the mismatch and the decoder refuses the document. Read such a
+// readsAsInteger returns false and the decoder rejects the document. Read such a
 // document with parser.WithLaxTags to take the text as a string instead.
 func readsAsInteger(text string, schema token.Schema) bool {
 	base, ok := token.IntegerBase(text, schema)
@@ -269,17 +267,18 @@ func readsAsIntegerAt(text string, base token.Type) bool {
 // readsAsFloat reports whether schema reads the text
 // as a real number, an infinity or a NaN.
 //
-// strconv.ParseFloat stood here, and it reads Go's floating-point literals:
-// "0x1p-2" is a hexadecimal float in Go and in no YAML schema, and "1_0.5"
-// carries digit separators that 1.1 allows and 1.2 does not. Both resolved at
-// either version and decoded to 0.25 and 10.5, where the same scalars untagged
-// read as the strings they are.
+// readsAsFloat does not call strconv.ParseFloat, which reads Go's
+// floating-point literals: "0x1p-2" is a hexadecimal float in Go and in no YAML
+// schema, and "1_0.5" carries digit separators that 1.1 allows and 1.2 does
+// not. Under strconv.ParseFloat both would resolve at either version and decode
+// to 0.25 and 10.5, where the same scalars untagged read as the strings they
+// are.
 //
 // The base and the separators come from the document's schema instead, as they do for an
 // integer -- see [token.IntegerBase]. token.ParseFloat then reads the digits: it
 // turns 1.1's sexagesimal into decimal before strconv sees it, so
 // "!!float 190:20:30.5" is 685230.5, and token.ParseBigFloat takes a number no
-// float64 holds, so "!!float 1e400" keeps its magnitude rather than becoming an
+// float64 holds, so "!!float 1e400" keeps its magnitude instead of becoming an
 // infinity.
 //
 // A whole number is a real number, so an integer type reads here too:
@@ -362,9 +361,9 @@ func taggedScalarText(n Node) (text string, scalar, empty bool) {
 		return v.Value.Value, true, false
 	case *NullNode:
 		if tk := v.GetToken(); tk != nil && tk.Type == token.ImplicitNullType {
-			// A tag with nothing after it. The token the parser puts there
-			// reads "null", which is what the node resolves to and not what
-			// the document wrote.
+			// A tag with nothing after it. The parser puts a token reading
+			// "null" there: the node resolves to null, but the document wrote
+			// nothing.
 			return "", true, true
 		}
 	}
@@ -404,8 +403,9 @@ func taggedScalarType(n Node) token.Type {
 
 // isScalarNode reports whether n holds a single value written as text.
 //
-// Narrower than the ScalarNode interface, which AnchorNode and AliasNode
-// satisfy by answering GetValue with their own name.
+// Narrower than the ScalarNode interface, which AnchorNode and AliasNode also
+// satisfy: an AliasNode's GetValue returns the alias name, an AnchorNode's the
+// anchored node's text.
 func isScalarNode(n Node) bool {
 	switch n.(type) {
 	case *NullNode, *BoolNode, *IntegerNode, *FloatNode, *StringNode, *LiteralNode,

@@ -49,7 +49,7 @@ func WithComments(on bool) RenderOption {
 // Pass an empty map to resolve from the tree alone. The map is for a tree built
 // by hand, and for anchors that came from somewhere else: the decoder passes
 // the ones it has collected so that a custom UnmarshalYAML receives the value
-// an alias stands for rather than a reference it has no way to look up.
+// an alias stands for instead of a reference it has no way to look up.
 func WithAliasTargets(anchors map[string]Node) RenderOption {
 	return func(r *Renderer) {
 		r.aliasTargets = anchors
@@ -59,7 +59,7 @@ func WithAliasTargets(anchors map[string]Node) RenderOption {
 
 // Renderer turns an AST back into YAML text.
 //
-// It exists as a type rather than as a String method so that callers can
+// It is a type, not a String method, so that callers can
 // configure it and drive it -- the encoder uses this same renderer instead of
 // building a tree and then shifting every token's column to fake indentation.
 //
@@ -74,9 +74,9 @@ type Renderer struct {
 	indentSequence bool
 	// aliasTargets holds the node each anchor names, and resolving the anchor
 	// names being rendered right now. Both are nil unless [WithAliasTargets]
-	// was passed, and a Renderer carrying them is built per call rather than
-	// shared: bare() copies the struct, so the two maps are the same maps in
-	// the copy, which is what lets the recursion below see its own progress.
+	// was passed, and a Renderer carrying them is built per call, not shared:
+	// bare() copies the struct, so the copy holds the same two maps and the
+	// recursion below sees its own progress through them.
 	aliasTargets map[string]Node
 	resolving    map[string]bool
 	// src is the document a tree was parsed from, for [Renderer.Verbatim]. It
@@ -86,13 +86,13 @@ type Renderer struct {
 	// unless [WithTransform] was passed.
 	transform TransformFunc
 	// forceFlow lays every collection out as "{a: 1}" and "[1, 2]" whatever
-	// the node says, for a node being written into a flow collection where a
+	// the node's own style, for a node being written into a flow collection where a
 	// line break would end the collection. See [Renderer.flowing].
 	forceFlow bool
 	// hoisted is the block scalar whose comment group the node opening its
 	// line has already written above that line. See [Renderer.unhoisted].
 	hoisted *LiteralNode
-	// atMargin says the node being rendered starts in column 0: a document's own
+	// atMargin reports whether the node being rendered starts in column 0: a document's own
 	// scalar, or a key of the block mapping that is a document's own node. A
 	// plain scalar there reading "--- x" or "..." opens or closes a document.
 	atMargin bool
@@ -137,7 +137,7 @@ func (r *Renderer) String(n Node) string {
 }
 
 // File renders a whole file. It is separate from String because *File is not a
-// Node -- it holds documents rather than being one.
+// Node -- it holds documents and is not one.
 func (r *Renderer) File(n *File) string {
 	docs := make([]rendered, 0, len(n.Docs))
 	for _, doc := range n.Docs {
@@ -269,16 +269,16 @@ func standsAbove(n Node) *CommentGroupNode {
 
 // headCommented is a node carrying [BaseNode.HeadComment]. Every node type in
 // this package embeds BaseNode and so satisfies it; the assertion is here
-// rather than a method on [Node] so that the interface does not grow.
+// and not a method on [Node], so that the interface does not grow.
 type headCommented interface {
 	GetHeadComment() *CommentGroupNode
 }
 
 // render builds what n writes, without writing it.
 //
-// It is String's dispatch, returning the pieces rather than the text so that a
-// parent can indent a child by a number and ask whether it spans lines without
-// building it twice. A node type still composing strings arrives here as one
+// It is String's dispatch, returning the pieces instead of the text so that a
+// parent can indent a child by a number and check whether it spans lines
+// without building it twice. A node type still composing strings arrives here as one
 // leaf, which is correct and costs what it always did.
 func (r *Renderer) render(n Node) rendered {
 	if n == nil {
@@ -294,11 +294,11 @@ func (r *Renderer) render(n Node) rendered {
 
 // withHeadComment puts what stands above a node back above it.
 //
-// [BaseNode.HeadComment] is written only where the node's other comment field
-// was already taken, which is what makes hoisting safe here: a node reaching
-// this carried two comments and used to render one. Hoisting every head comment
-// instead moved comments the older field already placed correctly, and a dozen
-// Test Suite documents stopped round-tripping.
+// [BaseNode.HeadComment] is set only where the node's other comment field is
+// already taken, which is why hoisting is safe here: a node that reaches this
+// carries two comments, and without withHeadComment only one would render.
+// Hoisting every head comment would move comments the older field already
+// places correctly, and a dozen Test Suite documents would stop round-tripping.
 func (r *Renderer) withHeadComment(n Node, body rendered) rendered {
 	if !r.comments {
 		return body
@@ -418,7 +418,7 @@ func (r *Renderer) mappingValue(n *MappingValueNode) rendered {
 	// does not compound when a document is read and written repeatedly.
 	var head rendered
 	if r.comments && !n.Comment.Blank() {
-		// The gap is above the comment, which is what now leads the entry.
+		// The gap goes above the comment, because the comment now leads the entry.
 		head = join(sepNone, leaf(blankLineBefore(n.Comment)), r.render(n.Comment), leaf("\n"))
 	} else {
 		head = leaf(blankLineBefore(n.Key))
@@ -482,7 +482,7 @@ func (r *Renderer) mappingValue(n *MappingValueNode) rendered {
 	}
 	if comment == "" {
 		// A comment written on the key's line, above a block, is recorded on the
-		// block rather than on the key. It goes back where it was written.
+		// block instead of on the key. It goes back where it was written.
 		comment, value = r.hoistBlockComment(n.Key, n.Value, value)
 	}
 
@@ -542,7 +542,7 @@ func implicitKeyTooLong(key, colon string) bool {
 // An anchor name, an alias name and a tag shorthand may all contain ':', so a
 // key that ends on one absorbs the ':' written straight after it: "&a: v"
 // anchors "a:" over the scalar v, where "&a : v" anchors the empty key of a
-// mapping. The space is what tells them apart.
+// mapping. Only the space separates the two readings.
 func (r *Renderer) colonAfter(key Node) string {
 	if r.absorbsColon(key) {
 		return " :"
@@ -648,14 +648,14 @@ func (r *Renderer) keyComment(key Node) string {
 // value renders what follows a "key:", including the space or newline that
 // separates it. It returns "" for an absent value.
 //
-// keyCommented says the key carries a comment, which claims the rest of the
-// line: a collection that would otherwise sit beside its key goes below it so
+// keyCommented reports whether the key carries a comment. A key comment takes
+// the rest of the line: a collection that would otherwise sit beside its key goes below it so
 // that the comment stays next to the key it belongs to.
 // alias renders n as the node its anchor names.
 //
 // An anchor whose node holds the alias would render forever, so a name already
 // being rendered falls back to the reference: "&a1 [*a1]" renders the inner
-// alias as "*a1" rather than exhausting the stack.
+// alias as "*a1" instead of exhausting the stack.
 func (r *Renderer) alias(n *AliasNode) string {
 	name := n.Value.GetToken().Value
 	target := r.aliasTarget(n, name)
@@ -669,13 +669,13 @@ func (r *Renderer) alias(n *AliasNode) string {
 	return r.text(target)
 }
 
-// deref returns the node an alias names, for the layout questions below that
-// ask what shape a value has -- whether it fits on the key's line, whether it
+// deref returns the node an alias names, for the layout checks below that
+// test the shape of a value -- whether it fits on the key's line, whether it
 // is a block sequence, whether it carries its own indentation. An alias renders
-// as its target, so the target is what those questions are about.
+// as its target, so those checks examine the target.
 //
 // It resolves one step and does not guard against a cycle: rendering goes
-// through [Renderer.alias], which does, and one step answers the shape.
+// through [Renderer.alias], which does, and one step is enough to find the shape.
 func (r *Renderer) deref(n Node) Node {
 	alias, ok := n.(*AliasNode)
 	if !ok || r.aliasTargets == nil {
@@ -726,9 +726,9 @@ func (r *Renderer) value(n Node, keyCommented bool) rendered {
 	// read back.
 	//
 	// A commented key also sends a value written over several lines below it,
-	// whatever kind of node stands at the top of them. fitsOnKeyLine says yes to
-	// an anchor and a tag, since they carry their own value and decide their own
-	// shape -- but the comment claims the rest of the key's line, so what
+	// whatever kind of node stands at the top of them. fitsOnKeyLine returns
+	// true for an anchor and a tag, since they carry their own value and set
+	// their own shape -- but the comment takes the rest of the key's line, so what
 	// follows cannot start there. Kept on it, the comment was pushed past the
 	// whole value and came back on the last line of it: "k: # c1" over "&a2"
 	// over "- 1" rendered as "k: &a2" over "- 1 # c1", and where the last entry
@@ -819,13 +819,13 @@ func (r *Renderer) entry(n Node) rendered {
 	}
 
 	if piece.leads {
-		// A blank line ends the marker's line, so what follows no longer stands
+		// A blank line ends the marker's line, so what follows does not stand
 		// after the marker: it opens a line of its own and takes the
 		// indentation every other line under the marker takes. Written as a
-		// hanging indent it landed in column one, outside the key it belongs
-		// to -- "?" over a blank line over a mapping came back as two entries
-		// of the document rather than one key, and the rendered text no longer
-		// read as the document that was parsed.
+		// hanging indent it would land in column one, outside the key it
+		// belongs to -- "?" over a blank line over a mapping would come back as
+		// two entries of the document instead of one key, and the rendered text
+		// would not read as the document that was parsed.
 		return join(sepNone, leaf("\n"), piece.withoutLead().indentedBy(r.indent))
 	}
 
@@ -905,8 +905,8 @@ func (r *Renderer) sequence(n *SequenceNode) rendered {
 			// its header states counts from the sequence, as Renderer.lifted
 			// has it.
 			//
-			// fitsOnKeyLine says yes to an anchor and a tag, which carry their
-			// own value and decide their own shape, so a property standing on a
+			// fitsOnKeyLine returns true for an anchor and a tag, which carry
+			// their own value and set their own shape, so a property standing on a
 			// block kept the dash's line and the comment was written after the
 			// whole entry -- on the last line of it. "- # c" over "&a2" over a
 			// mapping holding a folded scalar came back with the comment inside
@@ -937,8 +937,8 @@ func (r *Renderer) sequence(n *SequenceNode) rendered {
 // entryGap returns the blank line the author left above entry i of n, value,
 // where no head comment is rendered to carry it.
 func (r *Renderer) entryGap(n *SequenceNode, i int, value Node, head *CommentGroupNode) string {
-	// A head comment the caller removed still says where the author left a
-	// gap, and it is the only thing that does: the entry's own token stands
+	// A head comment the caller removed still records where the author left
+	// a gap, and nothing else records it: the entry's own token stands
 	// under the comment, not under the blank line.
 	if r.comments && head != nil {
 		if blank := blankAboveComment(head); blank != "" {
@@ -969,8 +969,8 @@ func headOf(n *SequenceNode, i int) *CommentGroupNode {
 // blankAboveComment returns the blank line an author left above a comment group,
 // reading the group's first comment whether or not it is still written.
 //
-// CommentGroupNode.GetToken answers for the comments still written, which is
-// what a renderer wants everywhere else. Here the group has been emptied by
+// CommentGroupNode.GetToken reads only the comments still written, which every
+// other renderer path needs. Here the group has been emptied by
 // [CommentNode.Remove] and the gap the author left above it is still the
 // document's: "- a" over a blank over "# head" over "- b" keeps its blank line
 // when the comment goes.
@@ -1000,10 +1000,10 @@ func entryBlankLine(n *SequenceNode, i int) string {
 
 // entryLineComment returns the comment written on the entry's own line.
 //
-// It is recorded on the entry rather than on its value, because an entry whose
+// It is recorded on the entry instead of on its value, because an entry whose
 // value is written below it -- or is not written at all -- has nothing on that
-// line to carry it. Reading the entries is the only way to find it, and not
-// reading them is how such a comment used to be dropped.
+// line to carry it. Only the entries hold it, so a renderer that does not read
+// them drops the comment.
 func (r *Renderer) entryLineComment(n *SequenceNode, i int) string {
 	if !r.comments || i >= len(n.Entries) || n.Entries[i] == nil {
 		return ""
@@ -1024,8 +1024,8 @@ func (r *Renderer) anchor(n *AnchorNode) string {
 	// A comment written beside an anchor is hung on the name, and rendering the
 	// name with it wrote the comment into the marker: "&a # beside" over "  q"
 	// became "&a # beside q", so the value stood inside the comment and the
-	// document read back as null. The tag below never had this, its comment
-	// reaching it through the value rather than through a name.
+	// document read back as null. The tag below never had this: its comment
+	// reaches it through the value, not through a name.
 	own := firstComment(n.Comment, n.Name.GetComment())
 
 	return r.withOwnComment(own, r.prefixed("&"+r.bare().text(n.Name), n.Value, own))
@@ -1106,7 +1106,7 @@ func (r *Renderer) withOwnComment(comment *CommentGroupNode, text string) string
 // prefixed renders a node introduced by a marker -- an anchor name or a tag --
 // which sits on its own line when what follows is a block.
 // own is the comment withOwnComment will put back at the end of the marker's
-// line, which decides whether the value may share that line.
+// line, and controls whether the value may share that line.
 func (r *Renderer) prefixed(marker string, value Node, own *CommentGroupNode) string {
 	return r.prefixedAt(marker, value, own, 0)
 }
@@ -1380,10 +1380,10 @@ func (r *Renderer) literalAt(n *LiteralNode, lift int) string {
 	header := n.Start.Value
 
 	// The content is written at the renderer's own width, so a header that
-	// states a width has to say that one: "a: |1" over "  x" comes back as
-	// "a: |2" over "   x", holding the same " x". Carrying the source's digit
-	// over left it describing a layout that is no longer there, and the value
-	// gained a column on every cycle. [Renderer.VerbatimFile] keeps the digit
+	// states a width must state the renderer's: "a: |1" over "  x" comes back
+	// as "a: |2" over "   x", holding the same " x". Carrying the source's
+	// digit over would leave it describing a layout that is gone, and the value
+	// would gain a column on every cycle. [Renderer.VerbatimFile] keeps the digit
 	// the document wrote.
 	if statedIndent(header) > 0 {
 		header = restateIndent(header, r.indent+lift)
@@ -1401,7 +1401,7 @@ func (r *Renderer) literalAt(n *LiteralNode, lift int) string {
 		//
 		// '+' comes off: it keeps every trailing break, and the break that ends
 		// the header line is one. A document written with a final line break --
-		// every document is -- would read "|+" back as "\n" rather than as the
+		// every document is -- would read "|+" back as "\n" instead of as the
 		// empty value written here. Clipping an empty value leaves it empty, so
 		// dropping the indicator keeps the value and gains a document that
 		// survives being read back.
@@ -1417,12 +1417,11 @@ func (r *Renderer) literalAt(n *LiteralNode, lift int) string {
 		return header + r.foldedFromSource(n, indent)
 	}
 
-	// A literal scalar's value is its content exactly, and the header says how
+	// A literal scalar's value is its content exactly, and the header sets how
 	// to write it: each line indented and closed by a break, with the last
 	// break left to whatever follows the node. The chomping indicator needs no
-	// arithmetic here -- it is what decided how many trailing breaks the value
-	// has, and writing them all back is what makes "|+" keep the blank lines it
-	// exists for.
+	// arithmetic here: it already set how many trailing breaks the value has,
+	// and writing them all back keeps the blank lines of "|+".
 	lbc := lineBreakOf(value)
 	body := blockScalarBody(value, indent, lbc)
 
@@ -1445,22 +1444,21 @@ func isFolded(tk *token.Token) bool {
 // header states a width and every content line starts with spaces of its own,
 // and those spaces are part of the value.
 //
-// The blank lines the source ends on are not read back from it. They are what
-// the chomping indicator decides, and the value is where that decision has
-// already been made: the source ends the same way whether the header says ">",
-// ">-" or ">+", so writing its tail back would keep blank lines for the two
+// The blank lines the source ends on are not read back from it. The chomping
+// indicator sets them, and the value already holds its result: the source ends
+// the same way whether the header reads ">", ">-" or ">+", so writing its tail back would keep blank lines for the two
 // styles that discard them.
 func (r *Renderer) foldedFromSource(n *LiteralNode, indent int) string {
 	value := n.Value.Value
 	origin := n.Source
 
-	// srcBreak is how the source wrote a line break, and is what the origin has
-	// to be read with. It is not what is written back: the renderer writes "\n"
-	// whatever the document used, as it does everywhere else. Copying the
-	// source's break here left a CRLF document rendering to a mixture of both,
-	// so it never settled; with a lone CR the content lines drifted a column
-	// right, a fold stopped folding, and in a nested position the result was
-	// not a block scalar at all.
+	// srcBreak holds the line break the source wrote, and foldedFromSource
+	// reads the origin with it. The renderer does not write it back: it writes
+	// "\n" whatever the document used, as it does everywhere else. Copying the
+	// source's break here would render a CRLF document to a mixture of both,
+	// so it would never settle; with a lone CR the content lines would drift a
+	// column right, a fold would stop folding, and in a nested position the
+	// result would not be a block scalar at all.
 	srcBreak := lineBreakOf(origin)
 
 	var content string
@@ -1481,7 +1479,7 @@ func (r *Renderer) foldedFromSource(n *LiteralNode, indent int) string {
 	blanks := trailingBreaks(value, lineBreakOf(value))
 	if content != "" {
 		// One of the value's trailing breaks ends its last line of content
-		// rather than standing for a blank line of its own.
+		// instead of standing for a blank line of its own.
 		blanks--
 	}
 
@@ -1556,7 +1554,7 @@ func blockScalarBody(value string, indent int, lbc string) string {
 // lineBreakOf returns the line break a scalar's content is written with.
 //
 // A value holding no break at all is written with the ordinary one:
-// token.DetectLineBreakCharacter answers "\r\n" for that case, which is right
+// token.DetectLineBreakCharacter returns "\r\n" for that case, which is right
 // for deciding what a file uses and wrong for deciding what to write here.
 func lineBreakOf(value string) string {
 	if !strings.ContainsAny(value, "\r\n") {
@@ -1566,7 +1564,7 @@ func lineBreakOf(value string) string {
 	return token.DetectLineBreakCharacter(value)
 }
 
-// statedIndent returns the indentation a block scalar header asks for, or 0
+// statedIndent returns the indentation a block scalar header states, or 0
 // when it leaves the width to be inferred from the content.
 func statedIndent(header string) int {
 	for _, c := range header {
@@ -1618,9 +1616,9 @@ func (r *Renderer) stringNode(n *StringNode) string {
 		return n.plainString()
 	}
 
-	// One trailing break belongs to the block structure rather than to the
-	// content: it is the break that ends the last line. The header says what to
-	// do with the rest -- "|" clips them, "|-" strips them, "|+" keeps them.
+	// One trailing break belongs to the block structure, not to the content:
+	// it is the break that ends the last line. The header sets what happens to
+	// the rest -- "|" clips them, "|-" strips them, "|+" keeps them.
 	lbc := lineBreakOf(n.Value)
 	content := strings.TrimSuffix(n.Value, lbc)
 
@@ -1666,11 +1664,12 @@ func carriesOwnIndent(n Node) bool {
 	}
 }
 
-// directive renders a directive and the comment lines that followed it.
+// directive renders a directive and its comment lines, on the side of the
+// directive where the document wrote them.
 //
-// Those sit between the directive and the '---' below, which is where they were
-// written and the only place they can go: a directive is one line, so there is
-// nothing to append them to.
+// Comments written after the directive go between it and the '---' below: a
+// directive is one line, so there is nothing to append them to. Comments written
+// above it, by their line number, go above it.
 func (r *Renderer) directive(n *DirectiveNode) string {
 	if !r.comments || n.Comment.Blank() {
 		return n.String()
@@ -1679,7 +1678,7 @@ func (r *Renderer) directive(n *DirectiveNode) string {
 	comment := r.text(n.Comment)
 	if commentTk := n.Comment.GetToken(); commentTk != nil && commentTk.Position.Line != 0 &&
 		n.Start != nil && commentTk.Position.Line < n.Start.Position.Line {
-		// Written above the directive rather than below it.
+		// Written above the directive, not below it.
 		return comment + "\n" + n.String()
 	}
 
@@ -1735,7 +1734,7 @@ type flowComments struct {
 }
 
 // flowCarriesComments reports whether anything in a flow collection has a
-// comment on it, which is what stops it fitting on one line.
+// comment on it. A comment keeps the collection from fitting on one line.
 func (r *Renderer) flowCarriesComments(values []Node, comments flowComments) bool {
 	if !r.comments {
 		return false

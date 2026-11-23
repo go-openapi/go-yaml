@@ -16,14 +16,15 @@ import (
 // that string by splitting it into lines again, copies every byte once per level
 // of nesting it sits under. A document nested d deep cost O(bytes x d), which
 // for a nested document is the square of its length: 1.6 MB rendered in 0.98 s
-// and allocated 2.9 GB. Holding the pieces and writing them once costs the
-// output, and indenting a subtree is a number rather than a pass over its text.
+// and allocated 2.9 GB. rendered holds the pieces and writes them once, at a
+// cost linear in the output, and indents a subtree by setting a number instead
+// of passing over its text.
 //
-// spans and leads are what the layout decisions used to ask the finished string:
-// whether a value renders over more than one line, and whether it opens with a
-// line break. They are kept as pieces are put together, so the question is
-// answered before anything is written rather than after. rendered_test.go
-// holds both against the text the piece flattens to.
+// spans and leads record whether a value renders over more than one line and
+// whether it opens with a line break. The layout decisions read both. join sets
+// them as it puts pieces together, so a layout decision reads them before
+// anything is written, without flattening a finished string. rendered_test.go
+// checks both against the text the piece flattens to.
 type rendered struct {
 	// text is a leaf's own text. It is empty for a piece holding parts.
 	text string
@@ -34,23 +35,23 @@ type rendered struct {
 	// indent is added to every line of this piece that has content. A blank
 	// line takes none, so nothing gains trailing spaces.
 	indent int32
-	// hanging says the first line of this piece takes no indentation, wherever
-	// it falls. A sequence entry and a "?" key are written after a marker that
+	// hanging marks a piece whose first line takes no indentation, wherever it
+	// falls. A sequence entry and a "?" key are written after a marker that
 	// already holds their first line, and the marker's own line break is not
 	// theirs to indent under.
 	hanging bool
-	// size is what this piece flattens to, indentation excluded, so that an
+	// size counts the bytes this piece flattens to, indentation excluded, so that an
 	// empty piece can be told from one holding a line break.
 	size int32
-	// spans says the piece covers more than one line, leads that it opens on a
-	// line break.
+	// spans records that the piece covers more than one line, and leads that it
+	// opens on a line break.
 	spans bool
 	leads bool
 }
 
-// sepKind is what goes between the parts of a join. The renderer uses three
-// separators and nothing else, so one byte says which rather than the sixteen a
-// string header costs on every piece.
+// sepKind names the separator between the parts of a join. The renderer uses
+// three separators and nothing else, so one byte selects the separator, instead
+// of the sixteen bytes a string header costs on every piece.
 type sepKind uint8
 
 const (
@@ -90,7 +91,7 @@ func join(sep sepKind, parts ...rendered) rendered {
 
 	if sep == sepNone {
 		// Nothing separates the parts, so a part that writes nothing changes
-		// nothing. Dropping them here is most of what a piece holds: a plain
+		// nothing. Dropping them here removes most of the parts: a plain
 		// "k: v" entry is built from seven parts and four of them are the
 		// comments and the blank line it does not have.
 		parts = withoutEmpty(parts)
@@ -122,8 +123,9 @@ func join(sep sepKind, parts ...rendered) rendered {
 // they all do.
 func withoutEmpty(parts []rendered) []rendered {
 	// Filtered in place: parts is the variadic slice, which belongs to this
-	// call and nothing else holds. Building a second one traded a wide slice
-	// for a narrow slice and an allocation, which is worse than the width.
+	// call and nothing else holds. A second slice would trade a wide slice
+	// for a narrow one plus an allocation, and the allocation costs more than
+	// the width.
 	out := parts[:0]
 	for _, part := range parts {
 		if part.size > 0 {
@@ -150,8 +152,8 @@ func (p rendered) shifted(spaces int, hanging bool) rendered {
 	if spaces <= 0 || p.size == 0 {
 		return p
 	}
-	// Wrapped rather than added to, so that a piece already carrying an indent
-	// keeps it and the two accumulate as the write descends.
+	// shifted wraps p instead of adding to p.indent, so that a piece already
+	// carrying an indent keeps it and the two accumulate as the write descends.
 	return rendered{
 		parts:   []rendered{p},
 		indent:  int32(spaces),
@@ -165,7 +167,7 @@ func (p rendered) shifted(spaces int, hanging bool) rendered {
 // withoutLead returns the piece without the line break it opens with.
 //
 // A blank line an author left above an entry surfaces as a leading break on the
-// entry's own text, and a sequence writes it above the "-" rather than after it.
+// entry's own text, and a sequence writes it above the "-" instead of after it.
 // Taking it off is a structural cut where it can be -- the piece holding the
 // break is found and only that one is rebuilt -- and a flatten where the break
 // is a separator between two pieces, which a mapping and a sequence never
@@ -214,7 +216,7 @@ func (p rendered) string() string {
 	return b.String()
 }
 
-// writeTo writes the piece, putting indent in after each line break rather than
+// writeTo writes the piece, putting indent in after each line break instead of
 // splitting a finished block into lines.
 func (p rendered) writeTo(w *lineWriter, indent int) {
 	indent += int(p.indent)
@@ -239,12 +241,13 @@ func (p rendered) writeTo(w *lineWriter, indent int) {
 // lineWriter writes text with an indentation that is put in lazily, at the
 // first character of a line that has content.
 //
-// Lazily is what makes it match indentLines, which pads every line it is given
+// The lazy indent makes it match indentLines, which pads every line it is given
 // except the empty ones: a blank line gains no trailing spaces, and a piece
 // written after "- " keeps its first line where the marker left it.
 type lineWriter struct {
 	w io.Writer
-	// atLineStart says a line break was written and nothing has followed it.
+	// atLineStart reports whether a line break was written and nothing has
+	// followed it.
 	atLineStart bool
 	err         error
 }

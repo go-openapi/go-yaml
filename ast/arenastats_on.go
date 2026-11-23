@@ -23,7 +23,7 @@ type TypeStats struct {
 	Nodes int
 	// Blocks is how many allocations covered them.
 	Blocks int
-	// Bytes is what those allocations cover, handed out or not.
+	// Bytes counts the bytes those allocations cover, handed out or not.
 	Bytes int
 	// Unused is the part of Bytes still standing in the block being handed out
 	// of -- the price of the last allocation being sized for more than the
@@ -33,8 +33,8 @@ type TypeStats struct {
 
 // ArenaStats records what an arena handed out, by node type and in total.
 //
-// The figures are counted as the nodes are handed out rather than read back off
-// a heap profile: exact, attributed to the node type rather than to a generic
+// The figures are counted as the nodes are handed out instead of read back off
+// a heap profile: exact, attributed to the node type and not to a generic
 // instantiation, and available from the parse that produced them. Read them
 // with [Arena.Stats].
 type ArenaStats struct {
@@ -49,9 +49,9 @@ type ArenaStats struct {
 
 // Stats reports what this arena has handed out.
 //
-// A parse asks for a node at a time and the arena answers from blocks, so what
-// a tree costs is the blocks and not the nodes: Bytes counts what was allocated
-// and Nodes counts what was asked for. The two differ by Unused, the tail of
+// A parse takes a node at a time and the arena hands it out from blocks, so a
+// tree costs the blocks and not the nodes: Bytes counts what was allocated and
+// Nodes counts the nodes handed out. The two differ by Unused, the tail of
 // each type's last block.
 func (a *Arena) Stats() ArenaStats {
 	rows := []TypeStats{

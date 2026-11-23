@@ -8,7 +8,7 @@ import (
 	"strings"
 )
 
-// pathKind tells what one step of a [PathNode] addresses.
+// pathKind records what one step of a [PathNode] addresses.
 type pathKind uint8
 
 const (

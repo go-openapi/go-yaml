@@ -12,12 +12,12 @@ import (
 // KeyName is the name a mapping key is identified by, and the type it resolved
 // to.
 //
-// ⚠️ It answers "is this the same key?", not "how is this key written". Two keys
+// ⚠️ It checks "is this the same key?", not "how is this key written". Two keys
 // with one name are one key, and 3.2.1.1 makes that an error. Nothing here
 // renders a document: for the characters a key is written with, call the node's
 // String, or build a [Renderer] with [NewRenderer].
 //
-// Three callers read it, and two of the three want a different form:
+// Three callers read it, and two of the three read a different form:
 //
 //   - the parser's duplicate check compares keys, so it reads [ComparedKeyName],
 //     which folds this name through [CanonicalKeyName]. The two differ only for
@@ -29,28 +29,28 @@ import (
 //
 // [token.KeyName] holds the rule for a scalar's own spelling -- "7" and "007"
 // are one integer written two ways, "1" and "1.0" are an integer and a float --
-// and says why it sits in token rather than in any one caller. This is the
+// and documents why it sits in token instead of in any one caller. This is the
 // other half: the walk from the node a document wrote down to the scalar that
 // rule applies to.
 //
 // It looks through everything that stands in front of a key without being the
-// key. An explicit "?" and an anchor name the node and say nothing about its
-// type. A tag says what the type is, so it is resolved rather than stripped:
+// key. An explicit "?" and an anchor name the node and carry no type. A tag
+// sets the type, so KeyName resolves it instead of stripping it:
 // "!!float 1" is the float 1.0 and is named "1.0", where stripping the tag
 // would read the token "1" and name it after an integer. A block scalar is a
 // string whatever it spells, and its own token is the "|-" header.
 //
-// The empty string under [token.KeyOther] means no name, which a caller has to
-// answer for itself:
+// The empty string under [token.KeyOther] means no name, and the caller has to
+// handle it itself:
 //
 //   - a sequence or a mapping, which has no scalar spelling at all. Compare
 //     those with [KeyIdentity].
 //
 // An alias is named as the node its anchor named, through [AliasNode.Target].
 //
-// Those three named a key from a node separately before this, and only codec
-// left out the tag and the alias, so "!!float 1.0: x" came back keyed "1" -- a
-// float in the integers' namespace, where an entry keyed "1" then displaces it.
+// The three callers share this walk so that none of them drops a step: a codec
+// that leaves out the tag and the alias keys "!!float 1.0: x" as "1" -- a float
+// in the integers' namespace, where an entry keyed "1" then displaces it.
 func KeyName(n Node) (string, token.KeyKind) {
 	name, kind, named := ScalarKeyName(n, aliasTarget)
 	if !named {
@@ -63,11 +63,11 @@ func KeyName(n Node) (string, token.KeyKind) {
 // aliasTarget names an alias as the node its anchor named (3.2.2.2), through
 // [AliasNode.Target]. Reading Target is safe on a walk as well as on a tree
 // since ast.Arena.Commit holds an anchored node's cells for the document;
-// before that it read another part of the document.
+// without that hold, Target would read another part of the document.
 //
-// A scalar answers in constant time and a collection hands back nothing, so
-// this cannot expand the way an identity does -- there is no structure to write
-// out, only a name. The target is named with no alias rule of its own: an
+// A scalar target is named in constant time and a collection target returns
+// nothing, so this cannot expand the way an identity does -- there is no
+// structure to write out, only a name. The target is named with no alias rule of its own: an
 // anchored node is never an alias.
 func aliasTarget(a *AliasNode) (string, token.KeyKind, bool) {
 	return scalarKeyNameAt(a.Target, 1, nil)
@@ -75,20 +75,20 @@ func aliasTarget(a *AliasNode) (string, token.KeyKind, bool) {
 
 // KeyAlias names the key an alias stands for, and reports false where it cannot.
 //
-// Each reader of a key answers an alias its own way: [KeyName] through
+// Each reader of a key resolves an alias its own way: [KeyName] through
 // [AliasNode.Target], the parser through the identities its anchors recorded,
 // which a walk still holds once the anchored node is gone.
 type KeyAlias func(*AliasNode) (string, token.KeyKind, bool)
 
 // ScalarKeyName names the scalar a mapping key stands for, and its type. It is
 // the one walk from a key node to its name: [KeyName], [KeyIdentity] and the
-// parser's duplicate check all read it, so a rule for one kind of key reaches
-// all three.
+// parser's duplicate check all read it, so a rule for one kind of key applies
+// to all three.
 //
 // It names a key to tell it from another, not to write it out. See [KeyName].
 //
 // It looks through an explicit "?", an anchor and a tag that names no type. A
-// tag that names one says what the key is, through [TaggedKeyName]. A quoted
+// tag that names one sets the key's type, through [TaggedKeyName]. A quoted
 // key is named by what its escapes resolved to, a block scalar by its string
 // and not its "|-" header, and an alias by alias, which may be nil.
 //
@@ -210,8 +210,8 @@ func TaggedKeyName(n *TagNode) (string, token.KeyKind, bool) {
 		return stamp.Format(time.RFC3339Nano), token.KeyTimestamp, true
 	case token.BinaryTag:
 		// A type of its own, so "!!binary AA==" and the string "AA==" are two
-		// keys. Read as its node, it was the string and the pair was refused
-		// as a repeat, while the decoder held a Base64 and a string apart.
+		// keys. Read as its node, it would be the string and the pair a
+		// repeat, while the decoder holds a Base64 and a string apart.
 		return token.CanonicalBase64(res.Text), token.KeyBinary, true
 	default:
 		return "", token.KeyOther, false

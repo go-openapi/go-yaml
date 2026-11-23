@@ -23,19 +23,19 @@ import (
 type Written struct {
 	// Text is the stretch about to be written.
 	Text []byte
-	// Node is what the renderer is writing, or nil for the source standing
+	// Node is the node the renderer is writing, or nil for the source standing
 	// between two nodes: the indentation, a flow collection's commas, a "---".
 	Node Node
 	// Token is the token Text was cut from, and nil where Text is not a token:
 	// the space before one, or text the renderer laid out for a node the source
 	// does not reach.
 	Token *token.Token
-	// FromSource says Text is the document's own bytes. It is false for a node
-	// a caller inserted, which the renderer lays out.
+	// FromSource is true when Text is the document's own bytes. It is false for
+	// a node a caller inserted, which the renderer lays out.
 	FromSource bool
-	// Key says the stretch stands inside a mapping's key rather than its value.
-	// A key and its value are two halves of one entry and nothing about the
-	// node says which is which, so the renderer says.
+	// Key is true when the stretch stands inside a mapping's key, not its value.
+	// A key and its value are two halves of one entry and no field of the node
+	// marks which is which, so the renderer sets Key.
 	Key bool
 }
 
@@ -43,7 +43,7 @@ type Written struct {
 //
 // A token's text runs to where the next one starts, so a token the scanner read
 // past carries what followed it. A transform that wraps text -- a colorizer, a
-// marker -- wants the token and not the gap after it, or the wrapping runs to
+// marker -- must wrap the token and not the gap after it, or the wrapping runs to
 // the end of the line and past the break.
 //
 // ⚠️ A block scalar's body ends in the line break the document wrote, and this
@@ -70,26 +70,26 @@ func (s Written) Filler() []byte {
 
 // TransformFunc writes one stretch of a rendering.
 //
-// Writing s.Text is what the renderer would have done. Writing anything else is
-// the transform: [github.com/go-openapi/go-yaml/transform/colorize] wraps the
-// text of a node in escapes and passes everything else through.
+// A function that writes s.Text unchanged gives the plain rendering. Writing
+// anything else transforms it: [github.com/go-openapi/go-yaml/transform/colorize]
+// wraps the text of a node in escapes and passes everything else through.
 type TransformFunc func(w io.Writer, s Written) error
 
 // WithTransform hands each stretch of a rendering to fn instead of writing it.
 //
 // ⚠️ It applies to [Renderer.Verbatim] and [Renderer.VerbatimFile]. The
-// depth-driven renderer builds its text before it knows where any of it goes,
-// so there is no stretch to hand over.
+// depth-driven renderer builds its text before it places any of it, so there
+// is no stretch to hand over.
 func WithTransform(fn TransformFunc) RenderOption {
 	return func(r *Renderer) { r.transform = fn }
 }
 
-// WithSource gives a renderer the document a tree was parsed from, which is what
-// [Renderer.Verbatim] writes back out.
+// WithSource gives a renderer the document a tree was parsed from.
+// [Renderer.Verbatim] copies that document back out.
 //
-// Rendering without it lays a tree out by its depth, which is what every other
-// method here does and what an encoder wants. Rendering with it puts a document
-// back the way it was written.
+// Rendering without it lays a tree out by its depth, as every other method here
+// does and as an encoder needs. Rendering with it puts a document back the way it
+// was written.
 func WithSource(src []byte) RenderOption {
 	return func(r *Renderer) { r.src = src }
 }
@@ -242,8 +242,8 @@ type verbatimWriter struct {
 	src []byte
 	// cursor is how far the copy of the source has reached.
 	cursor int
-	// atLineStart says the last byte written was a line break, which is what an
-	// inserted entry needs to know: it opens a line of its own, and the entry
+	// atLineStart is true when the last byte written was a line break. An
+	// inserted entry reads it: the entry opens a line of its own, and the entry
 	// before it may already have ended one.
 	atLineStart bool
 	// keys counts the mapping keys being written, since a key may hold a
@@ -253,8 +253,8 @@ type verbatimWriter struct {
 	// written in flow but stands inside one is a pair of a flow sequence, as in
 	// "[a: b]", and takes an inserted entry the way a flow mapping does.
 	flow int
-	// dropping says a node the caller replaced has been written and the text it
-	// replaced is still ahead of the copy. See take.
+	// dropping is true when a node the caller replaced has been written and the
+	// text it replaced is still ahead of the copy. See take.
 	dropping bool
 	// edits holds the comment edits still ahead of the copy, in the order the
 	// copy reaches them, with the ones already applied dropped from the front.
@@ -269,14 +269,14 @@ type verbatimWriter struct {
 	// line. The descent writes them above that node. See collectEdits.
 	hoisted map[Node][]*CommentNode
 	// roots are the nodes being written, and held the offsets of the comments
-	// they hold. held is built the first time a gap turns out to hold a node the
-	// tree no longer does, which a rendering that removes nothing never reaches.
+	// they hold. held is built at most once, when settleGap reads a gap holding
+	// text a removed node left; a rendering that removes nothing never builds it.
 	// See settleGap.
 	roots []Node
 	held  map[int32]bool
-	// dashes says whether the tree holds a block sequence with no entries
-	// recorded: 1 where it does, -1 where it does not, 0 until asked. See
-	// verbatimWriter.holdsText.
+	// dashes records whether the tree holds a block sequence with no entries
+	// recorded: 1 where it does, -1 where it does not, 0 until untrackedDashes
+	// first runs. See verbatimWriter.holdsText.
 	dashes int8
 	err    error
 }
@@ -306,21 +306,21 @@ func (vw *verbatimWriter) upTo(end int) {
 }
 
 // settleGap leaves out of the copy the lines between the cursor and end that
-// hold a node the tree no longer holds.
+// hold a node taken out of the tree.
 //
-// The copy runs forward to each token the descent hands over, and what stands
+// The copy runs forward to each token the descent hands over, and the source
 // between two of them is layout: spacing, comments, a flow collection's commas.
-// A node taken out of the tree leaves its text there instead, and copying the
-// stretch wrote it back, so a caller removing an entry got the document it
-// started from. The stretch is read line by line:
+// A node taken out of the tree leaves its text there instead. Copying the stretch
+// whole would write it back, and a caller removing an entry would get the
+// document it started from. settleGap reads the stretch line by line:
 //
 //   - the rest of the line the copy stands on loses the text after the last
 //     token written, and keeps its line break;
-//   - a line holding text goes, and so does a line holding only a comment the
-//     tree no longer holds -- the one above a removed entry;
+//   - a line holding text goes, and so does a line holding only a comment no
+//     node in the tree holds -- the one above a removed entry;
 //   - a blank line goes when the line before it went, so that a gap the author
 //     left above the next entry stays and the removed entry's own does not;
-//   - what stands in front of end on its line is the indentation of the token
+//   - the text in front of end on its line is the indentation of the token
 //     about to be written, and stays.
 //
 // A stretch with no line break in it holds a node taken from inside a line --
@@ -392,12 +392,12 @@ LOOP:
 // tree put it after something the document wrote below it, or holds it a second
 // time.
 //
-// The copy only runs forward, and without this the node was passed over without
-// a word, so swapping two entries wrote the document as it was. A node standing
-// partly behind is not a move: an inserted flow entry leaves the copy on the next
-// key, past the comma that entry opens with, and an entry whose value the tree
-// also holds elsewhere has its key still ahead, the value being refused where
-// writeInPlaceOf reaches it.
+// The copy only runs forward. Without this check the copy would pass over the
+// node silently, and swapping two entries would write the document unchanged.
+// A node standing partly behind is not a move: an inserted flow entry leaves the
+// copy on the next key, past the comma that entry opens with, and an entry whose
+// value the tree also holds elsewhere has its key still ahead. refuseMoved
+// rejects that value when writeInPlaceOf reaches it.
 func (vw *verbatimWriter) refuseMoved(n Node, span extent) {
 	if vw.err != nil || int(span.to) > vw.cursor {
 		return
@@ -451,8 +451,8 @@ func holdsText(src []byte, from, to int) bool {
 // A tree that records no "-" for the entries of a block sequence -- a parse
 // without parser.WithComments builds no SequenceNode.Entries -- hands none over,
 // and the copy writes each as the layout in front of its value. Read as text a
-// removed entry left behind, "- a" at the start of a document was refused with
-// ErrRemove, and "-" over "  x" lost its dash and read back as "x". There a "-"
+// removed entry left behind, "- a" at the start of a document would fail with
+// ErrRemove, and "-" over "  x" would lose its dash and read back as "x". There a "-"
 // followed by a blank, a break or the end is layout too; a removed entry's value
 // is still text, and its line still goes.
 func (vw *verbatimWriter) holdsText(from, to int) bool {
@@ -463,15 +463,15 @@ func (vw *verbatimWriter) holdsText(from, to int) bool {
 	return textIn(vw.src, from, to, vw.untrackedDashes())
 }
 
-// holdsNodeText reports whether src[from:to] holds text a removed node left,
-// which is what makes settleGap read the stretch at all.
+// holdsNodeText reports whether src[from:to] holds text a removed node left.
+// settleGap reads the stretch only when it does.
 //
 // A "..." opening its line is no node's text: it closes a document, and one the
 // tree holds no node for -- after a comment in a stream holding nothing else,
 // or closing a document with no content -- is layout. Taken for a removed
-// node's, it sent settleGap through a stretch no caller touched, and a parse
-// without parser.WithComments, whose tree holds no comment, lost "# comment"
-// over "..." whole. A removed document still leaves text of its own.
+// node's text, it would send settleGap through a stretch no caller touched, and
+// a parse without parser.WithComments, whose tree holds no comment, would lose
+// "# comment" over "..." whole. A removed document still leaves text of its own.
 func (vw *verbatimWriter) holdsNodeText(from, to int) bool {
 	for at := from; at < to; {
 		end := to
@@ -599,10 +599,10 @@ func (vw *verbatimWriter) flushEdits() {
 //
 // A comment goes above its node only where the descent hands that node over, and
 // the descent does not reach every node it holds: a flow sequence's entries, a
-// document's own body wrapper. Rather than let those go without a word -- which
-// is how four misplacements went unnoticed until they were looked for -- the
-// rendering says so. Fred's ruling of 2026-09-10: an edit the renderer cannot
-// carry out is an error, never a silent drop.
+// document's own body wrapper. For those, refuseUnwritten returns an error
+// instead of dropping the comment: silent drops hid four misplacements until
+// they were looked for. An edit the renderer cannot carry out is an error, never
+// a silent drop.
 func (vw *verbatimWriter) refuseUnwritten() {
 	if vw.err != nil {
 		return
@@ -622,10 +622,10 @@ func (vw *verbatimWriter) refuseUnwritten() {
 // applyEdits writes out every comment edit standing between the copy and end.
 //
 // A comment may stand anywhere inside a node -- between an explicit key and its
-// ":", inside a flow collection, beside an anchor's name -- so there is no point
-// in the descent where the node holding it could be asked. The copy passes over
-// every byte of the document in order, so it asks instead, and an edit is
-// applied exactly where the comment stands.
+// ":", inside a flow collection, beside an anchor's name -- so the descent has no
+// single point at which to check the node holding it. The copy passes over every
+// byte of the document in order, so the copy applies each edit when it reaches
+// the edit's offset, exactly where the comment stands.
 func (vw *verbatimWriter) applyEdits(end int) {
 	for len(vw.edits) > 0 && vw.err == nil {
 		pending := vw.edits[0]
@@ -661,8 +661,8 @@ func (vw *verbatimWriter) applyEdits(end int) {
 // the caller replaced left behind.
 //
 // A replaced node's text is still in the document and still in front of the
-// copy, and nothing in the tree says where it ended -- the node that knew is
-// gone. What is known is that it ran to the last thing before the next token
+// copy, and nothing in the tree records where it ended: the replaced node is
+// gone from the tree. The text does run to the last thing before the next token
 // the descent hands over, so the copy drops everything up to the spacing that
 // closes it: the line break before the next entry, the spaces before a comment
 // beside it.
@@ -677,13 +677,14 @@ func (vw *verbatimWriter) take(end int) []byte {
 	return text[endOfReplaced(text):]
 }
 
-// endOfReplaced is where the text a replaced node left behind stops, inside the
-// stretch standing between the copy and the next token the descent hands over.
+// endOfReplaced returns the offset where the text a replaced node left behind
+// stops, inside the stretch between the copy and the next token the descent
+// hands over.
 //
-// Everything up to the spacing that closes the stretch: the node's text, and the
-// lines under it where it was a block. What stays is the break before the next
-// entry, or the spaces before a comment beside it -- the comment itself is a
-// token the descent hands over, so the stretch stops in front of it.
+// Everything up to the spacing that closes the stretch goes: the node's text, and
+// the lines under it where it was a block. The break before the next entry stays,
+// or the spaces before a comment beside it -- the comment itself is a token the
+// descent hands over, so the stretch stops in front of it.
 func endOfReplaced(text []byte) int {
 	end := len(text)
 	for end > 0 && isSpacing(text[end-1]) {
@@ -710,8 +711,9 @@ func isSpacing(c byte) bool {
 // upToToken writes the source as far as tk, handing the space in front of it
 // over separately from the token's own text.
 //
-// A caller coloring a document wants the two apart: the indentation before a
-// token is not the token, and wrapping it would paint the start of the line.
+// Handing them over apart lets a caller coloring a document leave the
+// indentation unwrapped: the indentation before a token is not the token, and
+// wrapping it would paint the start of the line.
 func (vw *verbatimWriter) upToToken(tk *token.Token, n Node) {
 	if vw.err != nil || tk == nil {
 		return
@@ -731,13 +733,15 @@ func (vw *verbatimWriter) upToToken(tk *token.Token, n Node) {
 
 // skipComment takes a comment out of the copy, having written the source in
 // front of it. A comment token runs from its "#" through the line break that
-// ends it, which is what makes the two cases below a matter of where it starts.
+// ends it, so the cases below differ in where the cut starts and whether the
+// break goes with it.
 //
-// whole says the comment goes away rather than being written over. What goes
-// with the "#" then depends on where it stands: a comment alone on its line owns
-// that line, and leaving the indentation and the break behind would put a blank
-// line where the comment was; one closing a line of content owns the spacing in
-// front of it and nothing else, the break belonging to the content's line.
+// whole is true when the comment is removed, false when it is written over. A
+// removed comment takes more than its "#", by where it stands. A comment alone
+// on its line owns that line, and leaving the indentation and the break behind
+// would put a blank line where the comment was. One closing a line of content
+// owns the spacing in front of it and nothing else: the break belongs to the
+// content's line.
 //
 // Written over, only the "#" and its words go: the replacement stands where they
 // stood, on the same line, at the same column.
@@ -911,14 +915,14 @@ func (vw *verbatimWriter) removalAt(end int) bool {
 	return !next.add && next.comment.edit == commentRemoved && int(next.at) == end
 }
 
-// tokenEnd is where tk's text ends, less the spacing it carries after it in
-// front of a comment being removed or added.
+// tokenEnd returns the offset where tk's text ends, less the spacing it carries
+// after it in front of a comment being removed or added.
 //
 // A token's text runs to where the next one starts, so the spacing between two
 // tokens belongs to the first. Copied with it, it is already written by the time
-// a comment edit can decide otherwise: removing the comment of "a: 1 # old" left
+// a comment edit applies: removing the comment of "a: 1 # old" would leave
 // "a: 1 " with the space it stood behind, and adding one to "a: 1" over "b: 2"
-// put it after the line break. Held back, the spacing is copied by the next
+// would put it after the line break. Held back, the spacing is copied by the next
 // stretch as the gap it is.
 //
 // Only while an edit is pending. The cursor stands one place further on either
@@ -928,9 +932,9 @@ func (vw *verbatimWriter) removalAt(end int) bool {
 //
 // Spacing that runs onto the next line is held back as well. It ends in that
 // line's indentation, and where a caller removed the node the line held, the
-// indentation was already written by the time settleGap could leave the line
-// out: "r:" over "  a: 1" over "  b: 2" with b taken out came back as "r:" over
-// "  a: 1" over "  ".
+// indentation would already be written by the time settleGap leaves the line
+// out: "r:" over "  a: 1" over "  b: 2" with b taken out would come back as
+// "r:" over "  a: 1" over "  ".
 func (vw *verbatimWriter) tokenEnd(tk *token.Token) int {
 	end := min(int(tk.EndOffset()), len(vw.src))
 	start := min(max(int(tk.Position.Offset()), 0), end)
@@ -995,8 +999,8 @@ func (vw *verbatimWriter) raw(text string) {
 //
 // An entry written as "- a: 1" opens after a sequence indicator, so the text in
 // front of it is "- " and copying that would make the new entry an element of
-// the sequence rather than a key beside "a". The column is what matters, so
-// anything that is not a space becomes one.
+// the sequence instead of a key beside "a". Only the column counts, so anything
+// that is not a space becomes one.
 func asIndent(lead string) string {
 	return strings.Map(func(r rune) rune {
 		if r == ' ' || r == '\t' {
@@ -1085,7 +1089,7 @@ func afterBreak(src []byte, i int) int {
 //
 // It is the characters between the last line break and from, so a document
 // written with tabs gets tabs back and one indented three spaces gets three.
-// A layout computed from depth knows none of that.
+// The depth renderer counts spaces from the tree's depth instead.
 func (vw *verbatimWriter) indentAt(from int32) string {
 	end := min(int(from), len(vw.src))
 	if end < 0 {
@@ -1235,8 +1239,8 @@ func (r *Renderer) writeMapping(vw *verbatimWriter, v *MappingNode) {
 // writeSequenceEntry writes the '-' of a block entry and then the entry's value.
 //
 // The entry node itself is not handed to write -- the sequence owns the '-' --
-// so its comments are asked for here. Nothing else reaches them, and a comment
-// put on an entry was dropped without a word.
+// so writeSequenceEntry writes its comments here. Nothing else reaches them, and
+// without this a comment put on an entry would be dropped silently.
 func (r *Renderer) writeSequenceEntry(vw *verbatimWriter, n *SequenceNode, value Node, i int) {
 	entry := entryAt(n, i)
 	if entry != nil {
@@ -1305,9 +1309,9 @@ func (r *Renderer) writeToken(vw *verbatimWriter, tk *token.Token) {
 //
 // A comment is written out with the token that follows it whether or not it is
 // handed over, since the copy moves forward and the source between two tokens
-// goes with the second. Handing it over separately is what lets a transform
-// know it is a comment: a colorizer that could not would leave every comment in
-// a document uncolored, and comments are the first thing anyone looks at.
+// goes with the second. Handing it over separately, with the comment as its
+// Node, lets a transform tell a comment from the text around it. Without it, a
+// colorizer would leave every comment in a document uncolored.
 func (r *Renderer) writeComments(vw *verbatimWriter, n Node, span extent, above bool) {
 	if vw.err != nil {
 		return
@@ -1329,8 +1333,8 @@ func (r *Renderer) writeComments(vw *verbatimWriter, n Node, span extent, above 
 			// happen in verbatimWriter.upTo, which passes over every byte of
 			// the document; there is nothing to do here.
 			//
-			// A transform wants the comment handed over of its own, and that
-			// still needs the descent, since only the descent knows which node
+			// A transform gets the comment as a stretch of its own, and that
+			// still takes the descent, since only the descent holds the node
 			// the comment belongs to.
 			if vw.fn != nil && comment.edit == commentAsWritten &&
 				int(tk.Position.Offset()) >= vw.cursor &&
@@ -1393,8 +1397,8 @@ func collectEdits(n Node, src []byte) (edits []pendingComment, above map[*Commen
 				continue
 			}
 			// A comment a caller added. One above the node is laid out by the
-			// descent, which knows the node's indentation; one beside it is
-			// anchored here, at the end of the line the node opens on.
+			// descent, which copies the node's indentation under it; one beside
+			// it is anchored here, at the end of the line the node opens on.
 			if comment.Removed() {
 				continue
 			}
@@ -1480,16 +1484,16 @@ func lineOpener(root Node, lit Node, src []byte) Node {
 	return around
 }
 
-// settleAnchors drops the added comments whose anchor falls inside a node that
-// runs past it, which the node they were put on cannot see.
+// settleAnchors moves above their node the added comments whose anchor falls
+// inside a token that runs past it.
 //
-// A line ends where the source says, and that is not always a place a comment
+// A line ends at its break in the source, and that is not always a place a comment
 // may go: the key of "safe: a#!..." over "     ...more" ends its own text on the
 // first line, but the value's plain scalar carries on over the second, so a
-// comment at the end of the first line cuts the scalar in half. The extents say
-// so -- a node whose text opens before the anchor and closes after it is running
-// through it -- and they are gathered only where something was added, which is
-// nearly never.
+// comment at the end of the first line cuts the scalar in half. runsThrough
+// checks the token extents: a token whose text opens before the anchor and
+// closes after it runs through it. The extents are gathered only where something was added,
+// which is nearly never.
 func settleAnchors(n Node, src []byte, out []pendingComment, above map[*CommentNode]bool) []pendingComment {
 	var added bool
 	for _, pending := range out {
@@ -1534,14 +1538,14 @@ func runsThrough(spans []extent, at int32) bool {
 	return false
 }
 
-// besideAnchor is where a comment put beside n goes: the end of the line n opens
-// on, past the spacing that closes it.
+// besideAnchor returns the offset where a comment put beside n goes: the end of
+// the line n opens on, past the spacing that closes it.
 //
-// Not where the descent stands when it finishes writing n, which is what this
-// replaced. A node does not always end its own line -- "{a: 1}" closes with a
-// bracket, "a: 1" continues with the value when the comment is on the key, and
-// a block scalar's own line is the "|" header with its content underneath -- so
-// writing the comment there put "{a: 1 # c}", "a # c: 1" and "a: |" over
+// It is not the offset where the descent stands when it finishes writing n. A
+// node does not always end its own line -- "{a: 1}" closes with a bracket,
+// "a: 1" continues with the value when the comment is on the key, and a block
+// scalar's own line is the "|" header with its content underneath -- so writing
+// the comment there would put "{a: 1 # c}", "a # c: 1" and "a: |" over
 // "  text # c" into the document. The first two do not parse and the last two
 // change the value.
 //
@@ -1554,13 +1558,13 @@ func besideAnchor(n Node, src []byte) (int32, bool) {
 	}
 
 	// The line the node ends on, since a node may run over several: a plain
-	// scalar written across two lines took the comment onto the first of them,
-	// where the second then continued past it.
+	// scalar written across two lines would take the comment onto the first of
+	// them, where the second then continues past it.
 	//
 	// A property is the exception, and so is a block scalar. Both carry a value
 	// whose text is not theirs -- "&a" over a block mapping, "|" over its
-	// content -- and a comment goes after the marker, which is where the
-	// layout renderer puts it too.
+	// content -- and a comment goes after the marker, where the layout
+	// renderer also puts it.
 	at := int(span.to)
 	if tk := headerToken(n); tk != nil {
 		at = int(tk.EndOffset())
@@ -1615,14 +1619,14 @@ func lineStartIn(src []byte, at int) int {
 // anchor and the tag in front of it, and nil for every other node.
 //
 // A block scalar's own line is its header; its content stands underneath and is
-// content, not layout. A comment goes after the header, which is where the
-// layout renderer puts it too -- written after the content it becomes part of
-// the scalar, so "a: |" over "  text" read back as "text # c".
+// content, not layout. A comment goes after the header, where the layout
+// renderer also puts it. Written after the content, it becomes part of the
+// scalar: "a: |" over "  text" would read back as "text # c".
 //
 // A property standing on a block scalar has no line of its own either: "- &a |"
 // over "  x" with a comment on the anchor comes back as "- &a | # c". Read as a
-// node spanning two lines, the anchor had nowhere to take the comment, and the
-// rendering failed where the layout renderer wrote it.
+// node spanning two lines, the anchor would have nowhere to take the comment, and
+// the rendering would fail where the layout renderer writes it.
 func headerToken(n Node) *token.Token {
 	literal := literalUnder(n)
 	if literal == nil || literal.Start == nil || !literal.Start.FromSource() {
@@ -1658,7 +1662,7 @@ type pendingComment struct {
 	add     bool
 }
 
-// eachNode hands over n and everything under it.// eachNode hands over n and everything under it.
+// eachNode hands over n and everything under it.
 //
 // It reaches further than walkSourceTokens: a comment hangs on nodes that carry
 // no token of the descent's own -- an anchor's name, a sequence's entry -- and
@@ -1724,7 +1728,7 @@ func eachCommentGroup(n Node, fn func(group *CommentGroupNode, head bool)) {
 		return
 	}
 
-	// BaseNode.Comment is the head comment on a collection and on a mapping
+	// BaseNode.Comment is the head comment on a block collection and on a mapping
 	// entry, and the comment beside the node everywhere else. HeadComment means
 	// above on every node.
 	own := n.GetComment()
@@ -1769,8 +1773,9 @@ func handGroup(fn func(*CommentGroupNode, bool), group *CommentGroupNode, head b
 }
 
 // placedComment is one comment of a node, and whether the slot it sits in is
-// written above the node or at the end of its line. The document says where a
-// comment it wrote goes; a comment a caller added has only its slot.
+// written above the node or at the end of its line. A comment the document
+// wrote goes where the document put it; a comment a caller added has only its
+// slot.
 type placedComment struct {
 	comment *CommentNode
 	head    bool
@@ -1795,8 +1800,8 @@ func commentsOn(n Node) []placedComment {
 	return out
 }
 
-// headSlot says what BaseNode.Comment means on n: above it for a collection or
-// a mapping entry, beside it for everything else.
+// headSlot reports whether BaseNode.Comment sits above n: above it for a block
+// collection or a mapping entry, beside it for everything else.
 func headSlot(n Node) bool {
 	switch node := n.(type) {
 	case *MappingValueNode:
@@ -1837,17 +1842,17 @@ func offsetOf(c *CommentNode) int64 {
 // writeInPlaceOf writes a node the caller put where the document held another,
 // and takes the text that other node stood on out of the copy.
 //
-// The tree no longer says what was there: assigning to MappingValueNode.Value
-// leaves nothing of the node it replaced, and the extent around it shrank with
-// it. So the copy is told to drop what it meets next instead of being given a
-// bound -- see [verbatimWriter.take].
+// The tree does not record what was there: assigning to MappingValueNode.Value
+// leaves nothing of the node it replaced, and the extent around it shrinks with
+// it. So writeInPlaceOf sets verbatimWriter.dropping, and the copy drops what it
+// meets next instead of stopping at a bound -- see [verbatimWriter.take].
 //
 // The spacing in front of the old node is written first, since it belongs to
 // the document and not to what stood after it: "a:" keeps its space when the
 // value beside it changes.
 //
-// underKey says the node hangs under a mapping key, where a collection written
-// as a block goes on the lines below rather than beside it.
+// underKey is true when the node hangs under a mapping key, where a collection
+// written as a block goes on the lines below instead of beside it.
 func (r *Renderer) writeInPlaceOf(vw *verbatimWriter, n Node, underKey bool) {
 	if n == nil || vw.err != nil {
 		return
@@ -1897,9 +1902,9 @@ func (r *Renderer) writeInPlaceOf(vw *verbatimWriter, n Node, underKey bool) {
 	vw.dropping = true
 }
 
-// blockStep is what one level of nesting adds in front of a block that hangs
-// under a mapping key. A block sequence takes none unless asked: "key:" then
-// "- item" in the key's own column.
+// blockStep returns the indentation one level of nesting adds in front of a
+// block that hangs under a mapping key. A block sequence takes none unless
+// indentSequence is set: "key:" then "- item" in the key's own column.
 func (r *Renderer) blockStep(n Node) string {
 	if sequence, isSequence := n.(*SequenceNode); isSequence && !sequence.IsFlowStyle && !r.indentSequence {
 		return ""
@@ -1926,8 +1931,8 @@ func indentBlockWith(text, indent string) string {
 	return strings.Join(lines, "\n")
 }
 
-// writeNameOf writes the name an anchor or an alias is written with, and says
-// the property owns it rather than the scalar node holding the text.
+// writeNameOf writes the name an anchor or an alias is written with, and hands
+// it over with the property as its node, not the scalar node holding the text.
 //
 // "&name" is one thing to a reader and two nodes to the tree: the marker and a
 // string. Handing the string over as a string would have a colorizer draw the
@@ -1944,15 +1949,15 @@ func (r *Renderer) writeNameOf(vw *verbatimWriter, name Node, owner Node) {
 	r.write(vw, name)
 }
 
-// writeTokenOf writes a token and says which node it belongs to.
+// writeTokenOf writes a token and hands it over with n as its node.
 func (r *Renderer) writeTokenOf(vw *verbatimWriter, tk *token.Token, n Node) {
 	if tk == nil || !tk.FromSource() {
 		return
 	}
 	vw.settleGap(int(tk.Position.Offset()))
 	// With no transform the two halves go to the same writer, so one copy up to
-	// the token's end serves for both -- unless a replaced node is being dropped,
-	// where the lead is what goes and the token is what stays.
+	// the token's end serves for both -- unless a replaced node is being dropped:
+	// then the lead goes and the token stays.
 	if vw.fn == nil && !vw.dropping {
 		vw.upTo(vw.tokenEnd(tk))
 
@@ -1998,8 +2003,8 @@ func (r *Renderer) writeEntry(vw *verbatimWriter, entry Node, coll collection, i
 		// The copy stops on the following entry, which has written the break and
 		// the indentation in front of it, so the new entry lands where that one
 		// would have and puts it back on a line of its own. Only the lines before
-		// that entry's own are read for a removed node: what stands in front of
-		// it on its line is its indentation, and a sequence entry's "-", which the
+		// that entry's own are read for a removed node: the text in front of it
+		// on its line is its indentation, and a sequence entry's "-", which the
 		// tree holds and writes later.
 		vw.settleGap(lineStartIn(vw.src, int(next.from)))
 		vw.upTo(int(next.from))
@@ -2021,7 +2026,7 @@ func (r *Renderer) writeEntry(vw *verbatimWriter, entry Node, coll collection, i
 	if !vw.atLineStart {
 		vw.raw("\n")
 	}
-	// What stands in front of the entry before is the indentation to repeat --
+	// The text in front of the entry before is the indentation to repeat --
 	// but only its width where it holds an indicator. A block sequence needs its
 	// "-" back; a mapping written as "- a: 1" would gain a second element from
 	// it.
@@ -2048,14 +2053,13 @@ var ErrMove = errors.New("cannot write a node moved from where the document hold
 // an entry of a flow collection -- so that no line can be left out for it.
 var ErrRemove = errors.New("cannot leave out a removed node")
 
-// collection is what an inserted entry needs to know about the collection it
-// was put into: how to reach its siblings, and whether they are separated by a
-// line break or by a comma.
+// collection describes the collection an inserted entry was put into: how to
+// reach its siblings, and whether a line break or a comma separates them.
 type collection struct {
 	siblings func(int) Node
 	flow     bool
-	// seq says the entries are elements of a block sequence, where what stands
-	// in front of an element is the "-" the next one has to repeat.
+	// seq is true when the entries are elements of a block sequence, where the
+	// text in front of an element is the "-" the next one has to repeat.
 	seq bool
 }
 
@@ -2069,8 +2073,8 @@ type collection struct {
 func (r *Renderer) writeFlowEntry(vw *verbatimWriter, text string, coll collection, i int) {
 	// A break would close the collection at the point it appears, so a node that
 	// cannot be written on one line -- a scalar the document wrote over several,
-	// which keeps its block header wherever it is put -- is refused rather than
-	// written into a document it would break.
+	// which keeps its block header wherever it is put -- returns ErrInsert
+	// instead of breaking the document.
 	if strings.ContainsAny(text, "\n\r") {
 		vw.err = fmt.Errorf("%w: %q cannot go inside a flow collection, it spans lines",
 			ErrInsert, strings.SplitN(text, "\n", 2)[0])
@@ -2095,14 +2099,14 @@ func (r *Renderer) writeFlowEntry(vw *verbatimWriter, text string, coll collecti
 	vw.raw(text)
 }
 
-// nextFlowFromSource is where the first entry after i that the document holds
-// begins, not counting the comma in front of it.
+// nextFlowFromSource returns the extent of the first entry after i that the
+// document holds, starting past the comma in front of it.
 //
 // A flow entry carries the separator that precedes it: MappingValueNode.CollectEntry
 // is the "," between it and the entry before, so its extent opens on a comma
 // that already separates two other entries. Inserting there puts the new entry
-// in front of that comma and leaves it stranded. The key is where the entry
-// itself starts.
+// in front of that comma and leaves it stranded. The entry itself starts at its
+// key.
 func nextFlowFromSource(siblings func(int) Node, i int) (extent, bool) {
 	for j := i + 1; ; j++ {
 		sibling := siblings(j)
@@ -2192,12 +2196,12 @@ func sliceSiblings(values []Node) func(int) Node {
 //
 // Comments are edited in place. A comment the document wrote is changed with
 // [CommentNode.Replace] and taken out with [CommentNode.Remove], both of which
-// keep the token saying which bytes of the source it stands on; assigning
+// keep the token recording which bytes of the source it stands on; assigning
 // another group over it throws that away, and [Node.SetComment] rejects it.
 // Setting a comment where the document wrote none adds one, written above the
 // node or at the end of its line by the slot it was put in.
 //
-// An added comment is never dropped without a word. [Node.SetComment] refuses a
+// An added comment is never dropped silently. [Node.SetComment] rejects a
 // slot that can hold nothing: a null standing for a node the document does not
 // hold, and a [CommentGroupNode], which holds comments and carries none of its
 // own.
@@ -2226,8 +2230,8 @@ func sliceSiblings(values []Node) func(int) Node {
 // buffer and copy it on success where a caller needs all or nothing.
 //
 // ⚠️ Provisional, and not what [Renderer.Render] does on its own: that lays a
-// whole tree out by its depth, which is what an encoder wants and what a tree
-// with no source has to have.
+// whole tree out by its depth, as an encoder needs and as a tree with no source
+// requires.
 func (r *Renderer) Verbatim(w io.Writer, n Node) error {
 	if r.src == nil || n == nil {
 		return nil

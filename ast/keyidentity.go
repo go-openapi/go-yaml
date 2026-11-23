@@ -34,16 +34,16 @@ func KeyIdentity(n Node) string {
 	return KeyIdentityWithAnchors(n, nil)
 }
 
-// AnchorIdentity answers what the node an anchor names resolves to, by the
-// anchor's name, and reports whether it knows.
+// AnchorIdentity returns the identity of the node an anchor names, looked up by
+// the anchor's name, and reports whether it holds one.
 //
-// It is how an alias is named without reading [AliasNode.Target]. A caller that
-// holds the anchors -- the parser does, and records each identity as the anchor
-// closes -- answers in constant time from a string it already has.
+// It names an alias without reading [AliasNode.Target]. A caller that holds the
+// anchors -- the parser does, and records each identity as the anchor closes --
+// returns the identity in constant time, from a string it already holds.
 type AnchorIdentity func(name string) (string, bool)
 
-// KeyIdentityWithAnchors is [KeyIdentity] with an alias answered from anchors
-// rather than left unnamed.
+// KeyIdentityWithAnchors is [KeyIdentity] with an alias named from anchors
+// instead of left unnamed.
 //
 // ⚠️ It never reads [AliasNode.Target], and neither does KeyIdentity. Following
 // it expands the alias graph into the identity string, and an alias graph is
@@ -156,12 +156,12 @@ func writeEntriesIdentity(b *strings.Builder, entries []*MappingValueNode, depth
 //
 // A tag names the type, so it names the identity: "!!str 1" is the string and
 // "1" is the integer, and the two are two keys. A tag the schema does not
-// resolve leaves the node to speak for itself.
+// resolve leaves the node to be named by its own value.
 func writeTaggedIdentity(b *strings.Builder, n *TagNode, depth int, anchors AnchorIdentity) bool {
 	name, kind, tagged := TaggedKeyName(n)
 	if !tagged {
 		// A tag the schema does not resolve, or one naming a kind -- !!seq,
-		// !!map. What it tags is what it is.
+		// !!map. The identity is the tagged node's own.
 		return writeKeyIdentity(b, n.Value, depth, anchors)
 	}
 	writeScalarIdentity(b, CanonicalKeyName(name, kind), kind)

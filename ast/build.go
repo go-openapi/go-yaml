@@ -85,9 +85,9 @@ func Float(tk *token.Token) *FloatNode {
 // Infinity create node for .inf or -.inf value.
 //
 // The 1.2 core schema's float production is `[-+]? ( \.inf | \.Inf | \.INF )`,
-// so a "+" spells the same value the bare form does. Reading the sign rather
-// than matching all nine spellings keeps this in step with the scanner's
-// reservedInfKeywords, which is where they are listed.
+// so a "+" spells the same value the bare form does. Reading the sign instead
+// of matching all nine spellings keeps this in step with the scanner's
+// reservedInfKeywords, which lists them.
 func Infinity(tk *token.Token) *InfinityNode {
 	node := &InfinityNode{
 		Token: tk,

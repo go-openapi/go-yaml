@@ -205,8 +205,8 @@ type ScalarNode interface {
 	GetValue() any
 	// Text returns the scalar as text, unconverted: the digits of a number as
 	// the document wrote them, a quoted string with its quotes and escapes
-	// resolved, a block scalar folded and chomped. Deciding what a number
-	// means is the caller's, and Text is where it starts.
+	// resolved, a block scalar folded and chomped. Text leaves the conversion of
+	// a number to the caller.
 	Text() string
 	// Bytes returns Text as bytes, without copying it. See [token.TextBytes]
 	// for what a caller may do with them.
@@ -216,7 +216,7 @@ type ScalarNode interface {
 type BaseNode struct {
 	path    *PathNode
 	Comment *CommentGroupNode
-	// HeadComment is what stands above the node, on lines of its own, and it
+	// HeadComment holds the comments above the node, on lines of their own. It
 	// may hold several: a run of comment lines above one node is one group.
 	//
 	// Comment is the node's other one and does not mean the same thing for
@@ -310,12 +310,12 @@ func (n *BaseNode) SetComment(node *CommentGroupNode) error {
 //
 // The comment being dropped is the only record of which bytes of the source it
 // stands on, and [Renderer.VerbatimFile] needs them to take the old text out of
-// the copy. Assigned over, the tree says one thing and the document another:
+// the copy. Assigned over, the tree and the document disagree:
 // "a: 1 # old" came back as "a: 1 # old" whatever was put in its place, and a
 // comment removed this way came back as well.
 //
 // Use [CommentNode.Replace] and [CommentNode.Remove], which keep the token and
-// say what happens to it. A parse building a tree reaches for [TakeComment],
+// record what happens to it. A parse building a tree uses [TakeComment],
 // which is not an edit: the comment is being put on the node it belongs to and
 // the document's own text is not changing.
 func refuseOverwritingWhatWasWritten(old, node *CommentGroupNode) error {
@@ -344,12 +344,12 @@ func fromSourceGroup(g *CommentGroupNode) bool {
 }
 
 // TakeComment hands over the comment standing on n and clears the slot, without
-// recording that the document no longer holds it.
+// recording the comment as removed from the document.
 //
 // It is for a parse building a tree, where a comment read from the document is
-// being put on the node it belongs to. A caller editing a parsed tree wants
+// being put on the node it belongs to. To edit a parsed tree, use
 // [CommentNode.Replace] or [CommentNode.Remove] instead: those keep the token
-// that says which bytes of the source the comment stands on, and this drops it.
+// that records which bytes of the source the comment stands on, and this drops it.
 func TakeComment(n Node) *CommentGroupNode {
 	if n == nil {
 		return nil

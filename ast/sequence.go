@@ -78,8 +78,8 @@ type SequenceNode struct {
 // The value replaced is the only thing that changes: the entry it was written
 // as and the head comment above it stay where they are, so a document renders
 // with its layout and its comments and the new value in place. Use [Clone] for
-// a value taken from elsewhere in the same document, which [Renderer.Verbatim]
-// otherwise refuses with [ErrMove].
+// a value taken from elsewhere in the same document, for which
+// [Renderer.Verbatim] otherwise returns [ErrMove].
 func (n *SequenceNode) Replace(idx int, value Node) error {
 	if idx < 0 || idx >= len(n.Values) {
 		return fmt.Errorf(
@@ -103,8 +103,8 @@ func (n *SequenceNode) Replace(idx int, value Node) error {
 // out from the tree. Both stay empty where the parse left them empty, as they
 // are for a sequence built with [Seq].
 //
-// An inserted node has no place in the source, so [Renderer.Verbatim] refuses a
-// node taken from elsewhere in the document with [ErrMove]. Pass [Clone] of it.
+// An inserted node has no place in the source, so [Renderer.Verbatim] returns
+// [ErrMove] for a node taken from elsewhere in the document. Pass [Clone] of it.
 func (n *SequenceNode) Insert(idx int, values ...Node) error {
 	if idx < 0 || idx > len(n.Values) {
 		return fmt.Errorf(

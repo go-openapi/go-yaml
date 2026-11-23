@@ -21,7 +21,7 @@ type block[T any] struct {
 	chunks [][]T
 	// at is which chunk free points into.
 	at int
-	// rewound says the block has handed cells back at least once, so a cell may
+	// rewound records that the block has handed cells back at least once, so a cell may
 	// hold what a node left in it. A parse that gathers a tree never rewinds
 	// and never pays for the clearing.
 	rewound bool
@@ -71,7 +71,7 @@ func (b *block[T]) advance(size int) {
 	b.cells += size
 }
 
-// blockMark is where a block stood.
+// blockMark records a block's position: the chunk in hand and the cells used from it.
 type blockMark struct{ at, used int32 }
 
 // mark records where the block stands, for a later rewind.
@@ -162,15 +162,15 @@ type Arena struct {
 	mappingRuns slab[*MappingValueNode]
 
 	size int
-	// marks is where the arena has been told to stand, innermost last. A walk
+	// marks holds the positions taken by [Arena.Push], innermost last. A walk
 	// pushes one as it starts an entry and pops it once the entry has gone
-	// over. Kept here rather than handed back and forth: the mark is nine
+	// over. They are kept here instead of handed back and forth: the mark is nine
 	// block positions, and a parse gathering a tree would copy them for every
 	// entry of every mapping to record something it never rewinds to.
 	marks []Mark
 }
 
-// Mark is where an arena stood, taken by [Arena.Mark] and given back to
+// Mark records an arena's position, taken by [Arena.Mark] and given back to
 // [Arena.Rewind].
 type Mark struct {
 	strings       blockMark
@@ -186,9 +186,9 @@ type Mark struct {
 
 // NewArena returns an arena whose blocks are sized for a document of n tokens.
 //
-// Roughly one token in four becomes a node of any one type, which is where the
-// size comes from. It is capped both ways: a long document takes more blocks
-// rather than one huge one, and a short document does not pay for a block it
+// A block holds n/4 nodes, since roughly one token in four becomes a node of any
+// one type. The size is capped both ways: a long document takes more blocks
+// instead of one huge one, and a short document does not pay for a block it
 // will use a tenth of.
 func NewArena(n int) *Arena {
 	return &Arena{size: min(max(n/4, minNodeBlock), maxNodeBlock)}
@@ -216,8 +216,8 @@ func (a *Arena) Pop() {
 //
 // A walk takes one as it enters a node and gives it back as it leaves, which
 // makes the arena a stack: the nodes of a subtree are handed out again for the
-// subtree that follows it. What a walk holds at once is its own depth rather
-// than the document, so a document of any size is read from a handful of
+// subtree that follows it. A walk holds at once the nodes along its own depth,
+// not the whole document, so a document of any size is read from a handful of
 // chunks.
 func (a *Arena) Mark() Mark {
 	return Mark{
@@ -236,8 +236,8 @@ func (a *Arena) Mark() Mark {
 // Rewind hands out again every node taken since m.
 //
 // ⚠️ Every node handed out since m is dead the moment this returns, and the
-// cells are written over by what comes next. Only a caller that knows nothing
-// points at them may call it -- [github.com/go-openapi/go-yaml/parser.Parser.Walk]
+// cells are written over by what comes next. Call it only when nothing points
+// at them -- [github.com/go-openapi/go-yaml/parser.Parser.Walk]
 // rewinds to what it marked on Enter once Leave has returned, and a parse that
 // gathers a tree never rewinds at all.
 //
@@ -359,14 +359,14 @@ func (a *Arena) Sequence(tk *token.Token, isFlowStyle bool) *SequenceNode {
 // rewinds past it.
 //
 // A walk hands the cells of an entry out again once the entry has gone over,
-// which is what keeps its frontier flat. An anchored node has to outlive that:
+// so its frontier stays flat. An anchored node has to outlive that:
 // an alias names it later in the document, and [AliasNode.Target] points at the
 // cell. Without this the cell is handed out again and the alias reads whatever
 // was built there next -- "a: &x {k: 1}" over one filler line over "b: *x" read
 // back as "{b: 0}".
 //
-// It raises the outstanding marks rather than dropping them, so the walk still
-// rewinds everything built after the anchor. What it costs is the anchored
+// It raises the outstanding marks instead of dropping them, so the walk still
+// rewinds everything built after the anchor. Commit keeps alive the anchored
 // subtree, plus whatever the entry holding it built before it.
 func (a *Arena) Commit() {
 	if len(a.marks) == 0 {

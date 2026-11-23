@@ -16,11 +16,11 @@ type CommentNode struct {
 	BaseNode
 
 	Token *token.Token
-	// edit is what a caller asked to happen to this comment, and text the words
-	// to put in its place. The zero value leaves the document's own text alone,
+	// edit records the change a caller asked for on this comment, and text holds
+	// the words to put in its place. The zero value leaves the document's own text alone,
 	// so a parsed tree nobody has touched carries no edit at all.
 	//
-	// It is kept beside the token rather than written over it: the token says
+	// It is kept beside the token instead of written over it: the token records
 	// which bytes of the source this comment stands on, and
 	// [Renderer.VerbatimFile] needs them to take the old text out of the copy.
 	// Assigning over a node's comment throws them away, which is why a comment
@@ -30,7 +30,7 @@ type CommentNode struct {
 	text string
 }
 
-// commentEdit is what happens to a comment when it is rendered.
+// commentEdit sets how a comment is rendered.
 type commentEdit uint8
 
 const (
@@ -64,7 +64,7 @@ func (n *CommentNode) Replace(text string) error {
 
 // Remove records that n is not written at all.
 //
-// The comment stays in the tree so that [Renderer.VerbatimFile] knows which
+// The comment stays in the tree so that [Renderer.VerbatimFile] can find the
 // bytes of the source to leave out. Setting the node's comment field to nil
 // instead loses that and the old text comes back.
 func (n *CommentNode) Remove() {
@@ -79,7 +79,7 @@ func (n *CommentNode) Removed() bool {
 	return n != nil && n.edit == commentRemoved
 }
 
-// Text is what n renders as, without the "#": the replacement where one was
+// Text returns the text n renders as, without the "#": the replacement where one was
 // set, and the document's own words otherwise.
 func (n *CommentNode) Text() string {
 	if n == nil {
@@ -160,7 +160,7 @@ func (n *CommentGroupNode) Visible() []*CommentNode {
 // Blank reports whether n writes nothing: it is absent, holds no comment, or
 // every comment in it has been removed.
 //
-// A renderer asks this rather than testing the group against nil, or a group
+// A renderer calls Blank instead of testing the group against nil, or a group
 // emptied by [CommentNode.Remove] leaves the space that was to stand in front
 // of it.
 func (n *CommentGroupNode) Blank() bool {
@@ -178,9 +178,9 @@ func (n *CommentGroupNode) Blank() bool {
 
 // Replace records that the group renders as one comment reading "# " + text.
 //
-// It is [CommentNode.Replace] on a group holding one comment, which is what a
-// group holds nearly everywhere: a run of comment lines above one node is the
-// exception. It rejects a group holding several rather than guessing which one
+// It is [CommentNode.Replace] on a group holding one comment, and a group holds
+// one comment nearly everywhere: a run of comment lines above one node is the
+// exception. It rejects a group holding several instead of guessing which one
 // the caller meant.
 func (n *CommentGroupNode) Replace(text string) error {
 	if n == nil {

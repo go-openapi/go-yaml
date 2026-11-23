@@ -18,7 +18,7 @@ var ErrStreamOrder = errors.New("a stream call that does not fit the document wr
 // It writes what [Renderer.Render] writes for the same document built as a tree, every collection in block style
 // and no comments, with the Renderer's [WithIndent] and [WithIndentSequence]. A key past 1,024 characters is written
 // as an explicit "? " key, as the Renderer writes it. Each scalar goes through the Renderer's own scalar path, so the
-// node decides its style: plain, quoted, or a "|" block.
+// node sets its style: plain, quoted, or a "|" block.
 //
 // Call [Stream.BeginMapping] or [Stream.BeginSequence] to open a collection, [Stream.Key] then [Stream.Value] or a
 // Begin call for each entry of a mapping, [Stream.Value] or a Begin call for each entry of a sequence, and
@@ -39,9 +39,9 @@ type Stream struct {
 	open []streamFrame
 	// key is the key handed over for the next entry of the innermost mapping, until its value arrives.
 	key Node
-	// wrote says something has been written, so the next entry starts a new line.
+	// wrote records that something has been written, so the next entry starts a new line.
 	wrote bool
-	// done says the document's own node is complete.
+	// done records that the document's own node is complete.
 	done bool
 	err  error
 }
@@ -55,9 +55,9 @@ type streamFrame struct {
 	entries int
 	// key is the key this collection is the value of, and nil when it is a sequence entry or the document's node.
 	key Node
-	// inEntry says the collection is a sequence entry: its first entry is written on the "- " line.
+	// inEntry marks the collection as a sequence entry: its first entry is written on the "- " line.
 	inEntry bool
-	// opened says the line introducing it, "k:" or "- ", has been written.
+	// opened records that the line introducing it, "k:" or "- ", has been written.
 	opened bool
 }
 

@@ -17,12 +17,12 @@ import (
 // [MappingNode] itself where the mapping holds a "<<" or repeats its one key. ok is false where n carries no "!!omap"
 // tag, the tag stands on nothing, or the shape is not the one the tag names.
 //
-// A mapping that writes its one key twice, "{a: 1, a: 2}", is one key and a repeat: the reader refuses the repeat
-// as it refuses one in any mapping, or reads the last value under an option allowing repeats. A mapping holding a
+// A mapping that writes its one key twice, "{a: 1, a: 2}", is one key and a repeat: the reader rejects the repeat
+// as it rejects one in any mapping, or reads the last value under an option allowing repeats. A mapping holding a
 // "<<" counts its keys once the merge is read, which this does not do: "{<<: {a: 0}, a: 1}" is one entry and
 // "{<<: {a: 0, b: 1}}" two, so the reader counts them as it reads.
 //
-// The tag names a kind, and a node of another kind is a document that parses but that a reader declines to build a
+// The tag names a kind, and a node of another kind is a document that parses but that a reader builds no
 // value from: "!!omap [1, 2]" parses, and OrderedMapOf returns false for it.
 func OrderedMapOf(n Node) (seq *SequenceNode, entries []Node, ok bool) {
 	for range maxUnwrapDepth {

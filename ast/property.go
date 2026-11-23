@@ -76,7 +76,7 @@ type AliasNode struct {
 	//
 	// ⚠️ Target may reach back to a node the alias stands inside: "&x [ *x ]"
 	// is a document, and YAML's representation is a graph. Expand it with a
-	// guard, as [github.com/go-openapi/go-yaml.Decoder] does -- it refuses a
+	// guard, as [github.com/go-openapi/go-yaml.Decoder] does -- it rejects a
 	// cycle, because a Go value built by walking has nowhere to put one.
 	//
 	// Nothing follows Target on its own: [Walk] does not, and neither does the
@@ -134,35 +134,35 @@ type TagNode struct {
 	// document wrote: "!!int" and "!<tag:yaml.org,2002:int>" both give
 	// tag:yaml.org,2002:int, and "!thing" gives "!thing", since the primary
 	// handle expands to "!". A "%TAG" directive changes what a handle expands
-	// to, so read this rather than Start to find which tag the node carries.
+	// to, so read this instead of Start to find which tag the node carries.
 	URI string
-	// Schema is the scalar schema the document is read under, which decides
-	// what spellings the tag's type has: "017" is octal under %YAML 1.1 and
+	// Schema is the scalar schema the document is read under, which sets the
+	// spellings the tag's type accepts: "017" is octal under %YAML 1.1 and
 	// decimal without it, and "0b101" is an integer under the first and no
 	// number at all under the second.
 	//
 	// The scanner types a plain scalar under this already, so for one the
-	// token carries the answer. A quoted or block scalar it never sniffs --
+	// token already holds the type. A quoted or block scalar it never sniffs --
 	// the quotes make it a string when nothing else types it -- and a tag does
 	// type it, so its text is read under this instead. Both spellings of the
-	// same content then get one answer, which is what §3.3.2 requires: the
+	// same content then resolve alike, as §3.3.2 requires: the
 	// "!" non-specific tag is given only to a node *lacking* an explicit tag,
 	// so `!!int "017"` and `!!int 017` are one node and cannot differ.
 	//
 	// It is stamped on the node for the same reason LaxTags is: a subtree
 	// handed to a consumer carries how to read it.
 	Schema token.Schema
-	// LaxTags says the document was read with
+	// LaxTags records that the document was read with
 	// [github.com/go-openapi/go-yaml/parser.WithLaxTags], so a consumer that
-	// can fall back to the text should, where it would otherwise refuse a tag
+	// can fall back to the text should, where it would otherwise reject a tag
 	// naming a type its scalar is not. [TagNode.Resolve] reports it as
 	// [Resolution.Lax].
 	//
-	// It is stamped on the node rather than kept beside the document, so that a
-	// node handed over on its own -- what DecodeFromNode and
-	// expressions.Path.Read are given -- carries the policy it was read under.
+	// It is stamped on the node instead of kept beside the document, so that a
+	// node handed over on its own -- as DecodeFromNode and
+	// expressions.Path.Read receive one -- carries the policy it was read under.
 	LaxTags bool
-	// Implicit says the parse built this tag and the document did not write it.
+	// Implicit records that the parse built this tag and the document did not write it.
 	//
 	// YAML 1.1 resolves types 1.2's core schema leaves out, and a timestamp is
 	// one: under a "%YAML 1.1" directive, or
