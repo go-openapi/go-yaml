@@ -59,8 +59,9 @@ func firstMappedString(file *ast.File) string {
 // A tab is separation, and is admitted wherever separation is:
 // in front of a flow node, after a ':', and inside a flow collection.
 //
-// Scanner.tabStandsWhereAnEntryNeedsIndent decides it, over the two runs that can hold the tab:
-// the line's own indentation, and the separation after a token already cut on this line.
+// Scanner.tabStandsWhereAnEntryNeedsIndent decides it, over the three runs that can hold the tab:
+// the line's own indentation, the separation after a token already cut on this line,
+// and the separation in front of the key's properties.
 func TestATabIsSeparationAndNotIndentation(t *testing.T) {
 	t.Run("a block entry is refused, whatever stands in front of the tab", func(t *testing.T) {
 		// Each fails with the same message, whatever the space count and whether the key is quoted.
@@ -78,6 +79,18 @@ func TestATabIsSeparationAndNotIndentation(t *testing.T) {
 			// not in the line's indentation.
 			"- \ta: 1\n",
 			"-\ta: 1\n",
+
+			// Here it stands in front of the key's properties, the third run: the properties are cut before the ':'
+			// is read, and the key after them, if any, has only a space in front of it. These were read as
+			// [{null: 1}] and [{k: 1}]. yaml/yaml-reference-parser and go.yaml.in/yaml/v3 refuse each, and libfyaml
+			// refuses those after a '?'.
+			"-\t&a : 1\n",
+			"- \t&a : 1\n",
+			"-\t!!null : 1\n",
+			"-\t&a k: 1\n",
+			"-\t!!str k: 1\n",
+			"?\t&a : 1\n",
+			"?\t!!null : 1\n",
 		} {
 			_, err := parser.ParseBytes([]byte(src))
 			require.Errorf(t, err, "%q", src)
@@ -134,7 +147,13 @@ func TestATabIsSeparationAndNotIndentation(t *testing.T) {
 	})
 
 	t.Run("and separation elsewhere was always allowed", func(t *testing.T) {
-		for _, src := range []string{"\t{}\n", "\t{a: 1}\n", "[\t1]\n", "[a,\tb]\n", "a: \tb\n", "a:\t1\n"} {
+		// A tab in front of a property is separation too, where no ':' follows to make the node a key:
+		// "-\t&a" anchors the empty entry, and "k:\t&a x" anchors the value. A tab after the properties, before the
+		// ':', separates as it does after any key.
+		for _, src := range []string{
+			"\t{}\n", "\t{a: 1}\n", "[\t1]\n", "[a,\tb]\n", "a: \tb\n", "a:\t1\n",
+			"-\t&a\n", "-\t!!str x\n", "k:\t&a x\n", "k:\t&a\n  b: 1\n", "-\t&a [x]\n", "- &a\t: x\n",
+		} {
 			_, err := parser.ParseBytes([]byte(src))
 			assert.NoErrorf(t, err, "%q", src)
 		}

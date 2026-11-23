@@ -119,8 +119,11 @@ func (s *Scanner) indentHoldsATab() bool { return s.indentHasTab }
 // run holds only the blanks between the key and its ':', and a tab there
 // separates, as it does after the plain key "a\t: 1", which keeps the tab in its
 // own buffer. go.yaml.in/yaml/v3 reads "\"a\"\t: 1" as {a: 1}.
+//
+// A key's properties are cut before its ':' is reached, so the blanks in front of them are a third run, read when the
+// run starts and kept with it: "-\t&a : 1", "?\t!t : 1" and "-\t!!str k: 1" put the tab before the key's '&' or '!'.
 func (s *Scanner) tabStandsWhereAnEntryNeedsIndent(ctx *Context) bool {
-	if s.indentHoldsATab() {
+	if s.indentHoldsATab() || ctx.keyPropertiesLedByATab(s.line) {
 		return true
 	}
 	if !ctx.leadingBlanksHoldATab() {

@@ -249,7 +249,9 @@ func (c *Context) recordToken(tk *token.Token) {
 	case c.propRun.length > 0 && c.propRun.line == tk.Position.Line:
 		c.propRun.length++
 	default:
-		c.propRun = propertyRun{startColumn: tk.Position.Column, line: tk.Position.Line, length: 1}
+		c.propRun = propertyRun{
+			startColumn: tk.Position.Column, line: tk.Position.Line, length: 1, tabLed: c.tabLeadsAnEntryAt(tk),
+		}
 	}
 
 	c.lastTk, c.hasLastTk = *tk, true
@@ -260,10 +262,53 @@ func (c *Context) recordToken(tk *token.Token) {
 
 // propertyRun describes a run of consecutive property tokens standing on one line: anchors, aliases and tags.
 // startColumn holds the column the first of them begins at.
+// tabLed records a tab in the blanks before the run where a block entry needs indentation, as
+// [Context.tabLeadsAnEntryAt] reads them.
 type propertyRun struct {
 	startColumn int32
 	line        int32
 	length      int32
+	tabLed      bool
+}
+
+// tabLeadsAnEntryAt reports whether a tab stands in the blanks before tk, where tk opens its line or follows a "-",
+// "?" or ":" on it.
+//
+// It runs before tk is recorded, so the last token is the one in front of tk.
+func (c *Context) tabLeadsAnEntryAt(tk *token.Token) bool {
+	from := int32(0)
+	if c.hasLastTk && c.lastTk.Position.Line == tk.Position.Line {
+		if !isBlockIndicator(c.lastTk.Type) {
+			return false
+		}
+		from = c.lastTk.EndOffset()
+	}
+	for i := tk.Position.Offset() - 1; i >= from; i-- {
+		switch c.src[i] {
+		case '\t':
+			return true
+		case ' ':
+		default:
+			return false
+		}
+	}
+
+	return false
+}
+
+// keyPropertiesLedByATab reports whether the properties cut last on line had a tab before them where a block entry
+// needs indentation.
+//
+// It reads the runs keyPropertyColumnOn reads, so it holds for an anchor followed by its name as for a lone tag.
+func (c *Context) keyPropertiesLedByATab(line int32) bool {
+	if !c.hasLastTk || c.lastTk.Position.Line != line {
+		return false
+	}
+	if c.prevPropRun.length > 0 && c.prevPropRun.line == line {
+		return c.prevPropRun.tabLed
+	}
+
+	return c.propRun.length > 0 && c.propRun.line == line && c.propRun.tabLed
 }
 
 // removeRightSpaceFromBuf cuts the spaces and tabs a line ends with from the token's text and from its value.
