@@ -1,34 +1,37 @@
 # Conformance metrics for the documentation site.
 #
 # Hand-maintained. The conformance harness should emit this file; until it
-# does, re-run the tests below before changing a number, and record here which
-# run each one came from.
+# does, re-run the tests below before changing a number.
 #
-# Verified 2026-09-08 against master:
-#   decoder_*  go test ./internal/conformance/ -run TestYAMLTestSuite
-#   tojson_*   go test ./internal/conformance/ -run TestSuiteToJSON
+# Verified 2026-11-23 against master, with
+#   go test -v ./internal/conformance/
 #
-# Not re-verified in that run (they need libfyaml and the reference parser):
-#   buckets, buckets_matched, cases, oracle_* — last recorded 2026-09-08.
+#   acceptance_*  TestSuiteAcceptance
+#   decoder_*     TestYAMLTestSuite
+#   tojson_*      TestSuiteToJSON (TestSuiteToJSONTokens gives the same counts)
+#   roundtrip_*   TestSuiteRoundTrip
 params:
     metrics:
-        # yamlgen generator buckets, and how many agree with the oracle.
-        buckets: 605
-        buckets_matched: 567
-        cases: 14684
+        # YAML test suite, 402 cases. 9 state no expectation and are left out.
+        acceptance_scoreable: 393
+        acceptance_passing: 393
+        acceptance_valid: 299
+        acceptance_invalid: 94
 
-        # YAML test suite, decoder path. 402 cases, 371 of them scoreable.
-        # The 31 left out: 20 state the expectation as out.yaml, which the
-        # harness does not read; 9 state no expectation; 1 records the text
-        # where the decoder resolves the tag; 1 expects a value the grammar
-        # does not produce.
+        # YAML test suite through Unmarshal. The 31 cases left out: 20 state
+        # the expectation as out.yaml, which the harness does not read; 9 state
+        # no expectation; 1 !!omap decodes to an ordered map, not to the array
+        # that spells it; 1 !!binary writes canonical base64, where the fixture
+        # keeps its line breaks.
+        decoder_cases: 402
         decoder_scoreable: 371
         decoder_passing: 371
 
-        # YAML test suite, ToJSON path.
+        # YAML test suite through ToJSON. The 2 that diverge are the same
+        # !!omap and !!binary cases.
         tojson_scoreable: 274
         tojson_passing: 272
 
-        # Reference parser oracle.
-        oracle_scoreable: 393
-        oracle_passing: 393
+        # Every case the parser accepts, rendered, parsed and rendered again.
+        roundtrip_cases: 308
+        roundtrip_passing: 308
