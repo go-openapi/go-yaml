@@ -87,48 +87,6 @@ func readTheStream(t *testing.T, src string) []any {
 	}
 }
 
-// TestDefectAPropertiedEmptyKeyIsMishandled pins the two arrangements left.
-//
-// An empty key carrying both an anchor and a tag is refused in two places: a
-// tag written ahead of the anchor, and either order below another entry.
-// yaml/yaml-reference-parser, libfyaml and go.yaml.in/yaml/v3 read each as a
-// mapping keyed by null. The verbatim spelling of a tag on an empty key, the
-// third arrangement, is fixed: see TestFixedAVerbatimTagOnAnEmptyKeyKeepsTheMapping.
-//
-// Reached on 2026-09-08 by TestPresentationInvariance, which read two
-// presentations of one value differently once the tagger began walking keys.
-func TestDefectAPropertiedEmptyKeyIsMishandled(t *testing.T) {
-	t.Run("the shorthand spelling reads the mapping", func(t *testing.T) {
-		var got any
-		require.NoError(t, codec.Unmarshal([]byte("!!null :\n"), &got))
-		assert.Equal(t, map[any]any{nil: nil}, got)
-	})
-
-	t.Run("today a tag ahead of an anchor is refused", func(t *testing.T) {
-		// Style.PropertyOrder writes this one. The other order reads.
-		var got any
-		err := codec.Unmarshal([]byte("!!null &a1 : 1\n"), &got)
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), "does not support this kind of node")
-
-		require.NoError(t, codec.Unmarshal([]byte("&a1 !!null : 1\n"), &got))
-		assert.Equal(t, map[any]any{nil: uint64(1)}, got)
-	})
-
-	t.Run("today an anchor and a tag together are refused below another entry", func(t *testing.T) {
-		var got any
-		err := codec.Unmarshal([]byte("a: 1\n&a1 !!null : 2\n"), &got)
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), "non-map value is specified")
-
-		// Either property alone, in the same position, reads.
-		for _, src := range []string{"a: 1\n!!null : 2\n", "a: 1\n&a1 : 2\n"} {
-			require.NoErrorf(t, codec.Unmarshal([]byte(src), &got), "%q", src)
-			assert.Equalf(t, map[any]any{"a": uint64(1), nil: uint64(2)}, got, "%q", src)
-		}
-	})
-}
-
 // TestDefectTwoBareColonLinesInARowAreRefused pins it.
 //
 // 8.2.2 lets an explicit entry's value be the empty node and lets an entry's key

@@ -3752,3 +3752,45 @@ func TestFixedAVerbatimTagOnAnEmptyKeyKeepsTheMapping(t *testing.T) {
 		assert.Equalf(t, tc.want, got, "%q", tc.src)
 	}
 }
+
+// TestFixedAnAnchorAndATagOnAnEmptyKeyStayOnTheKey pins that an anchor and a tag written together on an empty key
+// both name the key, in either order and below another entry.
+//
+// The properties stage hands an anchor and a tag over apart when no scalar follows them, and the key window kept
+// only the last token for a ':' to come, so the ':' found the last property alone. "!!null &a1 : 1" was refused with
+// "!!null does not support this kind of node", "a: 1" over "&a1 !!null : 2" with "non-map value is specified", and
+// "&a1 !!null : 1" put the anchor on the mapping, so "b: *a1" below it was refused. The window now keeps the run of
+// properties in front of an empty node, and keyBefore takes the run as the key. yaml/yaml-reference-parser, libfyaml
+// and go.yaml.in/yaml/v3 read each as a mapping keyed by the empty node, and "*a1" as that key.
+//
+// Reached on 2026-09-08 by TestPresentationInvariance, which read two presentations of one value differently once the
+// tagger began walking keys.
+func TestFixedAnAnchorAndATagOnAnEmptyKeyStayOnTheKey(t *testing.T) {
+	for _, tc := range []struct {
+		src  string
+		want any
+	}{
+		{"!!null &a1 : 1\n", map[any]any{nil: uint64(1)}},
+		{"&a1 !!null : 1\n", map[any]any{nil: uint64(1)}},
+		{"a: 1\n&a1 !!null : 2\n", map[any]any{"a": uint64(1), nil: uint64(2)}},
+		{"a: 1\n!!null &a1 : 2\n", map[any]any{"a": uint64(1), nil: uint64(2)}},
+		{"a: 1\n&a1 !t : 2\n", map[any]any{"a": uint64(1), nil: uint64(2)}},
+		{"&a1 !!null : 1\nb: *a1\n", map[any]any{nil: uint64(1), "b": nil}},
+		{"!!null &a1 : 1\nb: *a1\n", map[any]any{nil: uint64(1), "b": nil}},
+		{"&a1 !!str : 1\nb: *a1\n", map[string]any{"": uint64(1), "b": ""}},
+		{"{&a !t : 1, b: *a}\n", map[any]any{nil: uint64(1), "b": nil}},
+		{"{&a\n !t : 1}\n", map[any]any{nil: uint64(1)}},
+		{"- &a !t : 1\n", []any{map[any]any{nil: uint64(1)}}},
+	} {
+		var got any
+		require.NoErrorf(t, codec.Unmarshal([]byte(tc.src), &got), "%q", tc.src)
+		assert.Equalf(t, tc.want, got, "%q", tc.src)
+	}
+
+	// On a line of its own, in block context, an anchor names the mapping the key below opens, so an alias inside that
+	// mapping is a cycle. go.yaml.in/yaml/v3 refuses it too: "anchor 'm' value contains itself".
+	var got any
+	err := codec.Unmarshal([]byte("&m\n!t : 1\nb: *m\n"), &got)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "stands inside its own anchor")
+}

@@ -834,6 +834,10 @@ func (w *keyWindow) keepFrom() int {
 
 		return withKeyProperties(w.held, start, len(w.openers) > 0)
 	}
+	if isProperty(w.held[last]) {
+		// A ':' arriving next makes the empty node a key, and every property in front of it is that key's.
+		return withKeyProperties(w.held, last, len(w.openers) > 0)
+	}
 
 	return last
 }
@@ -1034,6 +1038,19 @@ func (g *Grouper) keyBefore(w *keyWindow, tk *TapeToken) bool {
 		g.fail(yamlerrors.NewSyntax("found an invalid key for this map", tk.RawToken()))
 
 		return false
+	}
+
+	if isProperty(key) {
+		// The key is the empty node, and key is the last of its properties. The properties stage hands an anchor and
+		// a tag over apart when no scalar follows them, so the ones in front of key are taken here: "&a !t : 1" and
+		// "!t &a : 1" put both on the key, as they do on "&a !t k: 1". Left behind, the first went to the mapping
+		// at the top of a document, and below another entry, as in "a: 1" over "&a !t : 2", it was refused.
+		if start := withKeyProperties(w.held, last, inFlow); start < last {
+			keyTokens := append(append([]*TapeToken{}, w.held[start:]...), tk)
+			w.held = append(w.held[:start], g.group(TokenGroupMapKey, keyTokens))
+
+			return true
+		}
 	}
 
 	// The key stays where it stands in the window and becomes the group, so

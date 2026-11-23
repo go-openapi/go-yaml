@@ -71,14 +71,18 @@ func flowCollectionStart(ret []*TapeToken) int {
 // whatever line it stands on.
 func withKeyProperties(ret []*TapeToken, start int, inFlow bool) int {
 	for start > 0 && (inFlow || ret[start-1].Line() == ret[start].Line()) {
-		prev := ret[start-1]
-		if prev.GroupType() != TokenGroupAnchorName && prev.Type() != token.TagType {
+		if !isProperty(ret[start-1]) {
 			break
 		}
 		start--
 	}
 
 	return start
+}
+
+// isProperty reports whether tk is an anchor with its name, or a tag, standing on its own.
+func isProperty(tk *TapeToken) bool {
+	return tk.GroupType() == TokenGroupAnchorName || tk.Type() == token.TagType
 }
 
 // precedesAbsentKey reports whether tk is punctuation that cannot itself be a
