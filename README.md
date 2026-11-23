@@ -41,7 +41,7 @@ What we need is:
 
 - a relatively fast, memory-efficient YAML parser, written in pure go
 - a low-level API to parse, transform and render YAML streams
-- ways to process YAML without the need for an intermediate go value representation
+- ways to process YAML without the need for an intermediate Go value representation
 
 In addition, we want this lib to bring tools for advanced work with YAML documents:
 
@@ -68,7 +68,7 @@ See the runnable examples in our [go doc][godoc-url] as well as the [commented e
 
 Our main design goal for this lib was to reduce _peak_ memory usage as much as we could.
 
-Example: decoding YAML into a go value.
+Example: decoding YAML into a Go value.
 
 Each library unmarshals each workload into an `any`. Times are the median of 6 runs; peak memory is the highest live heap during the decode.
 
@@ -87,11 +87,11 @@ Each library unmarshals each workload into an `any`. Times are the median of 6 r
 Our implementation of YAML decode brings only a modest time improvement, and a massive reduction in memory activity
 (allocated garbage and peak memory).
 
-Our peak stays near the size of the decoded go value: the decoding process holds little besides its result.
+Our peak stays near the size of the decoded Go value: the decoding process holds little besides its result.
 
-citm_catalog is our least favourable workload: the two runs we took put our time almost a par with v3's, +/-7%.
-This workload is were `v3`'s parser shines: it is simpler than ours and optimized specifically for decoding go values,
-whereas our parser pays the cost of a fully support for YAML features, even those not consumed by the decode use-case.
+citm_catalog is our least favourable workload: the two runs we took put our time almost on a par with v3's, +/-7%.
+This workload is where `v3`'s parser shines: it is simpler than ours and optimized specifically for decoding Go values,
+whereas our parser pays the cost of full support for YAML features, even those not consumed by the decode use-case.
 
 See [internal/benchmarks](./internal/benchmarks) for more details and comparisons.
 
