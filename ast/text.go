@@ -19,10 +19,24 @@ import "github.com/go-openapi/go-yaml/token"
 
 // Text returns the null as it was written: "null", "~", or nothing at all
 // where the document left the value out.
-func (n *NullNode) Text() string { return n.Token.Value }
+//
+// The scanner gives the token of a value left out the text "null", which Text does not return.
+func (n *NullNode) Text() string {
+	if n.Token.Type == token.ImplicitNullType {
+		return ""
+	}
 
-// Bytes returns [NullNode.Text] as bytes, without copying it.
-func (n *NullNode) Bytes() []byte { return n.Token.Bytes() }
+	return n.Token.Value
+}
+
+// Bytes returns [NullNode.Text] as bytes, without copying it: nil where the document left the value out.
+func (n *NullNode) Bytes() []byte {
+	if n.Token.Type == token.ImplicitNullType {
+		return nil
+	}
+
+	return n.Token.Bytes()
+}
 
 // Text returns the integer's digits as the document wrote them, with the base
 // prefix and any '_' separators still in place.
