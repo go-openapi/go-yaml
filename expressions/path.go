@@ -137,18 +137,18 @@ func (p *Path) AnnotateSource(source []byte, colored bool) ([]byte, error) {
 	return p.engine.AnnotateSource(source, colored)
 }
 
-// PathString create Path from string
+// PathString parses s as a YAML Path, or returns [ErrInvalidPathString].
 //
-// YAMLPath rule
-// $     : the root object/element
-// .     : child operator
-// ..    : recursive descent
-// [num] : object/element of array by number
-// [*]   : all objects/elements for array.
+// A path starts at the root and adds one step at a time:
 //
-// If you want to use reserved characters such as `.` and `*` as a key name,
-// enclose them in single quotation as follows ( $.foo.'bar.baz-*'.hoge ).
-// If you want to use a single quote with reserved characters, escape it with `\` ( $.foo.'bar.baz-*\'s value'.hoge ).
+//	$         the root of the document
+//	.name     the entry of a mapping called name
+//	..name    the entry called name at any depth below
+//	[n]       the n'th entry of a sequence, counting from 0
+//	[*]       every entry of a sequence
+//
+// Quote a name that holds '.' or '*' with single quotes, and escape a single quote inside it with a backslash:
+// $.foo.'bar.baz-*'.hoge, or $.foo.'bar.baz-*\'s value'.hoge.
 func PathString(s string) (*Path, error) {
 	p, err := yamlpath.PathString(s)
 	if err != nil {
@@ -219,10 +219,8 @@ func (b *PathBuilder) builder() *yamlpath.PathBuilder {
 
 // Read decodes the value p addresses in r into v.
 //
-// The node is decoded as it stands rather than rendered back to YAML and read
-// again. Rendering loses what the spelling does not carry: a block scalar
-// written "|" is clipped, so the break ending its last line belongs to the
-// value, and the node renders without it.
+// Read decodes the node itself, without rendering it back to YAML. Rendering would lose the line break a "|"
+// block scalar keeps at its end.
 func (p *Path) Read(r io.Reader, v any) error {
 	node, err := p.ReadNode(r)
 	if err != nil {
@@ -251,17 +249,15 @@ func (p *Path) Filter(target, v any) error {
 	return nil
 }
 
-// The errors a path raises. Each is declared by the engine [Path] embeds and
-// named here so that matching on one needs no second import.
+// The errors a [Path] returns. Match them with [errors.Is].
 var (
-	// ErrInvalidQuery reports a path that asks for something the document
-	// cannot answer, such as an index into a mapping.
+	// ErrInvalidQuery marks a path that asks the document for something it cannot hold, such as an index into a
+	// mapping.
 	ErrInvalidQuery = yamlpath.ErrInvalidQuery
-	// ErrInvalidPath reports a Path that was never built by PathString or
-	// PathBuilder and holds nothing to walk.
+	// ErrInvalidPath marks a Path that neither PathString nor PathBuilder built, which addresses nothing.
 	ErrInvalidPath = yamlpath.ErrInvalidPath
-	// ErrInvalidPathString reports text that is not a YAML path.
+	// ErrInvalidPathString marks text that is not a YAML path.
 	ErrInvalidPathString = yamlpath.ErrInvalidPathString
-	// ErrNotFoundNode reports a path that addresses no node of the document.
+	// ErrNotFoundNode marks a path that addresses no node of the document.
 	ErrNotFoundNode = yamlpath.ErrNotFoundNode
 )
