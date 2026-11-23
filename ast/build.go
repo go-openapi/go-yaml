@@ -51,14 +51,14 @@ func Seq(values ...Node) *SequenceNode {
 	return seq
 }
 
-// Null create node for null value.
+// Null returns a [NullNode] for tk.
 func Null(tk *token.Token) *NullNode {
 	return &NullNode{
 		Token: tk,
 	}
 }
 
-// Bool create node for boolean value.
+// Bool returns a [BoolNode] for tk, holding the value tk spells.
 func Bool(tk *token.Token) *BoolNode {
 	b, _ := token.ParseBool(tk.Value)
 
@@ -68,14 +68,14 @@ func Bool(tk *token.Token) *BoolNode {
 	}
 }
 
-// Integer create node for integer value.
+// Integer returns an [IntegerNode] for tk.
 func Integer(tk *token.Token) *IntegerNode {
 	return &IntegerNode{
 		Token: tk,
 	}
 }
 
-// Float create node for float value.
+// Float returns a [FloatNode] for tk.
 func Float(tk *token.Token) *FloatNode {
 	return &FloatNode{
 		Token: tk,
@@ -105,14 +105,14 @@ func Infinity(tk *token.Token) *InfinityNode {
 	return node
 }
 
-// Nan create node for .nan value.
+// Nan returns a [NanNode] for tk.
 func Nan(tk *token.Token) *NanNode {
 	return &NanNode{
 		Token: tk,
 	}
 }
 
-// String create node for string value.
+// String returns a [StringNode] for tk.
 func String(tk *token.Token) *StringNode {
 	return &StringNode{
 		Token: tk,
@@ -120,7 +120,7 @@ func String(tk *token.Token) *StringNode {
 	}
 }
 
-// Comment create node for comment.
+// Comment returns a [CommentNode] for tk.
 func Comment(tk *token.Token) *CommentNode {
 	return &CommentNode{
 		Token: tk,
@@ -137,14 +137,14 @@ func CommentGroup(comments []*token.Token) *CommentGroupNode {
 	}
 }
 
-// MergeKey create node for merge key ( << ).
+// MergeKey returns a [MergeKeyNode] for tk, a "<<".
 func MergeKey(tk *token.Token) *MergeKeyNode {
 	return &MergeKeyNode{
 		Token: tk,
 	}
 }
 
-// Mapping create node for map.
+// Mapping returns a [MappingNode] starting at tk and holding values.
 func Mapping(tk *token.Token, isFlowStyle bool, values ...*MappingValueNode) *MappingNode {
 	node := &MappingNode{
 		Start:       tk,
@@ -155,7 +155,7 @@ func Mapping(tk *token.Token, isFlowStyle bool, values ...*MappingValueNode) *Ma
 	return node
 }
 
-// MappingValue create node for mapping value.
+// MappingValue returns a [MappingValueNode] for key and value, with tk as its ":".
 func MappingValue(tk *token.Token, key MapKeyNode, value Node) *MappingValueNode {
 	return &MappingValueNode{
 		Start: tk,
@@ -164,14 +164,14 @@ func MappingValue(tk *token.Token, key MapKeyNode, value Node) *MappingValueNode
 	}
 }
 
-// MappingKey create node for map key ( '?' ).
+// MappingKey returns a [MappingKeyNode] for tk, a "?". Set its Value to the key.
 func MappingKey(tk *token.Token) *MappingKeyNode {
 	return &MappingKeyNode{
 		Start: tk,
 	}
 }
 
-// Sequence create node for sequence.
+// Sequence returns an empty [SequenceNode] starting at tk.
 func Sequence(tk *token.Token, isFlowStyle bool) *SequenceNode {
 	return &SequenceNode{
 		Start:       tk,
@@ -217,7 +217,7 @@ func Tag(tk *token.Token) *TagNode {
 	}
 }
 
-// SequenceEntry creates SequenceEntryNode instance.
+// SequenceEntry returns a [SequenceEntryNode] for the "-" start, its value and the comments above it.
 func SequenceEntry(start *token.Token, value Node, headComment *CommentGroupNode) *SequenceEntryNode {
 	return &SequenceEntryNode{
 		HeadComment: headComment,
@@ -226,7 +226,7 @@ func SequenceEntry(start *token.Token, value Node, headComment *CommentGroupNode
 	}
 }
 
-// SequenceMergeValue creates SequenceMergeValueNode instance.
+// SequenceMergeValue returns a [SequenceMergeValueNode] over values.
 func SequenceMergeValue(values ...MapNode) *SequenceMergeValueNode {
 	return &SequenceMergeValueNode{
 		values: values,

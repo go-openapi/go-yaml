@@ -10,7 +10,7 @@ import (
 	"github.com/go-openapi/go-yaml/token"
 )
 
-// File contains all documents in YAML file.
+// File holds the documents of one YAML stream, in order.
 type File struct {
 	Name string
 	Docs []*DocumentNode
@@ -44,12 +44,12 @@ func (f *File) Read(p []byte) (int, error) {
 	return n, nil
 }
 
-// String all documents to text.
+// String returns every document as text.
 func (f *File) String() string {
 	return defaultRenderer.File(f)
 }
 
-// DocumentNode type of Document.
+// DocumentNode is one document of a stream: its "---", its body and its "...".
 type DocumentNode struct {
 	BaseNode
 
@@ -88,7 +88,7 @@ type DocumentNode struct {
 	Schema token.Schema
 }
 
-// Type returns DocumentNodeType.
+// Type returns [DocumentType].
 func (d *DocumentNode) Type() NodeType { return DocumentType }
 
 // GetToken returns token instance.
@@ -102,12 +102,12 @@ func (d *DocumentNode) GetToken() *token.Token {
 	return d.Body.GetToken()
 }
 
-// String document to text.
+// String renders the document with the default [Renderer].
 func (d *DocumentNode) String() string {
 	return defaultRenderer.String(d)
 }
 
-// DirectiveNode type of directive node.
+// DirectiveNode is a directive, such as "%YAML 1.2", above a document.
 type DirectiveNode struct {
 	BaseNode
 
@@ -119,15 +119,15 @@ type DirectiveNode struct {
 	Values []Node
 }
 
-// Type returns DirectiveType.
+// Type returns [DirectiveType].
 func (n *DirectiveNode) Type() NodeType { return DirectiveType }
 
-// GetToken returns token instance.
+// GetToken returns n.Start, the "%".
 func (n *DirectiveNode) GetToken() *token.Token {
 	return n.Start
 }
 
-// String directive to text.
+// String returns the directive line.
 func (n *DirectiveNode) String() string {
 	values := make([]string, 0, len(n.Values))
 	for _, val := range n.Values {

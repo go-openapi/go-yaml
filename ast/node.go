@@ -16,7 +16,7 @@ var (
 	ErrInvalidAliasName  = errors.New("invalid alias name")
 )
 
-// NodeType type identifier of node.
+// NodeType names the kind of a [Node], as its Type method returns it.
 type NodeType int
 
 const (
@@ -66,7 +66,7 @@ const (
 	CommentGroupType
 )
 
-// String node type identifier to text.
+// String returns the type's Go name, such as "Mapping".
 func (t NodeType) String() string {
 	switch t {
 	case UnknownNodeType:
@@ -171,7 +171,7 @@ func (t NodeType) YAMLName() string {
 	}
 }
 
-// Node type of node.
+// Node is any node of the tree a parse builds.
 type Node interface {
 	// String node to text
 	String() string
@@ -191,7 +191,7 @@ type Node interface {
 	SetPathNode(path *PathNode)
 }
 
-// MapKeyNode type for map key node.
+// MapKeyNode is a node that can stand as a mapping key.
 type MapKeyNode interface {
 	Node
 	IsMergeKey() bool
@@ -199,7 +199,7 @@ type MapKeyNode interface {
 	stringWithoutComment() string
 }
 
-// ScalarNode type for scalar node.
+// ScalarNode is a node with one value, as [ScalarNode.GetValue] returns it.
 type ScalarNode interface {
 	MapKeyNode
 	GetValue() any
@@ -266,7 +266,7 @@ func addCommentString(base string, node *CommentGroupNode) string {
 	return fmt.Sprintf("%s %s", base, node.String())
 }
 
-// GetPath returns YAMLPath for the current node.
+// GetPath returns the node's YAML Path, such as "$.a[0]", or "" for a nil node.
 func (n *BaseNode) GetPath() string {
 	if n == nil {
 		return ""
@@ -290,12 +290,12 @@ func (n *BaseNode) SetPathNode(p *PathNode) {
 	n.path = p
 }
 
-// GetComment returns comment token instance.
+// GetComment returns the comment after the node, on its line.
 func (n *BaseNode) GetComment() *CommentGroupNode {
 	return n.Comment
 }
 
-// SetComment set comment token.
+// SetComment sets the comment after the node, on its line.
 func (n *BaseNode) SetComment(node *CommentGroupNode) error {
 	if err := refuseOverwritingWhatWasWritten(n.Comment, node); err != nil {
 		return err

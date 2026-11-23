@@ -5,12 +5,13 @@ package ast
 
 import "github.com/go-openapi/go-yaml/token"
 
-// MapNode interface of MappingValueNode / MappingNode.
+// MapNode is a node whose entries [MapNodeIter] ranges over: a [MappingNode], a [MappingValueNode] or a
+// [SequenceMergeValueNode].
 type MapNode interface {
 	MapRange() *MapNodeIter
 }
 
-// MapNodeIter is an iterator for ranging over a MapNode.
+// MapNodeIter ranges over the entries of a [MapNode]. Call Next before the first Key.
 type MapNodeIter struct {
 	values []*MappingValueNode
 	idx    int
@@ -38,7 +39,7 @@ func (m *MapNodeIter) Value() Node {
 	return m.values[m.idx].Value
 }
 
-// KeyValue returns the MappingValueNode of the iterator's current map node entry.
+// KeyValue returns the current entry.
 func (m *MapNodeIter) KeyValue() *MappingValueNode {
 	return m.values[m.idx]
 }
@@ -100,7 +101,7 @@ func FirstRefused(dups []DuplicateKey, byName bool) (DuplicateKey, bool) {
 	return DuplicateKey{}, false
 }
 
-// MappingNode type of mapping node.
+// MappingNode is a mapping, block or flow ("{a: 1}"), holding its entries in document order.
 type MappingNode struct {
 	BaseNode
 
@@ -128,7 +129,8 @@ type MappingNode struct {
 	StartComment *CommentGroupNode
 }
 
-// Merge merge key/value of map.
+// Merge adds the entries of target to n. An entry whose key String matches one of n takes that entry's value
+// instead.
 func (n *MappingNode) Merge(target *MappingNode) {
 	keyToMapValueMap := map[string]*MappingValueNode{}
 	for _, value := range n.Values {
@@ -145,7 +147,7 @@ func (n *MappingNode) Merge(target *MappingNode) {
 	}
 }
 
-// SetIsFlowStyle set value to IsFlowStyle field recursively.
+// SetIsFlowStyle sets IsFlowStyle on n and on every entry under it.
 func (n *MappingNode) SetIsFlowStyle(isFlow bool) {
 	n.IsFlowStyle = isFlow
 	for _, value := range n.Values {
@@ -153,10 +155,10 @@ func (n *MappingNode) SetIsFlowStyle(isFlow bool) {
 	}
 }
 
-// Type returns MappingType.
+// Type returns [MappingType].
 func (n *MappingNode) Type() NodeType { return MappingType }
 
-// GetToken returns token instance.
+// GetToken returns n.Start: "{" for a flow mapping, the first key's token for a block one.
 func (n *MappingNode) GetToken() *token.Token {
 	return n.Start
 }
@@ -171,7 +173,7 @@ func (n *MappingNode) String() string {
 	return defaultRenderer.String(n)
 }
 
-// MapRange implements MapNode protocol.
+// MapRange returns an iterator over the entries of n.
 func (n *MappingNode) MapRange() *MapNodeIter {
 	return &MapNodeIter{
 		idx:    startRangeIndex,
@@ -193,7 +195,7 @@ func (n *MappingNode) stringWithoutComment() string {
 	return bareRenderer.String(n)
 }
 
-// MappingKeyNode type of tag node.
+// MappingKeyNode is an explicit key: "?" and the key written after it.
 type MappingKeyNode struct {
 	BaseNode
 
@@ -201,20 +203,20 @@ type MappingKeyNode struct {
 	Value Node
 }
 
-// Type returns MappingKeyType.
+// Type returns [MappingKeyType].
 func (n *MappingKeyNode) Type() NodeType { return MappingKeyType }
 
-// GetToken returns token instance.
+// GetToken returns n.Start, the "?".
 func (n *MappingKeyNode) GetToken() *token.Token {
 	return n.Start
 }
 
-// String tag to text.
+// String renders "? " and the key.
 func (n *MappingKeyNode) String() string {
 	return defaultRenderer.String(n)
 }
 
-// IsMergeKey returns whether it is a MergeKey node.
+// IsMergeKey returns whether the key after the "?" is a merge key.
 func (n *MappingKeyNode) IsMergeKey() bool {
 	if n.Value == nil {
 		return false
@@ -230,7 +232,7 @@ func (n *MappingKeyNode) stringWithoutComment() string {
 	return bareRenderer.String(n)
 }
 
-// MappingValueNode type of mapping value.
+// MappingValueNode is one entry of a mapping: a key, its ":" and its value.
 type MappingValueNode struct {
 	BaseNode
 
@@ -260,21 +262,21 @@ type MappingValueNode struct {
 	IsFlowStyle bool
 }
 
-// Replace replace value node.
+// Replace sets value as the entry's value. It returns nil.
 func (n *MappingValueNode) Replace(value Node) error {
 	n.Value = value
 	return nil
 }
 
-// Type returns MappingValueType.
+// Type returns [MappingValueType].
 func (n *MappingValueNode) Type() NodeType { return MappingValueType }
 
-// GetToken returns token instance.
+// GetToken returns n.Start, the ":".
 func (n *MappingValueNode) GetToken() *token.Token {
 	return n.Start
 }
 
-// SetIsFlowStyle set value to IsFlowStyle field recursively.
+// SetIsFlowStyle sets IsFlowStyle on n and on every collection in its value.
 func (n *MappingValueNode) SetIsFlowStyle(isFlow bool) {
 	n.IsFlowStyle = isFlow
 	switch value := n.Value.(type) {
@@ -287,12 +289,12 @@ func (n *MappingValueNode) SetIsFlowStyle(isFlow bool) {
 	}
 }
 
-// String mapping value to text.
+// String returns the entry as text: key, ":" and value.
 func (n *MappingValueNode) String() string {
 	return defaultRenderer.String(n)
 }
 
-// MapRange implements MapNode protocol.
+// MapRange returns an iterator over n, as its only entry.
 func (n *MappingValueNode) MapRange() *MapNodeIter {
 	return &MapNodeIter{
 		idx:    startRangeIndex,

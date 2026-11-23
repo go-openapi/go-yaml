@@ -5,7 +5,7 @@ package ast
 
 import "github.com/go-openapi/go-yaml/token"
 
-// AnchorNode type of anchor node.
+// AnchorNode is an anchor, "&name", on the node it names.
 type AnchorNode struct {
 	BaseNode
 
@@ -26,10 +26,10 @@ func (n *AnchorNode) SetName(name string) error {
 	return nil
 }
 
-// Type returns AnchorType.
+// Type returns [AnchorType].
 func (n *AnchorNode) Type() NodeType { return AnchorType }
 
-// GetToken returns token instance.
+// GetToken returns n.Start, the "&name".
 func (n *AnchorNode) GetToken() *token.Token {
 	return n.Start
 }
@@ -38,12 +38,12 @@ func (n *AnchorNode) GetValue() any {
 	return n.Value.GetToken().Value
 }
 
-// String anchor to text.
+// String renders "&name" and the anchored node.
 func (n *AnchorNode) String() string {
 	return defaultRenderer.String(n)
 }
 
-// IsMergeKey returns whether it is a MergeKey node.
+// IsMergeKey returns whether the anchored node is a merge key.
 func (n *AnchorNode) IsMergeKey() bool {
 	if n.Value == nil {
 		return false
@@ -59,7 +59,7 @@ func (n *AnchorNode) stringWithoutComment() string {
 	return bareRenderer.String(n)
 }
 
-// AliasNode type of alias node.
+// AliasNode is an alias, "*name", to an anchored node.
 type AliasNode struct {
 	BaseNode
 
@@ -96,10 +96,10 @@ func (n *AliasNode) SetName(name string) error {
 	return nil
 }
 
-// Type returns AliasType.
+// Type returns [AliasType].
 func (n *AliasNode) Type() NodeType { return AliasType }
 
-// GetToken returns token instance.
+// GetToken returns n.Start, the "*name".
 func (n *AliasNode) GetToken() *token.Token {
 	return n.Start
 }
@@ -108,12 +108,12 @@ func (n *AliasNode) GetValue() any {
 	return n.Value.GetToken().Value
 }
 
-// String alias to text.
+// String returns "*name".
 func (n *AliasNode) String() string {
 	return "*" + n.Value.String()
 }
 
-// IsMergeKey returns whether it is a MergeKey node.
+// IsMergeKey returns false.
 func (n *AliasNode) IsMergeKey() bool {
 	return false
 }
@@ -124,7 +124,7 @@ func (n *AliasNode) stringWithoutComment() string {
 	return n.String()
 }
 
-// TagNode type of tag node.
+// TagNode is a tag, such as "!!str", on the node it types.
 type TagNode struct {
 	BaseNode
 
@@ -186,20 +186,20 @@ func (n *TagNode) GetValue() any {
 	return scalar.GetValue()
 }
 
-// Type returns TagType.
+// Type returns [TagType].
 func (n *TagNode) Type() NodeType { return TagType }
 
-// GetToken returns token instance.
+// GetToken returns n.Start, the tag as written.
 func (n *TagNode) GetToken() *token.Token {
 	return n.Start
 }
 
-// String tag to text.
+// String renders the tag and the tagged node.
 func (n *TagNode) String() string {
 	return defaultRenderer.String(n)
 }
 
-// IsMergeKey returns whether it is a MergeKey node.
+// IsMergeKey returns true for "!!merge", and otherwise whether the tagged node is a merge key.
 func (n *TagNode) IsMergeKey() bool {
 	if name, known := token.ReservedTagOf(n.URI); known && name == token.MergeTag {
 		// The tag names the type, and a written tag is not tied to a spec

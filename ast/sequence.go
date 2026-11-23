@@ -10,17 +10,17 @@ import (
 	"github.com/go-openapi/go-yaml/token"
 )
 
-// String node to text.
+// String returns "". Render the [SequenceNode] that holds the entry.
 func (n *SequenceEntryNode) String() string {
 	return "" // TODO
 }
 
-// ArrayNode interface of SequenceNode.
+// ArrayNode is a node whose values [ArrayNodeIter] ranges over: a [SequenceNode], or a [TagNode] on one.
 type ArrayNode interface {
 	ArrayRange() *ArrayNodeIter
 }
 
-// ArrayNodeIter is an iterator for ranging over a ArrayNode.
+// ArrayNodeIter ranges over the values of an [ArrayNode]. Call Next before the first Value.
 type ArrayNodeIter struct {
 	values []Node
 	idx    int
@@ -39,12 +39,12 @@ func (m *ArrayNodeIter) Value() Node {
 	return m.values[m.idx]
 }
 
-// Len returns length of array.
+// Len returns the number of values.
 func (m *ArrayNodeIter) Len() int {
 	return len(m.values)
 }
 
-// SequenceNode type of sequence node.
+// SequenceNode is a sequence, block or flow ("[a, b]").
 type SequenceNode struct {
 	BaseNode
 
@@ -170,7 +170,7 @@ func removeBeside[T any](beside []T, idx int) []T {
 	return slices.Delete(beside, idx, idx+1)
 }
 
-// Merge merge sequence value.
+// Merge appends the values of target to n.
 func (n *SequenceNode) Merge(target *SequenceNode) {
 	n.Values = append(n.Values, target.Values...)
 	if len(target.ValueHeadComments) == 0 {
@@ -180,7 +180,7 @@ func (n *SequenceNode) Merge(target *SequenceNode) {
 	n.ValueHeadComments = append(n.ValueHeadComments, target.ValueHeadComments...)
 }
 
-// SetIsFlowStyle set value to IsFlowStyle field recursively.
+// SetIsFlowStyle sets IsFlowStyle on n and on every collection under it.
 func (n *SequenceNode) SetIsFlowStyle(isFlow bool) {
 	n.IsFlowStyle = isFlow
 	for _, value := range n.Values {
@@ -195,10 +195,10 @@ func (n *SequenceNode) SetIsFlowStyle(isFlow bool) {
 	}
 }
 
-// Type returns SequenceType.
+// Type returns [SequenceType].
 func (n *SequenceNode) Type() NodeType { return SequenceType }
 
-// GetToken returns token instance.
+// GetToken returns n.Start: "[" for a flow sequence, the first "-" for a block one.
 func (n *SequenceNode) GetToken() *token.Token {
 	return n.Start
 }
@@ -213,7 +213,7 @@ func (n *SequenceNode) String() string {
 	return defaultRenderer.String(n)
 }
 
-// ArrayRange implements ArrayNode protocol.
+// ArrayRange returns an iterator over the values of n.
 func (n *SequenceNode) ArrayRange() *ArrayNodeIter {
 	return &ArrayNodeIter{
 		idx:    startRangeIndex,
@@ -227,7 +227,7 @@ func (n *SequenceNode) stringWithoutComment() string {
 	return bareRenderer.String(n)
 }
 
-// SequenceEntryNode is the sequence entry.
+// SequenceEntryNode is one entry of a block sequence: its "-" and the value after it.
 type SequenceEntryNode struct {
 	BaseNode
 
@@ -237,35 +237,35 @@ type SequenceEntryNode struct {
 	Value       Node              // value node.
 }
 
-// GetToken returns token instance.
+// GetToken returns n.Start, the "-".
 func (n *SequenceEntryNode) GetToken() *token.Token {
 	return n.Start
 }
 
-// Type returns type of node.
+// Type returns [SequenceEntryType].
 func (n *SequenceEntryNode) Type() NodeType {
 	return SequenceEntryType
 }
 
-// SetComment set line comment.
+// SetComment sets the comment on the "-" line. It returns nil.
 func (n *SequenceEntryNode) SetComment(cm *CommentGroupNode) error {
 	n.LineComment = cm
 	return nil
 }
 
-// GetComment returns comment token instance.
+// GetComment returns the comment on the "-" line.
 func (n *SequenceEntryNode) GetComment() *CommentGroupNode {
 	return n.LineComment
 }
 
 func (n *SequenceEntryNode) clearComment() { n.LineComment = nil }
 
-// SequenceMergeValueNode is used to convert the Sequence node specified for the merge key into a MapNode format.
+// SequenceMergeValueNode ranges over the mappings of a merge sequence ("<<: [*a, *b]") as one [MapNode].
 type SequenceMergeValueNode struct {
 	values []MapNode
 }
 
-// MapRange returns MapNodeIter instance.
+// MapRange returns an iterator over the entries of every mapping, in order.
 func (n *SequenceMergeValueNode) MapRange() *MapNodeIter {
 	ret := &MapNodeIter{idx: startRangeIndex}
 	for _, value := range n.values {

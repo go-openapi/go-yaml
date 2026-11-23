@@ -35,22 +35,22 @@ func (n *NullNode) SetComment(node *CommentGroupNode) error {
 	return n.BaseNode.SetComment(node)
 }
 
-// NullNode type of null node.
+// NullNode is a null: "null", "~", "Null", "NULL", or nothing at all where a value is due.
 type NullNode struct {
 	BaseNode
 
 	Token *token.Token
 }
 
-// Type returns NullType.
+// Type returns [NullType].
 func (n *NullNode) Type() NodeType { return NullType }
 
-// GetToken returns token instance.
+// GetToken returns n.Token, the scalar as the document wrote it.
 func (n *NullNode) GetToken() *token.Token {
 	return n.Token
 }
 
-// GetValue returns nil value.
+// GetValue returns nil.
 func (n *NullNode) GetValue() any {
 	return nil
 }
@@ -70,7 +70,7 @@ func (n *NullNode) String() string {
 	return n.stringWithoutComment()
 }
 
-// IsMergeKey returns whether it is a MergeKey node.
+// IsMergeKey returns false.
 func (n *NullNode) IsMergeKey() bool {
 	return false
 }
@@ -93,17 +93,17 @@ func (n *NullNode) stringWithoutComment() string {
 	return n.Token.Value
 }
 
-// IntegerNode type of integer node.
+// IntegerNode is an integer scalar, such as 42, 0x2a or 0o52.
 type IntegerNode struct {
 	BaseNode
 
 	Token *token.Token
 }
 
-// Type returns IntegerType.
+// Type returns [IntegerType].
 func (n *IntegerNode) Type() NodeType { return IntegerType }
 
-// GetToken returns token instance.
+// GetToken returns n.Token, the scalar as the document wrote it.
 func (n *IntegerNode) GetToken() *token.Token {
 	return n.Token
 }
@@ -135,7 +135,7 @@ func (n *IntegerNode) GetValue() any {
 	return nil
 }
 
-// String int64 to text.
+// String returns the integer as the document wrote it, with its comment.
 func (n *IntegerNode) String() string {
 	if n.Comment != nil {
 		return addCommentString(n.Token.Value, n.Comment)
@@ -143,7 +143,7 @@ func (n *IntegerNode) String() string {
 	return n.stringWithoutComment()
 }
 
-// IsMergeKey returns whether it is a MergeKey node.
+// IsMergeKey returns false.
 func (n *IntegerNode) IsMergeKey() bool {
 	return false
 }
@@ -152,17 +152,17 @@ func (n *IntegerNode) stringWithoutComment() string {
 	return n.Token.Value
 }
 
-// FloatNode type of float node.
+// FloatNode is a floating-point scalar, such as 1.5 or 6.02e23.
 type FloatNode struct {
 	BaseNode
 
 	Token *token.Token
 }
 
-// Type returns FloatType.
+// Type returns [FloatType].
 func (n *FloatNode) Type() NodeType { return FloatType }
 
-// GetToken returns token instance.
+// GetToken returns n.Token, the scalar as the document wrote it.
 func (n *FloatNode) GetToken() *token.Token {
 	return n.Token
 }
@@ -194,7 +194,7 @@ func (n *FloatNode) GetValue() any {
 	return float64(0)
 }
 
-// String float64 to text.
+// String returns the number as the document wrote it, with its comment.
 func (n *FloatNode) String() string {
 	if n.Comment != nil {
 		return addCommentString(n.Token.Value, n.Comment)
@@ -202,7 +202,7 @@ func (n *FloatNode) String() string {
 	return n.stringWithoutComment()
 }
 
-// IsMergeKey returns whether it is a MergeKey node.
+// IsMergeKey returns false.
 func (n *FloatNode) IsMergeKey() bool {
 	return false
 }
@@ -211,7 +211,7 @@ func (n *FloatNode) stringWithoutComment() string {
 	return n.Token.Value
 }
 
-// StringNode type of string node.
+// StringNode is a string scalar: plain, single-quoted or double-quoted.
 type StringNode struct {
 	BaseNode
 
@@ -219,20 +219,20 @@ type StringNode struct {
 	Value string
 }
 
-// Type returns StringType.
+// Type returns [StringType].
 func (n *StringNode) Type() NodeType { return StringType }
 
-// GetToken returns token instance.
+// GetToken returns n.Token, the scalar as the document wrote it.
 func (n *StringNode) GetToken() *token.Token {
 	return n.Token
 }
 
-// GetValue returns string value.
+// GetValue returns the string, with its quotes removed and its escapes read.
 func (n *StringNode) GetValue() any {
 	return n.Value
 }
 
-// IsMergeKey returns whether it is a MergeKey node.
+// IsMergeKey returns false: a quoted "<<", or one under a tag, is a [StringNode] and not a merge key.
 func (n *StringNode) IsMergeKey() bool {
 	return false
 }
@@ -367,7 +367,7 @@ func (n *StringNode) stringWithoutComment() string {
 	return n.Value
 }
 
-// LiteralNode type of literal node.
+// LiteralNode is a block scalar, literal ("|") or folded (">").
 type LiteralNode struct {
 	BaseNode
 
@@ -386,10 +386,10 @@ type LiteralNode struct {
 	Source string
 }
 
-// Type returns LiteralType.
+// Type returns [LiteralType].
 func (n *LiteralNode) Type() NodeType { return LiteralType }
 
-// GetToken returns token instance.
+// GetToken returns n.Start, the block's header.
 func (n *LiteralNode) GetToken() *token.Token {
 	return n.Start
 }
@@ -404,12 +404,12 @@ func (n *LiteralNode) GetValue() any {
 	return n.Value.GetValue()
 }
 
-// String literal to text.
+// String returns the block scalar as written: its header, then its content.
 func (n *LiteralNode) String() string {
 	return defaultRenderer.String(n)
 }
 
-// IsMergeKey returns whether it is a MergeKey node.
+// IsMergeKey returns false.
 func (n *LiteralNode) IsMergeKey() bool {
 	return false
 }
@@ -418,32 +418,32 @@ func (n *LiteralNode) stringWithoutComment() string {
 	return bareRenderer.String(n)
 }
 
-// MergeKeyNode type of merge key node.
+// MergeKeyNode is the "<<" key of a merge.
 type MergeKeyNode struct {
 	BaseNode
 
 	Token *token.Token
 }
 
-// Type returns MergeKeyType.
+// Type returns [MergeKeyType].
 func (n *MergeKeyNode) Type() NodeType { return MergeKeyType }
 
-// GetToken returns token instance.
+// GetToken returns n.Token, the scalar as the document wrote it.
 func (n *MergeKeyNode) GetToken() *token.Token {
 	return n.Token
 }
 
-// GetValue returns '<<' value.
+// GetValue returns the key's text, "<<".
 func (n *MergeKeyNode) GetValue() any {
 	return n.Token.Value
 }
 
-// String returns '<<' value.
+// String returns "<<".
 func (n *MergeKeyNode) String() string {
 	return n.stringWithoutComment()
 }
 
-// IsMergeKey returns whether it is a MergeKey node.
+// IsMergeKey returns true.
 func (n *MergeKeyNode) IsMergeKey() bool {
 	return true
 }
@@ -452,7 +452,7 @@ func (n *MergeKeyNode) stringWithoutComment() string {
 	return n.Token.Value
 }
 
-// BoolNode type of boolean node.
+// BoolNode is a boolean scalar, such as true or False.
 type BoolNode struct {
 	BaseNode
 
@@ -460,20 +460,20 @@ type BoolNode struct {
 	Value bool
 }
 
-// Type returns BoolType.
+// Type returns [BoolType].
 func (n *BoolNode) Type() NodeType { return BoolType }
 
-// GetToken returns token instance.
+// GetToken returns n.Token, the scalar as the document wrote it.
 func (n *BoolNode) GetToken() *token.Token {
 	return n.Token
 }
 
-// GetValue returns boolean value.
+// GetValue returns the bool.
 func (n *BoolNode) GetValue() any {
 	return n.Value
 }
 
-// String boolean to text.
+// String returns the boolean as the document wrote it, with its comment.
 func (n *BoolNode) String() string {
 	if n.Comment != nil {
 		return addCommentString(n.Token.Value, n.Comment)
@@ -481,7 +481,7 @@ func (n *BoolNode) String() string {
 	return n.stringWithoutComment()
 }
 
-// IsMergeKey returns whether it is a MergeKey node.
+// IsMergeKey returns false.
 func (n *BoolNode) IsMergeKey() bool {
 	return false
 }
@@ -490,7 +490,7 @@ func (n *BoolNode) stringWithoutComment() string {
 	return n.Token.Value
 }
 
-// InfinityNode type of infinity node.
+// InfinityNode is an infinity: ".inf", "+.inf" or "-.inf", in any of the spellings [Infinity] accepts.
 type InfinityNode struct {
 	BaseNode
 
@@ -498,10 +498,10 @@ type InfinityNode struct {
 	Value float64
 }
 
-// Type returns InfinityType.
+// Type returns [InfinityType].
 func (n *InfinityNode) Type() NodeType { return InfinityType }
 
-// GetToken returns token instance.
+// GetToken returns n.Token, the scalar as the document wrote it.
 func (n *InfinityNode) GetToken() *token.Token {
 	return n.Token
 }
@@ -511,7 +511,7 @@ func (n *InfinityNode) GetValue() any {
 	return n.Value
 }
 
-// String infinity to text.
+// String returns the infinity as the document wrote it, with its comment.
 func (n *InfinityNode) String() string {
 	if n.Comment != nil {
 		return addCommentString(n.Token.Value, n.Comment)
@@ -519,7 +519,7 @@ func (n *InfinityNode) String() string {
 	return n.stringWithoutComment()
 }
 
-// IsMergeKey returns whether it is a MergeKey node.
+// IsMergeKey returns false.
 func (n *InfinityNode) IsMergeKey() bool {
 	return false
 }
@@ -528,17 +528,17 @@ func (n *InfinityNode) stringWithoutComment() string {
 	return n.Token.Value
 }
 
-// NanNode type of nan node.
+// NanNode is a not-a-number: ".nan", ".NaN" or ".NAN".
 type NanNode struct {
 	BaseNode
 
 	Token *token.Token
 }
 
-// Type returns NanType.
+// Type returns [NanType].
 func (n *NanNode) Type() NodeType { return NanType }
 
-// GetToken returns token instance.
+// GetToken returns n.Token, the scalar as the document wrote it.
 func (n *NanNode) GetToken() *token.Token {
 	return n.Token
 }
@@ -548,7 +548,7 @@ func (n *NanNode) GetValue() any {
 	return math.NaN()
 }
 
-// String returns .nan.
+// String returns the value as the document wrote it, with its comment.
 func (n *NanNode) String() string {
 	if n.Comment != nil {
 		return addCommentString(n.Token.Value, n.Comment)
@@ -556,7 +556,7 @@ func (n *NanNode) String() string {
 	return n.stringWithoutComment()
 }
 
-// IsMergeKey returns whether it is a MergeKey node.
+// IsMergeKey returns false.
 func (n *NanNode) IsMergeKey() bool {
 	return false
 }

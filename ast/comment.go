@@ -11,7 +11,7 @@ import (
 	"github.com/go-openapi/go-yaml/token"
 )
 
-// CommentNode type of comment node.
+// CommentNode is one comment line, "# text".
 type CommentNode struct {
 	BaseNode
 
@@ -95,13 +95,13 @@ func (n *CommentNode) Text() string {
 	return n.Token.Value
 }
 
-// Type returns TagType.
+// Type returns [CommentType].
 func (n *CommentNode) Type() NodeType { return CommentType }
 
-// GetToken returns token instance.
+// GetToken returns n.Token, the comment as the document wrote it.
 func (n *CommentNode) GetToken() *token.Token { return n.Token }
 
-// String comment to text.
+// String returns "#" and [CommentNode.Text], or "" for a removed comment.
 func (n *CommentNode) String() string {
 	if n.Removed() {
 		return ""
@@ -110,14 +110,14 @@ func (n *CommentNode) String() string {
 	return "#" + n.Text()
 }
 
-// CommentGroupNode type of comment node.
+// CommentGroupNode holds the comments on one place of a node: the lines above it, or the comment after it.
 type CommentGroupNode struct {
 	BaseNode
 
 	Comments []*CommentNode
 }
 
-// Type returns TagType.
+// Type returns [CommentType].
 func (n *CommentGroupNode) Type() NodeType { return CommentType }
 
 // SetComment rejects a comment on a comment.
@@ -129,7 +129,7 @@ func (n *CommentGroupNode) SetComment(*CommentGroupNode) error {
 	return errors.New("a comment group holds comments and does not carry one")
 }
 
-// GetToken returns token instance.
+// GetToken returns the token of the first comment not removed, or nil.
 func (n *CommentGroupNode) GetToken() *token.Token {
 	for _, comment := range n.Comments {
 		if !comment.Removed() {
@@ -204,7 +204,7 @@ func (n *CommentGroupNode) Remove() {
 	}
 }
 
-// String comment to text.
+// String returns the comments not removed, one per line.
 func (n *CommentGroupNode) String() string {
 	visible := n.Visible()
 	values := make([]string, 0, len(visible))
