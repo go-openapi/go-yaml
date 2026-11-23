@@ -12,6 +12,7 @@ import (
 
 	"github.com/go-openapi/go-yaml/internal/testcorpus"
 	"github.com/go-openapi/go-yaml/token"
+	"github.com/go-openapi/testify/v2/assert"
 	"github.com/go-openapi/testify/v2/require"
 )
 
@@ -147,4 +148,33 @@ func workloads(t *testing.T) []string {
 	}
 
 	return out
+}
+
+// TestTokenCopiesShareNothingButTheText checks the copies a token makes: Clone keeps FromSource, Detached clears
+// it, and neither writes through to the original. Bytes and TextBytes return the text without copying it.
+func TestTokenCopiesShareNothingButTheText(t *testing.T) {
+	tk := token.MakeString("abc", "abc", token.At(1, 1, 0, 0))
+	assert.False(t, tk.FromSource())
+	tk.MarkFromSource()
+	assert.True(t, tk.FromSource())
+
+	clone := tk.Clone()
+	assert.True(t, clone.FromSource(), "Clone dropped FromSource")
+	clone.Value = "x"
+	assert.Equal(t, "abc", tk.Value, "Clone wrote through")
+
+	detached := tk.Detached()
+	assert.False(t, detached.FromSource(), "Detached kept FromSource")
+	assert.True(t, tk.FromSource(), "Detached cleared the original")
+	assert.Equal(t, tk.EndLine(), detached.EndLine())
+
+	assert.Nil(t, (*token.Token)(nil).Clone())
+
+	assert.Equal(t, []byte("abc"), tk.Bytes())
+	assert.Equal(t, []byte("abc"), token.TextBytes("abc"))
+	assert.Empty(t, token.TextBytes(""))
+
+	var tokens token.Tokens
+	tokens.Add(&tk, clone)
+	assert.Len(t, tokens, 2)
 }

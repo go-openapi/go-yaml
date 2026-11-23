@@ -4,9 +4,13 @@
 package token_test
 
 import (
+	"math"
+	"math/big"
 	"testing"
 
 	"github.com/go-openapi/go-yaml/token"
+	"github.com/go-openapi/testify/v2/assert"
+	"github.com/go-openapi/testify/v2/require"
 )
 
 // TestANumberKeyIsNamedByItsValue holds that two spellings of one number name
@@ -62,4 +66,65 @@ func TestNegativeZeroReadsAsZero(t *testing.T) {
 	if v, _ := token.ParseInteger("-1", token.IntegerType); v != any(int64(-1)) {
 		t.Errorf(`"-1" reads %#v, want int64(-1)`, v)
 	}
+}
+
+// TestKeyNameNamesEachTypeBySpelling gives the name and the kind of a key of each scalar type: an integer in
+// decimal, every null as "null", a boolean as "true" or "false", an infinity and a NaN by their canonical
+// spelling, and a string or anything unresolved as written.
+func TestKeyNameNamesEachTypeBySpelling(t *testing.T) {
+	type named struct {
+		name string
+		kind token.KeyKind
+	}
+	for _, tc := range []struct {
+		text string
+		typ  token.Type
+		want named
+	}{
+		{"a", token.StringType, named{"a", token.KeyString}},
+		{"1", token.DoubleQuoteType, named{"1", token.KeyString}},
+		{"~", token.NullType, named{"null", token.KeyNull}},
+		{"", token.ImplicitNullType, named{"null", token.KeyNull}},
+		{"TRUE", token.BoolType, named{"true", token.KeyBool}},
+		{"off", token.BoolType, named{"false", token.KeyBool}},
+		{"0x10", token.HexIntegerType, named{"16", token.KeyInt}},
+		{"-0", token.IntegerType, named{"0", token.KeyInt}},
+		{"1e3", token.FloatType, named{"1000.0", token.KeyFloat}},
+		{"-.Inf", token.InfinityType, named{"-.inf", token.KeyFloat}},
+		{"+.inf", token.InfinityType, named{".inf", token.KeyFloat}},
+		{".NaN", token.NanType, named{".nan", token.KeyFloat}},
+		{"&a", token.AnchorType, named{"&a", token.KeyOther}},
+	} {
+		name, kind := token.KeyName(tc.text, tc.typ)
+		assert.Equalf(t, tc.want, named{name, kind}, "%q as %s", tc.text, tc.typ)
+		assert.NotEmptyf(t, kind.String(), "%q as %s", tc.text, tc.typ)
+	}
+}
+
+// TestKeyNameOfFloatNeverSpellsAnInteger names floats of both widths, and a big.Float past float64's range.
+func TestKeyNameOfFloatNeverSpellsAnInteger(t *testing.T) {
+	for _, tc := range []struct {
+		f       float64
+		bitSize int
+		want    string
+	}{
+		{1000, 64, "1000.0"},
+		{1e30, 64, "1e+30"},
+		{0.5, 32, "0.5"},
+		{math.Copysign(0, -1), 64, "0.0"},
+	} {
+		assert.Equalf(t, tc.want, token.KeyNameOfFloat(tc.f, tc.bitSize), "%v", tc.f)
+	}
+
+	big1e400, _, err := big.ParseFloat("1e400", 10, 64, big.ToNearestEven)
+	require.NoError(t, err)
+	assert.Equal(t, "1e+400", token.KeyNameOfBigFloat(big1e400))
+	big1000 := new(big.Float).SetFloat64(1000)
+	assert.Equal(t, "1000.0", token.KeyNameOfBigFloat(big1000))
+}
+
+// TestCanonicalBase64DropsTheBlanks removes the spaces, tabs and line breaks RFC 2045 lets a writer put in base64.
+func TestCanonicalBase64DropsTheBlanks(t *testing.T) {
+	assert.Equal(t, "AAECAw==", token.CanonicalBase64(" AAEC\n\tAw==\r\n"))
+	assert.Equal(t, "AAECAw==", token.CanonicalBase64("AAECAw=="))
 }

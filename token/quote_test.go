@@ -94,3 +94,47 @@ func TestIsNeedQuoted(t *testing.T) {
 		assert.Falsef(t, token.IsNeedQuoted(test), "expected %q not to need quoting", test)
 	}
 }
+
+// TestLiteralBlockHeaderReadsBackTheValue gives the header for each shape of multi-line value: "|" for one final
+// line break, "|-" for none, "|+" for more than one or for a value made only of line breaks, and "" where a
+// block scalar cannot hold the value.
+func TestLiteralBlockHeaderReadsBackTheValue(t *testing.T) {
+	for value, want := range map[string]string{
+		"a":               "",
+		"a\nb\n":          "|",
+		"a\nb":            "|-",
+		"a\nb\n\n":        "|+",
+		"\n":              "|+",
+		"\n\n":            "|+",
+		"\n 0":            "", // the first line of text starts with a space
+		" a\nb":           "",
+		"\n\tx":           "|-",
+		"a\r\nb":          "", // a carriage return has no block spelling
+		"a\xef\xbb\xbf\n": "",
+	} {
+		assert.Equalf(t, want, token.LiteralBlockHeader(value), "%q", value)
+	}
+}
+
+// TestNeedsQuotedSpellingFindsWhatOnlyAnEscapeCarries holds NeedsQuotedSpelling to the characters c-printable
+// leaves out, the carriage return and the byte order mark.
+func TestNeedsQuotedSpellingFindsWhatOnlyAnEscapeCarries(t *testing.T) {
+	for _, value := range []string{"a\rb", "\xef\xbb\xbf", "\x00", "\x07", "\x7f", "\u0085x\x1b", "\u0080", "퟿￾", "a\xffb"} {
+		assert.Truef(t, token.NeedsQuotedSpelling(value), "%q", value)
+	}
+	for _, value := range []string{"", "a", "a\tb", "a\nb", "\u0085", "é", "\U0001F600", "�"} {
+		assert.Falsef(t, token.NeedsQuotedSpelling(value), "%q", value)
+	}
+}
+
+// TestDetectLineBreakCharacterTakesTheBreakInUse reads which line break a text writes.
+func TestDetectLineBreakCharacterTakesTheBreakInUse(t *testing.T) {
+	for src, want := range map[string]string{
+		"a\nb\n":     "\n",
+		"a\r\nb\r\n": "\r\n",
+		"a\rb\r":     "\r",
+		"a\r\nb\n":   "\n",
+	} {
+		assert.Equalf(t, want, token.DetectLineBreakCharacter(src), "%q", src)
+	}
+}
