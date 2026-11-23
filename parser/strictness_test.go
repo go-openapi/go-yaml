@@ -49,6 +49,23 @@ func TestRejectsMalformedDocuments(t *testing.T) {
 			invalid: "- [-, -]\n",
 			valid:   "- [-a, -b]\n",
 		},
+		// Nor before a blank, where it read as a block sequence entry: "[- a]" as [[a]], "{a: - b}" as {a: [b]}.
+		"dash before a space in a flow sequence": {
+			invalid: "[- a]\n",
+			valid:   "[a - b]\n",
+		},
+		"dash before a space in a flow mapping": {
+			invalid: "{a: - b}\n",
+			valid:   "{-: b}\n",
+		},
+		"dash before a line break in a flow mapping": {
+			invalid: "{a: -\n}\n",
+			valid:   "{a: -x\n}\n",
+		},
+		"dash before a tab in a flow sequence": {
+			invalid: "[-\ta]\n",
+			valid:   "[a -]\n",
+		},
 
 		// A tag shorthand cannot hold a ',', which must be percent-encoded.
 		// A verbatim tag holds a URI as written.

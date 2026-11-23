@@ -344,14 +344,14 @@ func (s *Scanner) scan(ctx *Context) error {
 			if s.scanRawFoldedChar(ctx) {
 				continue
 			}
+			// Inside a flow collection a '-' is a scalar or nothing, so scanFlowDash decides before the entry scan
+			// could take it for a sequence entry.
+			if err := s.scanFlowDash(ctx); err != nil {
+				return err
+			}
 			scanned, err := s.scanSequence(ctx)
 			if err != nil {
 				return err
-			}
-			if !scanned {
-				if err := s.scanFlowDash(ctx); err != nil {
-					return err
-				}
 			}
 			if scanned {
 				continue

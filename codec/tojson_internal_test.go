@@ -91,7 +91,7 @@ func aMergeOfANonMappingCases() iter.Seq[aMergeTakesOnlyMappingsOnEveryPathCase]
 		{src: "<<:\n", want: "[3:5] null was used where mapping is expected"},
 		{src: "<<: 1\n", want: "[3:5] int was used where mapping is expected"},
 		{src: "<<: [[{a: 1}], {b: 2}]\n", want: "[3:6] sequence was used where mapping is expected"},
-		{src: "<<: [{a: 1}, - {b: 2}]\n", want: "[3:14] sequence was used where mapping is expected"},
+		{src: "<<: [{a: 1}, - {b: 2}]\n", want: "[3:14] '-' is not a scalar, and a flow collection has no sequence entries"},
 		{src: "<<: [{a: 1}, 1]\n", want: "[3:14] int was used where mapping is expected"},
 		{src: "<<: [{a: 1}, [{b: 2}]]\n", want: "[3:14] sequence was used where mapping is expected"},
 		{src: "<<: [{a: 1}, null]\n", want: "[3:14] null was used where mapping is expected"},

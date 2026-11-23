@@ -46,7 +46,11 @@ import (
 // refused: six seeds hold one, "[... 1}]" among them, and go.yaml.in/yaml/v3 refuses each of them.
 //
 // 12662 -> 16620 on 2026-11-23 with yamlcorpus/48, and none differs.
-const withoutCommentsDocuments = 16620
+//
+// 16620 -> 16619 the same day, when a '-' before a blank inside a flow collection began to be refused: the seed holds
+// "[..., - 2142...]", which yaml/yaml-reference-parser, libfyaml and go.yaml.in/yaml/v3 refuse, and the corpus marks
+// it so.
+const withoutCommentsDocuments = 16619
 
 func TestVerbatimRebuildsTheCorpusParsedWithoutComments(t *testing.T) {
 	t.Parallel()

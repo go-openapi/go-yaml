@@ -3301,22 +3301,25 @@ func TestFixedMergingNullIsRefusedOnEveryPath(t *testing.T) {
 	// A second shape, and a narrower one: the two paths read the element
 	// differently rather than the merge. "<<: [{a: 1}, - {b: 2}]" merged both
 	// mappings on the walk and was refused by the tree as "sequence was used
-	// where mapping is expected". Both refuse it now.
+	// where mapping is expected". The scanner now refuses the '-' itself, which
+	// a flow collection cannot hold before a blank, so both paths give the
+	// same syntax error.
 	//
 	// Reached on 2026-09-07 by a mutation that put a "-" inside a merge
 	// sequence, once the corpus grew to 3,000 drawn documents.
 	t.Run("a '-' inside a flow merge sequence", func(t *testing.T) {
 		const src = "%YAML 1.1\n---\n<<: [{a: 1}, - {b: 2}]\n"
+		const why = "'-' is not a scalar, and a flow collection has no sequence entries"
 
 		var walked any
 		err := codec.Unmarshal([]byte(src), &walked)
 		require.Error(t, err, "the walk refuses it")
-		assert.Contains(t, err.Error(), "sequence was used where mapping is expected")
+		assert.Contains(t, err.Error(), why)
 
 		var typed map[string]any
 		err = codec.Unmarshal([]byte(src), &typed)
 		require.Error(t, err)
-		assert.Contains(t, err.Error(), "sequence was used where mapping is expected")
+		assert.Contains(t, err.Error(), why)
 	})
 
 	for _, src := range []string{"<<:\n", "<<: null\n", "a:\n  <<:\n"} {

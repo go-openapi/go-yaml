@@ -7,24 +7,27 @@ import "github.com/go-openapi/go-yaml/token"
 
 // scanFlowDash refuses a '-' that is neither a sequence entry nor the start of a scalar.
 //
-// A plain scalar may begin with '-' only when the character behind it can continue the scalar, and the characters
-// structuring a flow collection cannot. A flow collection has no block sequence entries either, so such a '-' opens
-// nothing at all.
+// A plain scalar may begin with '-' only when the character behind it can continue the scalar, and neither the
+// characters structuring a flow collection nor a blank or a line break can. A flow collection has no block sequence
+// entries either, so such a '-' opens nothing at all.
 //
 // Example:
 //
 //	[-]        # refused: the ']' cannot continue a scalar
 //	[-, -]     # refused, twice
+//	[- a]      # refused: the space cannot continue a scalar
 //	[-1, -x]   # both read as scalars, '1' and 'x' continuing the '-'
 //
 // Outside a flow collection the '-' is a sequence entry, so this returns nil there and the entry scan claims it.
+// Inside one, a '-' before a blank was left to that scan: "[- a]" read as [[a]] and "{a: -" over "}" as {a: [null]}.
 func (s *Scanner) scanFlowDash(ctx *Context) error {
 	if ctx.existsBuffer() || !s.isFlowMode() {
 		return nil
 	}
 
-	switch ctx.nextChar() {
-	case ',', '[', ']', '{', '}':
+	switch nc := ctx.nextChar(); {
+	case nc == ',', nc == '[', nc == ']', nc == '{', nc == '}':
+	case nc == ' ', nc == '\t', nc == 0, isNewLineChar(nc):
 	default:
 		return nil
 	}
