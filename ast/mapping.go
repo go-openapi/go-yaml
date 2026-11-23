@@ -181,14 +181,6 @@ func (n *MappingNode) MapRange() *MapNodeIter {
 	}
 }
 
-//nolint:unused // not used yet
-func (n *MappingNode) startPos() token.Position {
-	if len(n.Values) == 0 {
-		return n.Start.Position
-	}
-	return n.Values[0].Key.GetToken().Position
-}
-
 // stringWithoutComment renders the mapping for use as a key, where comments
 // would be noise -- a key's identity is its content.
 func (n *MappingNode) stringWithoutComment() string {

@@ -1299,11 +1299,6 @@ func entryFor(n *SequenceNode, i int) *SequenceEntryNode {
 	return nil
 }
 
-//nolint:unused // unused for now
-func (r *Renderer) writeToken(vw *verbatimWriter, tk *token.Token) {
-	r.writeTokenOf(vw, tk, nil)
-}
-
 // writeComments hands over the comments a node carries, before its own text
 // where they stand above it and after where they stand beside it.
 //

@@ -830,9 +830,8 @@ func (r *Renderer) entry(n Node) rendered {
 	}
 
 	// The marker already holds the first line, so the piece is written where it
-	// left off and only the lines under it take the indentation. That is what
-	// hangingIndent did by cutting the first line off; the writer does it by
-	// putting the padding in at each line break instead.
+	// left off and only the lines under it take the indentation: the writer
+	// puts the padding in at each line break.
 	//
 	// The lines under it hang by the marker's width, not by the indent: the
 	// first line starts after "- ", and a mapping or a sequence written there
@@ -1848,19 +1847,6 @@ func (r *Renderer) withComment(text rendered, c *CommentGroupNode) rendered {
 // indented shifts every line of text one level deeper.
 func (r *Renderer) indented(text string) string {
 	return indentLines(text, r.indent)
-}
-
-// hangingIndent shifts every line but the first, for text placed after a marker
-// that already occupies the first line -- "- " or "? ".
-//
-//nolint:unused // unused for now
-func (r *Renderer) hangingIndent(text string) string {
-	first, rest, found := strings.Cut(text, "\n")
-	if !found {
-		return first
-	}
-
-	return first + "\n" + indentLines(rest, r.indent)
 }
 
 func indentLines(text string, spaces int) string {
