@@ -1,7 +1,6 @@
 # token
 
-This file holds the measurements and the layout decisions behind package `token`. The godoc describes what
-each symbol does; this file describes why the types are shaped the way they are.
+Types to support YAML tokens.
 
 ## A token passes in registers
 

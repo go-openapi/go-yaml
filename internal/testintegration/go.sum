@@ -2,6 +2,14 @@ github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c
 github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/gabriel-vasile/mimetype v1.4.15 h1:05iP/CYtZ/w455R/KZM6rZ5ieAdh99UPtd+d3YzLmaI=
 github.com/gabriel-vasile/mimetype v1.4.15/go.mod h1:azpTcoLcDZRNgFou5j+APrqQx9HqVPWa6ijYQIIVswQ=
+github.com/go-openapi/conformance-suites v0.0.2 h1:8TcdcVzIoGBTAsCn3j+bOJEag/bzP1Ckw5qvp+YPioo=
+github.com/go-openapi/conformance-suites v0.0.2/go.mod h1:04Ki0ZFVYCSxPh478VK0TMICTl71GNnytK7YwKT7COU=
+github.com/go-openapi/conformance-suites/yaml/consensus v0.0.2 h1:w7OYcBkZwSjZd626F6PCGa4r9sJO6Az3ZD/Rb/X5BXQ=
+github.com/go-openapi/conformance-suites/yaml/consensus v0.0.2/go.mod h1:S++5St62oZnS7BrKp2DMyn4TK3GN1ZKXJhTKnlARUVg=
+github.com/go-openapi/conformance-suites/yaml/corpus v0.0.2 h1:YelPb16ILphT3bG4wBdXWdtlHShAAJMz+GV3UpSbR3Q=
+github.com/go-openapi/conformance-suites/yaml/corpus v0.0.2/go.mod h1:eMUeHOvWbjUH0EQpsWMkwOLxDlmPdMN6iiFjg0ajFK4=
+github.com/go-openapi/conformance-suites/yaml/yamlgen v0.0.2 h1:ukHYhyg/vzanZ9LZSuCXTEj0ELBifohwdT+Ko+Ge2RM=
+github.com/go-openapi/conformance-suites/yaml/yamlgen v0.0.2/go.mod h1:Dj3mUXXHWD61cygaBnhrMeu9pLcYkFA0V/n1TlaXpjU=
 github.com/go-openapi/jsonpointer v1.0.2 h1:NbW7xT2b+l7x+JefiPGDsZWsrLk1ogrz4AHK1TTzMt8=
 github.com/go-openapi/jsonpointer v1.0.2/go.mod h1:N0rI4MbNKD7xAFTiHtB+5Nhrg2j/wwYg7m7Fmb4/jk8=
 github.com/go-openapi/testify/v2 v2.8.1 h1:zk3S6KaDY1iQW91vsOJc25Ql1xm5bhPrZKdnL930bRQ=

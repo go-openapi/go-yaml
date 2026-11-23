@@ -2,8 +2,6 @@ module github.com/go-openapi/go-yaml/internal/testintegration
 
 go 1.26.0
 
-replace github.com/go-openapi/go-yaml => ../..
-
 require (
 	github.com/go-openapi/go-yaml v0.0.0-00010101000000-000000000000
 	github.com/go-openapi/jsonpointer v1.0.2
@@ -16,10 +14,10 @@ require (
 
 require (
 	github.com/gabriel-vasile/mimetype v1.4.15 // indirect
-	github.com/go-openapi/conformance-suites v0.0.0
-	github.com/go-openapi/conformance-suites/yaml/consensus v0.0.0
-	github.com/go-openapi/conformance-suites/yaml/corpus v0.0.0
-	github.com/go-openapi/conformance-suites/yaml/yamlgen v0.0.0
+	github.com/go-openapi/conformance-suites v0.0.2
+	github.com/go-openapi/conformance-suites/yaml/consensus v0.0.2
+	github.com/go-openapi/conformance-suites/yaml/corpus v0.0.2
+	github.com/go-openapi/conformance-suites/yaml/yamlgen v0.0.2
 	github.com/go-playground/locales v0.14.1 // indirect
 	github.com/go-playground/universal-translator v0.18.1 // indirect
 	github.com/leodido/go-urn v1.5.0 // indirect
@@ -28,10 +26,4 @@ require (
 	golang.org/x/text v0.41.0 // indirect
 )
 
-replace github.com/go-openapi/conformance-suites => ../../../conformance-suites
-
-replace github.com/go-openapi/conformance-suites/yaml/consensus => ../../../conformance-suites/yaml/consensus
-
-replace github.com/go-openapi/conformance-suites/yaml/corpus => ../../../conformance-suites/yaml/corpus
-
-replace github.com/go-openapi/conformance-suites/yaml/yamlgen => ../../../conformance-suites/yaml/yamlgen
+replace github.com/go-openapi/go-yaml => ../..
