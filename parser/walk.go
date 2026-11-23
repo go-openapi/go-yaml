@@ -442,7 +442,7 @@ func (p *Parser) enter(ctx context, node ast.Node, in Kind) bool { //nolint:unpa
 }
 
 // enterKey hands a mapping key over before its content, for the "?" that encloses a key.
-func (p *Parser) enterKey(ctx context, node ast.Node, in Kind) bool {
+func (p *Parser) enterKey(ctx context, node ast.Node, in Kind) bool { //nolint:unparam // reports whether to descend, like enter; no caller needs it yet
 	return p.enterAs(ctx, node, in, true)
 }
 
@@ -589,6 +589,19 @@ func (p *Parser) takeKey() bool {
 func (p *Parser) handKey(ctx context, node ast.Node) {
 	if p.walk != nil && !p.walk.keyNext {
 		return
+	}
+	if anchor, isAnchor := node.(*ast.AnchorNode); isAnchor {
+		if tag, isTag := anchor.Value.(*ast.TagNode); isTag {
+			// "{&a1 !!str TRUE}": the anchor encloses the tag, and the tag says what the scalar is.
+			// Handed over alone, the anchor came with nothing inside, so a visitor read the scalar
+			// untagged and keyed true. A key with a value, "{&a1 !!str TRUE: 1}", hands the tag over
+			// inside the anchor, and so does this.
+			p.enterKey(ctx, anchor, KindAnchor)
+			p.hand(ctx, tag)
+			p.leave(ctx, anchor)
+
+			return
+		}
 	}
 	p.handAs(ctx, node, true)
 }

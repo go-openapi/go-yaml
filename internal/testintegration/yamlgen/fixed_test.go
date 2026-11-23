@@ -3595,3 +3595,40 @@ func TestFixedPropertiedKeyOverABlockScalar(t *testing.T) {
 		assert.Equalf(t, tc.want, got, "%q", tc.src)
 	}
 }
+
+// TestFixedAnAnchoredTaggedFlowKeyAloneKeepsItsTag: "{&a1 !!str TRUE}" is the
+// mapping keyed by the string "TRUE", on every decode path and in ToJSON.
+//
+// A flow entry written as a key alone is parsed under quiet and handed over
+// after, and handKey passed the anchor without the tag inside it. So the walk
+// read the scalar untagged and keyed the boolean true, where the tree read the
+// tag. A key with a value, "{&a1 !!str TRUE: 1}", hands the tag over inside
+// the anchor, and the key alone now does the same.
+//
+// The YAML corpus of go-openapi/conformance-suites found it once it drew tags
+// on keys.
+func TestFixedAnAnchoredTaggedFlowKeyAloneKeepsItsTag(t *testing.T) {
+	for _, tc := range []struct {
+		src  string
+		want map[string]any
+	}{
+		{"{&a1 !!str TRUE}\n", map[string]any{"TRUE": nil}},
+		{"{&a1 !!str 1}\n", map[string]any{"1": nil}},
+		{"{&a1 !!str TRUE, b: *a1}\n", map[string]any{"TRUE": nil, "b": "TRUE"}},
+		{"! {&a1 !!str TRUE}\n", map[string]any{"TRUE": nil}},
+	} {
+		var walked any
+		require.NoErrorf(t, codec.Unmarshal([]byte(tc.src), &walked), "the walk: %q", tc.src)
+		assert.Equalf(t, tc.want, walked, "the walk: %q", tc.src)
+
+		var tree map[string]any
+		require.NoErrorf(t, codec.Unmarshal([]byte(tc.src), &tree), "the tree: %q", tc.src)
+		assert.Equalf(t, tc.want, tree, "the tree: %q", tc.src)
+
+		out, err := codec.ToJSON([]byte(tc.src))
+		require.NoErrorf(t, err, "ToJSON: %q", tc.src)
+		wantJSON, err := json.Marshal(tc.want)
+		require.NoError(t, err)
+		assert.JSONEqf(t, string(wantJSON), string(out), "ToJSON: %q", tc.src)
+	}
+}
