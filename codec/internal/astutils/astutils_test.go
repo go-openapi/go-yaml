@@ -123,12 +123,12 @@ func TestValidationErrorToken(t *testing.T) {
 	m := mappingOf(t, "scalar: 1\ncollection:\n  k: v\n")
 	scalar, collection := m.Values[0], m.Values[1]
 
-	assert.Same(t, scalar.Value.GetToken(), ValidationErrorToken(scalar.Value, scalar),
+	assert.Same(t, scalar.Value.GetToken(), ValidationErrorToken(scalar.Value, scalar.Key.GetToken()),
 		"a scalar is reported at itself")
-	assert.Same(t, collection.GetToken(), ValidationErrorToken(collection.Value, collection),
-		"a collection is reported at its entry")
+	assert.Same(t, collection.Key.GetToken(), ValidationErrorToken(collection.Value, collection.Key.GetToken()),
+		"a collection is reported at its key")
 	assert.Same(t, collection.Value.GetToken(), ValidationErrorToken(collection.Value, nil),
-		"a collection without its entry is reported at itself")
+		"a collection without its key is reported at itself")
 }
 
 func TestStandsOnNothing(t *testing.T) {

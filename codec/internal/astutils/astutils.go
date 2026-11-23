@@ -169,11 +169,11 @@ func NotAnOrderedMap(node ast.Node) error {
 // A scalar is reported at its own token. The message already names the field, so the position points at the value.
 //
 // A mapping or a sequence has no single token to point at, because its first token stands inside the value.
-// ValidationErrorToken returns the token of entry instead: the ':' of the entry that writes the value.
-func ValidationErrorToken(value, entry ast.Node) *token.Token {
+// ValidationErrorToken returns key instead, the token of the key that writes the value, when it is not nil.
+func ValidationErrorToken(value ast.Node, key *token.Token) *token.Token {
 	if value.Type() == ast.MappingType || value.Type() == ast.SequenceType {
-		if entry != nil {
-			return entry.GetToken()
+		if key != nil {
+			return key
 		}
 	}
 

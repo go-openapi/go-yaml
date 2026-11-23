@@ -37,14 +37,16 @@ import (
 type Decoder struct {
 	// source holds the document being decoded. An error found in it uses source to print the lines around itself.
 	source yamlerrors.Source
-	// entry holds the mapping entry that writes the node being decoded. It is nil for a sequence element.
-	// Decoding is depth first. Each step saves entry and puts it back, so the field behaves as a stack.
+	// entryKey holds the key token of the mapping entry that writes the node being decoded. It is nil for a
+	// sequence element. Decoding is depth first. Each step saves entryKey and puts it back, so the field behaves
+	// as a stack.
 	//
-	// missingFieldToken reads entry to place a validation error about a field missing from the document,
+	// missingFieldToken reads entryKey to place a validation error about a field missing from the document,
 	// because the node holds nothing to point at.
 	// A sequence element has no entry here. The parser keeps the "- " entry node only under WithComments,
 	// and the error must not move with that option. missingFieldToken then points at the element's first key.
-	entry            ast.Node
+	// The walk passes no ':' token over, so the error points at the key and not at the ':'.
+	entryKey         *token.Token
 	reader           io.Reader
 	referenceReaders []io.Reader
 	anchorNodeMap    map[string]ast.Node
@@ -2202,22 +2204,22 @@ func recordFieldError(foundErr *error, err error, fieldName func(*yamlerrors.Err
 	*foundErr = err
 }
 
-// findEntry returns the value written by a mapping under name, and the entry that
+// findEntry returns the value written by a mapping under name, and the key of the entry that
 // writes it. Both are nil when the mapping does not write name.
 //
 // findEntry walks the mapping instead of reading a map built up front. Only a
 // document that fails validation calls it, and only for the field that failed.
-func (d *Decoder) findEntry(src ast.Node, ignoreMergeKey bool, name string) (value, entry ast.Node) {
+func (d *Decoder) findEntry(src ast.Node, ignoreMergeKey bool, name string) (value, key ast.Node) {
 	_ = d.rangeMapEntries(src, ignoreMergeKey,
-		func(entryName string, _, valueNode, entryNode ast.Node, _ bool) error {
+		func(entryName string, keyNode, valueNode, _ ast.Node, _ bool) error {
 			if value == nil && entryName == name {
-				value, entry = valueNode, entryNode
+				value, key = valueNode, keyNode
 			}
 
 			return nil
 		})
 
-	return value, entry
+	return value, key
 }
 
 // getMergeAliasName returns the name of the alias under a "<<" of src.
@@ -2283,7 +2285,7 @@ func (d *Decoder) decodeStruct(dst reflect.Value, src ast.Node) error {
 	// fields and looking up each entry. The decoder then holds only the fields of the struct,
 	// read once per type and shared, and no map of every entry
 	// written by the mapping.
-	setField := func(name string, keyNode, valueNode, entryNode ast.Node, merged bool) error {
+	setField := func(name string, keyNode, valueNode, _ ast.Node, merged bool) error {
 		found, err := fieldFor(dst, fields, name)
 		if err != nil {
 			return err
@@ -2311,9 +2313,9 @@ func (d *Decoder) decodeStruct(dst reflect.Value, src ast.Node) error {
 			return nil
 		}
 
-		prevEntry := d.enterEntry(entryNode)
+		prevEntry := d.enterEntry(keyNode.GetToken())
 		newFieldValue, err := d.createDecodedNewValue(fieldValue.Type(), fieldValue, valueNode)
-		d.entry = prevEntry
+		d.entryKey = prevEntry
 		codecutils.SetDecoded(fieldValue, newFieldValue)
 		if stopsTheDocument(err) {
 			return err
@@ -2387,9 +2389,9 @@ func (d *Decoder) refuseUnknownFields(unknownFields map[string]ast.Node) error {
 
 // validateStruct runs the validator of the decoder on dst, once src is decoded into it.
 //
-// validateStruct places a validation error at the entry that writes the field, which is
-// the ":", not a token inside the value. It reads the entries here
-// instead of during the decode, because a document that validates never needs them.
+// validateStruct places a validation error at the field's value, or at the key that writes it for a mapping
+// or a sequence. It reads the entries here instead of during the decode, because a document that validates
+// never needs them.
 func (d *Decoder) validateStruct(dst reflect.Value, src ast.Node, fields *structfields.Fields, ignoreMergeKey bool) error {
 	if d.validator == nil {
 		return nil
@@ -2398,10 +2400,31 @@ func (d *Decoder) validateStruct(dst reflect.Value, src ast.Node, fields *struct
 	if err == nil {
 		return nil
 	}
+
+	return validationError(err, fields, treePlaces{d: d, src: src, ignoreMergeKey: ignoreMergeKey})
+}
+
+// validationPlaces returns the tokens at which to place the error of a validator on one struct.
+type validationPlaces interface {
+	// field returns where to place an error about the field rendered as name, or nil when the mapping
+	// does not write it.
+	field(name string) *token.Token
+	// missing returns where to place an error about a field the mapping leaves out.
+	missing() *token.Token
+	// whole returns the token of the struct's mapping.
+	whole() *token.Token
+}
+
+// validationError returns the error of a validator, placed by places.
+//
+// An error that is a slice of fieldError values names the struct fields that failed, as go-playground/validator
+// does. The first element that names a field of the struct places the error: at the field's entry when the
+// mapping writes it, and at places.missing otherwise. Any other error goes to the struct's mapping.
+func validationError(err error, fields *structfields.Fields, places validationPlaces) error {
 	ev := reflect.ValueOf(err)
 	if ev.Kind() != reflect.Slice {
 		// The error names no field, so it goes to the mapping of the struct.
-		return yamlerrors.NewValidation(err, src.GetToken())
+		return yamlerrors.NewValidation(err, places.whole())
 	}
 	for i := range ev.Len() {
 		fieldErr, ok := reflect.TypeAssert[fieldError](ev.Index(i))
@@ -2412,11 +2435,10 @@ func (d *Decoder) validateStruct(dst reflect.Value, src ast.Node, fields *struct
 		if !exists {
 			continue
 		}
-		value, entry := d.findEntry(src, ignoreMergeKey, renderName)
-		if value != nil {
-			return yamlerrors.NewValidation(err, astutils.ValidationErrorToken(value, entry))
+		if t := places.field(renderName); t != nil {
+			return yamlerrors.NewValidation(err, t)
 		}
-		if t := d.missingFieldToken(src); t != nil {
+		if t := places.missing(); t != nil {
 			// A missing field has no entry of its own, so the error goes to
 			// the mapping that should have held it.
 			return yamlerrors.NewValidation(err, t)
@@ -2424,16 +2446,36 @@ func (d *Decoder) validateStruct(dst reflect.Value, src ast.Node, fields *struct
 	}
 
 	// No element names a field written by the document or held by the struct.
-	return yamlerrors.NewValidation(err, src.GetToken())
+	return yamlerrors.NewValidation(err, places.whole())
 }
+
+// treePlaces places a validation error on the tree, by reading the struct's mapping again.
+type treePlaces struct {
+	d              *Decoder
+	src            ast.Node
+	ignoreMergeKey bool
+}
+
+func (p treePlaces) field(name string) *token.Token {
+	value, key := p.d.findEntry(p.src, p.ignoreMergeKey, name)
+	if value == nil {
+		return nil
+	}
+
+	return astutils.ValidationErrorToken(value, key.GetToken())
+}
+
+func (p treePlaces) missing() *token.Token { return p.d.missingFieldToken(p.src) }
+
+func (p treePlaces) whole() *token.Token { return p.src.GetToken() }
 
 // missingFieldToken returns the token at which to place the error for a field missing from the document.
 //
-// The field has no entry to point at. missingFieldToken returns d.entry when set,
-// and otherwise the first key of the mapping that should have held the field.
+// The field has no entry to point at. missingFieldToken returns d.entryKey when set: the key of the entry
+// that writes the struct. Otherwise it returns the first key of the mapping that should have held the field.
 func (d *Decoder) missingFieldToken(src ast.Node) *token.Token {
-	if d.entry != nil {
-		return d.entry.GetToken()
+	if d.entryKey != nil {
+		return d.entryKey
 	}
 	if m, ok := src.(*ast.MappingNode); ok && len(m.Values) > 0 {
 		return m.Values[0].Key.GetToken()
@@ -2442,11 +2484,11 @@ func (d *Decoder) missingFieldToken(src ast.Node) *token.Token {
 	return src.GetToken()
 }
 
-// enterEntry records the entry node that writes the node about to be decoded. It
-// returns the entry it replaces, for the caller to put back.
-func (d *Decoder) enterEntry(entry ast.Node) ast.Node {
-	prev := d.entry
-	d.entry = entry
+// enterEntry records the key token of the entry that writes the node about to be decoded. It returns the token it
+// replaces, for the caller to put back.
+func (d *Decoder) enterEntry(key *token.Token) *token.Token {
+	prev := d.entryKey
+	d.entryKey = key
 
 	return prev
 }
@@ -2549,7 +2591,7 @@ func (d *Decoder) decodeSlice(dst reflect.Value, src ast.Node) error {
 		}
 		prevEntry := d.enterEntry(nil)
 		dstValue, err := d.createDecodedNewValue(elemType, reflect.Value{}, v)
-		d.entry = prevEntry
+		d.entryKey = prevEntry
 		if stopsTheDocument(err) {
 			return err
 		}
@@ -2810,9 +2852,9 @@ func (d *Decoder) decodeMap(dst reflect.Value, src ast.Node) error {
 			mapValue.SetMapIndex(k, reflect.Zero(valueType))
 			continue
 		}
-		prevEntry := d.enterEntry(entry.KeyValue)
+		prevEntry := d.enterEntry(key.GetToken())
 		dstValue, err := d.createDecodedNewValue(valueType, reflect.Value{}, value)
-		d.entry = prevEntry
+		d.entryKey = prevEntry
 		if stopsTheDocument(err) {
 			return err
 		}

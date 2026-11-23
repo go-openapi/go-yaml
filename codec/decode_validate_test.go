@@ -137,9 +137,9 @@ func missingFieldCases() iter.Seq[missingFieldCase] {
 			line:   2, column: 5,
 		},
 		{
-			name:   "in a mapping entry, at its colon",
+			name:   "in a mapping entry, at its key",
 			source: "item:\n  name: a\n",
-			line:   1, column: 5,
+			line:   1, column: 1,
 		},
 	})
 }

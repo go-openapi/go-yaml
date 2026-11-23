@@ -77,12 +77,12 @@ name: john
 age: 10
 addr:
   number: seven`,
-			ExpectedErr: `[4:5] Key: 'State' Error:Field validation for 'State' failed on the 'required' tag
+			ExpectedErr: `[4:1] Key: 'State' Error:Field validation for 'State' failed on the 'required' tag
    1 | ---
    2 | name: john
    3 | age: 10
 >  4 | addr:
-           ^
+       ^
    5 |   number: seven`,
 			Instance: &struct {
 				Name string `validate:"required"     yaml:"name"`
@@ -196,9 +196,9 @@ lt10: 20
 map:
   hello: hello
   hello2: hello`,
-			ExpectedErr: `[2:4] Key: 'Map' Error:Field validation for 'Map' failed on the 'eq' tag
+			ExpectedErr: `[2:1] Key: 'Map' Error:Field validation for 'Map' failed on the 'eq' tag
 >  2 | map:
-          ^
+       ^
    3 |   hello: hello
    4 |   hello2: hello`,
 			Instance: &struct {
@@ -212,9 +212,9 @@ map:
 map:
   - value
 `,
-			ExpectedErr: `[2:4] Key: 'Map' Error:Field validation for 'Map' failed on the 'eq' tag
+			ExpectedErr: `[2:1] Key: 'Map' Error:Field validation for 'Map' failed on the 'eq' tag
 >  2 | map:
-          ^
+       ^
    3 |   - value`,
 			Instance: &struct {
 				// Make sure that this map is not set
