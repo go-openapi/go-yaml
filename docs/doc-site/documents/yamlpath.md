@@ -68,16 +68,6 @@ source, err := path.AnnotateSource([]byte(yml), false)
 The boolean is `colored`. Use it to report on a value your own code rejected
 after a successful decode — see [Errors](../../values/errors/).
 
-{{% notice style="warning" title="The godoc does not show the whole type" %}}
-`expressions.Path` embeds an unexported engine, so `go doc` and pkg.go.dev list
-only `Read` and `Filter`. `AnnotateSource`, `String`, `FilterNode`, `ReadNode`
-and the merge and replace methods are promoted, callable, and invisible in the
-rendered documentation — the type's own doc comment links to
-`[Path.AnnotateSource]`, and that link goes nowhere.
-
-Until that is fixed, this page is the list.
-{{% /notice %}}
-
 ## Working on nodes rather than values
 
 `Read` and `Filter` go through the decoder and hand you a Go value. `ReadNode`

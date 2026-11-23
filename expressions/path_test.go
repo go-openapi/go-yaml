@@ -15,6 +15,8 @@ import (
 	"github.com/go-openapi/go-yaml/codec"
 	"github.com/go-openapi/go-yaml/expressions"
 	"github.com/go-openapi/go-yaml/parser"
+	"github.com/go-openapi/testify/v2/assert"
+	"github.com/go-openapi/testify/v2/require"
 )
 
 func builder() *expressions.PathBuilder { return &expressions.PathBuilder{} }
@@ -1199,4 +1201,30 @@ store:
 	fmt.Println(authors)
 	// OUTPUT:
 	// [john ken]
+}
+
+// TestTheZeroPathAddressesNothing calls each method on a Path that neither PathString nor PathBuilder built.
+// Each returns ErrInvalidPath, and String returns "".
+func TestTheZeroPathAddressesNothing(t *testing.T) {
+	var p expressions.Path
+	file, err := parser.ParseBytes([]byte("a: 1\n"))
+	require.NoError(t, err)
+
+	assert.Empty(t, p.String())
+	for name, call := range map[string]func() error{
+		"ReadNode":          func() error { _, err := p.ReadNode(strings.NewReader("a: 1\n")); return err },
+		"FilterFile":        func() error { _, err := p.FilterFile(file); return err },
+		"FilterNode":        func() error { _, err := p.FilterNode(file.Docs[0].Body); return err },
+		"MergeFromReader":   func() error { return p.MergeFromReader(file, strings.NewReader("b: 2\n")) },
+		"MergeFromFile":     func() error { return p.MergeFromFile(file, file) },
+		"MergeFromNode":     func() error { return p.MergeFromNode(file, file.Docs[0].Body) },
+		"ReplaceWithReader": func() error { return p.ReplaceWithReader(file, strings.NewReader("b: 2\n")) },
+		"ReplaceWithFile":   func() error { return p.ReplaceWithFile(file, file) },
+		"ReplaceWithNode":   func() error { return p.ReplaceWithNode(file, file.Docs[0].Body) },
+		"AnnotateSource":    func() error { _, err := p.AnnotateSource([]byte("a: 1\n"), false); return err },
+		"Read":              func() error { var v any; return p.Read(strings.NewReader("a: 1\n"), &v) },
+		"Filter":            func() error { var v any; return p.Filter(map[string]int{"a": 1}, &v) },
+	} {
+		assert.ErrorIsf(t, call(), expressions.ErrInvalidPath, "%s", name)
+	}
 }

@@ -8,22 +8,134 @@ import (
 	"errors"
 	"io"
 
+	"github.com/go-openapi/go-yaml/ast"
+
 	"github.com/go-openapi/go-yaml/codec"
 	"github.com/go-openapi/go-yaml/internal/yamlpath"
 )
 
 // Path addresses a value inside a YAML document.
 //
-// The expression and the walking of it belong to a layer that knows nothing of
-// Go values: [Path] embeds that engine, so every method it defines --
-// [Path.FilterNode], [Path.ReadNode], the merge and replace methods,
-// [Path.AnnotateSource] and [Path.String] -- reads here as its own.
+// Build one with [PathString] or [PathBuilder]. A Path finds the node it addresses ([Path.ReadNode],
+// [Path.FilterFile], [Path.FilterNode]), merges into it or replaces it, marks it in the source
+// ([Path.AnnotateSource]), and decodes it into a Go value ([Path.Read], [Path.Filter]).
 //
-// What this type adds is the two that turn a node into a Go value and back:
-// [Path.Read] and [Path.Filter] go through the decoder, which the engine cannot
-// see.
+// The zero Path addresses nothing, and its methods return [ErrInvalidPath].
 type Path struct {
-	*yamlpath.Path
+	engine *yamlpath.Path
+}
+
+// String returns the path as text, such as "$.a[0]", or "" for the zero Path.
+func (p *Path) String() string {
+	if p.engine == nil {
+		return ""
+	}
+
+	return p.engine.String()
+}
+
+// ReadNode reads the YAML stream r and returns the first node p addresses.
+//
+// It returns what [Path.FilterFile] returns for the parsed stream, but it walks the stream instead of parsing
+// it whole: it skips every branch off the path and stops at the answer, so it holds the node it returns and not
+// the document. A syntax error after the answer is not reported; parse the stream and call FilterFile to have
+// all of it checked.
+//
+// The node is a copy that owns its tokens. Where the node is most of the document, the copy costs more than a
+// parse: 206 ms against 155 ms for the whole of golang_source, and 4 MB against 60 MB for one scalar of it.
+func (p *Path) ReadNode(r io.Reader) (ast.Node, error) {
+	if p.engine == nil {
+		return nil, ErrInvalidPath
+	}
+
+	return p.engine.ReadNode(r)
+}
+
+// FilterFile returns the first node p addresses in the documents of f, skipping a directive, or
+// [ErrNotFoundNode] where no document holds one.
+func (p *Path) FilterFile(f *ast.File) (ast.Node, error) {
+	if p.engine == nil {
+		return nil, ErrInvalidPath
+	}
+
+	return p.engine.FilterFile(f)
+}
+
+// FilterNode returns the node p addresses under node, or nil for a nil node.
+func (p *Path) FilterNode(node ast.Node) (ast.Node, error) {
+	if p.engine == nil {
+		return nil, ErrInvalidPath
+	}
+
+	return p.engine.FilterNode(node)
+}
+
+// MergeFromReader parses the YAML stream src and merges each of its documents into the node p addresses in dst,
+// as [ast.Merge] merges two nodes.
+func (p *Path) MergeFromReader(dst *ast.File, src io.Reader) error {
+	if p.engine == nil {
+		return ErrInvalidPath
+	}
+
+	return p.engine.MergeFromReader(dst, src)
+}
+
+// MergeFromFile merges each document of src into the node p addresses in dst, as [ast.Merge] merges two nodes.
+func (p *Path) MergeFromFile(dst *ast.File, src *ast.File) error {
+	if p.engine == nil {
+		return ErrInvalidPath
+	}
+
+	return p.engine.MergeFromFile(dst, src)
+}
+
+// MergeFromNode merges src into the node p addresses in dst, as [ast.Merge] merges two nodes.
+func (p *Path) MergeFromNode(dst *ast.File, src ast.Node) error {
+	if p.engine == nil {
+		return ErrInvalidPath
+	}
+
+	return p.engine.MergeFromNode(dst, src)
+}
+
+// ReplaceWithReader parses the YAML stream src and replaces the nodes p addresses in dst with it, as
+// [Path.ReplaceWithFile] does.
+func (p *Path) ReplaceWithReader(dst *ast.File, src io.Reader) error {
+	if p.engine == nil {
+		return ErrInvalidPath
+	}
+
+	return p.engine.ReplaceWithReader(dst, src)
+}
+
+// ReplaceWithFile replaces the nodes p addresses in dst with each document of src in turn, so the last
+// document stands where src holds several.
+func (p *Path) ReplaceWithFile(dst *ast.File, src *ast.File) error {
+	if p.engine == nil {
+		return ErrInvalidPath
+	}
+
+	return p.engine.ReplaceWithFile(dst, src)
+}
+
+// ReplaceWithNode replaces the nodes p addresses in each document of dst with node, skipping a directive.
+// A document node stands for its body.
+func (p *Path) ReplaceWithNode(dst *ast.File, node ast.Node) error {
+	if p.engine == nil {
+		return ErrInvalidPath
+	}
+
+	return p.engine.ReplaceWithNode(dst, node)
+}
+
+// AnnotateSource parses source and returns the lines around the node p addresses, with a caret under it, as
+// an error message shows them. colored writes the excerpt with ANSI colors.
+func (p *Path) AnnotateSource(source []byte, colored bool) ([]byte, error) {
+	if p.engine == nil {
+		return nil, ErrInvalidPath
+	}
+
+	return p.engine.AnnotateSource(source, colored)
 }
 
 // PathString create Path from string
@@ -44,7 +156,7 @@ func PathString(s string) (*Path, error) {
 		return nil, err
 	}
 
-	return &Path{Path: p}, nil
+	return &Path{engine: p}, nil
 }
 
 // PathBuilder builds a [Path] one step at a time, as an alternative to writing
@@ -93,7 +205,7 @@ func (b *PathBuilder) Index(idx uint) *PathBuilder {
 
 // Build returns the path built so far.
 func (b *PathBuilder) Build() *Path {
-	return &Path{Path: b.builder().Build()}
+	return &Path{engine: b.builder().Build()}
 }
 
 // builder returns the engine's builder, starting one where the zero value is
