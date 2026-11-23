@@ -837,6 +837,18 @@ func (r *Renderer) mappingKey(n *MappingKeyNode) rendered {
 	if value.empty() {
 		return leaf(above + n.Start.Value)
 	}
+	if own := n.GetComment(); r.comments && !own.Blank() && !carriesOwnIndent(r.deref(n.Value)) {
+		// The parse leaves the comment closing the "?" line on the "?" when the key's node holds a comment of its
+		// own: "? # c8" over "  # c9" over "  - a". It goes back on that line, and the key opens below it. Left out,
+		// the rendering lost it.
+		piece := r.render(quotedIfColonEnds(n.Value))
+		gap := ""
+		if piece.leads {
+			gap, piece = "\n", piece.withoutLead()
+		}
+
+		return join(sepNone, leaf(above+n.Start.Value+" "+r.text(own)+"\n"+gap), piece.indentedBy(r.indent))
+	}
 	if value.leads {
 		// The key opens below its "?" with a blank line between, and a blank
 		// line is two breaks: one ends the "?"'s own line and one is the gap.

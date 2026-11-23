@@ -91,3 +91,19 @@ func commentTokensIn(src string) int {
 
 	return comments
 }
+
+// TestACommentOnAQuestionMarkLineOverACommentedKeyIsKept renders an explicit key whose "?" line closes on a comment
+// and whose node holds a comment of its own. The parse leaves the first on the "?", and the renderer wrote only the
+// second: "? # c8" over "  # c9" over "  - a" came back as "? # c9" over "  - a".
+func TestACommentOnAQuestionMarkLineOverACommentedKeyIsKept(t *testing.T) {
+	t.Parallel()
+
+	for _, src := range []string{
+		"? # c8\n  # c9\n  - a\n: 1\n",
+		"x:\n  ? # c8\n    # c9\n    - a\n  : 1\n",
+	} {
+		file, err := parser.ParseBytes([]byte(src), parser.WithComments())
+		require.NoError(t, err)
+		require.Equalf(t, src, file.String(), "%q", src)
+	}
+}
