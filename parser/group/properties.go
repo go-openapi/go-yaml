@@ -294,7 +294,13 @@ func (g *Grouper) taggedAnchorNames(at int, tk *TapeToken, out []*TapeToken) ([]
 		return out, false
 	}
 
-	if g.joins(g.name, tk) && isScalarType(tk) {
+	if g.joins(g.name, tk) && tk.Type() == token.MergeKeyType &&
+		token.ReservedTagKeyword(g.tag.RawToken().Value) != token.MergeTag {
+		// As in taggedScalar: under any tag but "!!merge", "<<" is the string it spells.
+		tk.RawToken().Type = token.StringType
+	}
+	if g.joins(g.name, tk) && (isScalarType(tk) || tk.Type() == token.MergeKeyType) {
+		// "!!merge &a <<" anchors the merge key, as "&a !!merge <<" does.
 		named := g.group2(TokenGroupAnchor, g.name, tk)
 		g.name = nil
 

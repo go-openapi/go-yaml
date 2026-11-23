@@ -490,6 +490,12 @@ func (g *Grouper) taggedScalar(tag, next *TapeToken) (*TapeToken, bool) {
 	}
 
 	value := tag.RawToken().Value
+	if next.Type() == token.MergeKeyType && token.ReservedTagKeyword(value) != token.MergeTag {
+		// Only "!!merge" names the merge key. Under any other tag, "<<" is the string it spells: "!!str <<" is the
+		// way to write a key named "<<" where the merge key is in force. The scanner typed it MergeKeyType because
+		// a ':' follows it.
+		next.RawToken().Type = token.StringType
+	}
 	if !strings.HasPrefix(value, "!!") {
 		// A tag the document defines. It tags a scalar, and a flow indicator is
 		// not one.
@@ -509,7 +515,7 @@ func (g *Grouper) taggedScalar(tag, next *TapeToken) (*TapeToken, bool) {
 
 		return g.group2(TokenGroupScalarTag, tag, next), true
 	case token.MergeTag:
-		if next.Type() != token.MergeKeyType {
+		if next.Type() != token.MergeKeyType && !anchoredMergeKey(next) {
 			g.fail(yamlerrors.NewSyntax("could not find merge key", next.RawToken()))
 
 			return nil, false
@@ -1143,6 +1149,11 @@ func (g *Grouper) keyedValue(key, value *TapeToken) *TapeToken {
 	}
 
 	return g.group2(TokenGroupMapKeyValue, key, value)
+}
+
+// anchoredMergeKey reports whether tk is an anchor joined to a "<<", as in "!!merge &a <<".
+func anchoredMergeKey(tk *TapeToken) bool {
+	return tk.GroupType() == TokenGroupAnchor && tk.Group.Len() == 2 && tk.Group.At(1).Type() == token.MergeKeyType
 }
 
 func isScalarType(tk *TapeToken) bool {

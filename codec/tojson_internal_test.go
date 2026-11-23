@@ -161,3 +161,61 @@ func theMergeKeyWrittenTheLongWayMergesOnEveryPathCases() iter.Seq[theMergeKeyWr
 		{src: anchor + "m: {? <<: *a}\n", want: `{"a":{"x":1},"m":{"<<":{"x":1}}}`},
 	})
 }
+
+// TestATaggedMergeKeyReadsAlikeOnEveryPath holds the readers to one answer about a "<<" key written with a tag, an
+// anchor, or both, in either order. Only "!!merge" names the merge key: under it "<<" merges under 1.2 too, and
+// under any other tag it is the string it spells, the way to write a key named "<<" where the merge key is in force.
+//
+// The parse rejected "!!str <<: 1" in block and in flow, and "!!merge &a <<" fell apart, because a tag joined only
+// a scalar token and the scanner types "<<" before a ':' as the merge key.
+func TestATaggedMergeKeyReadsAlikeOnEveryPath(t *testing.T) {
+	for tc := range aTaggedMergeKeyCases() {
+		for _, version := range []string{"1.2", "1.1"} {
+			doc := []byte("%YAML " + version + "\n---\n" + tc.src)
+			want := tc.want
+			if version == "1.1" && tc.want11 != "" {
+				want = tc.want11
+			}
+
+			js, err := ToJSON(doc)
+			require.NoErrorf(t, err, "ToJSON %s: %q", version, tc.src)
+			assert.JSONEqf(t, want, string(js), "ToJSON %s: %q", version, tc.src)
+
+			toks, err := collectJSONTokens(doc)
+			require.NoErrorf(t, err, "tokens %s: %q", version, tc.src)
+			assert.JSONEqf(t, want, string(rebuildJSON(toks)), "tokens %s: %q", version, tc.src)
+
+			for name, opts := range map[string][]DecodeOption{"walk": nil, "ordered": {UseOrderedMap()}, "tree": {treeOnly()}} {
+				var v any
+				require.NoErrorf(t, Unmarshal(doc, &v, opts...), "%s %s: %q", name, version, tc.src)
+				got, err := Marshal(v, JSON())
+				require.NoError(t, err)
+				assert.JSONEqf(t, want, string(got), "%s %s: %q", name, version, tc.src)
+			}
+		}
+	}
+}
+
+// aTaggedMergeKeyCase holds a document, the JSON every reader gives for it, and the JSON under 1.1 where it differs.
+type aTaggedMergeKeyCase struct {
+	src    string
+	want   string
+	want11 string
+}
+
+func aTaggedMergeKeyCases() iter.Seq[aTaggedMergeKeyCase] {
+	return slices.Values([]aTaggedMergeKeyCase{
+		{src: "!!str <<: 1\n", want: `{"<<":1}`},
+		{src: "k: {!!str <<: {a: 1}, b: 2}\n", want: `{"k":{"<<":{"a":1},"b":2}}`},
+		{src: "!foo <<: 1\n", want: `{"<<":1}`},
+		{src: "!!str << : 1\n", want: `{"<<":1}`},
+		{src: "&x !!str <<: 1\nb: *x\n", want: `{"<<":1,"b":"<<"}`},
+		{src: "!!str &x <<: 1\nb: *x\n", want: `{"<<":1,"b":"<<"}`},
+		{src: "k: {!!str &x <<: 1}\n", want: `{"k":{"<<":1}}`},
+		{src: "!!merge <<: {a: 1}\nb: 2\n", want: `{"a":1,"b":2}`},
+		{src: "&x !!merge <<: {a: 1}\nb: 2\n", want: `{"a":1,"b":2}`},
+		{src: "!!merge &x <<: {a: 1}\nb: 2\n", want: `{"a":1,"b":2}`},
+		{src: "k: {!!merge &x <<: {a: 1}, b: 2}\n", want: `{"k":{"a":1,"b":2}}`},
+		{src: "&x <<: {a: 1}\n", want: `{"<<":{"a":1}}`, want11: `{"a":1}`},
+	})
+}
