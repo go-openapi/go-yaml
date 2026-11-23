@@ -10,9 +10,15 @@ import (
 	"github.com/go-openapi/go-yaml/token"
 )
 
-// String returns "". Render the [SequenceNode] that holds the entry.
+// String renders the entry as a block sequence of one: "- " and its value, with the comment above the entry and the
+// one on its "-" line.
 func (n *SequenceEntryNode) String() string {
-	return "" // TODO
+	return defaultRenderer.String(&SequenceNode{
+		Start:             n.Start,
+		Values:            []Node{n.Value},
+		Entries:           []*SequenceEntryNode{n},
+		ValueHeadComments: []*CommentGroupNode{n.HeadComment},
+	})
 }
 
 // ArrayNode is a node whose values [ArrayNodeIter] ranges over: a [SequenceNode], or a [TagNode] on one.
