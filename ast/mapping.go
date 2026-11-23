@@ -268,16 +268,25 @@ func (n *MappingValueNode) GetToken() *token.Token {
 	return n.Start
 }
 
-// SetIsFlowStyle sets IsFlowStyle on n and on every collection in its value.
+// SetIsFlowStyle sets IsFlowStyle on n and on every collection in its value, under an anchor or a tag too.
 func (n *MappingValueNode) SetIsFlowStyle(isFlow bool) {
 	n.IsFlowStyle = isFlow
-	switch value := n.Value.(type) {
+	setFlowStyle(n.Value, isFlow)
+}
+
+// setFlowStyle sets the flow style of the collection n is, or of the one under its anchor and tag.
+func setFlowStyle(n Node, isFlow bool) {
+	switch node := n.(type) {
 	case *MappingNode:
-		value.SetIsFlowStyle(isFlow)
+		node.SetIsFlowStyle(isFlow)
 	case *MappingValueNode:
-		value.SetIsFlowStyle(isFlow)
+		node.SetIsFlowStyle(isFlow)
 	case *SequenceNode:
-		value.SetIsFlowStyle(isFlow)
+		node.SetIsFlowStyle(isFlow)
+	case *AnchorNode:
+		setFlowStyle(node.Value, isFlow)
+	case *TagNode:
+		setFlowStyle(node.Value, isFlow)
 	}
 }
 

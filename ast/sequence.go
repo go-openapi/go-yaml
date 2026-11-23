@@ -191,18 +191,11 @@ func withLength(comments []*CommentGroupNode, values int) []*CommentGroupNode {
 	return append(slices.Clip(comments), make([]*CommentGroupNode, values-len(comments))...)
 }
 
-// SetIsFlowStyle sets IsFlowStyle on n and on every collection under it.
+// SetIsFlowStyle sets IsFlowStyle on n and on every collection under it, under an anchor or a tag too.
 func (n *SequenceNode) SetIsFlowStyle(isFlow bool) {
 	n.IsFlowStyle = isFlow
 	for _, value := range n.Values {
-		switch value := value.(type) {
-		case *MappingNode:
-			value.SetIsFlowStyle(isFlow)
-		case *MappingValueNode:
-			value.SetIsFlowStyle(isFlow)
-		case *SequenceNode:
-			value.SetIsFlowStyle(isFlow)
-		}
+		setFlowStyle(value, isFlow)
 	}
 }
 
