@@ -594,9 +594,16 @@ func (s *Scanner) bufferedToken(ctx *Context) (token.Token, bool) {
 		endLine = 0
 	}
 
-	return ctx.bufferedToken(token.At(
+	// The origin is read before the cut, which moves it on.
+	origin, originStart := ctx.origin(), ctx.originStart
+	tk, ok := ctx.bufferedToken(token.At(
 		line, column, offset, s.indentNum,
 	), endLine)
+	if lines, isLines := s.emptyLinesToken(ctx, tk.Value, origin, originStart); ok && isLines {
+		return lines, true
+	}
+
+	return tk, ok
 }
 
 // multiLinePosition returns the line and column of a block scalar's content token.

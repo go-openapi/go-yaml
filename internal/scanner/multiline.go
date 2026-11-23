@@ -195,8 +195,64 @@ func (s *Scanner) readMultiLineContent(ctx *Context, state *MultiLineState, c ru
 // emitMultiLine hands over the block read so far and starts the buffers again.
 func (s *Scanner) emitMultiLine(ctx *Context, state *MultiLineState) {
 	value := ctx.bufferedSrc()
-	ctx.addTokenValue(token.MakeString(string(value), ctx.origin(), state.from(s.pos())))
+	tk := token.MakeString(string(value), ctx.origin(), state.from(s.pos()))
+	if lines, ok := s.emptyLinesToken(ctx, tk.Value, ctx.origin(), ctx.originStart); ok {
+		tk = lines
+	}
+	ctx.addTokenValue(tk)
 	ctx.clear()
+}
+
+// emptyLinesToken returns the content token of a block scalar whose value is blank, line breaks and the spaces past
+// the indentation alone: the empty lines a "|+" keeps, or "|3-" over a line of four spaces. It returns false for any
+// other.
+//
+// Such content holds no character to start the token at, and both ways out of a block got it wrong. Measured from the
+// origin, which counts the breaks it opens with as the gap before the token, it covered nothing: "- |+" over two empty
+// lines at the end of the stream read "\n\n" from a token of no width. Searched for in the source, the value is
+// not found where the document writes "\r\n" or "\r", and the token fell to column 0 with no width. A transform
+// saw the lines as filler between tokens.
+//
+// The token starts where the content does: at the first space past the indentation where the value holds one, as
+// TestABlockOfSpacesStartsAtItsFirstContentSpace pins, and otherwise at the first byte after the header's line. It
+// runs past the last line break, whatever the document breaks its lines with, or to the end of the last line's
+// blanks where the value keeps no final break. The breaks count as the token's trailing breaks, as they do
+// where the search finds them. origin is the text read since the header, which starts at originStart.
+func (s *Scanner) emptyLinesToken(ctx *Context, value, origin string, originStart int32) (token.Token, bool) {
+	if !ctx.isMultiLine() || value == "" || strings.Trim(value, " \t\r\n") != "" {
+		return token.Token{}, false
+	}
+
+	start := originStart
+	end := start + int32(len(origin))
+	line := 1 + lineBreaksIn(ctx.src[:start])
+	pos := token.At(line, 1, start, s.indentNum)
+	if space, ok := ctx.getMultiLineState().spaceOnlyStart(); ok && strings.Trim(value, "\r\n") != "" {
+		pos = space
+	}
+	switch last := strings.LastIndexAny(origin, "\r\n"); {
+	case strings.HasSuffix(value, "\n") && last >= 0:
+		end = start + int32(last) + 1
+	case !strings.HasSuffix(value, "\n"):
+		// The last line's blanks end the value: the break after them belongs to no token.
+		end = start + int32(len(strings.TrimRight(origin, "\r\n")))
+	}
+
+	return token.Assemble(token.StringType, value, pos, token.Extent{
+		End: end, EndLine: pos.Line, Trailing: lineBreaksIn(ctx.src[pos.Offset():end]),
+	}), true
+}
+
+// lineBreaksIn counts the line breaks of src, a "\r\n" as one.
+func lineBreaksIn(src string) int32 {
+	var n int32
+	for i := range len(src) {
+		if c := src[i]; c == '\n' || (c == '\r' && (i+1 >= len(src) || src[i+1] != '\n')) {
+			n++
+		}
+	}
+
+	return n
 }
 
 // refuseMultiLine reports msg against the block read so far.

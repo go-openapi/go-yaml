@@ -141,7 +141,10 @@ func TestVerbatimWritesANodeBack(t *testing.T) {
 //
 // The fuzz corpus is regenerated as yamlgen learns shapes, so its number is
 // logged and not gated.
-var unlabeledSuite = struct{ unlabeled, tested int }{unlabeled: 10, tested: 308}
+//
+// 10 -> 7 when a block scalar's blank content began to cover the lines it holds: the three of
+// trailing-whitespace-in-streams went to no token.
+var unlabeledSuite = struct{ unlabeled, tested int }{unlabeled: 7, tested: 308}
 
 // TestVerbatimRebuildsEveryDocument is the verbatim census: for every document
 // the parser accepts, src == VerbatimFile(ParseBytes(src)).

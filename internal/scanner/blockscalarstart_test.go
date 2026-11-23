@@ -51,3 +51,42 @@ func TestABlockOfSpacesStartsAtItsFirstContentSpace(t *testing.T) {
 		assert.Equalf(t, " ", tc.src[tc.want:tc.want+1], "the offset names a space of %q", tc.src)
 	}
 }
+
+// TestABlockOfEmptyLinesCoversThem checks the extent of a block scalar's content when its value is blank: the empty
+// lines a "|+" keeps, or the spaces past the indentation. The token covers those lines, from the first byte after the
+// header's line, or from the first content space, to past the last line break the value keeps.
+//
+// Measured from its origin, such content covered nothing, and at the end of the stream it stood on the last break:
+// "- |+" over two empty lines read "\n\n" from a token of no width. Where the document breaks its lines with "\r\n"
+// or "\r", the value was not found in the source and the token fell to column 0. A transform saw the lines as filler.
+func TestABlockOfEmptyLinesCoversThem(t *testing.T) {
+	for _, tc := range []struct {
+		src          string
+		value        string
+		offset, end  int32
+		line, column int32
+	}{
+		{src: "- |+\n\n\n", value: "\n\n", offset: 5, end: 7, line: 2, column: 1},
+		{src: "a: |+\n\n\n", value: "\n\n", offset: 6, end: 8, line: 2, column: 1},
+		{src: "a: |+\n\n\nb: 1\n", value: "\n\n", offset: 6, end: 8, line: 2, column: 1},
+		{src: "a: |+\r\n\r\n\r\nb: 1\n", value: "\n\n", offset: 7, end: 11, line: 2, column: 1},
+		{src: "a: |+\r\rb: 1\r", value: "\n", offset: 6, end: 7, line: 2, column: 1},
+		{src: "x:\n  a: |+\n\n  b: 1\n", value: "\n", offset: 11, end: 12, line: 3, column: 1},
+	} {
+		tokens, err := scanTokens(tc.src)
+		require.NoErrorf(t, err, "%q", tc.src)
+
+		var content *token.Token
+		for i := 1; i < len(tokens); i++ {
+			if tokens[i].Type == token.StringType && tokens[i-1].Type == token.LiteralType {
+				content = &tokens[i]
+
+				break
+			}
+		}
+		require.NotNilf(t, content, "%q holds a block scalar", tc.src)
+		assert.Equalf(t, tc.value, content.Value, "%q", tc.src)
+		assert.Equalf(t, []int32{tc.offset, tc.end, tc.line, tc.column},
+			[]int32{content.Position.Offset(), content.EndOffset(), content.Position.Line, content.Position.Column}, "%q", tc.src)
+	}
+}
