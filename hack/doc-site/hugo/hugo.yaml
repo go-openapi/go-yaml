@@ -55,6 +55,12 @@ module:
     - source: '../../../docs/doc-site'
       target: content
 
+    # The recipes, lifted into pages by the code shortcode.
+    - source: '../../../docs/examples'
+      target: assets/examples
+      files:
+        - '**/*.go'
+
     # Custom SCSS (for theme customization) + logo
     - source: themes/goyaml-assets
       target: assets
