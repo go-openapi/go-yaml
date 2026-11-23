@@ -127,6 +127,16 @@ func (s *Scanner) closeMultiLineAtEOS(ctx *Context, state *MultiLineState, c run
 		// The source ending on such a line reached here rather than
 		// readMultiLineBreak, which is where a line break marks one empty, so
 		// "k: >1-\n  1\n " was refused where "k: >1-\n  1\n \n" was read.
+		//
+		// The checks readMultiLineContent and the tab arm of scanMultiLine make of a line's first character are made
+		// here too: ">-" over "   " over "#" read as "\n#" and ">-" over "   '" over a tab as "'\n\t", both refused
+		// once the source ends on a line break.
+		if s.isFirstCharAtLine && c == '\t' && state.isIndentColumn(s.column) {
+			return s.refuseMultiLine(ctx, "found a tab character where an indentation space is expected")
+		}
+		if err := state.validateIndentAfterSpaceOnly(s.column); err != nil {
+			return s.refuseMultiLine(ctx, err.Error())
+		}
 		state.updateIndentColumn(s.column)
 		if err := state.validateIndentColumn(); err != nil {
 			return s.refuseMultiLine(ctx, err.Error())

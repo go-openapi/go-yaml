@@ -147,3 +147,32 @@ func TestFixedALastLineOfSpacesEndsABlockScalar(t *testing.T) {
 		assert.Equal(t, "k:\n- >2-\n  1", strings.TrimRight(file.Docs[0].String(), "\n"))
 	})
 }
+
+// TestABlockScalarsLastLineIsCheckedWhereTheSourceEndsOnIt checks that the last line of a block scalar is refused, when
+// the source ends on it, where the same line followed by a line break is refused.
+//
+// closeMultiLineAtEOS reads the last character of the source, and skipped two checks readMultiLineContent and
+// scanMultiLine make of a line's first character: a tab where the indentation stands, and leading empty lines holding
+// more spaces than the first content line. ">-" over "   " over "#" read as "\n#", and ">-" over "   '" over a tab as
+// "'\n\t". libfyaml refuses each with a final line break or without; go.yaml.in/yaml/v3 refuses the tab.
+func TestABlockScalarsLastLineIsCheckedWhereTheSourceEndsOnIt(t *testing.T) {
+	for _, tc := range []struct{ src, why string }{
+		{">-\n   \n#", "a leading empty line of a block scalar holds more spaces than its first content line"},
+		{"|\n   \n x", "a leading empty line of a block scalar holds more spaces than its first content line"},
+		{">-\n   '\n\t", "found a tab character where an indentation space is expected"},
+		{"|\n  a\n\t", "found a tab character where an indentation space is expected"},
+	} {
+		for _, src := range []string{tc.src, tc.src + "\n"} {
+			_, err := parser.ParseBytes([]byte(src))
+			require.Errorf(t, err, "%q", src)
+			assert.Containsf(t, err.Error(), tc.why, "%q", src)
+		}
+	}
+
+	t.Run("a tab past the indentation and an empty line short of it still read", func(t *testing.T) {
+		for _, src := range []string{"|\n  a\n  \tb", "|\n \n  x", "foo: |\n  x"} {
+			_, err := parser.ParseBytes([]byte(src))
+			require.NoErrorf(t, err, "%q", src)
+		}
+	})
+}
