@@ -58,29 +58,15 @@ func FloatBase(text string, schema Schema) (Type, bool) {
 	return FloatType, false
 }
 
-type NumberType string
+type numberKind string
 
 const (
-	NumberTypeDecimal NumberType = "decimal"
-	NumberTypeBinary  NumberType = "binary"
-	NumberTypeOctet   NumberType = "octet"
-	NumberTypeHex     NumberType = "hex"
-	NumberTypeFloat   NumberType = "float"
+	kindDecimal numberKind = "decimal"
+	kindBinary  numberKind = "binary"
+	kindOctet   numberKind = "octet"
+	kindHex     numberKind = "hex"
+	kindFloat   numberKind = "float"
 )
-
-type NumberValue struct {
-	Type  NumberType
-	Value any
-	Text  string
-}
-
-func ToNumber(value string) *NumberValue {
-	num, err := toNumber(value)
-	if err != nil {
-		return nil
-	}
-	return num
-}
 
 // isNumber reports whether either YAML schema could take value for a number,
 // which is the question the encoder asks. A plain scalar some reader resolves
@@ -166,7 +152,7 @@ func mayBeNumber(value string) bool {
 // digits is a slice of the text -- the sign and any base prefix taken off, and
 // nothing else -- so reading a number costs no allocation.
 type numberShape struct {
-	typ      NumberType
+	typ      numberKind
 	base     int
 	digits   string
 	negative bool
@@ -218,13 +204,13 @@ func shapeOfNumber(value string, schema Schema) (numberShape, bool) {
 				return numberShape{}, false
 			}
 
-			return numberShape{typ: NumberTypeOctet, base: 8, digits: body[2:]}, true
+			return numberShape{typ: kindOctet, base: 8, digits: body[2:]}, true
 		case 'x':
 			if !inBase(body[2:], 16) {
 				return numberShape{}, false
 			}
 
-			return numberShape{typ: NumberTypeHex, base: 16, digits: body[2:]}, true
+			return numberShape{typ: kindHex, base: 16, digits: body[2:]}, true
 		}
 	}
 
@@ -235,7 +221,7 @@ func shapeOfNumber(value string, schema Schema) (numberShape, bool) {
 			return numberShape{}, false
 		}
 
-		return numberShape{typ: NumberTypeDecimal, base: 10, digits: body, negative: negative}, true
+		return numberShape{typ: kindDecimal, base: 10, digits: body, negative: negative}, true
 	}
 
 	float := false
@@ -273,10 +259,10 @@ func shapeOfNumber(value string, schema Schema) (numberShape, bool) {
 	}
 
 	if !float {
-		return numberShape{typ: NumberTypeDecimal, base: 10, digits: body, negative: negative}, true
+		return numberShape{typ: kindDecimal, base: 10, digits: body, negative: negative}, true
 	}
 
-	return numberShape{typ: NumberTypeFloat, base: 10, digits: body, negative: negative}, true
+	return numberShape{typ: kindFloat, base: 10, digits: body, negative: negative}, true
 }
 
 // shapeOfNumber11 reads value against YAML 1.1's integer and float types, and
@@ -315,12 +301,12 @@ func shapeOfNumber11(value string) (numberShape, bool) {
 	// A base prefix, which 1.1 writes after the sign.
 	if len(body) > 2 && body[0] == '0' {
 		var base int
-		var typ NumberType
+		var typ numberKind
 		switch body[1] {
 		case 'b':
-			base, typ = 2, NumberTypeBinary
+			base, typ = 2, kindBinary
 		case 'x':
-			base, typ = 16, NumberTypeHex
+			base, typ = 16, kindHex
 		}
 		if base != 0 {
 			digits := unseparate(body[2:])
@@ -340,7 +326,7 @@ func shapeOfNumber11(value string) (numberShape, bool) {
 			return numberShape{}, false
 		}
 
-		return numberShape{typ: NumberTypeOctet, base: 8, digits: digits, negative: negative}, true
+		return numberShape{typ: kindOctet, base: 8, digits: digits, negative: negative}, true
 	}
 
 	if strings.IndexByte(body, ':') >= 0 {
@@ -353,7 +339,7 @@ func shapeOfNumber11(value string) (numberShape, bool) {
 			return numberShape{}, false
 		}
 
-		return numberShape{typ: NumberTypeDecimal, base: 10, digits: unseparate(body), negative: negative}, true
+		return numberShape{typ: kindDecimal, base: 10, digits: unseparate(body), negative: negative}, true
 	}
 
 	if body[i] != '.' {
@@ -386,7 +372,7 @@ func shapeOfNumber11(value string) (numberShape, bool) {
 		return numberShape{}, false
 	}
 
-	return numberShape{typ: NumberTypeFloat, base: 10, digits: unseparate(body), negative: negative}, true
+	return numberShape{typ: kindFloat, base: 10, digits: unseparate(body), negative: negative}, true
 }
 
 // sexagesimalBase is YAML 1.1's base 60. No strconv base reaches it -- strconv
@@ -430,7 +416,7 @@ func shapeOfSexagesimal(body string, negative bool) (numberShape, bool) {
 		return numberShape{}, false
 	}
 
-	typ := NumberTypeDecimal
+	typ := kindDecimal
 	if i < len(body) {
 		// The float form, whose fraction closes the text.
 		if body[i] != '.' {
@@ -440,7 +426,7 @@ func shapeOfSexagesimal(body string, negative bool) (numberShape, bool) {
 		if i, _ = countDigits11(body, i); i != len(body) {
 			return numberShape{}, false
 		}
-		typ = NumberTypeFloat
+		typ = kindFloat
 	}
 
 	return numberShape{typ: typ, base: sexagesimalBase, digits: unseparate(body), negative: negative}, true
@@ -534,24 +520,24 @@ func shapeOfTypedNumber(text string, typ Type) (numberShape, bool) {
 
 	var (
 		base int
-		kind NumberType
+		kind numberKind
 	)
 	switch typ {
 	case IntegerType:
-		base, kind = 10, NumberTypeDecimal
+		base, kind = 10, kindDecimal
 	case OctetIntegerType:
 		// "0o755" in 1.2, "0755" in 1.1. Base 8 reads the leading zero the
 		// older form keeps.
-		base, kind = 8, NumberTypeOctet
+		base, kind = 8, kindOctet
 		body = strings.TrimPrefix(body, "0o")
 	case HexIntegerType:
-		base, kind = 16, NumberTypeHex
+		base, kind = 16, kindHex
 		body = strings.TrimPrefix(body, "0x")
 	case BinaryIntegerType:
-		base, kind = 2, NumberTypeBinary
+		base, kind = 2, kindBinary
 		body = strings.TrimPrefix(body, "0b")
 	case FloatType:
-		base, kind = 10, NumberTypeFloat
+		base, kind = 10, kindFloat
 	default:
 		return numberShape{}, false
 	}
@@ -560,7 +546,7 @@ func shapeOfTypedNumber(text string, typ Type) (numberShape, bool) {
 	if strings.IndexByte(body, ':') >= 0 {
 		base = sexagesimalBase
 	}
-	if kind != NumberTypeFloat && base != sexagesimalBase && !inBase(body, base) {
+	if kind != kindFloat && base != sexagesimalBase && !inBase(body, base) {
 		return numberShape{}, false
 	}
 
@@ -625,7 +611,7 @@ func ParseInteger(text string, typ Type) (any, bool) {
 // fits: its magnitude is 1<<63, which int64 cannot hold.
 func ParseWholeNumber(text string, typ Type) (uint64, bool, bool) {
 	shape, ok := shapeOfTypedNumber(text, typ)
-	if !ok || shape.typ == NumberTypeFloat {
+	if !ok || shape.typ == kindFloat {
 		return 0, false, false
 	}
 
@@ -670,7 +656,7 @@ func bigDigits(shape numberShape) (*big.Int, bool) {
 // is read exactly rather than lost.
 func ParseBigInteger(text string, typ Type) (*big.Int, bool) {
 	shape, ok := shapeOfTypedNumber(text, typ)
-	if !ok || shape.typ == NumberTypeFloat {
+	if !ok || shape.typ == kindFloat {
 		return nil, false
 	}
 
@@ -719,7 +705,7 @@ const maxFloatExponent = 1000
 // inside the range, and a 2,000-digit number written with a point is past it.
 func FloatPastRange(text string, typ Type) (float64, bool) {
 	shape, ok := shapeOfTypedNumber(text, typ)
-	if !ok || shape.typ != NumberTypeFloat {
+	if !ok || shape.typ != kindFloat {
 		return 0, false
 	}
 	digits, ok := floatDigits(shape)
@@ -810,7 +796,7 @@ func decimalDigits(text string) int {
 // See [ParseBigInteger] for why a document may carry one.
 func ParseBigFloat(text string, typ Type) (*big.Float, bool) {
 	shape, ok := shapeOfTypedNumber(text, typ)
-	if !ok || shape.typ != NumberTypeFloat {
+	if !ok || shape.typ != kindFloat {
 		return nil, false
 	}
 
@@ -872,7 +858,7 @@ func floatDigits(shape numberShape) (string, bool) {
 // conversion happens.
 func ParseFloat(text string, typ Type) (float64, bool) {
 	shape, ok := shapeOfTypedNumber(text, typ)
-	if !ok || shape.typ != NumberTypeFloat {
+	if !ok || shape.typ != kindFloat {
 		return 0, false
 	}
 
@@ -921,58 +907,13 @@ func nonZeroMantissa(digits string) bool {
 // The text is read and checked but not converted, and nothing here allocates:
 // typing a scalar costs no memory. What the number means is the caller's, from
 // [Token.Value] or [ast.ScalarNode.Text].
-func numberType(value string, schema Schema) (NumberType, bool) {
+func numberType(value string, schema Schema) (numberKind, bool) {
 	shape, ok := shapeOfNumber(value, schema)
 	if !ok {
 		return "", false
 	}
 
 	return shape.typ, true
-}
-
-func toNumber(value string) (*NumberValue, error) {
-	shape, ok := shapeOfNumber(value, Schema12)
-	if !ok {
-		return nil, nil
-	}
-
-	text := shape.digits
-	if shape.negative {
-		text = "-" + text
-	}
-
-	var v any
-	switch {
-	case shape.typ == NumberTypeFloat:
-		f, err := strconv.ParseFloat(text, 64)
-		if err != nil {
-			return nil, err
-		}
-		v = f
-	case shape.negative:
-		i, err := strconv.ParseInt(text, shape.base, 64)
-		if err != nil {
-			return nil, err
-		}
-		v = i
-		if i == 0 {
-			// "-0" is 0, a uint64 as [ParseInteger] reads it. Text keeps the sign
-			// the document wrote.
-			v = uint64(0)
-		}
-	default:
-		u, err := strconv.ParseUint(text, shape.base, 64)
-		if err != nil {
-			return nil, err
-		}
-		v = u
-	}
-
-	return &NumberValue{
-		Type:  shape.typ,
-		Value: v,
-		Text:  text,
-	}, nil
 }
 
 // errNotInBase says the digits hold a character the base does not admit. It is

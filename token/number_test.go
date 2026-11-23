@@ -5,21 +5,68 @@ package token
 
 import (
 	"fmt"
+	"strconv"
 	"testing"
 
 	"github.com/go-openapi/testify/v2/assert"
 	"github.com/go-openapi/testify/v2/require"
 )
 
-// numberType reads a number's text against the grammar, where ToNumber
-// converts it. They have to agree on what is a number and on which kind it is,
-// or a scalar would be typed one way and read another.
-//
-// They part company in one place, and only one: a number the grammar accepts
-// that no native type holds. numberType still calls it a number -- YAML bounds
-// neither type -- and ToNumber reports nothing, which sends the caller to
-// ParseBigInteger or ParseBigFloat. Nothing may fall outside those two.
-func typeOf(num *NumberValue) NumberType {
+// numberValue holds a number strconvNumber converted, and the kind numberType gives it.
+type numberValue struct {
+	Type  numberKind
+	Value any
+	Text  string
+}
+
+// strconvNumber converts value with strconv from the shape shapeOfNumber reads, and returns nil where value is not
+// a number or no native type holds it. TestNumberTypeAgreesWithStrconv holds ParseInteger and ParseFloat to it.
+func strconvNumber(value string) *numberValue {
+	shape, ok := shapeOfNumber(value, Schema12)
+	if !ok {
+		return nil
+	}
+
+	text := shape.digits
+	if shape.negative {
+		text = "-" + text
+	}
+
+	var v any
+	switch {
+	case shape.typ == kindFloat:
+		f, err := strconv.ParseFloat(text, 64)
+		if err != nil {
+			return nil
+		}
+		v = f
+	case shape.negative:
+		i, err := strconv.ParseInt(text, shape.base, 64)
+		if err != nil {
+			return nil
+		}
+		v = i
+		if i == 0 {
+			// "-0" is 0, a uint64 as [ParseInteger] reads it. Text keeps the sign
+			// the document wrote.
+			v = uint64(0)
+		}
+	default:
+		u, err := strconv.ParseUint(text, shape.base, 64)
+		if err != nil {
+			return nil
+		}
+		v = u
+	}
+
+	return &numberValue{
+		Type:  shape.typ,
+		Value: v,
+		Text:  text,
+	}
+}
+
+func typeOf(num *numberValue) numberKind {
 	if num == nil {
 		return ""
 	}
@@ -27,7 +74,13 @@ func typeOf(num *NumberValue) NumberType {
 	return num.Type
 }
 
-func TestNumberTypeAgreesWithToNumber(t *testing.T) {
+// TestNumberTypeAgreesWithStrconv holds numberType, ParseInteger and ParseFloat to strconv: they must agree on what
+// is a number, on which kind it is, and on its value, or a scalar would be typed one way and read another.
+//
+// They part company in one place, and only one: a number the grammar accepts that no native type holds. numberType
+// still calls it a number -- YAML bounds neither type -- and strconvNumber returns nil, which sends the caller to
+// ParseBigInteger or ParseBigFloat. Nothing may fall outside those two.
+func TestNumberTypeAgreesWithStrconv(t *testing.T) {
 	var cases []string
 
 	for _, base := range []string{"", "0x", "0X", "0o", "0b", "0"} {
@@ -53,7 +106,7 @@ func TestNumberTypeAgreesWithToNumber(t *testing.T) {
 
 	for _, value := range cases {
 		t.Run(fmt.Sprintf("%q", value), func(t *testing.T) {
-			num := ToNumber(value)
+			num := strconvNumber(value)
 			if num == nil {
 				_, isInt := ParseInteger(value, ScalarType(value, Schema12))
 				_, isFloat := ParseFloat(value, ScalarType(value, Schema12))
@@ -63,7 +116,7 @@ func TestNumberTypeAgreesWithToNumber(t *testing.T) {
 			typ, isNumber := numberType(value, Schema12)
 
 			if !isNumber {
-				assert.Nilf(t, num, "numberType says %q is not a number, ToNumber read it as a %s", value, typeOf(num))
+				assert.Nilf(t, num, "numberType says %q is not a number, strconv read it as a %s", value, typeOf(num))
 
 				_, isBigInt := ParseBigInteger(value, ScalarType(value, Schema12))
 				_, isBigFloat := ParseBigFloat(value, ScalarType(value, Schema12))
@@ -73,12 +126,12 @@ func TestNumberTypeAgreesWithToNumber(t *testing.T) {
 				return
 			}
 
-			// A number by its grammar. ToNumber converts it where a native type
+			// A number by its grammar. strconvNumber converts it where a native type
 			// holds it and reports nothing where none does -- the width is the
 			// decoder's to deal with, not the grammar's -- so the big readers
 			// take over exactly there.
 			if num == nil {
-				if typ == NumberTypeFloat {
+				if typ == kindFloat {
 					_, ok := ParseBigFloat(value, ScalarType(value, Schema12))
 					assert.Truef(t, ok, "%q is a float no float64 holds, ParseBigFloat refused it", value)
 
@@ -93,8 +146,8 @@ func TestNumberTypeAgreesWithToNumber(t *testing.T) {
 			assert.Equalf(t, num.Type, typ, "%q: the kinds differ", value)
 
 			// ParseInteger and ParseFloat are what a node converts with, and
-			// have to reach the value ToNumber reached.
-			if num.Type == NumberTypeFloat {
+			// have to reach the value strconv reached.
+			if num.Type == kindFloat {
 				f, ok := ParseFloat(value, ScalarType(value, Schema12))
 				assert.Truef(t, ok, "%q is a float, ParseFloat refused it", value)
 				assert.Equalf(t, num.Value, f, "%q: the float values differ", value)

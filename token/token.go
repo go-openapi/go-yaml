@@ -146,15 +146,6 @@ func (t *Token) Dump(w io.Writer) {
 // Tokens type of token collection.
 type Tokens []*Token
 
-func (t Tokens) InvalidToken() *Token {
-	for _, tt := range t {
-		if tt.Type == InvalidType {
-			return tt
-		}
-	}
-	return nil
-}
-
 // Add append new some tokens.
 func (t *Tokens) Add(tks ...*Token) {
 	for _, tk := range tks {
@@ -257,20 +248,6 @@ func (t Token) TrailingBreaks() int32 {
 // [Position.Line], plus [Token.TrailingBreaks].
 func (t Token) BreaksAfterLeading() int32 {
 	return t.EndLine() - t.Position.Line + t.TrailingBreaks()
-}
-
-// SetTrailingBreaks records the line breaks the whitespace after the token
-// takes up.
-func (t *Token) SetTrailingBreaks(n int32) {
-	if n > trailingMask {
-		n = trailingMask
-	}
-	t.spans = t.spans&^(trailingMask<<trailingShift) | uint64(n)&trailingMask<<trailingShift
-}
-
-// SetEndLine records the line the token's text ends on.
-func (t *Token) SetEndLine(line int32) {
-	t.spans = t.spans&^endLineMask | uint64(line)&endLineMask
 }
 
 // SetCommentBreaksAbove records the line breaks the comments above this token
@@ -418,13 +395,6 @@ func extentOf[T Text](org T, pos Position) int32 {
 
 	return pos.Offset() + int32(len(org)-i)
 }
-
-// SetEndOffset records where the token's text ends, for a scanner that knows
-// the window of source its origin buffer was copied from. [extentOf] counts
-// forward from the offset instead, which comes up short wherever a block
-// scalar's indentation indicator leaves some of the leading spaces in the
-// content: the offset points past them and the count does not include them.
-func (t *Token) SetEndOffset(end int32) { t.end = end }
 
 // EndOffset is the byte just past the token's text, so that src[Offset:EndOffset]
 // is what the document wrote the token as, with the whitespace before it left

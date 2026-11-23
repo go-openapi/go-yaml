@@ -212,13 +212,13 @@ func ScalarType(value string, schema Schema) Type {
 	}
 
 	switch typ {
-	case NumberTypeFloat:
+	case kindFloat:
 		return FloatType
-	case NumberTypeBinary:
+	case kindBinary:
 		return BinaryIntegerType
-	case NumberTypeOctet:
+	case kindOctet:
 		return OctetIntegerType
-	case NumberTypeHex:
+	case kindHex:
 		return HexIntegerType
 	default:
 		return IntegerType

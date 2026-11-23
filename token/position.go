@@ -50,11 +50,6 @@ func (p *Position) SetOffset(offset int32) {
 	p.where = p.where&^offsetMask | uint64(uint32(offset))
 }
 
-// SetIndentNum records how far the token's line is indented.
-func (p *Position) SetIndentNum(indent int32) {
-	p.where = p.where&offsetMask | uint64(uint32(indent))<<32
-}
-
 // At builds a position, which the packed fields keep a literal from doing.
 func At(line, column, offset, indentNum int32) Position {
 	return Position{

@@ -24,7 +24,7 @@ func ReservedTagOf(uri string) (ReservedTagKeyword, bool) {
 	}
 
 	keyword := ReservedTagKeyword("!!" + name)
-	if _, reserved := ReservedTagKeywordMap[keyword]; !reserved {
+	if _, reserved := reservedTags[keyword]; !reserved {
 		return "", false
 	}
 
@@ -61,10 +61,10 @@ const (
 	MergeTag ReservedTagKeyword = "!!merge"
 )
 
-// ReservedTagKeywordMap holds the tags YAML 1.2 reserves. A tag outside it is
+// reservedTags holds the tags YAML 1.2 reserves. A tag outside it is
 // the document's own, and a scalar carrying one keeps the type its text says
 // rather than the one the tag would resolve to.
-var ReservedTagKeywordMap = map[ReservedTagKeyword]struct{}{
+var reservedTags = map[ReservedTagKeyword]struct{}{
 	IntegerTag:    {},
 	FloatTag:      {},
 	NullTag:       {},
