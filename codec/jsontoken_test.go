@@ -679,3 +679,30 @@ func everyRouteToAMergeAnswersAlikeCases() iter.Seq[everyRouteToAMergeAnswersAli
 		},
 	})
 }
+
+// TestJSONTokensDrawTheSourceOfTheirOwnErrors checks that an error the conversion raises, and not the parser,
+// prints the lines around its position, as a parse error does.
+func TestJSONTokensDrawTheSourceOfTheirOwnErrors(t *testing.T) {
+	for _, tc := range []struct {
+		name, src string
+		budget    int
+		want      string
+	}{
+		{"name-only pair", "x: 0\n1: a\n\"1\": b\n", 0, `>  3 | "1": b`},
+		{"budget", "a: &a [x, x]\nb: [*a, *a]\n", 5, `>  1 | a: &a [x, x]`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			s := codec.ToJSONTokens([]byte(tc.src)).Budget(tc.budget)
+			for range s.Tokens() {
+			}
+			require.Error(t, s.Err())
+			assert.StringContainsT(t, s.Err().Error(), tc.want)
+
+			_, err := codec.ToJSON([]byte(tc.src))
+			if tc.budget == 0 {
+				require.Error(t, err)
+				assert.StringContainsT(t, err.Error(), tc.want)
+			}
+		})
+	}
+}

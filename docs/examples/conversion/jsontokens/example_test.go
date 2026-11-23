@@ -103,4 +103,9 @@ d: [*c, *c, *c, *c]
 
 	// Output:
 	// [3:16] the document hands over more than 100 JSON tokens
+	//    1 | a: &a [x, x, x, x]
+	//    2 | b: &b [*a, *a, *a, *a]
+	// >  3 | c: &c [*b, *b, *b, *b]
+	//                       ^
+	//    4 | d: [*c, *c, *c, *c]
 }

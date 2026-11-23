@@ -73,8 +73,7 @@ Two keys YAML distinguishes can write one JSON member name:
 {{< code file="conversion/tojson/example_test.go" lang="text" output="Example_jsonName" >}}
 
 The integer `1` and the string `"1"` are two keys in YAML and one member `"1"`
-in JSON. `ToJSON` rejects the pair. This error carries the position and no
-source lines.
+in JSON. `ToJSON` rejects the pair, at the second key.
 
 ## Variations
 

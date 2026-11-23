@@ -127,4 +127,7 @@ func Example_jsonName() {
 
 	// Output:
 	// [2:1] two keys write the JSON member "1", first defined at [1:1]
+	//    1 | 1: a
+	// >  2 | "1": b
+	//        ^
 }

@@ -13,6 +13,7 @@ import (
 	"github.com/go-openapi/go-yaml/codec/internal/astutils"
 	"github.com/go-openapi/go-yaml/codec/internal/codecutils"
 	yamlerrors "github.com/go-openapi/go-yaml/errors"
+	"github.com/go-openapi/go-yaml/internal/nocopy"
 	"github.com/go-openapi/go-yaml/parser"
 	"github.com/go-openapi/go-yaml/token"
 )
@@ -224,6 +225,11 @@ func (s *JSONTokens) Tokens() iter.Seq[JSONToken] {
 			// is reset first.
 			t.ended = false
 			t.emit(JSONToken{Kind: JSONNull, At: token.Position{Line: 1, Column: 1}})
+		}
+		if s.err != nil {
+			// The parser attaches the source to its own errors. The conversion's errors, such as a name-only pair
+			// or the budget, learn it here, so they print the lines around their position too.
+			s.err = yamlerrors.WithSource(s.err, yamlerrors.Source{Text: nocopy.String(s.src), FirstLine: 1})
 		}
 	}
 }
