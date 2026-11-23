@@ -64,3 +64,30 @@ func TestPathStringReadsKeysThatAreNotASCII(t *testing.T) {
 		})
 	}
 }
+
+func TestInvalidPath(t *testing.T) {
+	tests := []struct {
+		name string
+		path string
+	}{
+		{
+			name: "missing root with dot",
+			path: ".foo",
+		},
+		{
+			name: "missing root with index",
+			path: "foo[0]",
+		},
+		{
+			name: "missing root with recursive",
+			path: "..foo",
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if _, err := expressions.PathString(test.path); err == nil {
+				t.Fatal("expected error")
+			}
+		})
+	}
+}
