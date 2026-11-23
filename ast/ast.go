@@ -941,7 +941,8 @@ func (n *StringNode) plainString() string {
 		}
 		block := strings.TrimSuffix(strings.TrimSuffix(strings.Join(values, lbc), fmt.Sprintf("%s%s%s", lbc, indent, space)), fmt.Sprintf("%s%s", indent, space))
 		return fmt.Sprintf("%s%s%s", header, lbc, block)
-	} else if token.NeedsQuotedSpelling(n.Value) {
+	} else if token.NeedsQuotedSpelling(n.Value) || strings.Contains(n.Value, "\n") {
+		// A line break with no block scalar spelling. See token.LiteralBlockHeader.
 		quoted := strconv.Quote(n.Value)
 		if n.Comment != nil {
 			return addCommentString(quoted, n.Comment)
@@ -981,7 +982,8 @@ func (n *StringNode) stringWithoutComment() string {
 		}
 		block := strings.TrimSuffix(strings.TrimSuffix(strings.Join(values, lbc), fmt.Sprintf("%s%s%s", lbc, indent, space)), "  "+space)
 		return fmt.Sprintf("%s%s%s", header, lbc, block)
-	} else if token.NeedsQuotedSpelling(n.Value) {
+	} else if token.NeedsQuotedSpelling(n.Value) || strings.Contains(n.Value, "\n") {
+		// A line break with no block scalar spelling. See token.LiteralBlockHeader.
 		return strconv.Quote(n.Value)
 	} else if len(n.Value) > 0 && (n.Value[0] == '{' || n.Value[0] == '[') {
 		return fmt.Sprintf(`'%s'`, n.Value)

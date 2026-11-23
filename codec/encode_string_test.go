@@ -4,8 +4,10 @@
 package codec_test
 
 import (
+	"encoding/json"
 	"iter"
 	"math"
+	"reflect"
 	"slices"
 	"testing"
 
@@ -247,6 +249,21 @@ func encodeMultiLineCases() iter.Seq[encodeCase] {
 			"multi-line/literal-keep",
 			"hello: |+\n  hello\n  world\n\n",
 			map[string]string{"hello": "hello\nworld\n\n"},
+			nil,
+		},
+		// With no line of text, "|" and "|-" both read "", so a value made only of line breaks keeps them with "|+".
+		{
+			"multi-line/only-a-line-break",
+			"hello: |+\n\n",
+			map[string]string{"hello": "\n"},
+			nil,
+		},
+		// A reader takes a block's indentation from its first line of text, so one that starts with a space
+		// would lose that space. The value takes double quotes.
+		{
+			"multi-line/first-text-indented-double-quoted",
+			"hello: \"\\n 0\"\n",
+			map[string]string{"hello": "\n 0"},
 			nil,
 		},
 		{
@@ -756,4 +773,36 @@ func aStringReadingAsADocumentMarkerRoundTripsCases(s string) iter.Seq[aStringRe
 		{name: "as a key", value: map[string]int{s: 1}},
 		{name: "in a sequence", value: []string{s}},
 	})
+}
+
+// TestAMultiLineStringReadsBackAsWritten encodes strings holding line breaks, at the root, in a mapping and in a
+// sequence, with and without UseLiteralStyleIfMultiline, and requires the decode to read each one back.
+//
+// "\n" was written "|" over one empty line and read back as "", and "\n 0" was written "|-" over an empty line
+// and "   0", and read back as "\n0". FromJSON writes through the same encoder, so a JSON document lost both.
+func TestAMultiLineStringReadsBackAsWritten(t *testing.T) {
+	values := []string{
+		"\n", "\n\n", "\n\n\n", "\n 0", "\n\n  x\ny", " a\nb", "a\n b", "\n0", "x\n", "a\n\n", "\t\nx", "\n\tx", "\n \n",
+	}
+	for _, v := range values {
+		for _, literal := range []bool{false, true} {
+			opt := codec.UseLiteralStyleIfMultiline(literal)
+			for name, doc := range map[string]any{"root": v, "mapping": map[string]string{"k": v}, "sequence": []string{v, "z"}} {
+				out, err := codec.Marshal(doc, opt)
+				require.NoErrorf(t, err, "%s %q", name, v)
+
+				back := reflect.New(reflect.TypeOf(doc))
+				require.NoErrorf(t, codec.Unmarshal(out, back.Interface()), "%s %q written as %q", name, v, out)
+				assert.Equalf(t, doc, back.Elem().Interface(), "%s %q written as %q, literal=%v", name, v, out, literal)
+			}
+		}
+
+		js, err := json.Marshal(map[string]string{"k": v})
+		require.NoError(t, err)
+		yml, err := codec.FromJSON(js)
+		require.NoErrorf(t, err, "FromJSON %q", v)
+		back, err := codec.ToJSON(yml)
+		require.NoErrorf(t, err, "ToJSON of %q", yml)
+		assert.JSONEqf(t, string(js), string(back), "FromJSON %q wrote %q", v, yml)
+	}
 }

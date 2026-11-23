@@ -1762,6 +1762,12 @@ func IsNeedQuoted(value string) bool {
 // whatever it is written with. And nb-char excludes U+FEFF, so no block or
 // plain scalar may hold one at all. Both have to be double-quoted, where each
 // is an escape.
+//
+// A value whose first line holding text starts with a space has none either. A reader takes the block's
+// indentation from that line, so it would read "\n 0" written as "|-" over an empty line and "   0" as "\n0".
+// Writing it would need an indentation indicator, which no writer here emits.
+//
+// A value made only of line breaks keeps them with "|+": with no line of text, "|" and "|-" both read "".
 func LiteralBlockHeader(value string) string {
 	if NeedsQuotedSpelling(value) {
 		return ""
@@ -1772,6 +1778,10 @@ func LiteralBlockHeader(value string) string {
 	switch {
 	case !strings.Contains(value, lbc):
 		return ""
+	case firstTextStartsWithSpace(value, lbc):
+		return ""
+	case strings.Trim(value, lbc) == "":
+		return "|+"
 	case strings.HasSuffix(value, fmt.Sprintf("%s%s", lbc, lbc)):
 		return "|+"
 	case strings.HasSuffix(value, lbc):
@@ -1779,6 +1789,18 @@ func LiteralBlockHeader(value string) string {
 	default:
 		return "|-"
 	}
+}
+
+// firstTextStartsWithSpace reports whether the first line of value holding anything but a line break starts with
+// a space.
+func firstTextStartsWithSpace(value, lbc string) bool {
+	for line := range strings.SplitSeq(value, lbc) {
+		if line != "" {
+			return line[0] == ' '
+		}
+	}
+
+	return false
 }
 
 // New create reserved keyword token or number token and other string token.
