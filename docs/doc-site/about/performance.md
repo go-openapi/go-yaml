@@ -87,25 +87,39 @@ citm_catalog into its Go types, the walk peaks at 0.68 MiB and the tree at
 
 The decoder takes the tree for the whole call when one of these options is set:
 
-- `CommentToMap`, `UseOrderedMap` or `UseStringKeys`;
+- `CommentToMap`;
 - `ReferenceFiles`, `ReferenceDirs` or `ReferenceReaders`;
 - `CustomUnmarshaler`, for any type;
-- `Validator` or `UseJSONUnmarshaler`, for a struct destination.
+- `UseJSONUnmarshaler`, for a destination other than an `any`.
 
-It also takes the tree when the destination type holds, at any depth:
+It also takes the tree when the destination is a `yaml.Node` of
+`go.yaml.in/yaml/v3`, or when the destination type holds, at any depth:
 
-- a type implementing `Unmarshaler`, `GoYAMLUnmarshaler`, `NodeUnmarshaler`,
-  `encoding.TextUnmarshaler` or `ast.Node`;
-- a type passed to `RegisterCustomUnmarshaler`;
-- a `time.Time`, `time.Duration`, `MapSlice`, `MapSliceSeq`, `MapItem` or
-  `RawMessage`;
+- a type implementing `NodeUnmarshaler` or `ast.Node`, which receives the node
+  itself and may keep it;
+- a `RawMessage`, which holds the source text of its node;
+- an `,inline` field that decodes itself, or an `,inline` map that collects
+  the keys no field names.
+
+Every other field keeps the walk. For a field the tree decoder reads by rules
+of its own, the walk keeps that field's node and hands the tree decoder that
+one node:
+
+- a `time.Time`, `time.Duration`, `MapSlice`, `MapSliceSeq` or `MapItem`;
+- a `yaml.Node` of `go.yaml.in/yaml/v3`;
+- a type implementing `Unmarshaler`, `GoYAMLUnmarshaler`,
+  `encoding.TextUnmarshaler` or v3's `UnmarshalYAML(*yaml.Node)`, and a type
+  passed to `RegisterCustomUnmarshaler`;
 - a map whose key is not a string, an array, a complex number, or an interface
-  with methods;
-- an `,inline` map that collects the keys no field names.
+  with methods.
 
-One such field is enough, even where the document never sets it. Adding an
-unused `time.Time` field to the citm_catalog types takes the peak from 0.68 MiB
-to 19.48 MiB.
+With an unused `time.Time` field added to the citm_catalog types, the decode
+peaks at 0.67 MiB. It peaked at 19.48 MiB when such a field sent the decode to
+the tree.
+
+A few shapes in the document still send the rest of a decode to the tree,
+such as an anchor or an alias inside an `any` field of a struct, or used as a
+key.
 
 ## What is not measured here
 
