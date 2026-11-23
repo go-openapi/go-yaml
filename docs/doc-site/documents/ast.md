@@ -137,8 +137,7 @@ comment on the node you put in to keep it.
 The copy runs forward once, in the document's order. A tree whose nodes now stand
 in another order returns `ast.ErrMove`, and removing an entry of a flow
 collection returns `ast.ErrRemove`. On an error, part of the document may already
-be written, so render into a buffer where you need all or nothing. The godoc
-marks both methods provisional.
+be written, so render into a buffer where you need all or nothing.
 
 ## Merging
 
