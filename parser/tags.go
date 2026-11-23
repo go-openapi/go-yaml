@@ -253,14 +253,21 @@ func (p *Parser) parseTagValue(ctx context, uri string, tagRawTk *token.Token, t
 	// a "%TAG" line that repoints "!!" makes "!!seq" a local tag, which stands on whatever follows.
 	tag, _ := token.ReservedTagOf(uri)
 	switch tag {
-	case token.MappingTag, token.SetTag:
-		if p.descent.leftOfSequenceEntry(tk, int(tagRawTk.Position.Line)) {
-			// "- !!map" over "a: 1": the mapping stands at the '-' column, where nothing belongs to the entry, so the
-			// tag stands on the empty node and the mapping is the enclosing collection's to read. Under a key the tag
-			// takes a mapping at the key's column, which is how this library reads !!map; a sequence entry has no such
-			// reading, and "x:" over "- !!map" over "a: 1" gave x the outer mapping's next key.
+	case token.MappingTag, token.SetTag, token.SequenceTag, token.OrderedMapTag:
+		if p.descent.opensNextEntry(tk, int(tagRawTk.Position.Line)) {
+			// A collection tag ending its line takes the collection below only where that collection may be the
+			// value, as for a value written with no tag: indented past the key or the '-', or a block sequence at the
+			// key's own column. Elsewhere the tag stands on the empty node, and what follows is the next entry of the
+			// enclosing collection. "a: !!map" over "b: 1", both at column 1, read as {a: {b: 1}}, and "- !!seq"
+			// over "- b" as [[b]].
 			return newTagDefaultScalarValueNode(ctx, uri, tagRawTk)
 		}
+	default:
+		// nothing to do
+	}
+
+	switch tag {
+	case token.MappingTag, token.SetTag:
 		if !isMapToken(tk) {
 			return p.parseTaggedOtherKind(ctx, uri, tagRawTk, tk)
 		}

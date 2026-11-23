@@ -133,12 +133,6 @@ func (d *descentState) opensNextEntry(next *group.TapeToken, line int) bool {
 	return true
 }
 
-// leftOfSequenceEntry reports whether next, on a line after the property written on line, stands no further in than the
-// '-' of the sequence entry being read, and so cannot be that entry's content.
-func (d *descentState) leftOfSequenceEntry(next *group.TapeToken, line int) bool {
-	return !d.entryInMap && d.entryCol > 0 && next.Line() != line && next.Column() <= d.entryCol
-}
-
 // entryBase returns the index where the run of the mapping being opened starts.
 func (d *descentState) entryBase() int { return len(d.entries) }
 

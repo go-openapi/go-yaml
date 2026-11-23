@@ -13,20 +13,16 @@ import (
 	"github.com/go-openapi/go-yaml/parser"
 )
 
-// TestACollectionTagTakesTheMappingUnderItsKey holds how this library reads a collection tag written at the end of a
-// line, and where that reading stops.
+// TestACollectionTagTakesOnlyTheCollectionItsValueMayBe parses a collection tag written at the end of a line.
 //
-// The tag types the collection that follows, at the column it would otherwise start a sibling at as further in:
-// "a: !!map" over "b: 1" is {a: {b: 1}}, and "- !!seq" over "- b" is [[b]], the tag naming the node it stands over as
-// https://yaml.org/type/map.html and https://yaml.org/type/seq.html describe it. This is a position:
-// yaml/yaml-reference-parser and libfyaml read the tag on an empty value, and "b" as the next key or entry. A scalar
-// tag, an anchor or a local tag at the end of the line stands on the empty node, and what follows is a sibling.
+// The tag takes the collection on the lines below only where that collection may be the value, as for a value
+// written with no tag: a mapping or a sequence indented past the key or the '-', or a block sequence at the key's
+// own column. Elsewhere the tag stands on the empty node, and what follows is the next entry of the enclosing
+// collection, as yaml/yaml-reference-parser, libfyaml and go.yaml.in/yaml/v3 read it.
 //
-// A sequence entry has no such reading. Nothing at the '-' column belongs to the entry, so a collection tag on a "- "
-// line stands on the empty node when the mapping below is not indented past the '-'. "- !!map" over "? a" was read as
-// [{a: null}] and "x:" over "- !!map" over "a: 1" as {x: [{a: 1}]}, the outer mapping's next key taken into the entry.
-// Both anchors refuse the first and read the second as {x: [null], a: 1}.
-func TestACollectionTagTakesTheMappingUnderItsKey(t *testing.T) {
+// "a: !!map" over "b: 1", both at column 1, read as {a: {b: 1}}, and "- !!seq" over "- b" as [[b]]: the tag took
+// the next entry for the collection it names.
+func TestACollectionTagTakesOnlyTheCollectionItsValueMayBe(t *testing.T) {
 	t.Parallel()
 
 	for _, tc := range []struct {
@@ -34,11 +30,16 @@ func TestACollectionTagTakesTheMappingUnderItsKey(t *testing.T) {
 		src  string
 		want any
 	}{
-		{"map-tag-takes-the-mapping-at-the-key-column", "a: !!map\nb: 1\n", map[string]any{"a": map[string]any{"b": uint64(1)}}},
-		{"map-tag-takes-an-explicit-key-at-the-key-column", "a: !!map\n? b\n", map[string]any{"a": map[string]any{"b": nil}}},
+		{"map-tag-leaves-a-key-at-the-key-column-a-sibling", "a: !!map\nb: 1\n", map[string]any{"a": nil, "b": uint64(1)}},
+		{"map-tag-leaves-an-explicit-key-at-the-key-column-a-sibling", "a: !!map\n? b\n", map[string]any{"a": nil, "b": nil}},
+		{"map-tag-leaves-a-nested-key-at-the-key-column-a-sibling", "r:\n  a: !!map\n  b: 1\n", map[string]any{"r": map[string]any{"a": nil, "b": uint64(1)}}},
+		{"set-tag-leaves-an-explicit-key-at-the-key-column-a-sibling", "a: !!set\n? b\n", map[string]any{"a": nil, "b": nil}},
 		{"map-tag-takes-a-more-indented-mapping", "a: !!map\n  b: 1\n", map[string]any{"a": map[string]any{"b": uint64(1)}}},
-		{"seq-tag-takes-the-sequence-at-the-dash-column", "- !!seq\n- b\n", []any{[]any{"b"}}},
+		{"map-tag-takes-a-mapping-one-column-in", "a: !!map\n b: 1\n", map[string]any{"a": map[string]any{"b": uint64(1)}}},
+		{"map-tag-at-the-root-takes-the-mapping-below", "--- !!map\nb: 1\n", map[string]any{"b": uint64(1)}},
 		{"seq-tag-takes-the-sequence-at-the-key-column", "a: !!seq\n- 1\n", map[string]any{"a": []any{uint64(1)}}},
+		{"seq-tag-leaves-a-dash-at-its-column-a-sibling", "- !!seq\n- b\n", []any{nil, "b"}},
+		{"seq-tag-takes-a-sequence-past-the-dash", "- !!seq\n  - b\n", []any{[]any{"b"}}},
 		{"map-tag-leaves-a-dash-at-its-column-a-sibling", "- !!map\n- b\n", []any{nil, "b"}},
 		{"scalar-tag-leaves-the-key-below-a-sibling", "a: !!str\nb: 1\n", map[string]any{"a": "", "b": uint64(1)}},
 		{"anchor-leaves-the-key-below-a-sibling", "a: &x\nb: 1\n", map[string]any{"a": nil, "b": uint64(1)}},
@@ -54,7 +55,7 @@ func TestACollectionTagTakesTheMappingUnderItsKey(t *testing.T) {
 		})
 	}
 
-	for _, src := range []string{"- !!map\n? a\n", "- &2 !!map\n?\n", "- !!map\na: 1\n", "- !!set\n? a\n", "  - !!map\n  a: 1\n"} {
+	for _, src := range []string{"- !!map\n? a\n", "- &2 !!map\n?\n", "- !!map\na: 1\n", "- !!set\n? a\n", "  - !!map\n  a: 1\n", "a: !!map\n{b: 1}\n"} {
 		t.Run("refused/"+src, func(t *testing.T) {
 			t.Parallel()
 
