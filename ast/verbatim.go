@@ -2007,6 +2007,12 @@ func (r *Renderer) writeEntry(vw *verbatimWriter, entry Node, coll collection, i
 
 	if next, found := nextFromSource(coll.siblings, i); found {
 		indent := vw.indentAt(next.from)
+		if !coll.seq {
+			// As after the last entry: the entry that follows takes the line's width, and its "-" stays on the
+			// line the new entry took. Repeated, "- a: 1" with an entry put in front became two sequence entries,
+			// "- x: 9" over "- a: 1".
+			indent = asIndent(indent)
+		}
 
 		// The copy stops on the following entry, which has written the break and
 		// the indentation in front of it, so the new entry lands where that one

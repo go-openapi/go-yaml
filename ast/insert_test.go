@@ -442,7 +442,8 @@ func insertMarkerAt(t *testing.T, mapping *ast.MappingNode, at int) {
 // insertedCleanly reports whether rendered is src with the marker entry put in and nothing else changed.
 //
 // A block entry adds its line: the indentation, the entry and the break ending it, or the break in front of it where
-// it is the document's last line and the document ends without one. A flow entry adds itself and one comma. Put into
+// it is the document's last line and the document ends without one. In front of a mapping written after a "-", it
+// takes the "-" from the entry it pushes down, which keeps the width. A flow entry adds itself and one comma. Put into
 // a single pair of a flow sequence, "[a: 1]", it also adds the braces that make the pair the flow mapping it becomes,
 // "[{a: 1, x: 9}]": a flow sequence entry holds one pair, and two need a mapping.
 func insertedCleanly(rendered, src string) bool {
@@ -531,6 +532,13 @@ func withoutMarker(rendered string) (string, int) {
 		}
 	}
 
+	// Put in front of a mapping written after a "-", the entry takes the "-" and the entry it pushed down is
+	// indented to the same width: "- a: 1" becomes "- x: 9" over "  a: 1". The "-" goes back to that line.
+	lead := rendered[start:at]
+	if rest := rendered[end:]; strings.TrimLeft(lead, " \t") != "" && strings.HasPrefix(rest, strings.Repeat(" ", len(lead))) {
+		return rendered[:start] + lead + rest[len(lead):], start
+	}
+
 	return rendered[:start] + rendered[end:], start
 }
 
@@ -607,4 +615,30 @@ func TestVerbatimRefusesAMultilineNodeInAFlowCollection(t *testing.T) {
 	err = ast.NewRenderer(ast.WithSource([]byte(src))).VerbatimFile(&out, file)
 	require.ErrorIs(t, err, ast.ErrInsert)
 	require.ErrorContains(t, err, "spans lines")
+}
+
+// TestVerbatimInsertsInFrontOfAMappingAfterADash puts an entry in front of a mapping written after a "-". The new
+// entry takes the "-", and the entry it pushes down keeps the width of the line. Written with the "-" again, it
+// opened a second sequence entry: "- a: 1" became "- x: 9" over "- a: 1".
+func TestVerbatimInsertsInFrontOfAMappingAfterADash(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		src  string
+		at   int
+		want string
+	}{
+		{"- a: 1\n  b: 2\n", 0, "- x: 9\n  a: 1\n  b: 2\n"},
+		{" - a: 1\n", 0, " - x: 9\n   a: 1\n"},
+		{"- a: 1\n  b: 2\n", 1, "- a: 1\n  x: 9\n  b: 2\n"},
+		{"- a: 1\r\n- b: 2\r\n", 0, "- x: 9\r\n  a: 1\r\n- b: 2\r\n"},
+	} {
+		file, err := parser.ParseBytes([]byte(tc.src), parser.WithComments())
+		require.NoError(t, err)
+		insertInto(t, file.Docs[0].Body.(*ast.SequenceNode).Values[0], tc.at)
+
+		var out bytes.Buffer
+		require.NoError(t, ast.NewRenderer(ast.WithSource([]byte(tc.src))).VerbatimFile(&out, file))
+		require.Equalf(t, tc.want, out.String(), "%q at %d", tc.src, tc.at)
+	}
 }
