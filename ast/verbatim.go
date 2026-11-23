@@ -184,7 +184,11 @@ func walkSourceTokens(n Node, fn func(*token.Token)) {
 	case *MappingValueNode:
 		hand(v.CollectEntry)
 		walkSourceTokens(v.Key, fn)
-		hand(v.Start)
+		if v.Start != nil && v.Start.Type == token.MappingValueType {
+			// An entry written with no ':', "{&a1 x}" or "? []: x", holds its key's first token in Start, which
+			// the key has already handed over. Handed again, it read the descent backwards.
+			hand(v.Start)
+		}
 		walkSourceTokens(v.Value, fn)
 	case *MappingKeyNode:
 		hand(v.Start)

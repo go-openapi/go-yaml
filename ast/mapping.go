@@ -228,7 +228,9 @@ func (n *MappingKeyNode) stringWithoutComment() string {
 type MappingValueNode struct {
 	BaseNode
 
-	Start        *token.Token // delimiter token ':'.
+	// Start is the ':' token. An entry written with no ':', a flow key alone as in "{a}" or an explicit key with
+	// nothing after it, holds its key's first token instead, so that the entry still has a position.
+	Start        *token.Token
 	CollectEntry *token.Token // collect entry token ','.
 	Key          MapKeyNode
 	Value        Node

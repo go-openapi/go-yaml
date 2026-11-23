@@ -60,54 +60,26 @@ func TestTheVerbatimDescentFollowsTheDocument(t *testing.T) {
 
 	t.Logf("walked %d source tokens over %d documents, %d of which went backwards", walked, docs, backwards)
 	require.Positive(t, walked)
-	require.LessOrEqualf(t, backwards, descentCeiling,
-		"the descent lost ground: %d documents go backwards, ceiling is %d", backwards, descentCeiling)
+	require.Zerof(t, backwards, "%d documents go backwards", backwards)
 }
 
-// descentCeiling is how many documents the verbatim descent may read out of
-// order.
-//
-// A count rather than a ledger, and it is not allowed to rise on a corpus that
-// stood still. It was 23 until the parser's explicit-key fixes landed on
-// 2026-09-09 and closed five, and 18 until 2026-09-10, when narrowing the
-// "!!omap" draw to the shape the tag names reshuffled every seed. 18 of 12,558
-// documents -> 20 of 12,596, and all 20 were read one by one: every one is one
-// of the two shapes below, so the corpus drew two more instances of faults
-// already recorded and no new shape arrived. Raising it on a reshuffle is the
-// count following the corpus; raising it on a still corpus would be the descent
-// losing ground, and the denominator is here so the two can be told apart.
-//
-// Two shapes make up what is left, and both are the tree reporting a token that
-// is not the node's:
-//
-//   - "? []: x" gives a MappingValueNode whose Start is a SequenceStart "[" at
-//     offset 2, where the field holds the ":" that closes a key. Handed over
-//     after the key's own subtree, which reaches offset 6, it reads backwards.
-//     That document also decodes to map[string]any{"map[[]:x]": nil}, so the
-//     shape is odd well before a renderer sees it.
-//   - "anchors-on-empty-scalars" and its kind, where an anchor stands on
-//     nothing and the node built for the empty value carries a position from
-//     the property that opened it.
-//
-// Neither loses text today: Renderer.VerbatimFile only ever copies forward, so a
-// token read out of order was already written with an earlier one. They matter
-// when a node the source does not reach interrupts the copy, which is what the
-// insertion case does.
-//
-// 20 -> 30 on 2026-09-15, on a corpus that stood still. What moved is what the
-// parser accepts: a flow mapping may now hold a collection key with no value,
-// as "{[a, b]}" writes it, so ten seeds that were refused are read. All ten are
-// one family -- "!!map {&a1 \"1_000\", &a2 8.0: *a1, [\"\"], null}" and nine
-// mutations of it -- and every one opens with an anchored scalar written as a
-// key with no value, which is the second shape above: "{&a1 \"x\"}" alone reads
-// backwards here and on the commit before the change. No new shape arrived.
-//
-// 30 -> 32 on 2026-09-20, on a corpus that moved: yamlcorpus/47 draws a float
-// written with more digits than a float64 keeps, and every seed reshuffled
-// behind it. Counted by source, the suite side stands at 2 documents before and
-// after and the seed side goes 28 -> 30, so the ceiling followed the corpus and
-// the descent stood still.
-const descentCeiling = 32
+// TestAnEntryWithNoColonIsReadInOrder walks entries written with no ':'. Their Start holds the key's first token,
+// which the key hands over itself, and the descent handed it a second time after the key: "{&a1 ”}" read the "&"
+// at offset 1 after the "”" ending at 7.
+func TestAnEntryWithNoColonIsReadInOrder(t *testing.T) {
+	t.Parallel()
+
+	for _, src := range []string{"{&a1 ''}\n", "{&a1 x, b: 1}\n", "{? ! 'a'}\n", "? []: x\n", "-\n  ? &d\n"} {
+		file, err := parser.ParseBytes([]byte(src), parser.WithComments())
+		require.NoErrorf(t, err, "%q", src)
+
+		ends := ast.SourceTokenEnds(file.Docs[0])
+		require.NotEmptyf(t, ends, "%q", src)
+		for i := 1; i < len(ends); i++ {
+			require.GreaterOrEqualf(t, ends[i], ends[i-1], "%q: token %d", src, i)
+		}
+	}
+}
 
 // TestVerbatimWritesANodeBack checks the per-node half: a node writes the
 // stretch of source it covers, and nothing of its neighbors.
