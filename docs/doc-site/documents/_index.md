@@ -109,6 +109,7 @@ the value.
 | [`parser`](parser/) | `ParseBytes`, `parser.New`, and the options that decide what the tree keeps |
 | [`parser`](walk/) | `Parser.Walk`, which hands each node to a `Visitor` without building the tree |
 | [`ast`](ast/) | the tree: node types, `Walk`, `Filter`, `Merge`, and the renderer |
+| [`transform`](transform/) | `transform.Walk`, which rewrites a document piece by piece, and `colorize` |
 | [`token`](tokens/) | a token, its position, and its text as written |
 | [`expressions`](yamlpath/) | `Path` and `PathString`, to address a node by path |
 | [`codec`](json/) | `ToJSON` and `FromJSON`, which convert without building a Go value |
