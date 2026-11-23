@@ -102,5 +102,5 @@ d: [*c, *c, *c, *c]
 	// endsnippet:budget
 
 	// Output:
-	// the document hands over more than 100 JSON tokens
+	// [3:16] the document hands over more than 100 JSON tokens
 }

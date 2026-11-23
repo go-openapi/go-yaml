@@ -130,6 +130,10 @@ type JSONTokens struct {
 // than memory holds. The depth limit and the size of a scalar do not bound that, and Budget does. Set it for input you
 // did not write.
 //
+// The token past the budget stops the conversion with an error matching
+// [github.com/go-openapi/go-yaml/errors.ErrNotJSON], at that token's position.
+// The decoder bounds aliases differently, with ErrExcessiveAliasing, and the two do not match.
+//
 // A budget of 0, which is the default, does not bound it.
 func (s *JSONTokens) Budget(tokens int) *JSONTokens {
 	s.budget = tokens
@@ -592,7 +596,8 @@ func (t *jsonTokener) emit(tok JSONToken) {
 	t.count++
 	if t.state.budget > 0 && t.count > t.state.budget {
 		t.fail(yamlerrors.NewNotJSON(
-			fmt.Sprintf("the document hands over more than %d JSON tokens", t.state.budget), nil))
+			fmt.Sprintf("the document hands over more than %d JSON tokens", t.state.budget),
+			token.New(tok.Value, tok.Value, tok.At)))
 
 		return
 	}

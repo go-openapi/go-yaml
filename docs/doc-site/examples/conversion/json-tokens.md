@@ -59,6 +59,8 @@ Call it after every range.
 Each alias hands over everything its anchor names again, so a few hundred bytes
 can name more values than memory holds. `Budget` caps the tokens one document
 may hand over. The default, 0, sets no cap. Set one for input you did not write.
+The token past the cap stops the range, and `Err` returns an error that matches
+`errors.ErrNotJSON`, at that token's position.
 
 ## Variations
 

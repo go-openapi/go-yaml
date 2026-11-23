@@ -4,6 +4,7 @@
 package codec_test
 
 import (
+	"errors"
 	"fmt"
 	"iter"
 	"slices"
@@ -12,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/go-openapi/go-yaml/codec"
+	yamlerrors "github.com/go-openapi/go-yaml/errors"
 	"github.com/go-openapi/go-yaml/parser"
 	"github.com/go-openapi/testify/v2/assert"
 	"github.com/go-openapi/testify/v2/require"
@@ -138,6 +140,13 @@ func TestJSONTokensBudgetBoundsAnAlias(t *testing.T) {
 	require.Error(t, s.Err())
 	assert.ErrorContains(t, s.Err(), "10000")
 	assert.LessOrEqual(t, n, 10000)
+
+	// The error matches ErrNotJSON and carries the position of the token past the budget.
+	require.ErrorIs(t, s.Err(), yamlerrors.ErrNotJSON)
+	ye, ok := errors.AsType[*yamlerrors.Error](s.Err())
+	require.TrueT(t, ok)
+	require.NotNil(t, ye.GetToken())
+	assert.Positive(t, ye.GetToken().Position.Line)
 }
 
 func TestJSONTokensRefuseWhatJSONCannotHold(t *testing.T) {
