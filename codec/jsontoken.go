@@ -1144,6 +1144,15 @@ func (t *jsonTokener) treeEntries(n *ast.MappingNode) ([]treeEntry, bool) {
 		return slices.ContainsFunc(entries, func(e treeEntry) bool { return e.name == name })
 	}
 
+	// A mapping the walk handed over was checked for repeats as it closed. One read whole was not: collectMerge
+	// keeps "<<: &a {x: 1, x: 2}" for its Leave, so the walk never entered the mapping, and ToJSON wrote {"x":1}
+	// where the decoders refuse it. The check is repeated here for every mapping written from the tree.
+	if err := astutils.RefuseDuplicateKeys(n); err != nil {
+		t.fail(err)
+
+		return nil, false
+	}
+
 	for _, entry := range n.Values {
 		merge := ast.MergeOf(entry)
 		if merge.Verdict != ast.NotAMerge {
@@ -1181,6 +1190,13 @@ func (t *jsonTokener) treeEntries(n *ast.MappingNode) ([]treeEntry, bool) {
 	}
 
 	for _, src := range sources {
+		if node, isNode := src.(ast.Node); isNode {
+			if err := astutils.RefuseDuplicateKeys(node); err != nil {
+				t.fail(err)
+
+				return nil, false
+			}
+		}
 		for it := src.MapRange(); it.Next(); {
 			name := t.keyName(it.Key())
 			if held(name) {

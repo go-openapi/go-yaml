@@ -3669,3 +3669,33 @@ func TestFixedATaggedKeyItsTagCannotReadIsRefusedOnEveryPath(t *testing.T) {
 		assert.InDelta(t, 2.0, got.X, 0)
 	})
 }
+
+// TestFixedToJSONRefusesARepeatedKeyInAMergedMappingReadWhole: "<<: &x {a: 1,
+// a: 2}" under "%YAML 1.1" is refused by ToJSON, as by the decoders.
+//
+// collectMerge keeps a "<<" value under an anchor or a tag for its Leave and
+// writes it from the tree, so the walk never entered the mapping and its
+// repeat was never checked: treeEntries assumed every mapping had been walked.
+// ToJSON wrote {"b":3,"a":1}. A mutant of the YAML corpus of
+// go-openapi/conformance-suites found it.
+func TestFixedToJSONRefusesARepeatedKeyInAMergedMappingReadWhole(t *testing.T) {
+	for _, body := range []string{
+		"{<<: &x {a: 1, a: 2}, b: 3}\n", "{<<: !!map {a: 1, a: 2}, b: 3}\n",
+		"{<<: [&x {a: 1, a: 2}], b: 3}\n", "<<: &x\n  a: 1\n  a: 2\nb: 3\n",
+	} {
+		src := "%YAML 1.1\n---\n" + body
+
+		var got any
+		require.Errorf(t, codec.Unmarshal([]byte(src), &got), "the decoder: %q", src)
+
+		_, err := codec.ToJSON([]byte(src))
+		require.Errorf(t, err, "ToJSON: %q", src)
+		assert.Containsf(t, err.Error(), `mapping key "a" already defined`, "ToJSON: %q", src)
+	}
+
+	t.Run("an own key over a merged one is no repeat", func(t *testing.T) {
+		out, err := codec.ToJSON([]byte("%YAML 1.1\n---\n{<<: &x {a: 1, b: 2}, b: 3}\n"))
+		require.NoError(t, err)
+		assert.JSONEq(t, `{"a":1,"b":3}`, string(out))
+	})
+}
