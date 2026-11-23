@@ -2224,9 +2224,8 @@ func sliceSiblings(values []Node) func(int) Node {
 // partway through a document that is already partly written. Render into a
 // buffer and copy it on success where a caller needs all or nothing.
 //
-// ⚠️ Provisional, and not what [Renderer.Render] does on its own: that lays a
-// whole tree out by its depth, as an encoder needs and as a tree with no source
-// requires.
+// [Renderer.Render] does not copy the source: it lays a whole tree out by its
+// depth, as an encoder needs and as a tree with no source requires.
 func (r *Renderer) Verbatim(w io.Writer, n Node) error {
 	if r.src == nil || n == nil {
 		return nil
