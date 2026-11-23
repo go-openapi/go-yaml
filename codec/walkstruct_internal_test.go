@@ -5,10 +5,12 @@ package codec
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"iter"
 	"reflect"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -16,6 +18,7 @@ import (
 	"github.com/go-openapi/testify/v2/require"
 
 	"github.com/go-openapi/go-yaml/codec/internal/structfields"
+	yamlerrors "github.com/go-openapi/go-yaml/errors"
 
 	"github.com/go-openapi/go-yaml/ast"
 	"github.com/go-openapi/go-yaml/parser"
@@ -898,6 +901,148 @@ func useOrderedMapCases() iter.Seq[useOrderedMapCase] {
 		{name: "a mapping as a key", src: "k: {{a: 1}: x}\n"},
 		{name: "a sequence of mappings", src: "k: [{b: 1, a: 2}, {}]\n"},
 		{name: "a root mapping", src: "z: 1\na: 2\n"},
+	})
+}
+
+// TestValidatorWalksAndAgreesWithTheTree decodes structs a validator rejects, on the walk and on the tree, and
+// requires the same values and the same error, position and excerpt included. The walk records the tokens the
+// tree reads from the mapping again: a field's value, the key of a mapping or a sequence, the key of the entry
+// that writes a struct, and the struct's first key.
+func TestValidatorWalksAndAgreesWithTheTree(t *testing.T) {
+	yaml11 := WithParserOptions(parser.WithYAMLVersion(parser.YAML11))
+	optionSets := map[string][]DecodeOption{
+		"alone":                {Validator(validateItem)},
+		"1.1":                  {Validator(validateItem), yaml11},
+		"1.1, ShareAliases":    {Validator(validateItem), yaml11, ShareAliases()},
+		"AllowDuplicateMapKey": {Validator(validateItem), AllowDuplicateMapKey()},
+	}
+	for tc := range validatorCases() {
+		t.Run(tc.name, func(t *testing.T) {
+			for name, opts := range optionSets {
+				var walked, built validatedDoc
+				dec := NewDecoder(bytes.NewReader([]byte(tc.src)), opts...)
+				walkErr := dec.Decode(&walked)
+				treeOpts := append(slices.Clone(opts), treeOnly())
+				treeErr := NewDecoder(bytes.NewReader([]byte(tc.src)), treeOpts...).Decode(&built)
+				require.Equalf(t, fmt.Sprint(treeErr), fmt.Sprint(walkErr), "%s: the two paths return different errors", name)
+				if !tc.repeats || name == "AllowDuplicateMapKey" {
+					// A repeated key stops the document, and the walk has written the fields before it.
+					// A Decode that fails may leave its destination partly written.
+					assert.Equalf(t, built, walked, "%s: the two paths disagree", name)
+				}
+				if !tc.anchored {
+					assert.NotNilf(t, dec.stream, "%s: the document was not walked", name)
+				}
+				if tc.fails && (!tc.repeats || name == "AllowDuplicateMapKey") {
+					require.ErrorIsf(t, walkErr, yamlerrors.ErrValidation, "%s", name)
+				}
+			}
+		})
+	}
+}
+
+type validatedSub struct {
+	N int `yaml:"n"`
+}
+
+type validatedEmbedded struct {
+	Inner string `yaml:"inner"`
+}
+
+type validatedItem struct {
+	validatedEmbedded `yaml:",inline"`
+
+	Name string                    `yaml:"name"`
+	Size int                       `yaml:"size"`
+	Sub  *validatedSub             `yaml:"sub"`
+	Tags []string                  `yaml:"tags"`
+	Meta map[string]int            `yaml:"meta"`
+	When time.Time                 `yaml:"when"`
+	Any  any                       `yaml:"any"`
+	Kids []validatedItem           `yaml:"kids"`
+	ByID map[string]*validatedItem `yaml:"byid"`
+}
+
+type validatedDoc struct {
+	validatedItem `yaml:",inline"`
+
+	Item  validatedItem  `yaml:"item"`
+	After string         `yaml:"after"`
+	Base  *validatedItem `yaml:"base"`
+	Other *validatedItem `yaml:"other"`
+}
+
+// validatedFieldError names a struct field, as an element of go-playground/validator's error does.
+type validatedFieldError struct{ field string }
+
+func (e validatedFieldError) StructField() string { return e.field }
+
+type validatedFieldErrors []validatedFieldError
+
+func (e validatedFieldErrors) Error() string { return "invalid " + e[0].field }
+
+// validateItem rejects a validatedItem by its name: "bad-<Field>" names that field, "plain" returns an error that
+// names none, and "bad-Nothing" a field the struct does not have.
+func validateItem(v any) error {
+	var it validatedItem
+	switch t := v.(type) {
+	case validatedItem:
+		it = t
+	case validatedDoc:
+		// The root inlines an item, so the validator reads it through the root.
+		it = t.validatedItem
+	default:
+		return nil
+	}
+	switch {
+	case it.Name == "plain":
+		return errors.New("plain failure")
+	case strings.HasPrefix(it.Name, "bad-"):
+		return validatedFieldErrors{{"Missing"}, {strings.TrimPrefix(it.Name, "bad-")}}
+	default:
+		return nil
+	}
+}
+
+type validatorCase struct {
+	name     string
+	src      string
+	anchored bool
+	fails    bool
+	repeats  bool
+}
+
+func validatorCases() iter.Seq[validatorCase] {
+	return slices.Values([]validatorCase{
+		{name: "valid", src: "item: {name: ok, size: 1}\nafter: x\n"},
+		{name: "a scalar field", src: "item:\n  name: bad-Size\n  size: 3\nafter: x\n", fails: true},
+		{name: "a mapping field", src: "item:\n  name: bad-Sub\n  sub:\n    n: 1\n", fails: true},
+		{name: "a sequence field", src: "item:\n  name: bad-Tags\n  tags: [a]\n", fails: true},
+		{name: "a map field", src: "item: {name: bad-Meta, meta: {a: 1}}\n", fails: true},
+		{name: "a kept field", src: "item:\n  name: bad-When\n  when: 2001-12-14\n", fails: true},
+		{name: "an any field", src: "item:\n  name: bad-Any\n  any: {x: [1]}\n", fails: true},
+		{name: "an embedded field", src: "item:\n  name: bad-Inner\n  inner: i\n", fails: true},
+		{name: "a missing field", src: "item:\n  name: bad-Size\nafter: x\n", fails: true},
+		{name: "a missing field at the root", src: "name: bad-Size\nafter: x\n", fails: true},
+		{name: "a missing field in a sequence", src: "item:\n  kids:\n    - name: bad-Size\n", fails: true},
+		{name: "a missing field in a map", src: "item:\n  byid:\n    k1:\n      name: bad-Size\n", fails: true},
+		{name: "a missing field in a flow mapping", src: "item: {kids: [{name: bad-Size}]}\n", fails: true},
+		{name: "no field named", src: "item: {name: plain, size: 1}\n", fails: true},
+		{name: "an unknown field named", src: "item: {name: bad-Nothing}\n", fails: true},
+		{name: "a field written twice", src: "item:\n  name: bad-Size\n  size: 1\n  size: 2\n", fails: true, repeats: true},
+		{name: "a null field", src: "item:\n  name: bad-Sub\n  sub:\n", fails: true},
+		{name: "an explicit key", src: "item:\n  ? name\n  : bad-Size\n  ? size\n  : 1\n", fails: true},
+		{name: "a tagged field", src: "item:\n  name: bad-Size\n  size: !!int 3\n", fails: true},
+		{name: "a tagged struct", src: "item: !!map\n  name: bad-Size\n", fails: true},
+		{name: "a field error first", src: "item:\n  name: bad-Size\n  size: x\n", fails: false},
+		{name: "a nested failure", src: "item:\n  name: bad-Size\n  kids:\n    - name: bad-Tags\n      tags: [t]\n", fails: true},
+		{name: "an anchored field", src: "item:\n  name: bad-Sub\n  sub: &s\n    n: 1\n", fails: true, anchored: true},
+		{name: "an alias", src: "base: &b {name: bad-Size, size: 2}\nother: *b\n", fails: true},
+		{name: "an aliased field", src: "base: &b {name: x, sub: &s {n: 1}}\nitem:\n  name: bad-Sub\n  sub: *s\n", fails: true},
+		{name: "a merged field", src: "base: &b {size: 4, tags: [m]}\nitem:\n  name: bad-Size\n  <<: *b\n", fails: true},
+		{name: "a merged collection", src: "base: &b {size: 4, tags: [m]}\nitem:\n  <<: *b\n  name: bad-Tags\n", fails: true},
+		{name: "an own key over a merge", src: "base: &b {size: 4}\nitem:\n  <<: *b\n  name: bad-Size\n  size: 5\n", fails: true},
+		{name: "a merge in place", src: "item:\n  <<: {size: 4}\n  name: bad-Size\n", fails: true},
 	})
 }
 

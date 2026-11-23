@@ -62,8 +62,6 @@ func RecursiveDir(isRecursive bool) DecodeOption {
 //
 //	validate := validator.New()
 //	dec := codec.NewDecoder(r, codec.Validator(validate.Struct))
-//
-// A struct decoded with a validator is read through the tree, not the walk.
 func Validator(validate func(any) error) DecodeOption {
 	return func(d *Decoder) error {
 		d.validator = validate

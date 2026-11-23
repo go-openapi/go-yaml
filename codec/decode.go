@@ -3227,7 +3227,7 @@ func (d *Decoder) canWalk(v reflect.Value) bool {
 	}
 
 	// A struct walks unless an option needs the tree.
-	if d.validator != nil || d.useJSONUnmarshaler {
+	if d.useJSONUnmarshaler {
 		return false
 	}
 	if !dst.CanSet() {

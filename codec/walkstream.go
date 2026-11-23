@@ -115,6 +115,7 @@ func newWalkState(d *Decoder, src []byte) *walkState {
 		budget:          budget,
 		stringKeys:      d.useStringKeys,
 		ordered:         d.useOrderedMap,
+		validator:       d.validator,
 		declared:        st.declared,
 		opts:            d.opts,
 	}

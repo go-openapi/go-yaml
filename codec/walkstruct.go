@@ -151,6 +151,23 @@ type typedFrame struct {
 	// in place of the unknown key. See closeStruct.
 	unknown     *token.Token
 	fieldFailed bool
+
+	// place holds what a validator error needs, and is nil unless a validator is set. See walkPlaces.
+	place *framePlaces
+}
+
+// framePlaces records, for one struct or map frame, the tokens that place a validator error, as the tree reads
+// them from the mapping again. Every token is a copy, because the walk recycles its tokens.
+type framePlaces struct {
+	// key holds the key token of the entry being read, and pending the name of the field its value goes to.
+	key        *token.Token
+	pending    string
+	hasPending bool
+	// fields holds, by name, the token of the first entry that writes each field, own entries before merged ones.
+	fields map[string]*token.Token
+	// firstKey holds the token of the mapping's first key, entryKey the key of the entry that writes the
+	// struct, nil for a sequence element or a document's root, and whole the token of the mapping.
+	firstKey, entryKey, whole *token.Token
 }
 
 // typedBuilder fills a Go value as the parse passes the document over, without
@@ -177,6 +194,8 @@ type typedBuilder struct {
 	values  *valueBuilder
 	anyInto reflect.Value
 	share   bool
+	// validator holds the function of codec.Validator, nil when unset. closeStruct runs it on each struct.
+	validator func(any) error
 	// stringKeys passes codec.UseStringKeys to values, and ordered codec.UseOrderedMap.
 	stringKeys bool
 	ordered    bool
@@ -224,6 +243,9 @@ func (b *typedBuilder) Enter(node ast.Node, at parser.Cursor) error {
 		// The parse passes a "%YAML" or "%TAG" line as a root of its own, ahead
 		// of the document it opens. It holds no value.
 		return parser.ErrSkipNode
+	}
+	if b.values == nil && !at.IsKey() && len(b.stack) > 0 {
+		b.placeValue(&b.stack[len(b.stack)-1], node)
 	}
 	if b.values == nil && !at.IsKey() && len(b.stack) > 0 && b.stack[len(b.stack)-1].mergeNext {
 		return b.mergeValue(&b.stack[len(b.stack)-1], node)
@@ -285,7 +307,7 @@ func (b *typedBuilder) Enter(node ast.Node, at parser.Cursor) error {
 
 	switch n := node.(type) {
 	case *ast.MappingNode:
-		return b.openMapping(dst, wanted)
+		return b.openMapping(dst, wanted, node)
 	case *ast.SequenceNode:
 		return b.openSequence(dst, wanted)
 	case *ast.TagNode:
@@ -866,6 +888,8 @@ func (b *typedBuilder) mergeEntry(i int, keyNode, value ast.Node, alias *ast.Ali
 		}
 		top.written.mark(ff.Ord)
 		top.field = ff
+		top.place.mergedKey(keyNode)
+		top.place.expect(name)
 		field := top.dst.Field(ff.SF.Index)
 		if ff.At != nil {
 			var ok bool
@@ -887,6 +911,7 @@ func (b *typedBuilder) mergeEntry(i int, keyNode, value ast.Node, alias *ast.Ali
 		}
 		top.skip, top.key = false, key
 		top.target = reflect.New(top.dst.Type().Elem()).Elem()
+		top.place.mergedKey(keyNode)
 	default:
 		return b.fail(errNeedsTheTree)
 	}
@@ -911,7 +936,7 @@ func (c replayCursor) Document() int        { return 0 }
 func (c replayCursor) Schema() token.Schema { return c.schema }
 func (c replayCursor) HoldsKey(string) bool { return false }
 
-func (b *typedBuilder) openMapping(dst reflect.Value, wanted bool) error {
+func (b *typedBuilder) openMapping(dst reflect.Value, wanted bool, node ast.Node) error {
 	if !wanted {
 		// Inside an entry that no field claims. Read the mapping and drop it.
 		b.stack = append(b.stack, typedFrame{kind: typedStruct, dropped: true})
@@ -931,7 +956,7 @@ func (b *typedBuilder) openMapping(dst reflect.Value, wanted bool) error {
 	}
 	switch dst.Kind() {
 	case reflect.Struct:
-		b.stack = append(b.stack, typedFrame{kind: typedStruct, dst: dst, out: out})
+		b.stack = append(b.stack, typedFrame{kind: typedStruct, dst: dst, out: out, place: b.newPlaces(node)})
 
 		return nil
 	case reflect.Map:
@@ -945,7 +970,7 @@ func (b *typedBuilder) openMapping(dst reflect.Value, wanted bool) error {
 			}
 			dst.Set(reflect.MakeMap(dst.Type()))
 		}
-		frame := typedFrame{kind: typedMap, dst: dst, out: out}
+		frame := typedFrame{kind: typedMap, dst: dst, out: out, place: b.newPlaces(node)}
 		if dst.Len() > 0 {
 			frame.wrote = map[string]struct{}{}
 		}
@@ -1120,6 +1145,8 @@ func (b *typedBuilder) decodeNode(dst reflect.Value, node ast.Node) {
 	}
 	// A bytes unmarshaler reads its fragment under the document's version, as on the tree.
 	d.docSchema = b.schema
+	// A validator error about a field missing from a struct in the node goes to the entry's key, as on the tree.
+	d.entryKey = b.entryKey()
 	if len(b.stack) == 0 {
 		b.fieldError(d.decodeValue(dst, node))
 
@@ -1179,12 +1206,134 @@ func (b *typedBuilder) noteUnknown(top *typedFrame, name string, keyNode ast.Nod
 
 // closeStruct returns the error for the first unknown key of the struct closing in top, as the tree's finishStruct
 // does: only when no field of the struct failed, since a field error takes precedence. The error stops the document.
+//
+// It then runs the validator of codec.Validator on the struct, as finishStruct does, unless a field failed. A
+// validation error is a field error, and the fields after the struct still decode.
 func (b *typedBuilder) closeStruct(top *typedFrame) error {
-	if top.kind != typedStruct || top.dropped || top.unknown == nil || top.fieldFailed {
+	if top.kind != typedStruct || top.dropped || top.fieldFailed {
+		return nil
+	}
+	if top.unknown != nil {
+		return b.fail(yamlerrors.NewUnknownField(fmt.Sprintf(`unknown field "%s"`, top.unknown.Value), top.unknown))
+	}
+	if b.validator == nil {
+		return nil
+	}
+	err := b.validator(top.dst.Interface())
+	if err == nil {
+		return nil
+	}
+	fields, ferr := structfields.Of(top.dst.Type(), b.mode)
+	if ferr != nil {
+		return b.fail(ferr)
+	}
+	b.fieldError(validationError(err, fields, walkPlaces{top.place}))
+
+	return b.err
+}
+
+// newPlaces returns the framePlaces of a struct or a map frame opening on node, or nil without a validator.
+// The entry that writes the frame is the one being read by the frame below it.
+func (b *typedBuilder) newPlaces(node ast.Node) *framePlaces {
+	if b.validator == nil {
 		return nil
 	}
 
-	return b.fail(yamlerrors.NewUnknownField(fmt.Sprintf(`unknown field "%s"`, top.unknown.Value), top.unknown))
+	return &framePlaces{entryKey: b.entryKey(), whole: ownToken(node.GetToken())}
+}
+
+// entryKey returns the key token of the entry whose value the walk is reading: the entry of the nearest struct
+// or map frame, past any anchor. A sequence element, and a document's root, have none. The tree decoder keeps the
+// same token in Decoder.entryKey.
+func (b *typedBuilder) entryKey() *token.Token {
+	for _, frame := range slices.Backward(b.stack) {
+		switch frame.kind {
+		case typedAnchor:
+			continue
+		case typedStruct, typedMap:
+			if p := frame.place; p != nil {
+				return p.key
+			}
+
+			return nil
+		default:
+			return nil
+		}
+	}
+
+	return nil
+}
+
+// placeValue records where a validator error about the field whose value starts at node goes:
+// the value's own token for a scalar, the key's for a mapping or a sequence.
+func (b *typedBuilder) placeValue(top *typedFrame, node ast.Node) {
+	p := top.place
+	if p == nil || !p.hasPending {
+		return
+	}
+	p.hasPending = false
+	if _, held := p.fields[p.pending]; held {
+		return
+	}
+	if p.fields == nil {
+		p.fields = map[string]*token.Token{}
+	}
+	p.fields[p.pending] = ownToken(astutils.ValidationErrorToken(node, p.key))
+}
+
+// enterKey records the key of an entry of the frame's own mapping. A nil p records nothing.
+func (p *framePlaces) enterKey(keyNode ast.Node) {
+	if p == nil {
+		return
+	}
+	p.key, p.hasPending = ownToken(keyNode.GetToken()), false
+	if p.firstKey == nil {
+		p.firstKey = p.key
+	}
+}
+
+// mergedKey records the key of an entry brought in by a "<<". It is not the mapping's own first key.
+func (p *framePlaces) mergedKey(keyNode ast.Node) {
+	if p == nil {
+		return
+	}
+	p.key, p.hasPending = ownToken(keyNode.GetToken()), false
+}
+
+// expect records that the next value the walk passes writes the field named name.
+func (p *framePlaces) expect(name string) {
+	if p == nil {
+		return
+	}
+	p.pending, p.hasPending = name, true
+}
+
+// walkPlaces places a validation error from the tokens a struct frame recorded, as treePlaces does on the tree.
+type walkPlaces struct{ p *framePlaces }
+
+func (w walkPlaces) field(name string) *token.Token { return w.p.fields[name] }
+
+func (w walkPlaces) missing() *token.Token {
+	if w.p.entryKey != nil {
+		return w.p.entryKey
+	}
+	if w.p.firstKey != nil {
+		return w.p.firstKey
+	}
+
+	return w.p.whole
+}
+
+func (w walkPlaces) whole() *token.Token { return w.p.whole }
+
+// ownToken returns a copy of tk, or nil. A Token holds no pointer, so the copy shares nothing with the walk.
+func ownToken(tk *token.Token) *token.Token {
+	if tk == nil {
+		return nil
+	}
+	c := *tk
+
+	return &c
 }
 
 // nodeDecoder returns the tree decoder used by decodeNode. It makes it from the
@@ -1230,6 +1379,7 @@ func (b *typedBuilder) openEntry(top *typedFrame, keyNode ast.Node) error {
 	if top.dropped {
 		return parser.ErrSkipNode
 	}
+	top.place.enterKey(keyNode)
 
 	if key, isKey := keyNode.(ast.MapKeyNode); isKey && key.IsMergeKey() {
 		return b.openMerge(top)
@@ -1262,6 +1412,7 @@ func (b *typedBuilder) openEntry(top *typedFrame, keyNode ast.Node) error {
 		}
 		top.written.mark(ff.Ord)
 		top.field = ff
+		top.place.expect(name)
 		if ff.At != nil {
 			// The type embeds another, and the name selects a field of the embedded type.
 			field, ok := codecutils.FieldAt(top.dst, ff.At)
