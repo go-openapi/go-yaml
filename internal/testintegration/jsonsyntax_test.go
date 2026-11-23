@@ -18,12 +18,12 @@ import (
 	"github.com/go-openapi/go-yaml/parser"
 )
 
-// TestWithJSONSyntaxAgreesWithRFC8259 reads every document of the JSON smoke corpus under parser.WithJSONSyntax and
+// TestWithJSONSyntaxAgreesWithRFC8259 reads every document of the JSON compact corpus under parser.WithJSONSyntax and
 // checks the verdict against the RFC 8259 grammar's. A document carrying an implementation-defined property (an
 // encoding question, an out-of-range number, a lone surrogate escape, deep nesting) is read but not scored, and nor
 // is one the oracle could not read as text.
 func TestWithJSONSyntaxAgreesWithRFC8259(t *testing.T) {
-	_, cases, err := jsoncorpus.SmokeSuite()
+	_, cases, err := jsoncorpus.CompactSuite()
 	require.NoError(t, err)
 
 	var scored, accepted int
@@ -57,11 +57,11 @@ func TestWithJSONSyntaxAgreesWithRFC8259(t *testing.T) {
 	require.NotZero(t, scored-accepted)
 }
 
-// TestFromJSONRoundTripsTheJSONCorpus converts every JSON document of the smoke corpus to YAML with codec.FromJSON,
+// TestFromJSONRoundTripsTheJSONCorpus converts every JSON document of the compact corpus to YAML with codec.FromJSON,
 // back with codec.ToJSON, and compares the two JSON texts as values, numbers by their text. A document carrying an
 // implementation-defined property is converted and its outcome counted, not scored.
 func TestFromJSONRoundTripsTheJSONCorpus(t *testing.T) {
-	_, cases, err := jsoncorpus.SmokeSuite()
+	_, cases, err := jsoncorpus.CompactSuite()
 	require.NoError(t, err)
 
 	var scored, untagged int

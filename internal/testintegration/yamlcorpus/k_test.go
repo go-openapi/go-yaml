@@ -55,7 +55,7 @@ var measureK = flag.Bool("yamlcorpus.k", false, "rebuild the corpus at several q
 // # And not all of those either
 //
 // Some complaints are the corpus's own fault and have to come out before the
-// number means anything -- see [Mislabelled]. The smoke tier's 29 include three
+// number means anything -- see [Mislabelled]. The compact tier's 29 include three
 // duplicate-key refusals, one per key spelling, where a byte mutation wrote a
 // key twice and the grammar cannot see it. The two columns were equal for a
 // while, so the separation is what notices when a change to the generator makes
@@ -120,7 +120,7 @@ func TestMeasureK(t *testing.T) {
 // refusals are most of what a mutant is worth and they still count everywhere,
 // because a document that does not parse does not compose either.
 func TestTheCorpusNoLongerAccusesACorrectParser(t *testing.T) {
-	_, cases, err := yamlembed.SmokeSuite()
+	_, cases, err := yamlembed.CompactSuite()
 	if err != nil {
 		t.Fatal(err)
 	}

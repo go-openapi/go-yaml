@@ -59,11 +59,11 @@ func TestEveryRefusalSaysWhy(t *testing.T) {
 // silent pass.
 //
 // The list moves when the corpus is regenerated, which is deliberate and rare:
-// [Generator] is bumped on the same commit. Four seeds of the smoke tier draw
+// [Generator] is bumped on the same commit. Four seeds of the compact tier draw
 // 53 to 55 signatures and agree on 50 of them, so the handful at the bottom are
 // reachable rather than reliable.
 func TestTheCorpusDrawsEveryComplaint(t *testing.T) {
-	_, cases, err := yamlembed.SmokeSuite()
+	_, cases, err := yamlembed.CompactSuite()
 	require.NoError(t, err)
 
 	seen := map[string]int{}

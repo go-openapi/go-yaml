@@ -54,5 +54,5 @@ A ledger measured over a generated corpus moves when the corpus grows, which is 
 `stateLedger` tells them apart itself. It pins `corpusFingerprint`, the SHA-256 of the seeds it was measured over,
 and checks it before comparing any count, so a regenerated corpus fails saying to re-baseline instead of reporting
 seven scanner regressions. Each entry also records the denominator, so the ratio sits next to the count: a count
-follows the corpus and a ratio follows the scanner. `yaml-smoke.jsonl.gz` is generated in another module, which is
+follows the corpus and a ratio follows the scanner. `yaml-compact.jsonl.gz` is generated in another module, which is
 how the ledger came to carry numbers that never matched the tree they shipped in.

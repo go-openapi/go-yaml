@@ -109,7 +109,7 @@ func TestBlindReplay(t *testing.T) {
 
 	cases := corpus(t)
 
-	report := Report{Tier: "smoke", Cases: len(cases)}
+	report := Report{Tier: "compact", Cases: len(cases)}
 	if *blindFull {
 		report.Tier = "full"
 	}
@@ -210,7 +210,7 @@ func corpus(t *testing.T) []suite.Case {
 	t.Helper()
 
 	if !*blindFull {
-		_, cases, err := yamlembed.SmokeSuite()
+		_, cases, err := yamlembed.CompactSuite()
 		if err != nil {
 			t.Fatal(err)
 		}

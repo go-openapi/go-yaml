@@ -34,7 +34,7 @@ type disagreement struct {
 // corpusFingerprint names the seed corpus the counts below were measured over: the SHA-256 of every seed
 // [fuzzseeds.All] returns, in order, each prefixed by its length.
 //
-// The seeds come from three sources and any of them moves the counts. yamlcorpus/testdata/yaml-smoke.jsonl.gz is
+// The seeds come from three sources and any of them moves the counts. yamlcorpus/testdata/yaml-compact.jsonl.gz is
 // generated in another module and was regenerated five times on 2026-09-07, so a baseline measured in the morning was
 // stale by the evening. Nothing tied the two together, and the ledger went red carrying numbers that had never
 // matched the tree they shipped in.

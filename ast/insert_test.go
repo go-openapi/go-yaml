@@ -358,7 +358,7 @@ type placement struct {
 // refused, and now reads as v3 reads it; an entry inserts cleanly at every
 // placement, so the other counts stand.
 //
-// 1776 stays 1776 when the smoke corpus was regenerated as yamlcorpus/46, with
+// 1776 stays 1776 when the compact corpus was regenerated as yamlcorpus/46, with
 // bigFloatMaxExp capped at 995, and the documents behind the count changed:
 // every seed reshuffled. 58 -> 56 unreadable at the front and the middle and
 // 192 -> 189 disturbed at the back followed the new documents, and the renderer

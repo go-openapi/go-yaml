@@ -127,7 +127,7 @@ func TestTheParserVocabularyGapIsMeasured(t *testing.T) {
 		signature[yamlbuild.RefusalSignature(errors.New(verbs.Replace(tmpl)))] = tmpl
 	}
 
-	_, cases, err := yamlembed.SmokeSuite()
+	_, cases, err := yamlembed.CompactSuite()
 	require.NoError(t, err)
 
 	drawn := map[string]bool{}

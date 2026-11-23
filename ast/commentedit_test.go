@@ -355,7 +355,7 @@ func TestFixedARemovedHeadCommentDoesNotLeaveItsLine(t *testing.T) {
 // Removed and rendered verbatim, the entry after the comment moved two columns
 // right and the document stopped parsing, with "the content of a block scalar is
 // indented less than the indicator in its header states". Found by
-// TestEditingEveryCommentOfTheCorpus once the smoke corpus was regenerated.
+// TestEditingEveryCommentOfTheCorpus once the compact corpus was regenerated.
 func TestRemovingACommentBelowABlockScalarLeavesTheNextEntryWhereItStood(t *testing.T) {
 	src := "k:\n      - |6-\n" + strings.Repeat(" ", 13) + "\n\n\n      # c\n      - x\n"
 	want := strings.Replace(src, "      # c\n", "", 1)

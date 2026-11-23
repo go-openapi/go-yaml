@@ -43,7 +43,7 @@ func TestEveryBreakIsScoredAsARejection(t *testing.T) {
 // refuse. Whether a parser catches them is not a question a corpus of grammar
 // verdicts could have asked at all.
 func TestTheLibraryCatchesTheBreaks(t *testing.T) {
-	_, cases, err := yamlembed.SmokeSuite()
+	_, cases, err := yamlembed.CompactSuite()
 	if err != nil {
 		t.Fatal(err)
 	}

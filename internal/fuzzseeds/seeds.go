@@ -118,7 +118,7 @@ var reducedReports = []string{
 // A nested go.mod also keeps that directory out of a published copy of this
 // module, so the file is often absent -- All then returns the suite seeds
 // alone rather than failing.
-const corpusPath = "../testintegration/yamlcorpus/testdata/yaml-smoke.jsonl.gz"
+const corpusPath = "../testintegration/yamlcorpus/testdata/yaml-compact.jsonl.gz"
 
 // corpusCase is the one field of a suite.Case a seed needs.
 //

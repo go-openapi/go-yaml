@@ -25,7 +25,7 @@ it empty. `offsetMissLedger` is not, and its entry says what the remaining 18 mi
 `stateLedger` is different in a way that has misled before, so read this before touching a number in it.
 
 It runs over `internal/fuzzseeds`, which reads the corpus at
-`internal/testintegration/yamlcorpus/testdata/yaml-smoke.jsonl.gz`. That file copies the corpus of
+`internal/testintegration/yamlcorpus/testdata/yaml-compact.jsonl.gz`. That file copies the corpus of
 `github.com/go-openapi/conformance-suites/yaml/corpus`, rewritten whenever that requirement moves, and it grows. **A count that moved does not mean the scanner moved.** On 2026-09-08 the
 corpus went from 621 KB to 992 KB and all three live entries drifted, with the scanner standing still.
 
@@ -38,11 +38,13 @@ So before re-baselining:
    run again:
 
    ```sh
-   git show <commit>:internal/testintegration/yamlcorpus/testdata/yaml-smoke.jsonl.gz > /tmp/old.gz
-   cp /tmp/old.gz internal/testintegration/yamlcorpus/testdata/yaml-smoke.jsonl.gz
+   git show <commit>:internal/testintegration/yamlcorpus/testdata/yaml-compact.jsonl.gz > /tmp/old.gz
+   cp /tmp/old.gz internal/testintegration/yamlcorpus/testdata/yaml-compact.jsonl.gz
    go test -count=1 -tags yamlprobe -run TestStateLedger ./internal/ledgers/scanner/
-   git checkout internal/testintegration/yamlcorpus/testdata/yaml-smoke.jsonl.gz
+   git checkout internal/testintegration/yamlcorpus/testdata/yaml-compact.jsonl.gz
    ```
+
+   Before the tier was renamed, the file was `yaml-smoke.jsonl.gz`: use that name in `git show` for older commits.
 
    If it passes, the corpus grew and the new count is the baseline. If it fails, the scanner moved, and that is a
    finding rather than a number to update.

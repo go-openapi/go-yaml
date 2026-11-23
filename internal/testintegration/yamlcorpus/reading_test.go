@@ -14,7 +14,7 @@ import (
 func storedCases(t *testing.T) (suite.Header, []suite.Case) {
 	t.Helper()
 
-	header, cases, err := yamlembed.SmokeSuite()
+	header, cases, err := yamlembed.CompactSuite()
 	if err != nil {
 		t.Fatalf("reading the stored corpus: %v", err)
 	}

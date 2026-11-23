@@ -19,7 +19,7 @@ import (
 // The root module cannot import yamlembed without adding a requirement for every user of this library, and the
 // internal tests reading the seeds cannot move to this module. So the file is copied here, and
 // TestTheCorpusCopyIsTheEmbeddedOne keeps the copy equal to the one this module requires.
-const corpusCopy = "testdata/yaml-smoke.jsonl.gz"
+const corpusCopy = "testdata/yaml-compact.jsonl.gz"
 
 var writeCopy = flag.Bool("yamlcorpus.write", false, "rewrite the corpus copy from yamlembed")
 
