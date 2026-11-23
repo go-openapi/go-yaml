@@ -68,8 +68,9 @@ See the runnable examples in our [go doc][godoc-url] as well as the [commented e
 
 Our main design goal for this lib was to reduce _peak_ memory usage as much as we could.
 
-Each library unmarshals each workload into an `any`. Times are the median of 6 runs; peak memory is the highest
-live heap during the decode.
+Example: decoding YAML into a go value.
+
+Each library unmarshals each workload into an `any`. Times are the median of 6 runs; peak memory is the highest live heap during the decode.
 
 | workload          | source   | time: go-openapi | v3     | goccy  | peak: go-openapi | v3       | goccy     |
 |-------------------|---------:|-----------------:|-------:|-------:|-----------------:|---------:|----------:|
@@ -80,17 +81,21 @@ live heap during the decode.
 | golang_source     | 3.61 MiB |           163 ms | 196 ms | 324 ms |         8.46 MiB | 38.06 MiB | 116.72 MiB |
 | twitter_status    | 0.48 MiB |            29 ms |  35 ms |  59 ms |         1.77 MiB | 5.89 MiB | 15.05 MiB |
 
-Our peak stays near the size of the value the decode returns, so the decode holds little besides its result.
-citm_catalog is our least favourable workload: the two runs we took put our time at 0.99x and 1.10x of v3's,
-with about 7% spread on either side.
+> `v3` is [`go.yaml.in/yaml/v3`][goyamlv3].
+> `goccy` is upstream [github.com/goccy/go-yaml][upstream].
 
-Decoded into its Go types, citm_catalog takes 78 ms with go-openapi/go-yaml, 67 ms with v3 and 135 ms with goccy,
-and peaks at 0.68 MiB, 11.3 MiB and 35.1 MiB.
+Our implementation of YAML decode brings only a modest time improvement, and a massive reduction in memory activity
+(allocated garbage and peak memory).
 
-Times come from `BenchmarkWorkloads` and `BenchmarkTyped` in [internal/benchmarks](./internal/benchmarks), peaks
-from `TestWorkloadPeaks` and `TestTypedDecodePeakStaysNearTheResult` in [internal/analysis](./internal/analysis).
-The workloads are in [internal/analysis/workloads](./internal/analysis/workloads). Measured on 2026-11-22 with
-go.yaml.in/yaml/v3 v3.0.6 and github.com/goccy/go-yaml v1.19.2, on an AMD Ryzen 7 5800X.
+Our peak stays near the size of the decoded go value: the decoding process holds little besides its result.
+
+citm_catalog is our least favourable workload: the two runs we took put our time almost a par with v3's, +/-7%.
+This workload is were `v3`'s parser shines: it is simpler than ours and optimized specifically for decoding go values,
+whereas our parser pays the cost of a fully support for YAML features, even those not consumed by the decode use-case.
+
+See [internal/benchmarks](./internal/benchmarks) for more details and comparisons.
+
+> Measured on 2026-11-22 with `go.yaml.in/yaml/v3` v3.0.6 and `github.com/goccy/go-yaml` v1.19.2, on an AMD Ryzen 7 5800X.
 
 ## Known limitations
 
