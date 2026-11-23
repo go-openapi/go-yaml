@@ -54,6 +54,8 @@ type walkState struct {
 	budget   int
 	// stringKeys names every key of an "any" mapping by its text. See codec.UseStringKeys.
 	stringKeys bool
+	// ordered builds every "any" mapping as a MapSlice. See codec.UseOrderedMap.
+	ordered bool
 	// strs holds the text of the strings built by typedBuilder.
 	strs codecutils.Arena
 	// yield pauses the walk at the end of a document, and is nil for a walk
@@ -102,6 +104,7 @@ func newWalkState(d *Decoder, src []byte) *walkState {
 		share:      d.shareAliases,
 		budget:     budget,
 		stringKeys: d.useStringKeys,
+		ordered:    d.useOrderedMap,
 	}
 	st.b = typedBuilder{
 		mode:            d.tagMode(),
@@ -111,6 +114,7 @@ func newWalkState(d *Decoder, src []byte) *walkState {
 		share:           d.shareAliases,
 		budget:          budget,
 		stringKeys:      d.useStringKeys,
+		ordered:         d.useOrderedMap,
 		declared:        st.declared,
 		opts:            d.opts,
 	}
@@ -243,7 +247,7 @@ func (st *walkState) reset(v reflect.Value) {
 	dst := v.Elem()
 	if codecutils.HoldsAnything(dst) {
 		st.anyInto = dst
-		st.values = &valueBuilder{share: st.share, budget: st.budget, declared: st.declared, stringKeys: st.stringKeys}
+		st.values = &valueBuilder{share: st.share, budget: st.budget, declared: st.declared, stringKeys: st.stringKeys, ordered: st.ordered}
 
 		return
 	}

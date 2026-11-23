@@ -57,6 +57,8 @@ type valueBuilder struct {
 	share bool
 	// stringKeys names every key by its text, as a string, whatever it resolves to. See codec.UseStringKeys.
 	stringKeys bool
+	// ordered builds every mapping as a MapSlice. See codec.UseOrderedMap.
+	ordered bool
 	// built counts the values copied for an alias, and budget bounds them. A
 	// chain of aliases multiplies the copies, and a document written to exhaust
 	// memory abuses exactly that.
@@ -91,6 +93,14 @@ type buildFrame struct {
 	// two entries.
 	m        map[string]any
 	anyKeyed map[any]any
+	// ordered marks a mapping built as a MapSlice, under UseOrderedMap. own holds
+	// its own entries in document order, and brought the entries a "<<" brought in,
+	// earlier sources first. entries counts the entries written, "<<" included:
+	// the tree gives a mapping with entries a non-nil MapSlice, even an empty one.
+	ordered bool
+	own     MapSlice
+	brought []MapItem
+	entries int
 	// key holds the arena's copy of the entry's name, and keyValue the resolved
 	// value of the key. keyIsString selects which of the two a widened mapping
 	// writes.
@@ -144,6 +154,11 @@ func (b *valueBuilder) Enter(node ast.Node, at parser.Cursor) error {
 
 	switch n := node.(type) {
 	case *ast.MappingNode:
+		if b.ordered {
+			b.stack = append(b.stack, buildFrame{kind: frameMapping, asKey: at.IsKey(), ordered: true})
+
+			break
+		}
 		b.stack = append(b.stack, buildFrame{kind: frameMapping, asKey: at.IsKey(), m: map[string]any{}})
 	case *ast.SequenceNode:
 		// An empty sequence decodes to an empty slice, not a nil one. The
@@ -392,6 +407,7 @@ func (b *valueBuilder) declaredValue(name string, node ast.Node, alias *ast.Alia
 	dec := NewDecoder(nil)
 	dec.shareAliases = b.share
 	dec.useStringKeys = b.stringKeys
+	dec.useOrderedMap = b.ordered
 	v, err := dec.nodeToValue(node)
 	if err != nil {
 		return nil, err
@@ -423,6 +439,16 @@ func (b *valueBuilder) copyValue(v any, at ast.Node) any {
 		out := make(map[string]any, len(t))
 		for k, e := range t {
 			out[k] = b.copyValue(e, at)
+		}
+
+		return out
+	case MapSlice:
+		out := MapSlice{items: make([]MapItem, len(t.items))}
+		if t.items == nil {
+			out.items = nil
+		}
+		for i, item := range t.items {
+			out.items[i] = MapItem{Key: item.Key, Value: b.copyValue(item.Value, at)}
 		}
 
 		return out
@@ -462,7 +488,7 @@ func (b *valueBuilder) deliver(v any, node ast.Node, key bool) {
 	case frameMapping:
 		b.deliverToMapping(top, v, node, key)
 	case frameSequence:
-		if top.mergeSource && !codecutils.IsMapValue(v) {
+		if top.mergeSource && !isMappingValue(v) {
 			// "<<" takes a mapping or a sequence of them, and nothing else:
 			// not a null, and not a sequence inside the sequence. mergingValue
 			// sets the flag only on a sequence held by the merging mapping, so
@@ -505,6 +531,7 @@ func (b *valueBuilder) deliverToMapping(top *buildFrame, v any, node ast.Node, k
 		return
 	}
 	if top.merging {
+		top.entries++
 		b.merge(top, v, node)
 		top.merging = false
 
@@ -529,6 +556,14 @@ func (f *buildFrame) keyed(name string, value any) {
 // put writes value under the key held by the frame. It widens the mapping
 // when the key is not a string.
 func (f *buildFrame) put(value any) {
+	f.entries++
+	if f.ordered {
+		// Set replaces the value of a repeated key in place, as setToOrderedMapValue does.
+		// deliverToMapping has already rejected a key Go cannot hash.
+		_ = f.own.Set(f.mapKey(), value)
+
+		return
+	}
 	if f.keyIsString && f.anyKeyed == nil {
 		f.m[f.key] = value
 
@@ -575,11 +610,40 @@ func (f *buildFrame) widen() {
 
 // value returns the mapping built by the frame, with whichever key type it settled on.
 func (f *buildFrame) value() any {
+	if f.ordered {
+		return f.orderedValue()
+	}
 	if f.anyKeyed != nil {
 		return f.anyKeyed
 	}
 
 	return f.m
+}
+
+// orderedValue returns the MapSlice built by an ordered frame: its own entries in document order, then each entry
+// brought in by a "<<" under a key the mapping does not write itself. EachEntryOwnFirst gives the tree that order.
+func (f *buildFrame) orderedValue() MapSlice {
+	m := f.own
+	if m.items == nil && f.entries > 0 {
+		m.items = make([]MapItem, 0, len(f.brought))
+	}
+	for _, item := range f.brought {
+		if m.index(item.Key) < 0 {
+			m.items = append(m.items, item)
+		}
+	}
+
+	return m
+}
+
+// bringOrdered records an entry brought in by a "<<" into an ordered frame, unless an earlier source brought its key.
+func (f *buildFrame) bringOrdered(item MapItem) {
+	for _, held := range f.brought {
+		if codecutils.SameMapKey(held.Key, item.Key) {
+			return
+		}
+	}
+	f.brought = append(f.brought, item)
 }
 
 // holds reports whether the mapping already writes key. merge calls it before
@@ -630,6 +694,11 @@ func (f *buildFrame) bring(key any, value any) {
 // sequence wins over a later one.
 func (b *valueBuilder) merge(top *buildFrame, v any, node ast.Node) {
 	switch t := v.(type) {
+	case MapSlice:
+		// Under UseOrderedMap every mapping the walk builds is a MapSlice, and so is every frame.
+		for _, item := range t.items {
+			top.bringOrdered(item)
+		}
 	case map[string]any:
 		for key, value := range t {
 			if !top.holds(key) {
@@ -644,7 +713,7 @@ func (b *valueBuilder) merge(top *buildFrame, v any, node ast.Node) {
 		}
 	case []any:
 		for _, one := range t {
-			if !codecutils.IsMapValue(one) {
+			if !isMappingValue(one) {
 				// The walk reaches this case through an anchor or an alias, where
 				// the element's own node is not at hand. deliver checked a sequence
 				// written in place element by element as it was built.
@@ -659,6 +728,15 @@ func (b *valueBuilder) merge(top *buildFrame, v any, node ast.Node) {
 		// is no mapping: merge rejects "<<:" with no value, as the tree does.
 		top.refuseMerge(yamlerrors.NewUnexpectedNodeType(node.Type(), ast.MappingType, node.GetToken()))
 	}
+}
+
+// isMappingValue reports whether v is a mapping built by the walk: a Go map, or a MapSlice under UseOrderedMap.
+func isMappingValue(v any) bool {
+	if _, ordered := v.(MapSlice); ordered {
+		return true
+	}
+
+	return codecutils.IsMapValue(v)
 }
 
 // refuseMerge keeps err on the mapping holding a "<<". Leave returns it at the
@@ -778,6 +856,12 @@ func (b *valueBuilder) taggedWalkValue(n *ast.TagNode, value any) (any, error) {
 // a null key and arrives as a map[any]any.
 func oneEntryOf(value any) (MapItem, bool) {
 	switch m := value.(type) {
+	case MapSlice:
+		if m.Len() != 1 {
+			return MapItem{}, false
+		}
+
+		return m.items[0], true
 	case map[string]any:
 		if len(m) != 1 {
 			return MapItem{}, false

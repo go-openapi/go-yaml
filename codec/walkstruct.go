@@ -177,8 +177,9 @@ type typedBuilder struct {
 	values  *valueBuilder
 	anyInto reflect.Value
 	share   bool
-	// stringKeys passes codec.UseStringKeys to values.
+	// stringKeys passes codec.UseStringKeys to values, and ordered codec.UseOrderedMap.
 	stringKeys bool
+	ordered    bool
 	// budget bounds the nodes decoded again for an alias over the whole
 	// stream, and built counts them. See codecutils.AliasBudget.
 	budget int
@@ -277,7 +278,7 @@ func (b *typedBuilder) Enter(node ast.Node, at parser.Cursor) error {
 	dst, wanted := b.destination()
 	if wanted && codecutils.HoldsAnything(dst) {
 		b.anyInto = dst
-		b.values = &valueBuilder{share: b.share, budget: b.budget, stringKeys: b.stringKeys}
+		b.values = &valueBuilder{share: b.share, budget: b.budget, stringKeys: b.stringKeys, ordered: b.ordered}
 
 		return b.forwardEnter(node, at)
 	}

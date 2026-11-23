@@ -820,6 +820,87 @@ func useStringKeysCases() iter.Seq[useStringKeysCase] {
 	})
 }
 
+// TestUseOrderedMapWalksAndAgreesWithTheTree decodes under UseOrderedMap into a bare "any" and into a struct holding
+// one, on the walk and on the tree, alone and with the options that change how a mapping is keyed or shared. Each
+// mapping becomes a MapSlice: its own entries in document order, then the ones a "<<" brings in.
+func TestUseOrderedMapWalksAndAgreesWithTheTree(t *testing.T) {
+	type doc struct {
+		K   any            `yaml:"k"`
+		Str map[string]any `yaml:"str"`
+	}
+	// "<<" merges under YAML 1.1 only, and is a plain key under 1.2.
+	yaml11 := WithParserOptions(parser.WithYAMLVersion(parser.YAML11))
+	optionSets := map[string][]DecodeOption{
+		"alone":                {UseOrderedMap()},
+		"1.1":                  {UseOrderedMap(), yaml11},
+		"1.1, UseStringKeys":   {UseOrderedMap(), yaml11, UseStringKeys()},
+		"1.1, ShareAliases":    {UseOrderedMap(), yaml11, ShareAliases()},
+		"AllowDuplicateMapKey": {UseOrderedMap(), yaml11, AllowDuplicateMapKey()},
+	}
+	for tc := range useOrderedMapCases() {
+		t.Run(tc.name, func(t *testing.T) {
+			for name, opts := range optionSets {
+				for _, into := range []func() any{func() any { return new(any) }, func() any { return new(doc) }} {
+					walked, built := into(), into()
+					dec := NewDecoder(bytes.NewReader([]byte(tc.src)), opts...)
+					walkErr := dec.Decode(walked)
+					treeOpts := append(slices.Clone(opts), treeOnly())
+					treeErr := NewDecoder(bytes.NewReader([]byte(tc.src)), treeOpts...).Decode(built)
+					require.Equalf(t, treeErr == nil, walkErr == nil, "%s, %T: walk err=%v, tree err=%v", name, walked, walkErr, treeErr)
+					assert.Equalf(t, built, walked, "%s, %T: the two paths disagree", name, walked)
+					if _, isStruct := walked.(*doc); !isStruct || !tc.anchored {
+						// An anchor inside an "any" field sends the decode to the tree. See errNeedsTheTree.
+						assert.NotNilf(t, dec.stream, "%s, %T was not walked", name, walked)
+					}
+				}
+			}
+		})
+	}
+
+	var v any
+	require.NoError(t, NewDecoder(bytes.NewReader([]byte("k: {z: 1, <<: {a: 2, z: 3}, m: 4}\n")), UseOrderedMap(), yaml11).Decode(&v))
+	inner, err := NewMapSlice(MapItem{Key: "z", Value: uint64(1)}, MapItem{Key: "m", Value: uint64(4)}, MapItem{Key: "a", Value: uint64(2)})
+	require.NoError(t, err)
+	outer, err := NewMapSlice(MapItem{Key: "k", Value: inner})
+	require.NoError(t, err)
+	assert.Equal(t, outer, v)
+}
+
+type useOrderedMapCase struct {
+	name     string
+	src      string
+	anchored bool
+}
+
+func useOrderedMapCases() iter.Seq[useOrderedMapCase] {
+	return slices.Values([]useOrderedMapCase{
+		{name: "order kept", src: "k: {z: 1, a: 2, m: 3}\nstr: {b: {y: 1, x: 2}}\n"},
+		{name: "empty", src: "k: {}\nstr: {}\n"},
+		{name: "keys of every type", src: "k: {1: x, true: y, null: z, 2001-12-14: t, 1.5: f}\n"},
+		{name: "a repeat", src: "k: {a: 1, b: 2, a: 3}\n"},
+		{name: "a repeat by name", src: "k: {1: x, \"1\": y}\n"},
+		{name: "a merge written first", src: "k: {<<: {a: 1, b: 2}, b: 3, c: 4}\n"},
+		{name: "a merge written last", src: "k: {b: 3, c: 4, <<: {a: 1, b: 2}}\n"},
+		{name: "a merge alone", src: "k: {<<: {a: 1}}\n"},
+		{name: "a merge of nothing", src: "k: {<<: {}}\n"},
+		{name: "a merge of a sequence", src: "k: {<<: [{a: 1, b: 2}, {b: 3, c: 4}], d: 5}\n"},
+		{name: "a merge of a null", src: "k: {<<: null, a: 1}\n"},
+		{name: "a merge of a scalar", src: "k: {<<: 1, a: 1}\n"},
+		{name: "a nested merge", src: "k: {<<: {<<: {x: 1, y: 1}, y: 2}, z: 3}\n"},
+		{name: "an aliased merge", src: "k: {base: &b {a: 1, b: 2}, m: {b: 3, <<: *b}}\n", anchored: true},
+		{name: "an aliased merge of a sequence", src: "k: {p: &p {a: 1}, q: &q {a: 2, b: 2}, m: {<<: [*p, *q]}}\n", anchored: true},
+		{name: "an alias copied", src: "k: {a: &a {x: [1, {y: 2}]}, b: *a, c: *a}\n", anchored: true},
+		{name: "a merge of a timestamp key", src: "k: {<<: {2001-12-14: a}, 2001-12-14T00:00:00Z: b}\n"},
+		{name: "a tagged map", src: "k: !!map {b: 1, a: 2}\n"},
+		{name: "a set", src: "k: !!set {b, a}\n"},
+		{name: "an omap", src: "k: !!omap [{b: 1}, {a: {y: 1, x: 2}}]\n"},
+		{name: "an omap of a non-entry", src: "k: !!omap [{b: 1, a: 2}]\n"},
+		{name: "a mapping as a key", src: "k: {{a: 1}: x}\n"},
+		{name: "a sequence of mappings", src: "k: [{b: 1, a: 2}, {}]\n"},
+		{name: "a root mapping", src: "z: 1\na: 2\n"},
+	})
+}
+
 // TestAConvertedScalarKeepsTheWalk reads scalars of another kind than their
 // field, and requires the value the tree gives without the decode building a
 // tree. The walk asks the tree decoder for the one scalar, so the two convert

@@ -3162,7 +3162,7 @@ func (d *Decoder) isInitialized() bool {
 //   - MapSlice keeps the order held by the tree;
 //   - ReferenceFiles publishes anchors from documents this one never sees.
 func (d *Decoder) canWalk(v reflect.Value) bool {
-	if d.toCommentMap != nil || d.useOrderedMap {
+	if d.toCommentMap != nil {
 		return false
 	}
 	if len(d.referenceFiles) > 0 || len(d.referenceDirs) > 0 || len(d.referenceReaders) > 0 {
