@@ -307,7 +307,7 @@ func onlyValueOf(t *testing.T, body ast.Node) ast.Node {
 
 // insertableDocuments is how many corpus documents hold a mapping an entry can be inserted into. The count may not
 // fall: fewer documents measured is the harness or the parser losing ground, and zero failures over them proves less.
-const insertableDocuments = 1812
+const insertableDocuments = 3563
 
 // TestInsertingIntoTheCorpus puts one entry into every document the corpus holds
 // and asks for it back.

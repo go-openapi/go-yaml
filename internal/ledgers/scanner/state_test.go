@@ -42,7 +42,7 @@ type disagreement struct {
 // TestStateLedger checks this before it compares anything, so a regenerated corpus fails saying to re-baseline
 // instead of accusing the scanner. It earned that on 2026-09-10: 014db89 regenerated the corpus for two 1.1
 // number spellings, seven counts moved at once, and the check named the corpus instead of the scanner.
-const corpusFingerprint = "427fbac8b10d916a"
+const corpusFingerprint = "c335bdf21dab01b8"
 
 // stateLedger records how often two pieces of the scanner's state that look like the same number disagree, over the
 // fuzz corpus.
@@ -78,14 +78,16 @@ var stateLedger = map[string]disagreement{ //nolint:gochecknoglobals // ok to st
 	// read where the mark and the trimmed length differ inside a block scalar, so nothing here tests the paragraph
 	// above any more; a seed that brings one back raises the count.
 	//
-	// The plain and whole-buffer reads rose by 49, and the extents by 9, on 2026-11-23, when a '}' or a ']' inside a
-	// flow collection began to end a plain scalar wherever it stands: "[b}]" scans "b" and then the '}'.
-	"buf.notSpaceCharPos==trimmed/plain": {0, 312992},
-	"buf.notSpaceCharPos==trimmed/block": {0, 2764},
+	// Re-measured on 2026-11-23 over yamlcorpus/48, which draws properties on merges and keys and the 1.1 types: every
+	// denominator grew with the corpus, and no entry that stood at 0 moved. On the corpus before it, the same day,
+	// the plain and whole-buffer reads had risen by 49 and the extents by 9 when a '}' or a ']' inside a flow
+	// collection began to end a plain scalar wherever it stands: "[b}]" scans "b" and then the '}'.
+	"buf.notSpaceCharPos==trimmed/plain": {0, 787731},
+	"buf.notSpaceCharPos==trimmed/block": {0, 3805},
 
 	// A mark past the end of the buffer made bufferedSrc slice a byte the last token wrote.
 	// Fixed; nothing may raise this.
-	"buf.notSpaceCharPos<=len(buf)": {0, 315756},
+	"buf.notSpaceCharPos<=len(buf)": {0, 791536},
 
 	// Both entries count a space opening a line where indentNum has stopped tracking the column. They have different
 	// causes, and only the second is a surprise.
@@ -108,17 +110,17 @@ var stateLedger = map[string]disagreement{ //nolint:gochecknoglobals // ok to st
 	// the corpus keeps growing faster than the cause, and the count has now fallen while the denominator rose by half.
 	// The denominator fell for the first time on 2026-09-10, by 186, and the corpus did not move: 16dd5be ends a plain
 	// scalar at a comment whatever its column, so fewer lines open inside one.
-	"indent.indentNum==column-1/tab": {4, 11},
+	"indent.indentNum==column-1/tab": {3, 7},
 	//
 	// 8 of 30,818 on 2026-11-20 from 7 of 29,756: the regenerations of 2026-09-20 and 2026-11-18 moved it. Over the
 	// corpus of 2026-09-11 the scanner of 2026-11-20 still reads 7 of 29,720.
-	"indent.indentNum==column-1/spaces": {8, 30818},
+	"indent.indentNum==column-1/spaces": {8, 100143},
 
 	// bufferedToken assembles a token's extent from what the scanner already holds: where the origin began, how long
 	// it is, and the line the text ends on. It does not read the origin back to work the extent out.
 	// This compares that extent against token.MeasureOrigin's, which token.Make used.
 	// Nothing may raise it: a disagreement is a token pointing at the wrong stretch of source.
-	"token.extentMatchesTheOrigin": {0, 47466},
+	"token.extentMatchesTheOrigin": {0, 116109},
 }
 
 // TestStateLedger holds the scanner's state pairs to what they were measured at.

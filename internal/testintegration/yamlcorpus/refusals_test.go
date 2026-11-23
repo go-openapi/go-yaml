@@ -199,6 +199,15 @@ func TestARefusalSignatureKeepsTheParserAndDropsTheDocument(t *testing.T) {
 // twin arrived the same day, when a node property standing before a "?" on its
 // line began to be refused as one before a "-" was: "!!null ?" was read as a
 // tagged mapping, and "k: &m ? a" as {k: {a: null}}.
+//
+// Three arrived on 2026-11-23, when conformance-suites' generator began drawing
+// properties on the "<<", "!!omap" families and tagged keys, and nothing about
+// the parser changed. "could not find merge key" is drawn by mutants alone,
+// each "!!merge" left standing on something that is not a "<<"; the same draws
+// found "? !!merge <<" refused with it, which is now fixed.
+// "expected sequence element, but found _" and "a leading empty line of a block
+// scalar holds more spaces than its first content line" come from the
+// reshuffled seeds.
 var parserComplaints = []string{
 	"YAML version has already been specified",
 	"_ is a reserved character",
@@ -208,6 +217,7 @@ var parserComplaints = []string{
 	"a comment must be preceded by a space, and a scalar cannot begin with _",
 	"a directive must be named right after its _",
 	"a flow collection continues on a line that is not indented past the one it started on",
+	"a leading empty line of a block scalar holds more spaces than its first content line",
 	"a node takes at most one tag",
 	"a plain scalar cannot begin with _",
 	"a scalar continues on a line that is not indented past the one it started on",
@@ -231,6 +241,8 @@ var parserComplaints = []string{
 	"could not find flow map content",
 	"could not find flow mapping end token _",
 	"could not find map value",
+	"could not find merge key",
+	"expected sequence element, but found _",
 	"explicit keys are not allowed after a tag on the same line",
 	"explicit keys are not allowed after anchor on the same line",
 	"found a byte order mark inside a comment",
