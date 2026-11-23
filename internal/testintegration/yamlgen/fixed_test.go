@@ -3699,3 +3699,28 @@ func TestFixedToJSONRefusesARepeatedKeyInAMergedMappingReadWhole(t *testing.T) {
 		assert.JSONEq(t, `{"a":1,"b":3}`, string(out))
 	})
 }
+
+// TestFixedToJSONWritesAnEmptyOmapAsNull: "a: !!omap" is {"a": null} in
+// ToJSON, as every decoder reads it, and as ToJSON writes "a: !!seq".
+//
+// releaseOrderedMap folded the tokens held under the tag into the object
+// "!!omap" names, and an empty node held none, so it refused the document as
+// not a sequence of one-entry mappings. The tree path refused an alias to one
+// the same way. Mutants of the YAML corpus of go-openapi/conformance-suites,
+// cut short after the tag, found it.
+func TestFixedToJSONWritesAnEmptyOmapAsNull(t *testing.T) {
+	for src, want := range map[string]string{
+		"a: !!omap\n":                    `{"a":null}`,
+		"a: !<tag:yaml.org,2002:omap>\n": `{"a":null}`,
+		"a: &m !!omap\nb: *m\n":          `{"a":null,"b":null}`,
+		"a: !!omap []\n":                 `{"a":{}}`,
+		"a: !!omap\n- x: 1\n":            `{"a":{"x":1}}`,
+	} {
+		var decoded any
+		require.NoErrorf(t, codec.Unmarshal([]byte(src), &decoded), "the decoder: %q", src)
+
+		out, err := codec.ToJSON([]byte(src))
+		require.NoErrorf(t, err, "ToJSON: %q", src)
+		assert.JSONEqf(t, want, string(out), "ToJSON: %q", src)
+	}
+}

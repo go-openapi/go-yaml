@@ -1390,11 +1390,32 @@ func (t *jsonTokener) openTag(n *ast.TagNode, key bool) {
 	}
 }
 
+// isEmptyNode reports whether n, under its anchors and tags, is the empty node: a null with no text of its own, as
+// "a: !!omap" leaves it, or nothing at all.
+func isEmptyNode(n ast.Node) bool {
+	switch nn := ast.Unwrap(n).(type) {
+	case nil:
+		return true
+	case *ast.NullNode:
+		return nn.GetToken() == nil || nn.GetToken().Type == token.ImplicitNullType
+	default:
+		return false
+	}
+}
+
 // releaseOrderedMap hands an "!!omap" over as the object the tag names. It returns
 // an error for the document when the held tokens do not have that shape.
 func (t *jsonTokener) releaseOrderedMap(n *ast.TagNode) {
 	mark := t.omaps[len(t.omaps)-1]
 	t.omaps = t.omaps[:len(t.omaps)-1]
+
+	if isEmptyNode(n.Value) {
+		// "a: !!omap" tags the empty node, which every decoder reads as null, as it reads "a: !!seq" and
+		// "a: !!map". The walk handed nothing over under the tag, so the null is written here.
+		t.emit(JSONToken{Kind: JSONNull, At: n.GetToken().Position})
+
+		return
+	}
 
 	seq, _ := ast.Unwrap(n.Value).(*ast.SequenceNode)
 	folded, ordered := foldOrderedMapTokens(mark.toks, astutils.AllowedRepeatEntries(seq))
@@ -1425,6 +1446,12 @@ func (t *jsonTokener) releaseOrderedMap(n *ast.TagNode) {
 // read, which a walked node's children cannot. A repeated key is read from the
 // record kept by the parser on the sequence, as on the streaming path.
 func (t *jsonTokener) emitOrderedMapTree(n *ast.TagNode, at token.Position) {
+	if isEmptyNode(t.throughWrappers(n.Value)) {
+		// As releaseOrderedMap reads it: the empty node under "!!omap" is null.
+		t.emit(JSONToken{Kind: JSONNull, At: at})
+
+		return
+	}
 	seq, isSeq := t.throughWrappers(n.Value).(*ast.SequenceNode)
 	if !isSeq {
 		t.fail(astutils.NotAnOrderedMap(n.Value))
