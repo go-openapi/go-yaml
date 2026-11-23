@@ -5,6 +5,8 @@ package ast_test
 
 import (
 	"bytes"
+	"fmt"
+	"iter"
 	"strings"
 	"testing"
 
@@ -310,8 +312,9 @@ const insertableDocuments = 1812
 // TestInsertingIntoTheCorpus puts one entry into every document the corpus holds
 // and asks for it back.
 //
-// Each document must still parse, hold the entry that was put in, and be the source byte for byte once the entry is
-// taken out again: see insertedCleanly. None may fail.
+// Each document must still parse, hold the entry that was put in, be the source byte for byte once the entry is
+// taken out again (see insertedCleanly), and decode to the source's value without it (see decodesAsTheSource).
+// None may fail.
 func TestInsertingIntoTheCorpus(t *testing.T) {
 	t.Parallel()
 
@@ -319,56 +322,88 @@ func TestInsertingIntoTheCorpus(t *testing.T) {
 		t.Run("inserted at the "+where, func(t *testing.T) {
 			t.Parallel()
 
-			var tried, unreadable, lost, disturbed int
+			var tried int
+			failed := map[insertionFault]int{}
 			for _, src := range renderSources(t) {
-				file, err := parser.ParseBytes([]byte(src.text), parser.WithComments())
-				if err != nil || len(file.Docs) == 0 {
+				fault, measured := insertMarkerInto(t, src.text, where)
+				if !measured {
 					continue
 				}
-				mapping := firstPlainMapping(file.Docs[0].Body, src.text)
-				if mapping == nil {
-					continue
-				}
-
-				at := 0
-				switch where {
-				case "middle":
-					at = len(mapping.Values) / 2
-				case "back":
-					at = len(mapping.Values)
-				}
-				insertMarkerAt(t, mapping, at)
 				tried++
-
-				var out bytes.Buffer
-				require.NoError(t, ast.NewRenderer(ast.WithSource([]byte(src.text))).VerbatimFile(&out, file))
-
-				if _, err := parser.ParseBytes(out.Bytes(), parser.WithComments()); err != nil {
-					unreadable++
-
-					continue
-				}
-				if !strings.Contains(out.String(), corpusMarker) {
-					lost++
-
-					continue
-				}
-				if !insertedCleanly(out.String(), src.text) {
-					disturbed++
+				if fault != insertedFine {
+					failed[fault]++
+					if failed[fault] <= 3 {
+						t.Logf("%s: %s", fault, src.name)
+					}
 				}
 			}
 
-			require.Positive(t, tried)
-			t.Logf("inserted at the %s: %d documents measured, %d no longer parse, %d lost the entry, %d changed a line the caller did not touch",
-				where, tried, unreadable, lost, disturbed)
-
+			t.Logf("inserted at the %s: %d documents measured, %v", where, tried, failed)
 			require.GreaterOrEqualf(t, tried, insertableDocuments,
 				"%d documents reach the insertion where %d did: the harness or the parser lost ground", tried, insertableDocuments)
-			require.Zerof(t, unreadable, "%d documents no longer parse", unreadable)
-			require.Zerof(t, lost, "%d documents dropped the entry that was put in", lost)
-			require.Zerof(t, disturbed, "%d documents changed a line the caller did not touch", disturbed)
+			require.Emptyf(t, failed, "insertions failed: %v", failed)
 		})
 	}
+}
+
+// insertionFault is the first check an insertion fails.
+type insertionFault string
+
+const (
+	insertedFine        insertionFault = ""
+	insertionUnreadable insertionFault = "no longer parses"
+	insertionLost       insertionFault = "dropped the entry"
+	insertionDisturbed  insertionFault = "changed a line the caller did not touch"
+	insertionChanged    insertionFault = "decodes to another value"
+)
+
+// insertMarkerInto puts the marker entry into the first plain mapping of src, at where, and returns the first check the
+// rendering fails. It returns false for a document with no mapping to insert into.
+func insertMarkerInto(t *testing.T, src, where string) (insertionFault, bool) {
+	t.Helper()
+
+	file, err := parser.ParseBytes([]byte(src), parser.WithComments())
+	if err != nil || len(file.Docs) == 0 {
+		return insertedFine, false
+	}
+	mapping := firstPlainMapping(file.Docs[0].Body, src)
+	if mapping == nil {
+		return insertedFine, false
+	}
+
+	at := 0
+	switch where {
+	case "middle":
+		at = len(mapping.Values) / 2
+	case "back":
+		at = len(mapping.Values)
+	}
+	orderedEntry := isOrderedMapEntry(file.Docs[0].Body, mapping)
+	insertMarkerAt(t, mapping, at)
+
+	var out bytes.Buffer
+	require.NoError(t, ast.NewRenderer(ast.WithSource([]byte(src))).VerbatimFile(&out, file))
+	rendered := out.String()
+
+	switch {
+	case parsesNot(rendered):
+		return insertionUnreadable, true
+	case !strings.Contains(rendered, corpusMarker):
+		return insertionLost, true
+	case !insertedCleanly(rendered, src):
+		return insertionDisturbed, true
+	case !orderedEntry && !decodesAsTheSource(rendered, src):
+		return insertionChanged, true
+	default:
+		return insertedFine, true
+	}
+}
+
+// parsesNot reports whether text fails to parse.
+func parsesNot(text string) bool {
+	_, err := parser.ParseBytes([]byte(text), parser.WithComments())
+
+	return err != nil
 }
 
 // mustHold checks a measured count against the recorded one: exactly where the
@@ -458,6 +493,98 @@ func insertedCleanly(rendered, src string) bool {
 	}
 
 	return withoutBracesAround(left, cut) == src
+}
+
+// decodesAsTheSource reports whether rendered decodes to the value src decodes to, the marker entry taken out.
+//
+// A rendering can hold every line of the source and still mean something else: put between a "|+" scalar and the
+// empty lines it keeps, the entry took them from it, and the lines were all still there. A source the decoder
+// refuses has no value to compare, and passes.
+func decodesAsTheSource(rendered, src string) bool {
+	var want, got any
+	if err := codec.Unmarshal([]byte(src), &want); err != nil {
+		return true
+	}
+	if err := codec.Unmarshal([]byte(rendered), &got); err != nil {
+		return false
+	}
+
+	// Printed with %#v, a map is written in key order and a NaN equals itself, which reflect.DeepEqual has not.
+	return fmt.Sprintf("%#v", withoutMarkerKey(got)) == fmt.Sprintf("%#v", withoutMarkerKey(want))
+}
+
+// withoutMarkerKey returns v with the marker entry taken out of the mapping that holds it, wherever it is, and an
+// ordered map written as the list of its pairs, so that two values compare by what they hold.
+func withoutMarkerKey(v any) any {
+	switch x := v.(type) {
+	case map[string]any:
+		out := make(map[string]any, len(x))
+		for k, e := range x {
+			if k != corpusMarker {
+				out[k] = withoutMarkerKey(e)
+			}
+		}
+
+		return out
+	case map[any]any:
+		out := make(map[any]any, len(x))
+		for k, e := range x {
+			if k != corpusMarker {
+				out[k] = withoutMarkerKey(e)
+			}
+		}
+
+		return out
+	case codec.MapSliceSeq:
+		return pairsOf(x.All())
+	case codec.MapSlice:
+		return pairsOf(x.All())
+	case []any:
+		out := make([]any, len(x))
+		for i, e := range x {
+			out[i] = withoutMarkerKey(e)
+		}
+
+		return out
+	default:
+		return v
+	}
+}
+
+// pairsOf lists the pairs of an ordered map, the marker taken out of each value.
+func pairsOf(all iter.Seq2[any, any]) []any {
+	var out []any
+	for k, e := range all {
+		if k != corpusMarker {
+			out = append(out, []any{k, withoutMarkerKey(e)})
+		}
+	}
+
+	return out
+}
+
+// isOrderedMapEntry reports whether mapping is an entry of an "!!omap" or a "!!pairs" under doc. Each such entry
+// holds one pair by the type's definition, so the marker put into it makes the collection another type: the value
+// check does not apply.
+func isOrderedMapEntry(doc ast.Node, mapping *ast.MappingNode) bool {
+	var found bool
+	ast.EachNode(doc, func(n ast.Node) {
+		tag, isTag := n.(*ast.TagNode)
+		if found || !isTag || (!strings.HasSuffix(tag.URI, ":omap") && !strings.HasSuffix(tag.URI, ":pairs")) {
+			return
+		}
+		seq, isSeq := ast.Unwrap(tag.Value).(*ast.SequenceNode)
+		if !isSeq {
+			return
+		}
+		for _, entry := range seq.Values {
+			if ast.Unwrap(entry) == ast.Node(mapping) {
+				found = true
+			}
+		}
+	})
+
+	return found
 }
 
 // withoutBracesAround takes out the '{' that opens the flow mapping holding offset at, and the '}' closing it.
