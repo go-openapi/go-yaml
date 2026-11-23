@@ -712,3 +712,72 @@ func anAnchoredMergeKeyMergesOnEveryReaderCases() iter.Seq[anAnchoredMergeKeyMer
 		{"anchored over a sequence", "%YAML 1.1\n---\nx: &x {k: 1}\nc:\n  &a <<: [*x, {z: 3}]\n  own: 2\n", map[string]any{"k": uint64(1), "own": uint64(2), "z": uint64(3)}},
 	})
 }
+
+// TestATagOnAMergeValueIsHonoured decodes a "<<" whose value carries a tag, on the walk and on the tree, into an
+// any, under UseOrderedMap and into a struct. A tag written on the value is validated, as on any other value: "!!seq"
+// on a mapping is an error, and so is an "!!omap" that is not a sequence of one-entry mappings with no key repeated.
+// A valid "!!omap" merges as the sequence of mappings it is written as, each entry in turn.
+//
+// The tree merged the node under any tag, and the walk rejected an "!!omap" that the tree merged.
+func TestATagOnAMergeValueIsHonoured(t *testing.T) {
+	type entries struct {
+		A int `yaml:"a"`
+		B int `yaml:"b"`
+		C int `yaml:"c"`
+	}
+	for tc := range aTagOnAMergeValueCases() {
+		t.Run(tc.name, func(t *testing.T) {
+			src := []byte(underEleven(tc.src))
+			for _, opts := range [][]codec.DecodeOption{nil, {codec.UseOrderedMap()}} {
+				var walked, built any
+				walkErr := codec.Unmarshal(src, &walked, opts...)
+				treeErr := codec.Unmarshal(src, &built, append(slices.Clone(opts), treeOnly())...)
+				assert.Equalf(t, fmt.Sprint(treeErr), fmt.Sprint(walkErr), "%d options: the two paths return different errors", len(opts))
+				assert.Equalf(t, built, walked, "%d options: the two paths disagree", len(opts))
+				if tc.want == "" {
+					require.NoErrorf(t, walkErr, "%d options", len(opts))
+				} else if assert.Errorf(t, walkErr, "%d options", len(opts)) {
+					assert.Containsf(t, walkErr.Error(), tc.want, "%d options", len(opts))
+				}
+			}
+
+			var walked, built struct {
+				K entries `yaml:"k"`
+			}
+			walkErr := codec.Unmarshal(src, &walked)
+			treeErr := codec.Unmarshal(src, &built, treeOnly())
+			assert.Equal(t, fmt.Sprint(treeErr), fmt.Sprint(walkErr), "into a struct: the two paths return different errors")
+			assert.Equal(t, built, walked, "into a struct: the two paths disagree")
+			if tc.want == "" {
+				assert.Equal(t, tc.into, struct{ A, B, C int }{walked.K.A, walked.K.B, walked.K.C}, "into a struct")
+			}
+		})
+	}
+}
+
+type aTagOnAMergeValueCase struct {
+	name string
+	src  string
+	// want holds a part of the error both paths return, and is empty for a document that merges into into.
+	want string
+	into struct{ A, B, C int }
+}
+
+func aTagOnAMergeValueCases() iter.Seq[aTagOnAMergeValueCase] {
+	return slices.Values([]aTagOnAMergeValueCase{
+		{name: "an omap", src: "k: {<<: !!omap [{a: 1}, {b: 2}], b: 3}\n", into: struct{ A, B, C int }{1, 3, 0}},
+		{name: "an empty omap", src: "k: {<<: !!omap [], c: 1}\n", into: struct{ A, B, C int }{0, 0, 1}},
+		{name: "an aliased omap", src: "base: &o !!omap [{a: 1}]\nk: {<<: *o, b: 2}\n", into: struct{ A, B, C int }{1, 2, 0}},
+		{name: "a map", src: "k: {<<: !!map {a: 1}, b: 2}\n", into: struct{ A, B, C int }{1, 2, 0}},
+		{name: "a seq", src: "k: {<<: !!seq [{a: 1}, {a: 2, c: 3}], b: 2}\n", into: struct{ A, B, C int }{1, 2, 3}},
+		{name: "a map in a sequence", src: "k: {<<: [!!map {a: 1}], b: 2}\n", into: struct{ A, B, C int }{1, 2, 0}},
+		{name: "an omap repeating a key", src: "k: {<<: !!omap [{a: 1}, {a: 2}]}\n", want: `mapping key "a" already defined`},
+		{name: "an omap of a two-entry mapping", src: "k: {<<: !!omap [{a: 1, b: 2}]}\n", want: "[3:16] !!omap names a sequence of one-entry mappings"},
+		{name: "an omap on a mapping", src: "k: {<<: !!omap {a: 1}}\n", want: "[3:9] !!omap does not support this kind of node"},
+		{name: "a seq on a mapping", src: "k: {<<: !!seq {a: 1}}\n", want: "[3:9] !!seq does not support this kind of node"},
+		{name: "a map on a sequence", src: "k: {<<: !!map [{a: 1}]}\n", want: "[3:9] !!map does not support this kind of node"},
+		{name: "a seq in a sequence", src: "k: {<<: [!!seq {a: 1}]}\n", want: "[3:10] !!seq does not support this kind of node"},
+		{name: "an omap in a sequence", src: "k: {<<: [!!omap [{a: 1}], {b: 2}]}\n", want: "[3:17] sequence was used where mapping is expected"},
+		{name: "an aliased seq on a mapping", src: "base: &s !!seq {a: 1}\nk: {<<: *s}\n", want: "!!seq does not support this kind of node"},
+	})
+}

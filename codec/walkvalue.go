@@ -507,7 +507,8 @@ func (b *valueBuilder) deliver(v any, node ast.Node, key bool) {
 			// not a null, and not a sequence inside the sequence. mergingValue
 			// sets the flag only on a sequence held by the merging mapping, so
 			// that mapping stands just below it.
-			b.stack[n-2].refuseMerge(yamlerrors.NewUnexpectedNodeType(node.Type(), ast.MappingType, node.GetToken()))
+			under := underProperties(node)
+			b.stack[n-2].refuseMerge(yamlerrors.NewUnexpectedNodeType(under.Type(), ast.MappingType, under.GetToken()))
 
 			return
 		}
@@ -713,6 +714,12 @@ func (b *valueBuilder) merge(top *buildFrame, v any, node ast.Node) {
 		for _, item := range t.items {
 			top.bringOrdered(item)
 		}
+	case MapSliceSeq:
+		// An "!!omap" is a sequence of one-entry mappings, and the merge reads each in turn. Its keys are unique,
+		// so the order of the entries decides nothing between them.
+		for _, item := range t.items {
+			b.bringItem(top, item)
+		}
 	case map[string]any:
 		for key, value := range t {
 			if !top.holds(key) {
@@ -741,6 +748,39 @@ func (b *valueBuilder) merge(top *buildFrame, v any, node ast.Node) {
 		// "<<" takes a mapping or a sequence of them, and nothing else. A null
 		// is no mapping: merge rejects "<<:" with no value, as the tree does.
 		top.refuseMerge(yamlerrors.NewUnexpectedNodeType(node.Type(), ast.MappingType, node.GetToken()))
+	}
+}
+
+// bringItem brings item in through a "<<" unless the mapping already writes its key.
+func (b *valueBuilder) bringItem(top *buildFrame, item MapItem) {
+	if top.ordered {
+		top.bringOrdered(item)
+
+		return
+	}
+	if !top.holds(item.Key) {
+		top.bring(item.Key, item.Value)
+	}
+}
+
+// underProperties returns the node under the tags and anchors written on node, as getMapNode reads it on the tree.
+// It stops at an alias: on the walk, AliasNode.Target may name a node already handed out again.
+func underProperties(node ast.Node) ast.Node {
+	for {
+		switch n := node.(type) {
+		case *ast.TagNode:
+			if n.Value == nil {
+				return node
+			}
+			node = n.Value
+		case *ast.AnchorNode:
+			if n.Value == nil {
+				return node
+			}
+			node = n.Value
+		default:
+			return node
+		}
 	}
 }
 

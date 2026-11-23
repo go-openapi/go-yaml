@@ -693,11 +693,17 @@ func (d *Decoder) eachMergeSource(node ast.Node, fn func(ast.MapNode) error) err
 // order eachMergeSource reads them. inSequence marks a node that is an element of a
 // sequence. Such an element must be a mapping, and a sequence there is rejected.
 func (d *Decoder) eachMergeNode(node ast.Node, fn func(one ast.Node, inSequence bool) error) error {
+	if err := d.refuseMergeTags(node); err != nil {
+		return err
+	}
 	seq := d.mergeSequence(node)
 	if seq == nil {
 		return fn(node, false)
 	}
 	for _, one := range seq.Values {
+		if err := d.refuseMergeTags(one); err != nil {
+			return err
+		}
 		if err := fn(one, true); err != nil {
 			return err
 		}
@@ -730,6 +736,55 @@ func (d *Decoder) mergeSequence(node ast.Node) *ast.SequenceNode {
 			return nil
 		}
 	}
+}
+
+// refuseMergeTags returns an error for a tag on a node named by a "<<", or on an element of a sequence it names,
+// when the tag does not fit the node, as taggedValue returns for the node decoded as a value. It reads the tags
+// through anchors and aliases.
+//
+// A tag naming another kind than its node, such as "!!seq" on a mapping, is an error. So is an "!!omap" that is
+// not a sequence of one-entry mappings with no key repeated across them. A valid "!!omap" merges as the sequence of
+// mappings it is written as.
+func (d *Decoder) refuseMergeTags(node ast.Node) error {
+	for {
+		switch n := node.(type) {
+		case *ast.AnchorNode:
+			node = n.Value
+		case *ast.AliasNode:
+			target, _ := d.aliasTarget(n)
+			if target == nil {
+				// getMapNode returns the unknown anchor error.
+				return nil
+			}
+			node = target
+		case *ast.TagNode:
+			res := n.Resolve()
+			if res.Verdict == ast.TagKindMismatch {
+				return yamlerrors.NewSyntax(fmt.Sprintf("%s does not support this kind of node", res.Tag), n.GetToken())
+			}
+			if res.Tag == token.OrderedMapTag {
+				return refuseBadOrderedMap(n)
+			}
+			node = n.Value
+		default:
+			return nil
+		}
+	}
+}
+
+// refuseBadOrderedMap returns an error for n, tagged "!!omap", when it is not an ordered map.
+func refuseBadOrderedMap(n *ast.TagNode) error {
+	seq, entries, ordered := ast.OrderedMapOf(n)
+	if !ordered {
+		return astutils.NotAnOrderedMap(n.Value)
+	}
+	for _, entry := range entries {
+		if err := astutils.RefuseDuplicateKeys(entry); err != nil {
+			return err
+		}
+	}
+
+	return astutils.RefuseOrderedMapDuplicates(seq)
 }
 
 func (d *Decoder) getMapNode(node ast.Node, isMerge bool) (ast.MapNode, error) {
