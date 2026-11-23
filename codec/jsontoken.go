@@ -158,9 +158,12 @@ func (s *JSONTokens) Err() error { return s.err }
 
 // Depth counts the objects and arrays open around the token just handed over.
 //
-// A document's outermost value stands at depth 1, and the values it holds at 2. A closing [JSONObjectEnd] or
-// [JSONArrayEnd] has the depth it returns to, not the depth it closes, so the opener and the closer of one collection
-// have different depths.
+// An opening [JSONObjectStart] or [JSONArrayStart] counts the collection it opens.
+// A root scalar is at depth 0. A root object's opener, its keys and its values are at 1,
+// and a collection nested in it is at 2 from its opener on.
+//
+// A closing [JSONObjectEnd] or [JSONArrayEnd] has the depth it returns to, not the depth it closes,
+// so the opener and the closer of one collection have different depths.
 func (s *JSONTokens) Depth() int { return s.depth }
 
 // Path returns the RFC 6901 JSON pointer to the token just handed over.
