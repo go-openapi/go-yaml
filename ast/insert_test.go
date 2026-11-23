@@ -187,6 +187,11 @@ func TestVerbatimPlacesAnInsertedEntry(t *testing.T) {
 		// and the entry went in after that document.
 		{"lines broken by a lone CR", "a: 1 # c\r---\rb: 2\r", false, 1, "a: 1 # c\rx: 9\r---\rb: 2\r"},
 		{"outside a nested mapping", "root:\n  a: 1\n", false, 1, "root:\n  a: 1\nx: 9\n"},
+		// The lines of blanks after a block scalar are the scalar's: put in front of them, the entry took the
+		// empty lines a "|+" keeps, and a line of spaces deeper than the indentation.
+		{"after a keep scalar's empty lines", "k: |+\n a\n\n\n", false, 1, "k: |+\n a\n\n\nx: 9\n"},
+		{"after a line of spaces under a block scalar", "foo: |\n  x\n   \n", false, 1, "foo: |\n  x\n   \nx: 9\n"},
+		{"after a keep scalar, before a comment", "a: |+\n  x\n\n# c\n", false, 1, "a: |+\n  x\n\nx: 9\n# c\n"},
 
 		{"a flow mapping, at the front", "{a: 1, b: 2}\n", false, 0, "{x: 9, a: 1, b: 2}\n"},
 		{"a flow mapping, in between", "{a: 1, b: 2}\n", false, 1, "{a: 1, x: 9, b: 2}\n"},

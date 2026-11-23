@@ -2039,6 +2039,12 @@ func (r *Renderer) writeEntry(vw *verbatimWriter, entry Node, coll collection, i
 	}
 	brk := vw.breakNear(int(previous.from))
 	vw.upTo(vw.restOfLine())
+	if endsOnBlockScalar(lastNodeFromSource(coll.siblings, i)) {
+		// The lines of blanks after a block scalar are the scalar's: content under "|+", and a line of spaces
+		// deeper than the indentation under any header. Put in front of them, the entry took them from it:
+		// "k: |+" over " a" over two empty lines read "a\n" back where it held "a\n\n\n".
+		vw.upTo(vw.blankLinesFrom(vw.cursor))
+	}
 	if !vw.atLineStart {
 		vw.raw(brk)
 	}
@@ -2221,6 +2227,65 @@ func lastFromSource(siblings func(int) Node, i int) (extent, bool) {
 	}
 
 	return noExtent, false
+}
+
+// lastNodeFromSource is the nearest sibling before i that the document holds, or nil.
+func lastNodeFromSource(siblings func(int) Node, i int) Node {
+	for j := i - 1; j >= 0; j-- {
+		if n := siblings(j); sourceExtent(n).found() {
+			return n
+		}
+	}
+
+	return nil
+}
+
+// endsOnBlockScalar reports whether the last node n writes, under its entries, anchors and tags, is a "|" or ">"
+// scalar.
+func endsOnBlockScalar(n Node) bool {
+	for range maxUnwrapDepth {
+		switch v := n.(type) {
+		case *LiteralNode:
+			return true
+		case *MappingValueNode:
+			n = v.Value
+		case *MappingNode:
+			if len(v.Values) == 0 || v.IsFlowStyle {
+				return false
+			}
+			n = v.Values[len(v.Values)-1]
+		case *SequenceNode:
+			if len(v.Values) == 0 || v.IsFlowStyle {
+				return false
+			}
+			n = v.Values[len(v.Values)-1]
+		case *AnchorNode:
+			n = v.Value
+		case *TagNode:
+			n = v.Value
+		default:
+			return false
+		}
+	}
+
+	return false
+}
+
+// blankLinesFrom is the offset past the lines from at that hold nothing but spaces and tabs.
+func (vw *verbatimWriter) blankLinesFrom(at int) int {
+	end := at
+	for i := at; i < len(vw.src); i++ {
+		switch vw.src[i] {
+		case ' ', '\t':
+		case '\n', '\r':
+			i = afterBreak(vw.src, i) - 1
+			end = i + 1
+		default:
+			return end
+		}
+	}
+
+	return len(vw.src)
 }
 
 func mappingSiblings(values []*MappingValueNode) func(int) Node {
