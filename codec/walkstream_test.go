@@ -323,7 +323,7 @@ func aParseErrorStopsTheStreamAtTheBrokenDocumentCases() iter.Seq[aParseErrorSto
 	mapTarget := func() any { var v map[string]any; return &v }
 
 	return slices.Values([]aParseErrorStopsTheStreamAtTheBrokenDocumentCase{
-		{name: "tree, UseOrderedMap", targets: []func() any{anyTarget, anyTarget, anyTarget, anyTarget}, opts: []codec.DecodeOption{codec.UseOrderedMap()}},
+		{name: "tree, UseOrderedMap", targets: []func() any{anyTarget, anyTarget, anyTarget, anyTarget}, opts: []codec.DecodeOption{codec.UseOrderedMap(), treeOnly()}},
 		{name: "tree, a map", targets: []func() any{mapTarget, mapTarget, mapTarget, mapTarget}},
 		{name: "walk", targets: []func() any{anyTarget, anyTarget, anyTarget, anyTarget}},
 		{name: "walk, then to the tree", targets: []func() any{anyTarget, mapTarget, mapTarget, mapTarget}},

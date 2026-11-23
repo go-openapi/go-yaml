@@ -457,13 +457,13 @@ func decodeStreamAll(t *testing.T, src string) ([]any, error) {
 // Found on 2026-09-11 by the generator, once the flow axes were weighted to
 // reach a key written alone more than once in 350 documents.
 
-// treeRead decodes src by building a tree. UseOrderedMap is what pushes the
-// decode off the walking path; the ordering it also asks for is incidental.
+// treeRead decodes src by building a tree. treeOnly keeps the decode off the walk,
+// and UseOrderedMap reads each mapping into a MapSlice.
 func treeRead(t *testing.T, src string) any {
 	t.Helper()
 
 	var v any
-	require.NoErrorf(t, codec.Unmarshal([]byte(src), &v, codec.UseOrderedMap()), "%q", src)
+	require.NoErrorf(t, codec.Unmarshal([]byte(src), &v, codec.UseOrderedMap(), treeOnly()), "%q", src)
 
 	return v
 }

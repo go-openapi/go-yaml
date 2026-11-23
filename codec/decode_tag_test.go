@@ -171,7 +171,7 @@ func TestBinaryTagReadsIntoAByteSlice(t *testing.T) {
 
 		var walked, treed box
 		require.NoError(t, codec.Unmarshal([]byte(src), &walked))
-		require.NoError(t, codec.Unmarshal([]byte(src), &treed, codec.UseOrderedMap()))
+		require.NoError(t, codec.Unmarshal([]byte(src), &treed, codec.UseOrderedMap(), treeOnly()))
 		assert.Equal(t, treed, walked)
 	})
 }
@@ -226,11 +226,12 @@ type decodePath struct {
 	opts []codec.DecodeOption
 }
 
-// decodePaths returns the walking reader and the tree decoder, which UseOrderedMap selects.
+// decodePaths returns the walking reader and the tree decoder, which treeOnly selects. The tree path also sets
+// UseOrderedMap, so an untyped mapping decodes into a MapSlice there.
 func decodePaths() iter.Seq[decodePath] {
 	return slices.Values([]decodePath{
 		{name: "walk"},
-		{name: "tree", opts: []codec.DecodeOption{codec.UseOrderedMap()}},
+		{name: "tree", opts: []codec.DecodeOption{codec.UseOrderedMap(), treeOnly()}},
 	})
 }
 

@@ -433,13 +433,14 @@ type decodePath struct {
 	opts []DecodeOption
 }
 
-// walkAndOrderedMapPaths returns the walk and the tree decoder, each given opts.
-// UseOrderedMap keeps the tree's decode off the walk. It reads a mapping into a
-// MapSlice, which marshals to the JSON members the walk's map does.
+// walkAndOrderedMapPaths returns the walk, the walk under UseOrderedMap, and the tree decoder under UseOrderedMap,
+// each given opts. UseOrderedMap reads a mapping into a MapSlice, which marshals to the JSON members the walk's map
+// does. treeOnly keeps the tree's decode off the walk.
 func walkAndOrderedMapPaths(opts ...DecodeOption) iter.Seq[decodePath] {
 	return slices.Values([]decodePath{
 		{name: "walk", opts: slices.Clone(opts)},
-		{name: "tree", opts: append(slices.Clone(opts), UseOrderedMap())},
+		{name: "ordered", opts: append(slices.Clone(opts), UseOrderedMap())},
+		{name: "tree", opts: append(slices.Clone(opts), UseOrderedMap(), treeOnly())},
 	})
 }
 

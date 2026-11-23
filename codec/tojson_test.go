@@ -33,7 +33,7 @@ import (
 // to.
 func toJSONViaValues(src []byte) ([]byte, error) {
 	var v any
-	if err := codec.Unmarshal(src, &v, codec.UseOrderedMap()); err != nil {
+	if err := codec.Unmarshal(src, &v, codec.UseOrderedMap(), treeOnly()); err != nil {
 		return nil, err
 	}
 
@@ -1044,7 +1044,7 @@ func TestAFloatPastTheExponentBoundIsAnInfinityOrZero(t *testing.T) {
 
 	for tc := range aFloatPastTheExponentBoundIsAnInfinityOrZeroCases() {
 		src, want := tc.src, tc.want
-		// An any goes down the walk, a MapSlice under UseOrderedMap builds the
+		// An any goes down the walk, a MapSlice under treeOnly builds the
 		// tree, and a struct takes the typed walk.
 		var walked any
 		require.NoErrorf(t, codec.Unmarshal([]byte(src), &walked), "the walk: %q", src)
@@ -1053,7 +1053,7 @@ func TestAFloatPastTheExponentBoundIsAnInfinityOrZero(t *testing.T) {
 		assert.Equalf(t, want, asMap["a"], "the walk: %q", src)
 
 		var tree codec.MapSlice
-		require.NoErrorf(t, codec.Unmarshal([]byte(src), &tree, codec.UseOrderedMap()), "the tree: %q", src)
+		require.NoErrorf(t, codec.Unmarshal([]byte(src), &tree, codec.UseOrderedMap(), treeOnly()), "the tree: %q", src)
 		v, _ := tree.Get("a")
 		assert.Equalf(t, want, v, "the tree: %q", src)
 

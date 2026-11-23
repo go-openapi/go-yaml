@@ -192,7 +192,7 @@ func TestFixedADirectiveNamedLikeAnAliasIsIgnored(t *testing.T) {
 		require.NoErrorf(t, codec.Unmarshal([]byte(src), &got), "the walk: %q", src)
 		assert.InDeltaf(t, -8.5, got, 0, "the walk: %q", src)
 
-		require.NoErrorf(t, codec.Unmarshal([]byte(src), &got, codec.UseOrderedMap()), "the tree: %q", src)
+		require.NoErrorf(t, codec.Unmarshal([]byte(src), &got, codec.UseOrderedMap(), treeOnly()), "the tree: %q", src)
 		assert.InDeltaf(t, -8.5, got, 0, "the tree: %q", src)
 
 		out, err := codec.ToJSON([]byte(src))

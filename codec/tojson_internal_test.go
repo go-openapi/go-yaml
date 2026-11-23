@@ -29,7 +29,7 @@ func TestAMergeTakesOnlyMappingsOnEveryPath(t *testing.T) {
 		var walked any
 		walkErr := Unmarshal(doc, &walked)
 		var tree any
-		treeErr := Unmarshal(doc, &tree, UseOrderedMap())
+		treeErr := Unmarshal(doc, &tree, UseOrderedMap(), treeOnly())
 		_, jsonErr := ToJSON(doc)
 		_, tokenErr := collectJSONTokens(doc)
 
@@ -51,7 +51,7 @@ func TestAMergeTakesOnlyMappingsOnEveryPath(t *testing.T) {
 			var walked any
 			walkErr := Unmarshal(doc, &walked)
 			var tree any
-			treeErr := Unmarshal(doc, &tree, UseOrderedMap())
+			treeErr := Unmarshal(doc, &tree, UseOrderedMap(), treeOnly())
 			_, jsonErr := ToJSON(doc)
 			_, tokenErr := collectJSONTokens(doc)
 

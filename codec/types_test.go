@@ -286,7 +286,7 @@ func TestAnOrderedMapTagReadsAsTheMapItNames(t *testing.T) {
 		assert.Equal(t, seqOf(item("x", uint64(1)), item("b", uint64(2))), walked)
 
 		var treed any
-		require.NoError(t, codec.Unmarshal([]byte(src), &treed, codec.UseOrderedMap()))
+		require.NoError(t, codec.Unmarshal([]byte(src), &treed, codec.UseOrderedMap(), treeOnly()))
 		assert.Equal(t, walked, treed)
 	})
 
@@ -419,7 +419,7 @@ func TestOrderedMapRefusesAShapeTheTagDoesNotName(t *testing.T) {
 
 		var treed any
 		require.Errorf(t,
-			codec.Unmarshal([]byte(src), &treed, codec.UseOrderedMap()), "%q", src)
+			codec.Unmarshal([]byte(src), &treed, codec.UseOrderedMap(), treeOnly()), "%q", src)
 
 		_, err := codec.ToJSON([]byte(src))
 		require.Errorf(t, err, "%q", src)
@@ -670,7 +670,7 @@ func TestAnOrderedMapEntryIsCountedAfterItsMerge(t *testing.T) {
 			var walked any
 			check(t, codec.Unmarshal(src, &walked))
 			var treed any
-			check(t, codec.Unmarshal(src, &treed, codec.UseOrderedMap()))
+			check(t, codec.Unmarshal(src, &treed, codec.UseOrderedMap(), treeOnly()))
 			// A tag sends the field to the tree.
 			var typed field
 			check(t, codec.Unmarshal(src, &typed))
@@ -734,7 +734,7 @@ func TestAnOrderedMapRepeatAMergeBringsInIsAKeyWrittenTwice(t *testing.T) {
 				var walked any
 				check(codec.Unmarshal(src, &walked, decodeOpts...), "walk")
 				var treed any
-				check(codec.Unmarshal(src, &treed, append(decodeOpts, codec.UseOrderedMap())...), "tree")
+				check(codec.Unmarshal(src, &treed, append(decodeOpts, codec.UseOrderedMap(), treeOnly())...), "tree")
 
 				got, err := codec.ToJSON(src, parseOpts...)
 				check(err, "ToJSON")

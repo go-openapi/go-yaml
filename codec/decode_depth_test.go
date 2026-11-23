@@ -84,7 +84,7 @@ func everyReaderStopsPast10000LevelsReaderCases() iter.Seq[everyReaderStopsPast1
 		{name: "tree into any", read: func(src []byte) error {
 			var v any
 
-			return codec.Unmarshal(src, &v, codec.UseOrderedMap())
+			return codec.Unmarshal(src, &v, codec.UseOrderedMap(), treeOnly())
 		}},
 		{name: "walk into any", read: func(src []byte) error {
 			var v any

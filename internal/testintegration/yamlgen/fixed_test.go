@@ -2433,7 +2433,8 @@ func TestFixedACollectionKeyIsNamedByWhatItResolvesTo(t *testing.T) {
 // assertBothPathsSay checks that decoding src is refused with says, by the walk
 // and by the tree alike.
 //
-// codec.Unmarshal walks the document and codec.UseOrderedMap loads the tree.
+// codec.Unmarshal walks the document, and a decoder holding a CustomUnmarshaler loads the tree. No document here
+// holds a chan int, so the unmarshaler never runs.
 // The two used to name a built key differently, so a document one refused the
 // other read one entry short; asserting the whole message, positions included,
 // is what holds them together.
@@ -2446,7 +2447,8 @@ func assertBothPathsSay(t *testing.T, src, says string) {
 	assert.Containsf(t, err.Error(), says, "the walk on %q", src)
 
 	var loaded any
-	err = codec.Unmarshal([]byte(src), &loaded, codec.UseOrderedMap())
+	tree := codec.CustomUnmarshaler[chan int](func(*chan int, []byte) error { return nil })
+	err = codec.Unmarshal([]byte(src), &loaded, codec.UseOrderedMap(), tree)
 	require.Errorf(t, err, "the tree read %q as %v", src, loaded)
 	assert.Containsf(t, err.Error(), says, "the tree on %q", src)
 }
