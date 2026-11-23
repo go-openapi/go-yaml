@@ -4,6 +4,7 @@
 package yamlgen_test
 
 import (
+	"encoding/json"
 	"fmt"
 	"math"
 	"math/big"
@@ -3397,6 +3398,80 @@ func TestFixedAMergeKeyWrittenTheLongWayMerges(t *testing.T) {
 		var got map[string]any
 		require.NoError(t, codec.Unmarshal([]byte("b: &a {x: 1}\nd:\n  ? <<\n  : *a\n"), &got))
 		assert.Equal(t, map[string]any{"<<": map[string]any{"x": uint64(1)}}, got["d"])
+	})
+}
+
+// TestFixedAMergeKeyWrittenTheLongWayMergesUnderItsProperties: "? <<" merges
+// with an anchor or a tag on the "<<", as "&k !!merge <<:" does, on every
+// decode path and in ToJSON.
+//
+// The long form took properties to the ordinary path. "? &k <<" came back as a
+// key named "<<" under "%YAML 1.1", and "? !!merge <<" was refused with "could
+// not find merge key": the scanner types "<<" a merge key only where a ':'
+// follows on its line, and the grouper asked that of the token under
+// "!!merge". "!!merge" names the merge key under any version, in any of its
+// spellings, so those merge without the directive too.
+//
+// go.yaml.in/yaml/v3 v3.0.6 merges every one of these. The YAML corpus of
+// go-openapi/conformance-suites found them, drawing properties on the "<<".
+func TestFixedAMergeKeyWrittenTheLongWayMergesUnderItsProperties(t *testing.T) {
+	const (
+		v11 = "%YAML 1.1\n---\n"
+		tag = "%TAG !e! tag:yaml.org,2002:\n---\n"
+		b   = "b: &a {x: 1}\n"
+	)
+	merged := map[string]any{"x": uint64(1), "w": uint64(2)}
+	ordinary := map[string]any{"<<": map[string]any{"x": uint64(1)}, "w": uint64(2)}
+
+	for _, tc := range []struct {
+		src  string
+		want map[string]any
+	}{
+		{v11 + b + "d:\n  ? &k <<\n  : *a\n  w: 2\n", merged},
+		{v11 + b + "d:\n  ? !!merge <<\n  : *a\n  w: 2\n", merged},
+		{v11 + b + "d:\n  ? &k !!merge <<\n  : *a\n  w: 2\n", merged},
+		{v11 + b + "d:\n  ? !!merge &k <<\n  : *a\n  w: 2\n", merged},
+		{v11 + b + "d: {? &k !!merge << : *a, w: 2}\n", merged},
+		// A tag names the merge key under any version, in any spelling.
+		{b + "d:\n  ? !!merge <<\n  : *a\n  w: 2\n", merged},
+		{b + "d:\n  ? &k !<tag:yaml.org,2002:merge> <<\n  : *a\n  w: 2\n", merged},
+		{tag + b + "d:\n  ? &k !e!merge <<\n  : *a\n  w: 2\n", merged},
+		// An anchor alone does not, and any other tag keeps "<<" the string.
+		{b + "d:\n  ? &k <<\n  : *a\n  w: 2\n", ordinary},
+		{v11 + b + "d:\n  ? &k !!str <<\n  : *a\n  w: 2\n", ordinary},
+	} {
+		var walked any
+		require.NoErrorf(t, codec.Unmarshal([]byte(tc.src), &walked), "the walk: %q", tc.src)
+		asMap, isMap := walked.(map[string]any)
+		require.Truef(t, isMap, "the walk: %q", tc.src)
+		assert.Equalf(t, tc.want, asMap["d"], "the walk: %q", tc.src)
+
+		var tree map[string]any
+		require.NoErrorf(t, codec.Unmarshal([]byte(tc.src), &tree), "the tree: %q", tc.src)
+		assert.Equalf(t, tc.want, tree["d"], "the tree: %q", tc.src)
+
+		var typed struct {
+			D map[string]any `yaml:"d"`
+		}
+		require.NoErrorf(t, codec.Unmarshal([]byte(tc.src), &typed), "the typed walk: %q", tc.src)
+		assert.Equalf(t, tc.want, typed.D, "the typed walk: %q", tc.src)
+
+		out, err := codec.ToJSON([]byte(tc.src))
+		require.NoErrorf(t, err, "ToJSON: %q", tc.src)
+		var fromJSON map[string]any
+		require.NoErrorf(t, json.Unmarshal(out, &fromJSON), "ToJSON wrote %s", out)
+		wantJSON, err := json.Marshal(tc.want)
+		require.NoError(t, err)
+		gotJSON, err := json.Marshal(fromJSON["d"])
+		require.NoError(t, err)
+		assert.JSONEqf(t, string(wantJSON), string(gotJSON), "ToJSON: %q", tc.src)
+	}
+
+	t.Run("a merge tag on a value is still refused", func(t *testing.T) {
+		var got any
+		err := codec.Unmarshal([]byte("a: !!merge <<\n"), &got)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "could not find merge key")
 	})
 }
 

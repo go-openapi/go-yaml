@@ -246,6 +246,12 @@ type Grouper struct {
 
 	tag *TapeToken // a tag, waiting to see what it tags
 
+	// fedLast and fedBefore are the types of the last token Feed read and of the one before it, and propAfterKey
+	// records, as properties begin, whether the token fed before them was an explicit key's "?". taggedScalar reads
+	// it for "? !!merge <<". Feed keeps them because a "?" takes the short way past stageProperties.
+	fedLast, fedBefore token.Type
+	propAfterKey       bool
+
 	// propFlowDepth counts the flow collections open around the token Feed
 	// reads, so joins can let a property reach a node on a later line.
 	propFlowDepth int
@@ -484,7 +490,11 @@ func (g *Grouper) group2(typ TokenGroupType, a, b *TapeToken) *TapeToken {
 // A tag reaches past its own line only inside a flow collection (see joins),
 // and never takes an anchor name: the anchor is what holds the tag, and
 // groupAnchorsWithScalarTags joins those.
-func (g *Grouper) taggedScalar(tag, next *TapeToken) (*TapeToken, bool) {
+//
+// explicitKey says the tag stands right after an explicit key's "?". There a plain "<<" under "!!merge" is the merge
+// key, though the scanner typed it a string: it types "<<" a merge key only where a ':' follows on its line, and in
+// block "? !!merge <<" puts the ':' on the next one. Elsewhere "!!merge" over such a "<<" is refused as before.
+func (g *Grouper) taggedScalar(tag, next *TapeToken, explicitKey bool) (*TapeToken, bool) {
 	if !g.joins(tag, next) || next.GroupType() == TokenGroupAnchorName {
 		return nil, true
 	}
@@ -515,6 +525,9 @@ func (g *Grouper) taggedScalar(tag, next *TapeToken) (*TapeToken, bool) {
 
 		return g.group2(TokenGroupScalarTag, tag, next), true
 	case token.MergeTag:
+		if explicitKey {
+			typeMergeKey(next)
+		}
 		if next.Type() != token.MergeKeyType && !anchoredMergeKey(next) {
 			g.fail(yamlerrors.NewSyntax("could not find merge key", next.RawToken()))
 
@@ -1149,6 +1162,22 @@ func (g *Grouper) keyedValue(key, value *TapeToken) *TapeToken {
 	}
 
 	return g.group2(TokenGroupMapKeyValue, key, value)
+}
+
+// typeMergeKey types a plain "<<" the merge key, where tk is one or an anchor joined to one: "? !!merge <<" and
+// "? !!merge &a <<". A quoted "<<" is a string under any tag and is left alone.
+func typeMergeKey(tk *TapeToken) {
+	if tk.GroupType() == TokenGroupAnchor && tk.Group.Len() == 2 {
+		tk = tk.Group.At(1)
+	}
+	if IsPlainMergeSpelling(tk) {
+		tk.RawToken().Type = token.MergeKeyType
+	}
+}
+
+// IsPlainMergeSpelling reports whether tk is a plain "<<" the scanner typed a string, standing alone.
+func IsPlainMergeSpelling(tk *TapeToken) bool {
+	return tk.Group == nil && tk.Type() == token.StringType && tk.RawToken().Value == "<<"
 }
 
 // anchoredMergeKey reports whether tk is an anchor joined to a "<<", as in "!!merge &a <<".

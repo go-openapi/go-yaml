@@ -105,6 +105,14 @@ func (g *Grouper) property(at int, tk *TapeToken, out []*TapeToken) ([]*TapeToke
 	switch g.prop {
 	case propNone:
 		switch tk.Type() {
+		case token.AnchorType, token.AliasType, token.TagType:
+			// Properties begin: record whether an explicit key's "?" was fed right before them.
+			g.propAfterKey = g.fedBefore == token.MappingKeyType
+		default:
+			// nothing begins
+		}
+
+		switch tk.Type() {
 		case token.AnchorType:
 			g.anchor, g.prop = tk, propSawAnchor
 		case token.AliasType:
@@ -190,7 +198,7 @@ func (g *Grouper) tagOrLetGo(at int, tk *TapeToken, out []*TapeToken) ([]*TapeTo
 		return out, false
 	}
 
-	grouped, ok := g.taggedScalar(g.tag, tk)
+	grouped, ok := g.taggedScalar(g.tag, tk, g.propAfterKey)
 	if !ok {
 		return out, false
 	}
@@ -256,7 +264,7 @@ func (g *Grouper) anchorNamesTagged(at int, tk *TapeToken, out []*TapeToken) ([]
 		return out, false
 	}
 
-	grouped, ok := g.taggedScalar(g.tag, tk)
+	grouped, ok := g.taggedScalar(g.tag, tk, g.propAfterKey)
 	if !ok {
 		return out, false
 	}
@@ -304,7 +312,7 @@ func (g *Grouper) taggedAnchorNames(at int, tk *TapeToken, out []*TapeToken) ([]
 		named := g.group2(TokenGroupAnchor, g.name, tk)
 		g.name = nil
 
-		grouped, ok := g.taggedScalar(g.tag, named)
+		grouped, ok := g.taggedScalar(g.tag, named, g.propAfterKey)
 		if !ok {
 			g.tag, g.prop = nil, propNone
 

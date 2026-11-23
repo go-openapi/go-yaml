@@ -49,12 +49,24 @@ func (p *Parser) mergeKeysInForce() bool {
 // The scanner types "<<" a merge key only where a ':' follows it on its line, which "? <<" does in flow and not in block,
 // so the plain "<<" is taken here too. A quoted "<<" is a string under any version, and a comment between the '?'
 // and the key leaves the key to the ordinary path.
+//
+// The "<<" may carry an anchor and a tag, as an implicit one does: "? &a <<", "? !!merge <<", "? &a !!merge <<".
+// They went to the ordinary path until 2026-11-23, which read "? &a <<" as a key named "<<" and refused
+// "? !!merge <<". "!!merge" names the merge key under any version, as [ast.TagNode.IsMergeKey] reads it; any other
+// tag leaves "<<" the string it spells.
 func (p *Parser) explicitMergeKey(ctx context) *group.TapeToken {
-	if !p.mergeKeysInForce() {
+	tk := ctx.nextToken()
+	if tk == nil {
 		return nil
 	}
-	tk := ctx.nextToken()
-	if tk == nil || tk.Group != nil {
+	if tk.Group != nil {
+		if merge, tagged := p.mergeKeyUnderProperties(tk); merge && (tagged || p.mergeKeysInForce()) {
+			return tk
+		}
+
+		return nil
+	}
+	if !p.mergeKeysInForce() {
 		return nil
 	}
 	switch tk.Type() {
@@ -71,6 +83,32 @@ func (p *Parser) explicitMergeKey(ctx context) *group.TapeToken {
 	return nil
 }
 
+// mergeKeyUnderProperties reports whether tk is an anchor or a tag standing on a "<<", and whether one of the tags is
+// "!!merge". It reports no merge key under any other tag.
+func (p *Parser) mergeKeyUnderProperties(tk *group.TapeToken) (merge, tagged bool) {
+	for tk.Group != nil && tk.Group.Len() == 2 {
+		switch tk.GroupType() {
+		case group.TokenGroupAnchor:
+			tk = tk.Group.At(1)
+		case group.TokenGroupScalarTag:
+			// Resolved first, so "!!merge", "!<tag:yaml.org,2002:merge>" and a declared handle all name it.
+			uri := p.resolveTag(tk.Group.At(0).RawToken().Value)
+			if name, known := token.ReservedTagOf(uri); !known || name != token.MergeTag {
+				return false, false
+			}
+			tagged = true
+			tk = tk.Group.At(1)
+		default:
+			return false, false
+		}
+	}
+	if tk.Group != nil {
+		return false, false
+	}
+
+	return tk.Type() == token.MergeKeyType || group.IsPlainMergeSpelling(tk), tagged
+}
+
 // parseExplicitMergeKey builds the merge key a "?" encloses, as the value of key.
 //
 // Nothing goes to the walk here. The caller hands the whole key over once this returns, so a reader meets a
@@ -79,7 +117,7 @@ func (p *Parser) explicitMergeKey(ctx context) *group.TapeToken {
 // ToJSON and the tokens took it for an ordinary key.
 func (p *Parser) parseExplicitMergeKey(ctx context, g *group.TokenGroup, key *ast.MappingKeyNode) (ast.MapKeyNode, error) {
 	ctx.goNext() // Skip the '?'.
-	value, err := newMergeKeyNode(ctx, ctx.currentToken())
+	value, err := p.explicitMergeKeyNode(ctx, ctx.currentToken())
 	if err != nil {
 		return nil, err
 	}
@@ -101,6 +139,25 @@ func (p *Parser) parseExplicitMergeKey(ctx context, g *group.TokenGroup, key *as
 	}
 
 	return key, nil
+}
+
+// explicitMergeKeyNode builds the node of the "<<" at tk: a [ast.MergeKeyNode], or the anchor and tag nodes over one,
+// as the parser builds "&a !!merge <<:" where a ':' follows on the line.
+func (p *Parser) explicitMergeKeyNode(ctx context, tk *group.TapeToken) (ast.Node, error) {
+	if tk.Group == nil {
+		return newMergeKeyNode(ctx, tk)
+	}
+
+	// The scanner typed a block "<<" a string; it is the merge key here.
+	inner := tk
+	for inner.Group != nil && inner.Group.Len() == 2 {
+		inner = inner.Group.At(1)
+	}
+	if group.IsPlainMergeSpelling(inner) {
+		inner.RawToken().Type = token.MergeKeyType
+	}
+
+	return p.parseScalarValue(ctx, tk)
 }
 
 // refuseMergeKeyAlone rejects a "<<" written alone as a flow entry's key, where the merge key is in force.

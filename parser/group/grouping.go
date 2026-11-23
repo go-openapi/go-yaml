@@ -80,6 +80,8 @@ func init() {
 // Walking the chain to learn as much costs a call and a type test at every
 // stage; the table answers it once.
 func (g *Grouper) Feed(tk *TapeToken, out []*TapeToken) []*TapeToken {
+	g.fedBefore, g.fedLast = g.fedLast, tk.Type()
+
 	// Brackets take the short way below, past stageProperties, so they are
 	// counted here, once each, for joins.
 	switch tk.Type() {
