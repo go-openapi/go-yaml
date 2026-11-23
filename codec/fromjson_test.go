@@ -88,6 +88,8 @@ func TestFromJSONReadsBackTheSameJSON(t *testing.T) {
 		`[[],{},[[]],{"":""}]`,
 		`{"` + strings.Repeat("k", 1100) + `":{"nested":[1]}}`,
 		`{"yes":"no","1":"0x1F","~":"- x","#":": y","---":"..."}`,
+		// A key opening with "-" or "?" before a tab reads as a sequence or an explicit key written plain.
+		`{"-\tZA":null,"x":[{"-\ta\"":[1],"?\tq":"a:\tb"}]}`,
 	} {
 		yml, err := codec.FromJSON([]byte(src))
 		require.NoError(t, err)
