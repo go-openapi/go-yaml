@@ -406,34 +406,6 @@ func parsesNot(text string) bool {
 	return err != nil
 }
 
-// mustHold checks a measured count against the recorded one: exactly where the
-// same documents were measured, and as a ceiling where more were.
-//
-// The exact side is the ratchet. A ceiling alone passes when a count falls, so
-// the fix that took appending from 86 unreadable to 13 would have left 86
-// standing and over-stating the defect from then on. Where the denominator moved
-// a fall cannot be read -- fewer failures over more documents says nothing by
-// itself -- so a ceiling is the honest bound there rather than a compromise.
-//
-// Exact in both directions everywhere would go red on every parser fix that
-// accepts one more document, and a guard that fails on good news gets its
-// numbers bumped without being read.
-func mustHold(t *testing.T, what string, got, recorded, tested, testedRecorded int) {
-	t.Helper()
-
-	if tested == testedRecorded {
-		require.Equalf(t, recorded, got,
-			"the same %d documents were measured and %s moved from %d to %d: nothing but the renderer can have done that, so record the new number",
-			tested, what, recorded, got)
-
-		return
-	}
-
-	require.LessOrEqualf(t, got, recorded,
-		"%s is %d of %d where %d of %d was recorded: the corpus moved as well, so re-measure before reading this as a regression",
-		what, got, tested, recorded, testedRecorded)
-}
-
 const corpusMarker = "x-mark-9"
 
 // firstPlainMapping is the first block mapping of a document whose entries open

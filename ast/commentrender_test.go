@@ -13,10 +13,9 @@ import (
 	"github.com/go-openapi/go-yaml/token"
 )
 
-// renderedComments records how many documents come back from a rendering
-// holding a different number of comments than they went in with. It is 0, so
-// the count below is an invariant and not a ceiling: every comment of every
-// document the parse accepts comes back from a rendering, once.
+// commentedDocuments is how many corpus documents hold a comment and are measured below. Every comment of each of them
+// must come back from a rendering, once: a document holding a different number of comments after it fails. The count
+// may not fall.
 //
 // changed counts documents, not comments, and moves in both directions:
 //
@@ -29,8 +28,8 @@ import (
 //   - More. Rendering a block onto one line can turn what followed a "#" into
 //     comment text and leave a "#" elsewhere opening a comment that did not.
 //
-// tested follows the parser and the corpus; changed follows the renderer.
-var renderedComments = struct{ changed, tested int }{changed: 0, tested: 6293}
+// 6293 -> 9330 on 2026-11-23 with yamlcorpus/48, once a comment on a "?" line over a commented key stopped being lost.
+const commentedDocuments = 9330
 
 // TestRenderingKeepsTheCommentsItWasGiven counts the comment tokens a document
 // holds, renders it, and counts them again.
@@ -64,17 +63,11 @@ func TestRenderingKeepsTheCommentsItWasGiven(t *testing.T) {
 	}
 
 	require.Positive(t, tested)
-	t.Logf("%d documents hold a comment, %d come back from a rendering holding a different number (recorded %d of %d)",
-		tested, changed, renderedComments.changed, renderedComments.tested)
+	t.Logf("%d documents hold a comment, %d come back from a rendering holding a different number", tested, changed)
 
-	require.GreaterOrEqualf(t, tested, renderedComments.tested,
-		"%d documents hold a comment where %d did: fewer are being measured, so the count below says less than it did",
-		tested, renderedComments.tested)
-	mustHold(t, "the count of documents whose comments change through a rendering",
-		changed, renderedComments.changed, tested, renderedComments.tested)
-	if changed > renderedComments.changed {
-		t.Logf("moved: %v", moved)
-	}
+	require.GreaterOrEqualf(t, tested, commentedDocuments,
+		"%d documents hold a comment where %d did: the parser or the harness lost ground", tested, commentedDocuments)
+	require.Zerof(t, changed, "%d documents hold a different number of comments after a rendering: %v", changed, moved)
 }
 
 // commentTokensIn counts the comments a document is written with.

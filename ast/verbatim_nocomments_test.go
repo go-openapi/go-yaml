@@ -14,9 +14,9 @@ import (
 	"github.com/go-openapi/go-yaml/parser"
 )
 
-// withoutCommentsCensus records the corpus rebuilt through VerbatimFile from a
-// parse without parser.WithComments: how many documents the parse accepts, and
-// how many of those do not come back byte for byte.
+// withoutCommentsDocuments is how many corpus documents a parse without parser.WithComments accepts, each of which
+// must come back byte for byte through VerbatimFile. It may not fall: fewer documents measured is the parser or the
+// harness losing ground, and none failing over them proves less.
 //
 // TestVerbatimRebuildsEveryDocument parses with comments, and a tree parsed
 // without them differs in ways that census cannot see: it holds no comment and
@@ -44,7 +44,9 @@ import (
 //
 // 12668 -> 12662 on 2026-11-23, when a '}' or a ']' closing no collection inside a flow collection began to be
 // refused: six seeds hold one, "[... 1}]" among them, and go.yaml.in/yaml/v3 refuses each of them.
-var withoutCommentsCensus = struct{ tested, differing int }{tested: 12662, differing: 0}
+//
+// 12662 -> 16620 on 2026-11-23 with yamlcorpus/48, and none differs.
+const withoutCommentsDocuments = 16620
 
 func TestVerbatimRebuildsTheCorpusParsedWithoutComments(t *testing.T) {
 	t.Parallel()
@@ -68,14 +70,12 @@ func TestVerbatimRebuildsTheCorpusParsedWithoutComments(t *testing.T) {
 		}
 	}
 
-	t.Logf("without comments: %d of %d accepted documents do not come back byte for byte (recorded %d of %d), starting with %v",
-		differing, tested, withoutCommentsCensus.differing, withoutCommentsCensus.tested, first)
+	t.Logf("without comments: %d of %d accepted documents do not come back byte for byte, starting with %v",
+		differing, tested, first)
 
-	require.GreaterOrEqualf(t, tested, withoutCommentsCensus.tested,
-		"%d documents are measured where %d were: fewer are accepted than were, so re-measure before reading the count below",
-		tested, withoutCommentsCensus.tested)
-	mustHold(t, "the count of documents that do not come back byte for byte",
-		differing, withoutCommentsCensus.differing, tested, withoutCommentsCensus.tested)
+	require.GreaterOrEqualf(t, tested, withoutCommentsDocuments,
+		"%d documents are measured where %d were: the parser or the harness lost ground", tested, withoutCommentsDocuments)
+	require.Zerof(t, differing, "%d documents do not come back byte for byte, starting with %v", differing, first)
 }
 
 // TestVerbatimRebuildsABlockSequenceOfImplicitNulls holds the sequence whose

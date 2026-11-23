@@ -31,12 +31,9 @@ import (
 //
 // A comment left in the index also keeps the token it points at, and that token's tape chunk, until the parse ends.
 
-const (
-	staleCommentCeiling  = 0
-	overwroteHeadCeiling = 0
-
-	commentedDocuments = 6691
-)
+// commentedDocuments is how many seeds holding a comment the parse accepts, over which no comment may be dropped or
+// written over. It may not fall. 6691 -> 9656 on 2026-11-23 with yamlcorpus/48.
+const commentedDocuments = 9656
 
 // TestNoCommentIsReadAndThenDropped counts, over every accepted document that holds a comment,
 // the comments the parse recorded against a token and never took, and the head comments it wrote over.
@@ -83,30 +80,8 @@ func TestNoCommentIsReadAndThenDropped(t *testing.T) {
 
 	require.Positive(t, accepted)
 	require.GreaterOrEqualf(t, accepted, commentedDocuments,
-		"%d accepted documents hold a comment where %d did: fewer are being measured, so re-measure before reading the counts below as the parse losing less",
+		"%d accepted documents hold a comment where %d did: the parser or the harness lost ground",
 		accepted, commentedDocuments)
-	mustHold(t, "comments staged and never taken", stale, staleCommentCeiling, accepted, commentedDocuments)
-	mustHold(t, "head comments written over", overwrote, overwroteHeadCeiling, accepted, commentedDocuments)
-}
-
-// mustHold checks a measured count against the recorded one:
-// exactly when the same number of documents was measured, and as a ceiling when more were.
-//
-// The exact check fails on a fall as well as a rise, so a fix that stops the parse dropping a comment
-// forces the recorded number down.
-// When the document count moves, a fall cannot be credited to the parse, so only the ceiling applies.
-func mustHold(t *testing.T, what string, got int64, recorded, accepted, acceptedRecorded int) {
-	t.Helper()
-
-	if accepted == acceptedRecorded {
-		require.Equalf(t, int64(recorded), got,
-			"the same %d documents were measured and %s moved from %d to %d: nothing but the parse can have done that, so record the new number",
-			accepted, what, recorded, got)
-
-		return
-	}
-
-	require.LessOrEqualf(t, got, int64(recorded),
-		"%s is %d over %d documents where %d over %d was recorded: the corpus moved as well, so re-measure before reading this as a regression",
-		what, got, accepted, recorded, acceptedRecorded)
+	require.Zerof(t, stale, "%d comments were staged and never taken, over %d documents", stale, staleDocs)
+	require.Zerof(t, overwrote, "%d head comments were written over", overwrote)
 }
