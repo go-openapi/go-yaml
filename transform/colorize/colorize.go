@@ -108,14 +108,13 @@ func New(t Theme) ast.TransformFunc {
 			return err
 		}
 
-		// Three writes rather than one. Wrapping the whole stretch would color
-		// the space after the token and the line break past it, which shows the
-		// moment a style sets a background.
-		for _, part := range []string{"", style.Prefix, string(text), style.Suffix, string(s.Filler())} {
-			if part == "" {
+		// The escapes wrap the text alone. Wrapping the whole stretch would color the blanks after the token and
+		// the line break past them, which shows as soon as a style sets a background.
+		for _, part := range [][]byte{[]byte(style.Prefix), text, []byte(style.Suffix), s.Filler()} {
+			if len(part) == 0 {
 				continue
 			}
-			if _, err := io.WriteString(w, part); err != nil {
+			if _, err := w.Write(part); err != nil {
 				return err
 			}
 		}
