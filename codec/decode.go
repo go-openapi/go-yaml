@@ -2275,7 +2275,9 @@ func inlineMapNode(entries map[string]ast.Node, fields *structfields.Fields, tak
 }
 
 // stopsTheDocument reports whether err ends the decoding of its document, at any depth. These errors stop it:
-//   - a repeated key, which makes the document invalid YAML;
+//   - a repeated key, which makes the document invalid YAML. The walk finds it when the mapping closes,
+//     so the mapping's own entries are decoded and the stop applies to what comes after it.
+//     The tree checks before it decodes the mapping;
 //   - the limits, ErrExceededMaxDepth and the alias budget;
 //   - an unknown field, when the caller set DisallowUnknownField.
 //

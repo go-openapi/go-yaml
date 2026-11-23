@@ -66,6 +66,23 @@ The destination is decoded in place. A nested struct keeps the fields it read
 before the error and the defaults you set, a slice keeps a zero value where
 the element failed, and a map keeps your own entries.
 
+## A repeated key
+
+A key written twice in one mapping makes the document invalid, and the decode
+returns `errors.ErrDuplicateKey`. The decoder finds the repeat when the mapping
+closes, so the whole mapping is decoded first, and the later value wins:
+
+```go
+var m map[string]int
+err := yaml.Unmarshal([]byte("a: 1\na: 2\nb: 3\n"), &m)
+// errors.Is(err, yamlerrors.ErrDuplicateKey) is true, and m is map[a:2 b:3].
+```
+
+The decode of the document stops there. A struct field or a map entry after
+that mapping keeps its zero value. A mapping decoded into an `any` is dropped
+whole, because the decoder hands it to its parent only once it closes without
+an error. On a stream, the next `Decode` reads the next document.
+
 ## A struct your validator refuses
 
 `codec.Validator` runs your function on each struct the decoder fills. Its error

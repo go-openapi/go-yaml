@@ -50,7 +50,9 @@ error, never `io.EOF`, which is why the loop tests `errors.ErrSyntax` and
 ## Variations
 
 - **A repeated key** fails its own `Decode` with `errors.ErrDuplicateKey`, and
-  the next call reads the next document.
+  the next call reads the next document. The mapping holding the repeat is
+  decoded in full first, with the later value. See
+  [Errors](../../../values/errors/#a-repeated-key).
 - **Anchors** do not cross a `---`: an alias in one document cannot name an
   anchor declared in another.
 - **One document only.** `codec.Unmarshal` decodes the first document of a
