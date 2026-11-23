@@ -111,7 +111,12 @@ registering for the same type is a conflict neither can see. Prefer the option.
 
 ## Ordered mappings
 
-`codec.MapSlice` is a `[]codec.MapItem`, and it decodes and encodes in document
-order where a Go map cannot. Use it when order matters and the document is still
-going through the codec; when order matters and the rest of the document does
-too, work on [the document](../../documents/) instead.
+`codec.MapSlice` decodes and encodes a mapping in document order, which a Go
+map cannot keep. It is a struct: read it with `Get`, `At`, `Len`, `All`, `Keys`
+and `Values`, write it with `Set` and `Delete`, and build one with
+`codec.NewMapSlice`. It also keeps two keys a `map[string]any` would merge, such
+as `1` and `"1"`. `codec.UseOrderedMap` decodes every mapping of a document into
+one. See [Keep key order](../../examples/decoding/key-order/).
+
+When the comments and the layout matter too, work on
+[the document](../../documents/) instead.
