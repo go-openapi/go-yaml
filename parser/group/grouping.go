@@ -191,6 +191,12 @@ func stageLineComments(g *Grouper, at int, tk *TapeToken, out []*TapeToken) []*T
 	}
 
 	g.LineComment = tk
+	if raw := tk.RawToken(); tk.Type() == token.StringType && raw.EndOffset() == raw.Position.Offset() {
+		// An empty block scalar's content is a token of no width, standing at the start of the line after the
+		// header. A comment there opens its own line, and given to the content it moved up onto the header:
+		// "a: >" over "# c7" read as "a: > # c7", and a verbatim rendering kept it as part of the scalar.
+		g.LineComment = nil
+	}
 
 	return g.pass(at, tk, out)
 }

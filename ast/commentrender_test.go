@@ -107,3 +107,21 @@ func TestACommentOnAQuestionMarkLineOverACommentedKeyIsKept(t *testing.T) {
 		require.Equalf(t, src, file.String(), "%q", src)
 	}
 }
+
+// TestACommentBelowAnEmptyBlockScalarStaysOnItsLine renders a comment line standing right below a block scalar
+// header with no content. The empty content is a token of no width at the start of the comment's line, and the
+// comment was taken for one closing that token's line: "a: >" over "# c7" came back as "a: > # c7", and a header
+// comment of its own, "a: > # c6", went above the key with it.
+func TestACommentBelowAnEmptyBlockScalarStaysOnItsLine(t *testing.T) {
+	t.Parallel()
+
+	for _, src := range []string{
+		"a: >\n# c7\nb: 1\n",
+		"a: > # c6\n# c7\nb: 1\n",
+		"a: |\n# c7\nb: 1\n",
+	} {
+		file, err := parser.ParseBytes([]byte(src), parser.WithComments())
+		require.NoError(t, err)
+		require.Equalf(t, src, file.String(), "%q", src)
+	}
+}
