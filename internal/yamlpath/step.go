@@ -51,21 +51,14 @@ func (n *rootNode) filter(node ast.Node) (ast.Node, error) {
 	if n.child == nil {
 		return node, nil
 	}
-	filtered, err := n.child.filter(node)
-	if err != nil {
-		return nil, err
-	}
-	return filtered, nil
+	return n.child.filter(node)
 }
 
 func (n *rootNode) replace(node ast.Node, target ast.Node) error {
 	if n.child == nil {
 		return nil
 	}
-	if err := n.child.replace(node, target); err != nil {
-		return err
-	}
-	return nil
+	return n.child.replace(node, target)
 }
 
 // selectorNode is ".name": the value of the entry called name, in a mapping.
@@ -105,11 +98,7 @@ func (n *selectorNode) filter(node ast.Node) (ast.Node, error) {
 				if n.child == nil {
 					return value.Value, nil
 				}
-				filtered, err := n.child.filter(value.Value)
-				if err != nil {
-					return nil, err
-				}
-				return filtered, nil
+				return n.child.filter(value.Value)
 			}
 		}
 	case *ast.MappingValueNode:
@@ -118,11 +107,7 @@ func (n *selectorNode) filter(node ast.Node) (ast.Node, error) {
 			if n.child == nil {
 				return typed.Value, nil
 			}
-			filtered, err := n.child.filter(typed.Value)
-			if err != nil {
-				return nil, err
-			}
-			return filtered, nil
+			return n.child.filter(typed.Value)
 		}
 	default:
 		return nil, errNotAMapping(node.Type())
@@ -201,7 +186,7 @@ func (n *selectorNode) replace(node ast.Node, target ast.Node) error {
 			return err
 		}
 	default:
-		return fmt.Errorf("expected node type is map or map value. but got %s: %w", node.Type(), ErrInvalidQuery)
+		return errNotAMapping(node.Type())
 	}
 	return nil
 }
@@ -240,20 +225,16 @@ func (n *indexNode) filter(node ast.Node) (ast.Node, error) {
 	if n.child == nil {
 		return value, nil
 	}
-	filtered, err := n.child.filter(value)
-	if err != nil {
-		return nil, err
-	}
-	return filtered, nil
+	return n.child.filter(value)
 }
 
 func (n *indexNode) replace(node ast.Node, target ast.Node) error {
 	if node.Type() != ast.SequenceType {
-		return fmt.Errorf("expected sequence type node. but got %s: %w", node.Type(), ErrInvalidQuery)
+		return errNotASequence(node.Type())
 	}
 	sequence, _ := node.(*ast.SequenceNode)
 	if n.selector >= uint(len(sequence.Values)) {
-		return fmt.Errorf("expected index is %d. but got sequences has %d items: %w", n.selector, len(sequence.Values), ErrInvalidQuery)
+		return errOutOfRange(n.selector, len(sequence.Values))
 	}
 	if n.child == nil {
 		if err := sequence.Replace(int(n.selector), target); err != nil {
@@ -261,10 +242,7 @@ func (n *indexNode) replace(node ast.Node, target ast.Node) error {
 		}
 		return nil
 	}
-	if err := n.child.replace(sequence.Values[n.selector], target); err != nil {
-		return err
-	}
-	return nil
+	return n.child.replace(sequence.Values[n.selector], target)
 }
 
 // indexAllNode is "[*]": every entry of a sequence.
@@ -314,7 +292,7 @@ func (n *indexAllNode) filter(node ast.Node) (ast.Node, error) {
 
 func (n *indexAllNode) replace(node ast.Node, target ast.Node) error {
 	if node.Type() != ast.SequenceType {
-		return fmt.Errorf("expected sequence type node. but got %s: %w", node.Type(), ErrInvalidQuery)
+		return errNotASequence(node.Type())
 	}
 	sequence, _ := node.(*ast.SequenceNode)
 	if n.child == nil {
@@ -426,8 +404,5 @@ func (n *recursiveNode) replaceNode(node ast.Node, target ast.Node) error {
 }
 
 func (n *recursiveNode) replace(node ast.Node, target ast.Node) error {
-	if err := n.replaceNode(node, target); err != nil {
-		return err
-	}
-	return nil
+	return n.replaceNode(node, target)
 }
