@@ -3,6 +3,8 @@
 
 package ast
 
+import "github.com/go-openapi/go-yaml/token"
+
 // Clone returns a copy of n that the document does not hold.
 //
 // Use it to put a parsed node somewhere else in the tree. A node read from a
@@ -238,6 +240,7 @@ func (n *MappingNode) Clone() *MappingNode {
 	cloned.End = n.End.Detached()
 	cloned.FootComment = n.FootComment.Clone()
 	cloned.StartComment = n.StartComment.Clone()
+	cloned.TrailingComma = n.TrailingComma.Detached()
 	cloned.Duplicates = append([]DuplicateKey(nil), n.Duplicates...)
 	cloned.Values = make([]*MappingValueNode, len(n.Values))
 	for i, value := range n.Values {
@@ -298,6 +301,13 @@ func (n *SequenceNode) Clone() *SequenceNode {
 	for i, entry := range n.Entries {
 		cloned.Entries[i] = entry.Clone()
 	}
+	if n.Commas != nil {
+		cloned.Commas = make([]*token.Token, len(n.Commas))
+		for i, comma := range n.Commas {
+			cloned.Commas[i] = comma.Detached()
+		}
+	}
+	cloned.TrailingComma = n.TrailingComma.Detached()
 
 	return &cloned
 }

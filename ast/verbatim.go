@@ -24,7 +24,7 @@ type Written struct {
 	// Text is the stretch about to be written.
 	Text []byte
 	// Node is the node the renderer is writing, or nil for the source standing
-	// between two nodes: the indentation, a flow collection's commas, a "---".
+	// between two nodes: the indentation, a "---".
 	Node Node
 	// Token is the token Text was cut from, and nil where Text is not a token:
 	// the space before one, or text the renderer laid out for a node the source
@@ -149,10 +149,9 @@ func sourceExtent(n Node) extent {
 // made up, whose position points wherever the parser put it -- an anchored empty
 // node's implicit null points back at the "&" that opened it.
 //
-// It does not have to reach every token. A flow collection's commas hang on no
-// node at all, and the comments hang beside one rather than in the descent;
-// both are written out with the token that follows them, since the extents tile
-// the document and nothing between two of them is lost.
+// It does not have to reach every token. The comments hang beside a node, not
+// in the descent, and are written out with the token that follows them, since
+// the extents tile the document and nothing between two of them is lost.
 func walkSourceTokens(n Node, fn func(*token.Token)) {
 	if n == nil {
 		return
@@ -179,6 +178,7 @@ func walkSourceTokens(n Node, fn func(*token.Token)) {
 			walkSourceTokens(entry, fn)
 		}
 		if v.IsFlowStyle {
+			hand(v.TrailingComma)
 			hand(v.End)
 		}
 	case *MappingValueNode:
@@ -207,12 +207,16 @@ func walkSourceTokens(n Node, fn func(*token.Token)) {
 			hand(v.Start)
 		}
 		for i, value := range v.Values {
-			if entry := entryFor(v, i); !v.IsFlowStyle && entry != nil {
+			// A block entry's Start is its '-'. A flow value follows a ',', except the first.
+			if v.IsFlowStyle {
+				hand(commaBefore(v, i))
+			} else if entry := entryFor(v, i); entry != nil {
 				hand(entry.Start)
 			}
 			walkSourceTokens(value, fn)
 		}
 		if v.IsFlowStyle {
+			hand(v.TrailingComma)
 			hand(v.End)
 		}
 	case *AnchorNode:
@@ -1166,10 +1170,15 @@ func (r *Renderer) write(vw *verbatimWriter, n Node) {
 			release = vw.hold(v.End, v)
 		}
 		for i, value := range v.Values {
+			// A comment after a flow entry's ',' hangs on the value before it, so the ',' is held while that value
+			// is written, and goes out as a token before the comment.
+			releaseComma := vw.hold(commaAfter(v, i), v)
 			r.writeSequenceEntry(vw, v, value, i)
+			releaseComma()
 		}
 		release()
 		if v.IsFlowStyle {
+			r.writeComma(vw, v.TrailingComma, v)
 			vw.flow--
 			r.writeTokenOf(vw, v.End, v)
 		}
@@ -1246,12 +1255,21 @@ func (r *Renderer) writeMapping(vw *verbatimWriter, v *MappingNode) {
 		release = vw.hold(v.End, v)
 	}
 	for i, entry := range v.Values {
+		// As in a flow sequence: a comment after the ',' that follows an entry hangs on that entry.
+		releaseComma := func() {}
+		if v.IsFlowStyle {
+			releaseComma = vw.hold(mappingCommaAfter(v, i), v)
+		}
 		r.writeEntry(vw, entry, collection{
 			siblings: siblings,
 			flow:     v.IsFlowStyle || pair,
 		}, i)
+		releaseComma()
 	}
 	release()
+	if v.IsFlowStyle {
+		r.writeComma(vw, v.TrailingComma, v)
+	}
 	if v.IsFlowStyle || pair {
 		vw.flow--
 	}
@@ -1261,6 +1279,19 @@ func (r *Renderer) writeMapping(vw *verbatimWriter, v *MappingNode) {
 	if v.IsFlowStyle {
 		r.writeTokenOf(vw, v.End, v)
 	}
+}
+
+// mappingCommaAfter is the ',' a flow mapping wrote after Values[i]: the next entry's CollectEntry, or the trailing
+// one after the last.
+func mappingCommaAfter(v *MappingNode, i int) *token.Token {
+	if i == len(v.Values)-1 {
+		return v.TrailingComma
+	}
+	if next := v.Values[i+1]; next != nil {
+		return next.CollectEntry
+	}
+
+	return nil
 }
 
 // writeSequenceEntry writes the '-' of a block entry and then the entry's value.
@@ -1273,12 +1304,15 @@ func (r *Renderer) writeSequenceEntry(vw *verbatimWriter, n *SequenceNode, value
 	if entry != nil {
 		span := extent{from: entry.Start.Position.Offset(), to: entry.Start.EndOffset()}
 		r.writeComments(vw, entry, span, true)
-		if !n.IsFlowStyle {
-			// Only a block sequence writes its own '-' here; a flow one has a
-			// ',' the copy picks up as it goes.
-			r.writeTokenOf(vw, entry.Start, n)
-		}
 		defer r.writeComments(vw, entry, span, false)
+	}
+	// A block entry starts on its '-', a flow one on the ',' before it. Both go to a transform as the token they are,
+	// as a flow mapping's ',' does.
+	switch {
+	case n.IsFlowStyle:
+		r.writeComma(vw, commaBefore(n, i), n)
+	case entry != nil:
+		r.writeTokenOf(vw, entry.Start, n)
 	}
 
 	r.writeEntry(vw, value, collection{
@@ -1324,6 +1358,37 @@ func entryFor(n *SequenceNode, i int) *SequenceEntryNode {
 	}
 
 	return nil
+}
+
+// commaBefore is the ',' a flow sequence wrote before Values[i], or nil.
+//
+// Under parser.WithComments the entry holding the value starts on it, and is matched by the value it holds, as
+// entryFor does. Without comments there is no entry, and [SequenceNode.Commas] holds it by index.
+func commaBefore(n *SequenceNode, i int) *token.Token {
+	switch {
+	case !n.IsFlowStyle:
+		return nil
+	case len(n.Entries) != 0:
+		if entry := entryAt(n, i); entry != nil {
+			return entry.Start
+		}
+
+		return nil
+	case i < len(n.Commas):
+		return n.Commas[i]
+	default:
+		return nil
+	}
+}
+
+// commaAfter is the ',' a flow sequence wrote after Values[i]: the one before the next value, or the trailing one
+// after the last.
+func commaAfter(n *SequenceNode, i int) *token.Token {
+	if i == len(n.Values)-1 {
+		return n.TrailingComma
+	}
+
+	return commaBefore(n, i+1)
 }
 
 // writeComments hands over the comments a node carries, before its own text
@@ -2012,6 +2077,18 @@ func (r *Renderer) writeNameOf(vw *verbatimWriter, name Node, owner Node) {
 		return
 	}
 	r.write(vw, name)
+}
+
+// writeComma writes a flow collection's ',' as a token, unless the document holds text of a removed node before it.
+//
+// A ',' stands on the line of the value before it. Where a caller removed that value, the copy up to the ',' reads
+// the removed value's line as the line of the token it writes, and keeps it: "[" over "a," over "b," over "c]" with
+// "b" removed wrote "b" back. The ',' is then left to the copy up to the next token, which drops that line whole.
+func (r *Renderer) writeComma(vw *verbatimWriter, tk *token.Token, n Node) {
+	if tk == nil || !tk.FromSource() || vw.holdsNodeText(vw.cursor, int(tk.Position.Offset())) {
+		return
+	}
+	r.writeTokenOf(vw, tk, n)
 }
 
 // writeTokenOf writes a token and hands it over with n as its node.

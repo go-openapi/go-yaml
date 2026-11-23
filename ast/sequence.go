@@ -60,7 +60,13 @@ type SequenceNode struct {
 	Values            []Node
 	ValueHeadComments []*CommentGroupNode
 	Entries           []*SequenceEntryNode
-	FootComment       *CommentGroupNode
+	// Commas holds, for a flow sequence, the ',' written before each value, read by index as Values is: nil for the
+	// first value and for a value a caller put in, and short of Values where values were appended. The parse fills
+	// it with or without [github.com/go-openapi/go-yaml/parser.WithComments], which Entries needs.
+	Commas []*token.Token
+	// TrailingComma is the ',' after the last value of a flow sequence, as in "[a, ]", or nil.
+	TrailingComma *token.Token
+	FootComment   *CommentGroupNode
 	// StartComment is the comment closing the line the '[' stands on, as in
 	// "[ # why\n  a ]". Comment holds the one after the ']' instead, so a flow
 	// sequence written with both keeps both.
@@ -124,6 +130,7 @@ func (n *SequenceNode) Insert(idx int, values ...Node) error {
 
 	n.Values = slices.Insert(n.Values, idx, values...)
 	n.Entries = insertBeside(n.Entries, idx, len(values))
+	n.Commas = insertBeside(n.Commas, idx, len(values))
 	n.ValueHeadComments = insertBeside(n.ValueHeadComments, idx, len(values))
 
 	return nil
@@ -146,6 +153,7 @@ func (n *SequenceNode) Remove(idx int) error {
 
 	n.Values = slices.Delete(n.Values, idx, idx+1)
 	n.Entries = removeBeside(n.Entries, idx)
+	n.Commas = removeBeside(n.Commas, idx)
 	n.ValueHeadComments = removeBeside(n.ValueHeadComments, idx)
 
 	return nil

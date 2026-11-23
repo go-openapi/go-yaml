@@ -118,9 +118,12 @@ type MappingNode struct {
 	// [github.com/go-openapi/go-yaml/parser.WithAllowDuplicateMapKey], the
 	// repeats are recorded all the same, each marked [DuplicateKey.Allowed], so
 	// every load can tell which entry repeats and keep one.
-	Duplicates  []DuplicateKey
-	Values      []*MappingValueNode
-	FootComment *CommentGroupNode
+	Duplicates []DuplicateKey
+	Values     []*MappingValueNode
+	// TrailingComma is the ',' after the last entry of a flow mapping, as in "{a: 1, }", or nil. The ',' before
+	// every other entry is its [MappingValueNode.CollectEntry].
+	TrailingComma *token.Token
+	FootComment   *CommentGroupNode
 	// StartComment is the comment closing the line the '{' stands on, as in
 	// "{ # why\n  a: 1 }". Comment holds the one after the '}' instead, so a
 	// flow mapping written with both keeps both.

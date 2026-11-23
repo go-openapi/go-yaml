@@ -71,6 +71,7 @@ func (p *Parser) parseFlowMap(ctx context) (*ast.MappingNode, error) {
 		if tk := ctx.currentToken(); tk.Type() == token.MappingEndType {
 			// A ',' before the '}', as in "{ a, }", ends the mapping.
 			node.End = tk.RawToken()
+			node.TrailingComma = rawOf(entryTk)
 			break
 		}
 
@@ -456,6 +457,7 @@ func (p *Parser) parseFlowSequence(ctx context) (*ast.SequenceNode, error) {
 		if tk := ctx.currentToken(); tk.Type() == token.SequenceEndType {
 			// A ',' before the ']', as in "[ a, ]", ends the sequence.
 			node.End = tk.RawToken()
+			node.TrailingComma = rawOf(entryTk)
 			break
 		}
 
@@ -469,7 +471,7 @@ func (p *Parser) parseFlowSequence(ctx context) (*ast.SequenceNode, error) {
 			return nil, err
 		}
 		index++
-		p.holdFlowElement(ctx, node, value, seqEntry, headComment)
+		p.holdFlowElement(ctx, node, flowElement{value: value, entry: seqEntry, comma: rawOf(entryTk)}, headComment)
 
 		isFirst = false
 	}
@@ -522,26 +524,48 @@ func (p *Parser) parseFlowSequenceElement(
 	return value, seqEntry, nil
 }
 
-// holdFlowElement appends an element to a flow sequence, with its head comment and its entry.
+// flowElement is an element of a flow sequence as the parse reads it: the value, its entry, nil when the parse drops
+// comments, and the ',' written before it, nil on the first.
+type flowElement struct {
+	value ast.Node
+	entry *ast.SequenceEntryNode
+	comma *token.Token
+}
+
+// holdFlowElement appends an element to a flow sequence, with its head comment, its entry and its ','.
 //
 // A walk that keeps nothing appends nothing: it has seen the element, so its node cells go back to the arena for the
 // next one. Inside a key the elements are kept, so the key can be named by what it holds.
-func (p *Parser) holdFlowElement(
-	ctx context, node *ast.SequenceNode, value ast.Node, seqEntry *ast.SequenceEntryNode, headComment *ast.CommentGroupNode,
-) {
+func (p *Parser) holdFlowElement(ctx context, node *ast.SequenceNode, elem flowElement, headComment *ast.CommentGroupNode) {
 	if p.walking() && p.keepsNothing() {
 		p.rewindNodes(ctx)
 
 		return
 	}
-	node.Values = append(node.Values, value)
+	node.Values = append(node.Values, elem.value)
 	if headComment != nil {
 		node.ValueHeadComments = growHeadComments(node.ValueHeadComments, len(node.Values))
 		node.ValueHeadComments[len(node.Values)-1] = headComment
 	}
-	if seqEntry != nil {
-		node.Entries = append(node.Entries, seqEntry)
+	if elem.entry != nil {
+		node.Entries = append(node.Entries, elem.entry)
 	}
+	if elem.comma != nil {
+		// Every element but the first follows a ',', so the cell of the first, nil, is opened with the second.
+		if node.Commas == nil {
+			node.Commas = make([]*token.Token, len(node.Values)-1, len(node.Values))
+		}
+		node.Commas = append(node.Commas, elem.comma)
+	}
+}
+
+// rawOf returns the token tk reads, or nil where there is no tk.
+func rawOf(tk *group.TapeToken) *token.Token {
+	if tk == nil {
+		return nil
+	}
+
+	return tk.RawToken()
 }
 
 // holdFlowEntry keeps a flow mapping's entry for the node above it, or drops it on a walk where keepsNothing holds.

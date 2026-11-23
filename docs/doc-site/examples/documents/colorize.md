@@ -69,9 +69,8 @@ With no field set, the renderer writes the source back byte for byte.
   `Theme` otherwise.
 - **No escaping.** A `Style` wraps the source text as written. For HTML, a value
   holding `<` or `&` reaches the page unescaped.
-- **Commas in a flow sequence stay plain.** In `[a, b]` the `,` reaches the hook
-  with no token, so `Theme.Indicator` does not style it. A flow mapping's `,`
-  is styled.
+- **An edit can leave a comma plain.** After a caller removes a value from a
+  flow sequence, the `,` in front of the removed value is written plain.
 
 See [Rewriting a document](../../../documents/transform/#color) for the
 `Theme` fields, and [The syntax tree](../../../documents/ast/#writing-a-document-back-as-it-was)

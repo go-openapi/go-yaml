@@ -87,3 +87,54 @@ func draw(t *testing.T, src string, theme colorize.Theme) string {
 
 	return out.String()
 }
+
+// TestEveryFlowCommaIsAnIndicator checks that every "," of a flow collection is drawn as Theme.Indicator, in a parse
+// with comments and in one without: between entries, after the last one, and with a comment after it, which hangs on
+// the value before it.
+func TestEveryFlowCommaIsAnIndicator(t *testing.T) {
+	theme := colorize.Theme{Indicator: colorize.Style{Prefix: "<", Suffix: ">"}}
+
+	for _, tc := range []struct{ src, want string }{
+		{"[x, y]\n", "<[>x<,> y<]>\n"},
+		{"[x,y]\n", "<[>x<,>y<]>\n"},
+		{"{p: 1, q: 2}\n", "<{>p<:> 1<,> q<:> 2<}>\n"},
+		{"[[1, 2], 3]\n", "<[><[>1<,> 2<]><,> 3<]>\n"},
+		{"[a, ]\n", "<[>a<,> <]>\n"},
+		{"[a, b,]\n", "<[>a<,> b<,><]>\n"},
+		{"{a: 1, }\n", "<{>a<:> 1<,> <}>\n"},
+		{"{a, b,}\n", "<{>a<,> b<,><}>\n"},
+		{"[{a: 1,}, [b,],]\n", "<[><{>a<:> 1<,><}><,> <[>b<,><]><,><]>\n"},
+		{"[a: 1, ]\n", "<[>a<:> 1<,> <]>\n"},
+		{"[a,  # c\n b]\n", "<[>a<,>  # c\n b<]>\n"},
+		{"{a: 1,  # c\n b: 2}\n", "<{>a<:> 1<,>  # c\n b<:> 2<}>\n"},
+		{"[a,  # c\n]\n", "<[>a<,>  # c\n<]>\n"},
+		{"{a: 1,  # c\n}\n", "<{>a<:> 1<,>  # c\n<}>\n"},
+		{"[a,\n # foot\n]\n", "<[>a<,>\n # foot\n<]>\n"},
+	} {
+		require.Equalf(t, tc.want, draw(t, tc.src, theme), "%q", tc.src)
+		require.Equalf(t, stripComments(tc.want), drawWithout(t, stripComments(tc.src), theme), "%q without comments", tc.src)
+	}
+}
+
+// drawWithout renders src through the theme from a parse without parser.WithComments.
+func drawWithout(t *testing.T, src string, theme colorize.Theme) string {
+	t.Helper()
+
+	file, err := parser.ParseBytes([]byte(src))
+	require.NoError(t, err)
+
+	var out bytes.Buffer
+	require.NoError(t, ast.NewRenderer(
+		ast.WithSource([]byte(src)),
+		ast.WithTransform(colorize.New(theme)),
+	).VerbatimFile(&out, file))
+
+	return out.String()
+}
+
+var comment = regexp.MustCompile(` *# [a-z]+`)
+
+// stripComments drops the comments of a fixture, so a parse without them still reads every comma.
+func stripComments(src string) string {
+	return comment.ReplaceAllString(src, "")
+}

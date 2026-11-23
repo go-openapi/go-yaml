@@ -43,6 +43,9 @@ func TestVerbatimFileLeavesOutARemovedNode(t *testing.T) {
 		}},
 		{"a sequence entry", "- 1\n- 2\n- 3\n", "- 1\n- 3\n", dropItem(1)},
 		{"the first sequence entry", "- 1\n- 2\n", "- 2\n", dropItem(0)},
+		// The ',' after a flow entry stands on its line, and was written as a token with the line kept.
+		{"a flow sequence entry on its own line", "[\n  1,\n  2,\n  3\n]\n", "[\n  1,\n  3\n]\n", dropItem(1)},
+		{"the last one before a trailing comma", "[\n  1,\n  2,\n]\n", "[\n  1,\n]\n", dropItem(1)},
 		{"a document", "a: 1\n---\nb: 2\n---\nc: 3\n", "a: 1\n---\nc: 3\n", dropDocument(1)},
 		{"the last document", "a: 1\n---\nb: 2\n", "a: 1\n", dropDocument(1)},
 		{"the first document", "a: 1\n---\nb: 2\n", "---\nb: 2\n", dropDocument(0)},
