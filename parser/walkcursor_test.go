@@ -88,3 +88,45 @@ func TestTheCursorAnswersTheSameAtLeave(t *testing.T) {
 		})
 	}
 }
+
+// keySpy records the type and token of each node the cursor marks a key.
+type keySpy struct{ keys []string }
+
+func (s *keySpy) Enter(node ast.Node, at parser.Cursor) error {
+	if at.IsKey() {
+		s.keys = append(s.keys, fmt.Sprintf("%T %s", node, node.GetToken().Value))
+	}
+
+	return nil
+}
+
+func (s *keySpy) Leave(ast.Node, parser.Closing) error { return nil }
+
+// TestAnExplicitMergeKeyIsHandedOverAsItsQuestionMark walks every spelling of an explicit "?" merge key, and asks
+// for the key the tree holds: the "?" node, with the merge key inside it.
+//
+// "? !!merge <<" and "? &k !!merge <<" handed the tag over as the key and nothing for the "?", while "? <<" and
+// "{? <<: *a}" handed the "?". A reader comparing keys by their token, as a path ".name" step does, found a
+// different first key on the walk and on the tree.
+func TestAnExplicitMergeKeyIsHandedOverAsItsQuestionMark(t *testing.T) {
+	t.Parallel()
+
+	for _, key := range []string{"? <<", "? &k <<", "? !!merge <<", "? &k !!merge <<", "? !<tag:yaml.org,2002:merge> <<"} {
+		src := "%YAML 1.1\n---\na: &a {x: 1}\nm:\n  " + key + "\n  : *a\n  w: 2\n"
+
+		spy := &keySpy{}
+		_, err := parser.New().Walk([]byte(src), spy)
+		require.NoErrorf(t, err, "%q", src)
+
+		file, err := parser.ParseBytes([]byte(src))
+		require.NoErrorf(t, err, "%q", src)
+		mapping, ok := file.Docs[len(file.Docs)-1].Body.(*ast.MappingNode)
+		require.Truef(t, ok, "%q", src)
+		inner, ok := mapping.Values[1].Value.(*ast.MappingNode)
+		require.Truef(t, ok, "%q", src)
+		require.IsTypef(t, &ast.MappingKeyNode{}, inner.Values[0].Key, "%q", src)
+
+		assert.Equalf(t, []string{"*ast.StringNode a", "*ast.StringNode x", "*ast.StringNode m", "*ast.MappingKeyNode ?", "*ast.StringNode w"},
+			spy.keys, "%q", src)
+	}
+}

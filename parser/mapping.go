@@ -117,7 +117,12 @@ func (p *Parser) mergeKeyUnderProperties(tk *group.TapeToken) (merge, tagged boo
 // ToJSON and the tokens took it for an ordinary key.
 func (p *Parser) parseExplicitMergeKey(ctx context, g *group.TokenGroup, key *ast.MappingKeyNode) (ast.MapKeyNode, error) {
 	ctx.goNext() // Skip the '?'.
+	// The merge key is read quietly, and the caller's handKey hands the "?" over whole, the merge key inside it, as
+	// for "{? <<: *a}". Read aloud, "? !!merge <<" handed the tag over as the key, then nothing for the "?", and a
+	// walk reading keys by their token disagreed with the tree.
+	loud := p.quiet()
 	value, err := p.explicitMergeKeyNode(ctx, ctx.currentToken())
+	loud()
 	if err != nil {
 		return nil, err
 	}
