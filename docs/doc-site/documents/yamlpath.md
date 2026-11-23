@@ -76,8 +76,8 @@ document is the thing you are changing.
 
 ## Errors
 
-Four predicates, matching four sentinels: `IsInvalidPathError`,
-`IsInvalidPathStringError`, `IsInvalidQueryError`, `IsNotFoundNodeError`. A path
-that matches nothing is `ErrNotFoundNode`, not an empty result.
+Match a path's errors with `errors.Is` against four sentinels: `ErrInvalidPath`,
+`ErrInvalidPathString`, `ErrInvalidQuery` and `ErrNotFoundNode`. A path that
+matches nothing returns `ErrNotFoundNode`, not an empty result.
 
 The same path strings key a `CommentMap` — see [Comments](../../values/comments/).

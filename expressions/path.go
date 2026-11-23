@@ -5,7 +5,6 @@ package expressions
 
 import (
 	"bytes"
-	"errors"
 	"io"
 
 	"github.com/go-openapi/go-yaml/ast"
@@ -266,23 +265,3 @@ var (
 	// ErrNotFoundNode reports a path that addresses no node of the document.
 	ErrNotFoundNode = yamlpath.ErrNotFoundNode
 )
-
-// IsInvalidQueryError reports whether err is [ErrInvalidQuery].
-func IsInvalidQueryError(err error) bool {
-	return errors.Is(err, ErrInvalidQuery)
-}
-
-// IsInvalidPathError reports whether err is [ErrInvalidPath].
-func IsInvalidPathError(err error) bool {
-	return errors.Is(err, ErrInvalidPath)
-}
-
-// IsInvalidPathStringError reports whether err is [ErrInvalidPathString].
-func IsInvalidPathStringError(err error) bool {
-	return errors.Is(err, ErrInvalidPathString)
-}
-
-// IsNotFoundNodeError reports whether err is [ErrNotFoundNode].
-func IsNotFoundNodeError(err error) bool {
-	return errors.Is(err, ErrNotFoundNode)
-}

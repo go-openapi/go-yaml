@@ -4,6 +4,7 @@
 package expressions_test
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -392,7 +393,7 @@ func TestPath_Invalid(t *testing.T) {
 			if err == nil {
 				t.Fatal("expected error")
 			}
-			if !expressions.IsNotFoundNodeError(err) {
+			if !errors.Is(err, expressions.ErrNotFoundNode) {
 				t.Fatalf("unexpected error %s", err)
 			}
 		})
@@ -401,7 +402,7 @@ func TestPath_Invalid(t *testing.T) {
 			if err == nil {
 				t.Fatal("expected error")
 			}
-			if !expressions.IsNotFoundNodeError(err) {
+			if !errors.Is(err, expressions.ErrNotFoundNode) {
 				t.Fatalf("unexpected error %s", err)
 			}
 		})
