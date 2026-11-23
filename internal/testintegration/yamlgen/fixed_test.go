@@ -3475,8 +3475,8 @@ func TestFixedAMergeKeyWrittenTheLongWayMergesUnderItsProperties(t *testing.T) {
 	})
 }
 
-// TestFixedAMergeTagOnAnEmptyValueIsNoMergeKey: "a: !!merge" is the key a
-// holding null, on every decode path and in ToJSON.
+// TestFixedAMergeTagOnAnEmptyValueIsNoMergeKey: "a: !!merge" is refused, on
+// every decode path and in ToJSON, as "a: !!merge x" is.
 //
 // valueBuilder.Enter and jsonTokener.Enter asked IsMergeKey of any MapKeyNode,
 // and a TagNode is one wherever it stands, reporting "!!merge" a merge key by
@@ -3486,29 +3486,31 @@ func TestFixedAMergeKeyWrittenTheLongWayMergesUnderItsProperties(t *testing.T) {
 // go-openapi/conformance-suites found it, a mutant cut short after
 // "!!merge &k1".
 //
-// null is what the decoders read once the tag stops counting as a key. The
-// grouper refuses "!!merge" over any scalar that is not "<<"; an empty node
-// gets past it, since nothing follows the tag. Refusing it as well is the
-// stricter reading, and not what this pins.
+// tag:yaml.org,2002:merge has one value, "<<". The grouper refused "!!merge"
+// over any other scalar, and an empty node got past it, since nothing follows
+// the tag; parseTag refuses that too now, and a collection, and the spellings
+// the grouper cannot resolve without the TAG directives (Fred, 2026-11-23).
 func TestFixedAMergeTagOnAnEmptyValueIsNoMergeKey(t *testing.T) {
-	for _, src := range []string{"a: !!merge\n", "a:\n  !!merge &k1\n", "a:\n  &k1 !!merge\n"} {
+	for _, src := range []string{
+		"a: !!merge\n", "a:\n  !!merge &k1\n", "a:\n  &k1 !!merge\n", "a: !!merge\n  x: 1\n",
+		"a: !!merge {x: 1}\n", "a: !!merge '<<'\n", "a: !<tag:yaml.org,2002:merge>\n",
+		"%TAG !e! tag:yaml.org,2002:\n---\na: !e!merge\n",
+	} {
 		var walked any
-		require.NoErrorf(t, codec.Unmarshal([]byte(src), &walked), "the walk: %q", src)
-		assert.Equalf(t, map[string]any{"a": nil}, walked, "the walk: %q", src)
+		err := codec.Unmarshal([]byte(src), &walked)
+		require.Errorf(t, err, "the walk: %q", src)
+		assert.Containsf(t, err.Error(), "could not find merge key", "the walk: %q", src)
 
 		var tree map[string]any
-		require.NoErrorf(t, codec.Unmarshal([]byte(src), &tree), "the tree: %q", src)
-		assert.Equalf(t, map[string]any{"a": nil}, tree, "the tree: %q", src)
+		require.Errorf(t, codec.Unmarshal([]byte(src), &tree), "the tree: %q", src)
 
 		var typed struct {
 			A any `yaml:"a"`
 		}
-		require.NoErrorf(t, codec.Unmarshal([]byte(src), &typed), "the typed walk: %q", src)
-		assert.Nilf(t, typed.A, "the typed walk: %q", src)
+		require.Errorf(t, codec.Unmarshal([]byte(src), &typed), "the typed walk: %q", src)
 
-		out, err := codec.ToJSON([]byte(src))
-		require.NoErrorf(t, err, "ToJSON: %q", src)
-		assert.JSONEqf(t, `{"a":null}`, string(out), "ToJSON: %q", src)
+		_, err = codec.ToJSON([]byte(src))
+		require.Errorf(t, err, "ToJSON: %q", src)
 	}
 
 	t.Run("an anchored merge key still merges in ToJSON", func(t *testing.T) {

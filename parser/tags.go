@@ -69,6 +69,12 @@ func (p *Parser) parseTag(ctx context) (*ast.TagNode, error) {
 		return nil, err
 	}
 	node.Value = tagValue
+	if name, known := token.ReservedTagOf(node.URI); known && name == token.MergeTag && !spellsTheMergeKey(tagValue) {
+		// tag:yaml.org,2002:merge has one value, "<<". The grouper refuses "!!merge" over any other scalar it sees,
+		// and this refuses the rest: the empty node, as in "a: !!merge", a collection, and the spellings the
+		// grouper cannot resolve without the TAG directives, "!<tag:yaml.org,2002:merge>" and a declared handle.
+		return nil, yamlerrors.NewSyntax("could not find merge key", tagRawTk)
+	}
 	if p.opts.jsonCompatible {
 		if err := jsonNumberless(node); err != nil {
 			return nil, err
@@ -77,6 +83,25 @@ func (p *Parser) parseTag(ctx context) (*ast.TagNode, error) {
 	p.anchors.retag(node)
 
 	return node, nil
+}
+
+// spellsTheMergeKey reports whether value, under any anchor, is a "<<": the merge key, or the plain string the parse
+// builds for one where the merge key is not in force.
+func spellsTheMergeKey(value ast.Node) bool {
+	if anchor, ok := value.(*ast.AnchorNode); ok {
+		value = anchor.Value
+	}
+	switch n := value.(type) {
+	case *ast.MergeKeyNode:
+		return true
+	case *ast.StringNode:
+		// Plain only: the scanner or the grouper typed it MergeKeyType, or the scanner left it a string where no ':'
+		// follows on its line. A quoted "<<" is a string under any tag.
+		tk := n.GetToken()
+		return n.Value == "<<" && tk != nil && (tk.Type == token.MergeKeyType || tk.Type == token.StringType)
+	default:
+		return false
+	}
 }
 
 // secondTag returns the tag written on the node a tag stands on, or nil.
