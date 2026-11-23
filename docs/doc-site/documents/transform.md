@@ -155,6 +155,10 @@ r := ast.NewRenderer(
 err = r.VerbatimFile(os.Stdout, file)
 ```
 
+The hook runs only under `Renderer.Verbatim` and `Renderer.VerbatimFile`, so pass
+the source with `ast.WithSource`. `Renderer.Render` builds its text before it
+places any of it, and calls no hook.
+
 `colorize.Default()` writes keys in cyan, strings in green, numbers and booleans
 in magenta, anchors and aliases in yellow, tags in blue and comments in grey.
 
