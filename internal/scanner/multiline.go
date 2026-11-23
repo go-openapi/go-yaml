@@ -310,7 +310,8 @@ func (s *Scanner) scanMultiLineHeaderOption(ctx *Context) error {
 		// starts no comment and is just a character the header may not hold.
 		if prev := value[commentValueIndex-1]; prev != ' ' && prev != '\t' {
 			invalidMsg := "comment must be separated from the block scalar header by a space"
-			invalidTk := token.Invalid(ctx.origin(), s.pos())
+			// headerPos, as for the option below: s.pos() has the offset past the indicator and the column on it.
+			invalidTk := token.Invalid(ctx.origin(), headerPos)
 			s.progressColumn(ctx, progress)
 
 			return ErrInvalidToken(invalidMsg, invalidTk)
@@ -325,7 +326,10 @@ func (s *Scanner) scanMultiLineHeaderOption(ctx *Context) error {
 	if len(opt) != 0 {
 		if err := validateMultiLineHeaderOption(opt); err != nil {
 			invalidMsg := err.Error()
-			invalidTk := token.Invalid(ctx.origin(), s.pos())
+			// At the indicator, where the header begins. s.pos() had stepped the offset past it and left the column on
+			// it, so the two addressed different bytes: "folded: > first line" put the column on the '>' and the
+			// offset on the space after it.
+			invalidTk := token.Invalid(ctx.origin(), headerPos)
 			s.progressColumn(ctx, progress)
 			return ErrInvalidToken(invalidMsg, invalidTk)
 		}
