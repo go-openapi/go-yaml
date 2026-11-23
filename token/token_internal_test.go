@@ -135,3 +135,29 @@ func TestMeasureOriginMatchesTheHelpersItReplaced(t *testing.T) {
 		assert.Equalf(t, ext, MeasureOrigin([]byte(org), pos), "extent for []byte(%q)", org)
 	}
 }
+
+// Typing a scalar reads its text and allocates nothing, whether or not the text
+// turns out to be a number.
+func TestMakeDoesNotAllocate(t *testing.T) {
+	for _, value := range []string{
+		"1234567890", "3.25", "0xFF", "0o755", "0b1010", "-42",
+		"18446744073709551615", "9223372036854775807", "-9223372036854775808",
+		"plain text", "true", "null", "",
+		// A leading zero opened an octal number under YAML 1.1, where 8 and 9
+		// are not digits; the 1.2 core schema reads these as decimal.
+		"000999", "0008", "1e400",
+		// These two were the last that allocated. "1_000" went through
+		// strings.ReplaceAll to take the separators out before strconv read the
+		// digits, and "-18446744073709551615" fits a uint64 but not an int64,
+		// so strconv answered with a *NumError carrying a copy of the text.
+		// Neither is parsed any more: the grammar alone says what they are.
+		"1_000", "-18446744073709551615",
+	} {
+		allocs := testing.AllocsPerRun(200, func() {
+			sink = Make(value, value, Position{})
+		})
+		assert.Zerof(t, allocs, "typing %q allocated %.1f times", value, allocs)
+	}
+}
+
+var sink Token

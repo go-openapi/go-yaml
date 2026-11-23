@@ -4,163 +4,147 @@
 package token_test
 
 import (
+	"reflect"
 	"strings"
 	"testing"
 
-	"github.com/go-openapi/testify/v2/assert"
-	"github.com/go-openapi/testify/v2/require"
+	"github.com/go-openapi/go-yaml/internal/scanner"
 
+	"github.com/go-openapi/go-yaml/internal/testcorpus"
 	"github.com/go-openapi/go-yaml/token"
+	"github.com/go-openapi/testify/v2/require"
 )
 
-func TestToken(t *testing.T) {
-	pos := token.Position{}
-	tokens := token.Tokens{
-		new(token.MakeSequenceEntry("-", pos)),
-		new(token.MakeMappingKey(pos)),
-		new(token.MakeMappingValue(pos)),
-		new(token.MakeCollectEntry(",", pos)),
-		new(token.MakeSequenceStart("[", pos)),
-		new(token.MakeSequenceEnd("]", pos)),
-		new(token.MakeMappingStart("{", pos)),
-		new(token.MakeMappingEnd("}", pos)),
-		token.Comment("#", "#", pos),
-		new(token.MakeAnchor("&", pos)),
-		new(token.MakeAlias("*", pos)),
-		new(token.MakeLiteral("|", "|", pos)),
-		new(token.MakeFolded(">", ">", pos)),
-		new(token.MakeSingleQuote("'", "'", pos)),
-		new(token.MakeDoubleQuote(`"`, `"`, pos)),
-		new(token.MakeDirective("%", pos)),
-		new(token.MakeMergeKey("<<", pos)),
-		new(token.MakeDocumentHeader("---", pos)),
-		new(token.MakeDocumentEnd("...", pos)),
-		token.New("1", "1", pos),
-		token.New("3.14", "3.14", pos),
-		token.New("-0b101010", "-0b101010", pos),
-		token.New("0xA", "0xA", pos),
-		token.New("685.230_15e+03", "685.230_15e+03", pos),
-		token.New("02472256", "02472256", pos),
-		token.New("0o2472256", "0o2472256", pos),
-		token.New("", "", pos),
-		token.New("_1", "_1", pos),
-		token.New("1.1.1.1", "1.1.1.1", pos),
-		token.New("+", "+", pos),
-		token.New("-", "-", pos),
-		token.New("_", "_", pos),
-		token.New("~", "~", pos),
-		token.New("true", "true", pos),
-		token.New("false", "false", pos),
-		token.New(".nan", ".nan", pos),
-		token.New(".inf", ".inf", pos),
-		token.New("-.inf", "-.inf", pos),
-		token.New("null", "null", pos),
-		token.Tag("!!null", "!!null", pos),
-		token.Tag("!!map", "!!map", pos),
-		token.Tag("!!str", "!!str", pos),
-		token.Tag("!!seq", "!!seq", pos),
-		token.Tag("!!binary", "!!binary", pos),
-		token.Tag("!!omap", "!!omap", pos),
-		token.Tag("!!set", "!!set", pos),
-		token.Tag("!!int", "!!int", pos),
-		token.Tag("!!float", "!!float", pos),
-		token.Tag("!hoge", "!hoge", pos),
-	}
-	var dump strings.Builder
-	tokens.Dump(&dump)
-	lines := strings.Split(strings.TrimSuffix(dump.String(), "\n"), "\n")
-	require.Lenf(t, lines, len(tokens), "Dump writes one line per token")
-	assert.Truef(t, strings.HasPrefix(lines[0], `- [TYPE]:"SequenceEntry"`), "Dump line: %q", lines[0])
-	tokens.Add(token.New("hoge", "hoge", pos))
+// registers counts what a value costs to pass in Go's register ABI.
+//
+// A struct is taken apart field by field and each leaf takes one register,
+// whatever its width: four int32 cost four, not two. A string is two, a pointer
+// and a length.
+func registers(t reflect.Type) int {
+	switch t.Kind() {
+	case reflect.Struct:
+		var n int
+		for field := range t.Fields() {
+			n += registers(field.Type)
+		}
 
-	// What a token follows is read off the stream by position: a token does not
-	// point at the tokens around it.
-	last := len(tokens) - 1
-	assert.Equalf(t, token.TagType, tokens[last-1].Type, "the token added last follows a tag")
-	assert.Equalf(t, token.StringType, tokens[last].Type, "the token added last is a string")
+		return n
+	case reflect.Array:
+		return t.Len() * registers(t.Elem())
+	case reflect.String, reflect.Interface:
+		return 2
+	case reflect.Slice:
+		return 3
+	default:
+		return 1
+	}
 }
 
-func TestIsNeedQuoted(t *testing.T) {
-	needQuotedTests := []string{
-		"",
-		"true",
-		"1.234",
-		"0b11111111111111111111111111111111111111111111111111111111111111111",
-		"0o7777777777777777777777777777777777777777",
-		"999999999999999999999999999999999999999999",
-		"0xffffffffffffffffffffffffffffffffffffffff",
-		"1:1",
-		"2001-12-15T02:59:43.1Z",
-		"2001-12-14t21:59:43.10-05:00",
-		"2001-12-15 2:59:43.10",
-		"2002-12-14",
-		"hoge # comment",
-		"\\0",
-		"#a b",
-		"*a b",
-		"&a b",
-		"{a b",
-		"}a b",
-		"[a b",
-		"]a b",
-		",a b",
-		"!a b",
-		"|a b",
-		">a b",
-		">a b",
-		"%a b",
-		`'a b`,
-		`"a b`,
-		"a:",
-		"a: b",
-		"y",
-		"Y",
-		"yes",
-		"Yes",
-		"YES",
-		"n",
-		"N",
-		"no",
-		"No",
-		"NO",
-		"on",
-		"On",
-		"ON",
-		"off",
-		"Off",
-		"OFF",
-		"@test",
-		":0",
-		":8080",
-		":value",
-		" a",
-		" a ",
-		"a ",
-		"null",
-		"Null",
-		"NULL",
-		"~",
-		"-",
-		"- --foo",
-		// A document marker, where the scalar starts its line.
-		"---",
-		"...",
-		"... x",
-		"---\tx",
-		"...\tx",
-		// The spaced example of https://yaml.org/type/timestamp.html, a timestamp under YAML 1.1.
-		"2001-12-14 21:59:43.10 -5",
+// TestTokenFitsTheRegisterABI holds the token inside the nine registers amd64
+// gives a call for its arguments and results, with one to spare for the bool
+// beside it.
+//
+// Past nine the scanner writes every token it reads to the stack and the caller
+// reads it back: Scanner.NextToken spent 64 bytes a call at eleven, and the
+// document it is reading has hundreds of thousands of tokens. Position packs
+// Offset and IndentNum for the same reason, and Token packs EndLine,
+// CommentBreaksAbove and BlankLineAbove.
+//
+// NextToken returns (Token, bool), so nine would leave the bool on the stack.
+// Eight puts it in a register too, which is where dropping Origin left the
+// token: the text it carried cost two, and the extent that replaced it costs
+// one.
+func TestTokenFitsTheRegisterABI(t *testing.T) {
+	// A ratchet. Eight is what the token needs today, and a field that pushes
+	// it to nine puts the bool back on the stack.
+	const limit = 8
+
+	got := registers(reflect.TypeFor[token.Token]())
+	require.LessOrEqualf(t, got, limit,
+		"token.Token needs %d registers and a call has %d, so every token crosses the boundary through memory",
+		got, limit)
+}
+
+// TestEndLineMatchesCountingTheOrigin checks EndLine says what the readers of
+// Origin used to count for themselves.
+//
+// keyEndLine in the parser wrote Line + Count(Trim(Origin, " \r\n"), "\n"), and
+// three more sites counted the same thing in their own way. EndLine is that
+// number, settled once where the token is built.
+func TestEndLineMatchesCountingTheOrigin(t *testing.T) {
+	for _, src := range append(handwritten(), workloads(t)...) {
+		var s scanner.Scanner
+		s.Init([]byte(src))
+
+		prev := 0
+		for tk := range s.Tokens() {
+			// The text the document wrote the token as: the tokens' extents
+			// tile the source, so it runs from the end of the one before.
+			end := min(max(int(tk.EndOffset()), prev), len(src))
+			origin := src[prev:end]
+			prev = end
+
+			want := tk.Position.Line + int32(strings.Count(strings.Trim(origin, " \r\n"), "\n"))
+			require.Equalf(t, want, tk.EndLine(),
+				"%s at line %d: written as %q", tk.Type, tk.Position.Line, origin)
+			require.GreaterOrEqualf(t, tk.EndLine(), tk.Position.Line,
+				"%s ends before it starts", tk.Type)
+		}
+		require.NoError(t, s.Err())
 	}
-	for _, test := range needQuotedTests {
-		assert.Truef(t, token.IsNeedQuoted(test), "expected %q to need quoting", test)
+}
+
+// TestEndLineCountsCarriageReturns checks a lone CR ends a line, which counting
+// only "\n" did not.
+func TestEndLineCountsCarriageReturns(t *testing.T) {
+	for _, test := range []struct {
+		org  string
+		want int32
+	}{
+		{"a", 0},
+		{"a\nb", 1},
+		{"a\r\nb", 1},
+		{"a\rb", 1},
+		{"a\n\nb", 2},
+		{"\n\na\n\n", 0},
+		{"  a  ", 0},
+		{"a\r\n\r\nb", 2},
+	} {
+		tk := token.New("v", test.org, token.Position{Line: 10, Column: 1})
+		require.Equalf(t, 10+test.want, tk.EndLine(), "org %q", test.org)
+	}
+}
+
+// TestSyntheticTokensEndWhereTheyStart covers the token the parser makes up for
+// a value the document leaves out. It has no text in the document, so it
+// reaches no further than the line it was given.
+func TestSyntheticTokensEndWhereTheyStart(t *testing.T) {
+	tk := token.New("null", " null", token.Position{Line: 7, Column: 3})
+	tk.Type = token.ImplicitNullType
+
+	require.Equal(t, int32(7), tk.EndLine())
+	require.Equal(t, tk.Position.Line, tk.EndLine())
+}
+
+func handwritten() []string {
+	return []string{
+		"a: 1\n", "a: |\n  one\n  two\n", "a: >\n  folded\n  text\n",
+		"a: \"multi\n  line\"\n", "# c\na: 1\n\n\nb: 2\n", "a: 'x\n  y'\n",
+		"a: 1\r\nb: 2\r\n", "a: 1\rb: 2\r",
+	}
+}
+
+// workloads returns the workload documents, which carry the line endings and
+// the long plain scalars a handwritten case does not think of.
+func workloads(t *testing.T) []string {
+	t.Helper()
+
+	docs := testcorpus.Docs(t, testcorpus.Dir())
+
+	out := make([]string, 0, len(docs))
+	for _, d := range docs {
+		out = append(out, d.Text())
 	}
 
-	notNeedQuotedTests := []string{
-		"Hello World",
-		// A date alone takes two-digit month and day fields: https://yaml.org/type/timestamp.html
-		"2001-1-2",
-	}
-	for _, test := range notNeedQuotedTests {
-		assert.Falsef(t, token.IsNeedQuoted(test), "expected %q not to need quoting", test)
-	}
+	return out
 }

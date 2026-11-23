@@ -9,6 +9,26 @@ import (
 	"github.com/go-openapi/testify/v2/assert"
 )
 
+// TestReservedGatesLetEveryKeywordThrough holds the two tests Make runs before
+// it asks the expensive questions: isReservedLength before hashing a value
+// against reservedKeywordTypes, and mayBeNumber before taking one apart in
+// numberType. A gate that turns away a value the slow path would have claimed
+// would type it as a plain string.
+func TestReservedGatesLetEveryKeywordThrough(t *testing.T) {
+	for keyword := range reservedKeywordTypes {
+		assert.Truef(t, isReservedLength(len(keyword), Schema12),
+			"%q is a reserved keyword of %d bytes, and the length gate turns it away",
+			keyword, len(keyword))
+	}
+
+	for _, value := range []string{
+		"0", "7", "-1", "+1", "1.5", "-.5", ".5",
+		"0x1f", "0o17", "0b1011", "017", "1_000", "1e9", "-1E-9",
+	} {
+		assert.Truef(t, mayBeNumber(value), "%q reads as a number, and the first-byte gate turns it away", value)
+	}
+}
+
 // TestScalarTypeReadsTheCoreSchema writes out the resolution table the scanner
 // reads plain scalars against: YAML 1.2's core schema, §10.3.2.
 //
