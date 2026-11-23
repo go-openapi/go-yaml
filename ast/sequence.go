@@ -171,13 +171,24 @@ func removeBeside[T any](beside []T, idx int) []T {
 }
 
 // Merge appends the values of target to n.
+//
+// The head comments of target go with its values. Where only one side holds any, the other side's values get none,
+// and where neither does, n keeps none.
 func (n *SequenceNode) Merge(target *SequenceNode) {
-	n.Values = append(n.Values, target.Values...)
-	if len(target.ValueHeadComments) == 0 {
-		n.ValueHeadComments = append(n.ValueHeadComments, make([]*CommentGroupNode, len(target.Values))...)
-		return
+	if len(n.ValueHeadComments) != 0 || len(target.ValueHeadComments) != 0 {
+		n.ValueHeadComments = withLength(n.ValueHeadComments, len(n.Values))
+		n.ValueHeadComments = append(n.ValueHeadComments, withLength(target.ValueHeadComments, len(target.Values))...)
 	}
-	n.ValueHeadComments = append(n.ValueHeadComments, target.ValueHeadComments...)
+	n.Values = append(n.Values, target.Values...)
+}
+
+// withLength returns comments cut or padded with nil to hold one cell per value.
+func withLength(comments []*CommentGroupNode, values int) []*CommentGroupNode {
+	if len(comments) >= values {
+		return comments[:values:values]
+	}
+
+	return append(slices.Clip(comments), make([]*CommentGroupNode, values-len(comments))...)
 }
 
 // SetIsFlowStyle sets IsFlowStyle on n and on every collection under it.

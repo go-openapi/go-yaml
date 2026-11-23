@@ -185,3 +185,52 @@ func TestSequenceSpliceReadsAsInsertThenRemove(t *testing.T) {
 	assert.Equal(t, "s:\n- a\n- x\n- z\n- c\n", ast.NewRenderer().File(file),
 		"b and the comment written above it are gone, a and c are untouched")
 }
+
+// TestSequenceMergeKeepsCommentsOnTheirValues merges parsed sequences with and without head comments, and requires
+// each comment to stay above the value it was written over.
+func TestSequenceMergeKeepsCommentsOnTheirValues(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name   string
+		base   string
+		target string
+		want   string
+	}{
+		{
+			name:   "only the target has comments",
+			base:   "- a\n- b\n",
+			target: "- x\n# above y\n- y\n",
+			want:   "- a\n- b\n- x\n# above y\n- y",
+		},
+		{
+			name:   "only the base has comments",
+			base:   "- a\n# above b\n- b\n",
+			target: "- x\n- y\n",
+			want:   "- a\n# above b\n- b\n- x\n- y",
+		},
+		{
+			name:   "both have comments",
+			base:   "- a\n# above b\n- b\n",
+			target: "- x\n# above y\n- y\n",
+			want:   "- a\n# above b\n- b\n- x\n# above y\n- y",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			base, err := parser.ParseBytes([]byte(tc.base), parser.WithComments())
+			require.NoError(t, err)
+			target, err := parser.ParseBytes([]byte(tc.target), parser.WithComments())
+			require.NoError(t, err)
+
+			seq, ok := base.Docs[0].Body.(*ast.SequenceNode)
+			require.True(t, ok)
+			more, ok := target.Docs[0].Body.(*ast.SequenceNode)
+			require.True(t, ok)
+
+			seq.Merge(more)
+			assert.Equal(t, tc.want, seq.String())
+		})
+	}
+}
