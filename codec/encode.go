@@ -14,6 +14,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/go-openapi/go-yaml/ast"
@@ -241,36 +242,81 @@ func (e *Encoder) canEncodeByMarshaler(v reflect.Value) bool {
 	if e.existsTypeInCustomMarshalerMap(v.Type()) {
 		return true
 	}
-	iface := v.Interface()
-	switch iface.(type) {
-	case ast.Node:
+	t := v.Type()
+	if t.Kind() == reflect.Interface {
+		if v.IsNil() {
+			return false
+		}
+		t = v.Elem().Type()
+	}
+
+	switch marshalerKindOf(t) {
+	case marshalsItself:
+		return true
+	case marshalsAsJSON:
+		return e.useJSONMarshaler
+	default:
+		return false
+	}
+}
+
+// marshalerKind records how a Go type is written: by the encoder, by a method of its own, or by MarshalJSON when
+// [UseJSONMarshaler] is set.
+type marshalerKind uint8
+
+const (
+	encodedByTheEncoder marshalerKind = iota
+	marshalsItself
+	marshalsAsJSON
+)
+
+// marshalerKinds caches marshalerKindOf by type. Marshal builds a new Encoder on every call, so a cache held by the
+// Encoder would start empty each time.
+var marshalerKinds sync.Map // reflect.Type -> marshalerKind
+
+// marshalerKindOf returns how the encoder writes a value of type t.
+//
+// It decides from the type, so that a value is not boxed into an interface only to be asked which interfaces it
+// implements: on a document of strings, that boxing made one allocation in ten. The checks run in the order of the
+// type switch they replace, and the first match wins.
+func marshalerKindOf(t reflect.Type) marshalerKind {
+	if t.NumMethod() == 0 {
+		// A type without methods implements none of the interfaces below, and
+		// none of the exact types has an empty method set. This skips the map
+		// for a float64 or a string, the values a document holds most.
+		return encodedByTheEncoder
+	}
+	if kind, ok := marshalerKinds.Load(t); ok {
+		return kind.(marshalerKind) //nolint:forcetypeassert // only marshalerKindOf stores, and it stores a marshalerKind
+	}
+
+	kind := encodedByTheEncoder
+	switch {
+	case t.Implements(reflect.TypeFor[ast.Node]()):
 		// encodeNode writes a parsed node as it stands. Through a marshaler,
 		// the node went out as its own text and was parsed again. That cost
 		// a round trip, and the node's comments had to be read back from the
 		// rendered text.
-		return false
-	case MapSlice, MapSliceSeq, MapItem, Base64:
+	case t == reflect.TypeFor[MapSlice]() || t == reflect.TypeFor[MapSliceSeq]() ||
+		t == reflect.TypeFor[MapItem]() || t == reflect.TypeFor[Base64]():
 		// The encoder writes these four itself, ahead of any interface they
 		// satisfy. [UseJSONMarshaler] is a last resort, for a type the encoder
 		// cannot otherwise write. The encoder writes a MapSlice as a mapping, a
 		// MapSliceSeq as an "!!omap", and a Base64 as a "!!binary". When the
 		// interface came first, a Base64 went out through FromJSON as a plain
 		// string without its tag, whenever the option was set.
-		return false
-	case Marshaler:
-		return true
-	case GoYAMLMarshaler:
-		return true
-	case time.Time, *time.Time:
-		return true
-	case time.Duration:
-		return true
-	case encoding.TextMarshaler:
-		return true
-	case jsonMarshaler:
-		return e.useJSONMarshaler
+	case t.Implements(reflect.TypeFor[Marshaler]()),
+		t.Implements(reflect.TypeFor[GoYAMLMarshaler]()),
+		t == reflect.TypeFor[time.Time](), t == reflect.TypeFor[*time.Time](),
+		t == reflect.TypeFor[time.Duration](),
+		t.Implements(reflect.TypeFor[encoding.TextMarshaler]()):
+		kind = marshalsItself
+	case t.Implements(reflect.TypeFor[jsonMarshaler]()):
+		kind = marshalsAsJSON
 	}
-	return false
+	marshalerKinds.Store(t, kind)
+
+	return kind
 }
 
 // encodeBinary writes a [Base64] as the "!!binary" scalar it came from.
