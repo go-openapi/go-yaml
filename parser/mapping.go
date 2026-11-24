@@ -648,6 +648,31 @@ func (p *Parser) valueContext(ctx context, key ast.MapKeyNode) context {
 	return ctx.withChild(p, p.mapKeyText(key))
 }
 
+// refusePropertyBelowKey rejects an anchor or a tag standing alone at or before keyCol, below a key with no value.
+//
+//	key: <no value>
+//	&anchor
+//
+// Such a property stands on no node: it is not indented past the key, so it is not the key's value, and nothing
+// follows it on its line to make it the next entry.
+//
+// A map key led by a tag opens the next entry of an enclosing mapping instead, as an untagged key does. Its group is
+// typed by its first token, the tag, so in "a:" over " b:" over "!!null : 1" the key "!!null :" was refused here.
+func refusePropertyBelowKey(tk *group.TapeToken, keyCol int) error {
+	if tk == nil || tk.Column() > keyCol || isMapToken(tk) {
+		return nil
+	}
+
+	switch {
+	case tk.GroupType() == group.TokenGroupAnchorName:
+		return yamlerrors.NewSyntax("anchor is not allowed in this context", tk.RawToken())
+	case tk.Type() == token.TagType:
+		return yamlerrors.NewSyntax("tag is not allowed in this context", tk.RawToken())
+	default:
+		return nil
+	}
+}
+
 func (p *Parser) parseMapValue(ctx context, key ast.MapKeyNode, colonTk *group.TapeToken) (ast.Node, error) {
 	tk := ctx.currentToken()
 	if tk == nil {
@@ -711,15 +736,8 @@ func (p *Parser) parseMapValue(ctx context, key ast.MapKeyNode, colonTk *group.T
 		return ctx.passed(p.parseAnchor(ctx.withGroup(p, group), group))
 	}
 
-	if tk.Column() <= keyCol && tk.GroupType() == group.TokenGroupAnchorName {
-		// key: <no value>
-		// &anchor
-		return nil, yamlerrors.NewSyntax("anchor is not allowed in this context", tk.RawToken())
-	}
-	if tk.Column() <= keyCol && tk.Type() == token.TagType {
-		// key: <no value>
-		// !!tag
-		return nil, yamlerrors.NewSyntax("tag is not allowed in this context", tk.RawToken())
+	if err := refusePropertyBelowKey(tk, keyCol); err != nil {
+		return nil, err
 	}
 
 	if tk.Column() < keyCol {

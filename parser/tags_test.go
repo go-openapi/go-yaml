@@ -102,6 +102,38 @@ func TestParseEmptyKeysCarryingProperties(t *testing.T) {
 	}
 }
 
+// TestATagLedKeyBelowAnEmptyNestedValueOpensAnOuterEntry holds a key led by a tag, written further out than the key
+// above it, where that key has no value: the key opens the next entry of the enclosing mapping.
+//
+// The value check read the key group by its first token, the tag, and refused it as a tag standing below a key with
+// "tag is not allowed in this context". An untagged key and an anchor-led one read fine in the same place.
+// yaml/yaml-reference-parser, libfyaml and go.yaml.in/yaml/v3 read each document below.
+func TestATagLedKeyBelowAnEmptyNestedValueOpensAnOuterEntry(t *testing.T) {
+	for source, want := range map[string]any{
+		"a:\n b:\n!!null : 1\n":       map[any]any{"a": map[string]any{"b": nil}, nil: uint64(1)},
+		"a:\n b:\n!!null &x : 1\n":    map[any]any{"a": map[string]any{"b": nil}, nil: uint64(1)},
+		"a:\n b:\n!!str : 1\n":        map[string]any{"a": map[string]any{"b": nil}, "": uint64(1)},
+		"a:\n  b:\n!t : 1\n":          map[string]any{"a": map[string]any{"b": nil}, "": uint64(1)},
+		"a:\n b:\n  c:\n!t : 1\n":     map[string]any{"a": map[string]any{"b": map[string]any{"c": nil}}, "": uint64(1)},
+		"- a:\n   b:\n  !t : 1\n":     []any{map[string]any{"a": map[string]any{"b": nil}, "": uint64(1)}},
+		"a:\n b:\n!!null : 1\nc: 2\n": map[any]any{"a": map[string]any{"b": nil}, nil: uint64(1), "c": uint64(2)},
+	} {
+		t.Run(source, func(t *testing.T) {
+			var got any
+			require.NoError(t, yaml.Unmarshal([]byte(source), &got))
+			assert.Equal(t, want, got)
+		})
+	}
+
+	t.Run("a tag alone below the key is still refused", func(t *testing.T) {
+		for _, source := range []string{"a:\n b:\n!t\n", "a:\n!!str x\n"} {
+			_, err := parser.ParseBytes([]byte(source))
+			require.Errorf(t, err, "%q", source)
+			assert.Contains(t, err.Error(), "tag is not allowed in this context")
+		}
+	})
+}
+
 // TestRenderPropertyKeysKeepTheirSeparator covers the space between such a key and its ':'.
 //
 // ':' is a legal character in an anchor name, an alias name and a tag,
