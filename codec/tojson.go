@@ -195,7 +195,12 @@ func (w *tagReader) taggedValue(t *ast.TagNode, key bool) (JSONToken, bool) {
 	switch res.Verdict {
 	case ast.TagUnresolved:
 		// A local tag, a foreign one, or a name YAML's repository does not
-		// define. The node is written by its kind.
+		// define. The node is written by its kind, and the empty node is the
+		// empty string, as Decoder.nodeToValue reads it.
+		if res.Empty {
+			return JSONToken{Kind: JSONString, Value: ""}, true
+		}
+
 		return JSONToken{}, false
 	case ast.TagKindMismatch:
 		w.fail(yamlerrors.NewSyntax(

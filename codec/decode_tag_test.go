@@ -934,6 +934,69 @@ func TestStrTagAliasesTheString(t *testing.T) {
 	assert.Equal(t, []string{"1.50", "1.50"}, decoded)
 }
 
+// TestAnUnresolvedTagOnNothingIsEmpty holds the empty node under "!", a local tag and a verbatim one: each is the
+// empty string, as a value, as a key and through an alias, on every path that reads it.
+//
+// An empty node is a plain scalar with no characters (7.2), and only the core schema resolves an untagged one to
+// null. "!" makes a scalar a string, and a local tag leaves its scalar the text it holds, so these two hold one node:
+//
+//	k: !a
+//	k: !a ''
+//
+// The first read as null and the second as "", where yaml.v3 and libfyaml read "" for both: the scalar's style
+// gave one node two values.
+func TestAnUnresolvedTagOnNothingIsEmpty(t *testing.T) {
+	type entry struct {
+		K *string `yaml:"k"`
+		B *string `yaml:"b"`
+	}
+	empty := ""
+
+	for _, tag := range []string{"!", "!a", "!<tag:example.com,2000:x>"} {
+		t.Run(tag, func(t *testing.T) {
+			for _, test := range []struct {
+				source string
+				want   any
+				json   string
+			}{
+				{source: "k: " + tag + "\n", want: map[string]any{"k": ""}, json: `{"k":""}`},
+				{source: "k: " + tag + "\nb: 1\n", want: map[string]any{"k": "", "b": uint64(1)}, json: `{"k":"","b":1}`},
+				{source: "[" + tag + "]\n", want: []any{""}, json: `[""]`},
+				{source: "{k: " + tag + "}\n", want: map[string]any{"k": ""}, json: `{"k":""}`},
+				{source: "k: &x " + tag + "\nb: *x\n", want: map[string]any{"k": "", "b": ""}, json: `{"k":"","b":""}`},
+				{source: "k: " + tag + " &x\nb: *x\n", want: map[string]any{"k": "", "b": ""}, json: `{"k":"","b":""}`},
+				{source: tag + " : v\n", want: map[string]any{"": "v"}, json: `{"":"v"}`},
+				{source: "{" + tag + " : v}\n", want: map[string]any{"": "v"}, json: `{"":"v"}`},
+			} {
+				var decoded any
+				require.NoErrorf(t, codec.Unmarshal([]byte(test.source), &decoded), "%q", test.source)
+				assert.Equalf(t, test.want, decoded, "%q", test.source)
+
+				var streamed any
+				require.NoErrorf(t, codec.NewDecoder(bytes.NewReader([]byte(test.source))).Decode(&streamed),
+					"%q", test.source)
+				assert.Equalf(t, test.want, streamed, "%q through a Decoder", test.source)
+
+				converted, err := codec.ToJSON([]byte(test.source))
+				require.NoErrorf(t, err, "%q", test.source)
+				assert.JSONEqf(t, test.json, string(converted), "%q", test.source)
+			}
+
+			var fields entry
+			require.NoError(t, codec.Unmarshal([]byte("k: &x "+tag+"\nb: *x\n"), &fields))
+			assert.Equal(t, entry{K: &empty, B: &empty}, fields)
+		})
+	}
+
+	t.Run("an untagged empty node and !!null stay null", func(t *testing.T) {
+		for _, source := range []string{"k:\n", "k: !!null\n", "k: &x\n"} {
+			var decoded map[string]any
+			require.NoError(t, codec.Unmarshal([]byte(source), &decoded))
+			assert.Equalf(t, map[string]any{"k": nil}, decoded, "%q", source)
+		}
+	})
+}
+
 // TestTagResolvesToItsURI records that a tag is read by the URI it names and
 // not by the shorthand it was written with.
 //

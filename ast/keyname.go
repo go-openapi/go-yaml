@@ -167,6 +167,10 @@ func scalarKeyNameAt(n Node, depth int, alias KeyAlias) (string, token.KeyKind, 
 // schema does not resolve, one naming a kind -- !!seq, !!map -- or one the
 // application declared.
 //
+// The empty node under a tag the schema does not resolve is the exception: "!a : x" names the empty string, as
+// the decoder reads it. Its node is the null the parser builds for an empty node, and naming that node would
+// name the key "null".
+//
 // Three walks reach a tagged key and all three must agree, or one names a key
 // that another does not: [KeyName], [KeyIdentity], and the parser's duplicate
 // check, which keeps a walk of its own because it resolves an alias through the
@@ -177,6 +181,9 @@ func scalarKeyNameAt(n Node, depth int, alias KeyAlias) (string, token.KeyKind, 
 // dropped the first value.
 func TaggedKeyName(n *TagNode) (string, token.KeyKind, bool) {
 	res := n.Resolve()
+	if res.Verdict == TagUnresolved && res.Empty {
+		return "", token.KeyString, true
+	}
 	if res.Verdict != TagResolved {
 		return "", token.KeyOther, false
 	}

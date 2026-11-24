@@ -516,7 +516,21 @@ func (d *Decoder) nodeToValue(node ast.Node) (any, error) {
 			// A local tag such as "!Ref", a foreign one, or a name YAML's type
 			// repository does not define. 6.9.1 leaves it to the application, so
 			// the decoder reads the node by its kind.
-			return d.nodeToValue(n.Value)
+			v, err := d.nodeToValue(n.Value)
+			if err != nil || !res.Empty {
+				return v, err
+			}
+
+			// The empty node under such a tag is a scalar with no characters (7.2), and
+			// only the core schema resolves an untagged empty node to null: "k: !a" is
+			// the empty string, as "k: !a ''" is. Read as null, the scalar style alone
+			// gave two values to one node, which 3.3.2 forbids.
+			v = d.strs.Value("")
+			if anchor, anchored := n.Value.(*ast.AnchorNode); anchored {
+				d.anchorValueMap[anchor.Name.GetToken().Value] = reflect.ValueOf(v)
+			}
+
+			return v, nil
 		case ast.TagKindMismatch:
 			return nil, yamlerrors.NewSyntax(
 				fmt.Sprintf("%s does not support this kind of node", res.Tag), n.GetToken())

@@ -106,16 +106,16 @@ var noExpectationPins = map[string]func(*testing.T, []byte){ //nolint:gochecknog
 		assert.Equal(t, []codec.MapSlice{mapSliceOf(item(nil, nil))}, got)
 	},
 
-	// "!\n", the non-specific tag on the empty node. It denotes null, and the
-	// stream holds one document, not none: the decoder read it as no document
-	// at all until it stopped folding every document into a value to decide
-	// whether it held one. go.yaml.in/yaml/v3 hands back one document holding
-	// nil as well.
+	// "!\n", the non-specific tag on the empty node. "!" makes a scalar a
+	// string (6.9.1), so the document is the empty string, as libfyaml reads
+	// it; go.yaml.in/yaml/v3 reads nil. The stream holds one document, not
+	// none: the decoder read it as no document at all until it stopped folding
+	// every document into a value to decide whether it held one.
 	"syntax-character-edge-cases/02": func(t *testing.T, src []byte) {
 		dec := codec.NewDecoder(bytes.NewReader(src))
 		var got any
 		require.NoError(t, dec.Decode(&got))
-		assert.Nil(t, got)
+		assert.Equal(t, "", got)
 		assert.ErrorIs(t, dec.Decode(&got), io.EOF, "the stream holds one document")
 	},
 

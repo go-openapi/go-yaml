@@ -995,6 +995,11 @@ func (b *valueBuilder) taggedWalkValue(n *ast.TagNode, value any) (any, error) {
 
 	switch res.Verdict {
 	case ast.TagUnresolved:
+		if res.Empty {
+			// "k: !a" is the empty string, as Decoder.nodeToValue reads it.
+			return b.strs.Value(""), nil
+		}
+
 		return value, nil
 	case ast.TagKindMismatch:
 		return nil, yamlerrors.NewSyntax(

@@ -176,19 +176,23 @@ func TestParseTagOnTheEmptyNodeInAFlowCollection(t *testing.T) {
 	}
 }
 
-// TestDecodeTagOnTheEmptyNodeInAFlowCollection holds the decoded values, where resolved and unresolved tags differ.
+// TestDecodeTagOnTheEmptyNodeInAFlowCollection holds the decoded values of an empty node under a tag.
 //
-// "!" and a local tag leave the empty node unresolved, which is null, and "!!str" makes it the empty string.
+// An empty node is a plain scalar with no characters (7.2), and only the core schema resolves it to null, for a node
+// with no tag. "!" makes a scalar a string (6.9.1, 10.1.2), a local tag leaves its scalar the text it holds, and
+// "!!str" names the string: all three give the empty string. "!!int" gives its own default.
 func TestDecodeTagOnTheEmptyNodeInAFlowCollection(t *testing.T) {
 	tests := map[string]struct {
 		source string
 		want   any
 	}{
-		"the non-specific tag": {source: "[!]\n", want: []any{nil}},
-		"a local tag":          {source: "[!str]\n", want: []any{nil}},
+		"the null tag":         {source: "[!!null]\n", want: []any{nil}},
+		"the non-specific tag": {source: "[!]\n", want: []any{""}},
+		"a local tag":          {source: "[!str]\n", want: []any{""}},
+		"a verbatim tag":       {source: "[!<tag:example.com,2000:x>]\n", want: []any{""}},
 		"the string tag":       {source: "[!!str]\n", want: []any{""}},
 		"the integer tag":      {source: "[!!int]\n", want: []any{uint64(0)}},
-		"mixed with entries":   {source: "[a, !, b]\n", want: []any{"a", nil, "b"}},
+		"mixed with entries":   {source: "[a, !, b]\n", want: []any{"a", "", "b"}},
 	}
 
 	for name, test := range tests {

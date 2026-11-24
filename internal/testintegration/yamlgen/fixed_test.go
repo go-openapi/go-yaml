@@ -1126,11 +1126,11 @@ func TestFixedAKeyAfterALongTagOnAnEmptyValueResolves(t *testing.T) {
 func TestFixedAPropertyAloneAfterAColonNamesTheEmptyNode(t *testing.T) {
 	t.Run("the entries below stay flat", func(t *testing.T) {
 		for src, want := range map[string]any{
-			"a: !foo\nb: 1\nc: 2\n":    map[string]any{"a": nil, "b": uint64(1), "c": uint64(2)},
-			"a: !\nb: 1\n":             map[string]any{"a": nil, "b": uint64(1)},
-			"- !foo\n- b\n":            []any{nil, "b"},
+			"a: !foo\nb: 1\nc: 2\n":    map[string]any{"a": "", "b": uint64(1), "c": uint64(2)},
+			"a: !\nb: 1\n":             map[string]any{"a": "", "b": uint64(1)},
+			"- !foo\n- b\n":            []any{"", "b"},
 			"? a\n: &a1\n? b\n: &a2\n": map[string]any{"a": nil, "b": nil},
-			"? a\n: !foo\n? b\n: 1\n":  map[string]any{"a": nil, "b": uint64(1)},
+			"? a\n: !foo\n? b\n: 1\n":  map[string]any{"a": "", "b": uint64(1)},
 		} {
 			var got any
 			require.NoErrorf(t, yaml.Unmarshal([]byte(src), &got), "%q", src)
@@ -3744,10 +3744,10 @@ func TestFixedAVerbatimTagOnAnEmptyKeyKeepsTheMapping(t *testing.T) {
 	}{
 		{"!<tag:yaml.org,2002:null> :\n", map[any]any{nil: nil}},
 		{"!<tag:yaml.org,2002:str> :\n", map[string]any{"": nil}},
-		{"!<!foo> :\n", map[any]any{nil: nil}},
+		{"!<!foo> :\n", map[string]any{"": nil}},
 		{"!<tag:yaml.org,2002:null> : 1\n", map[any]any{nil: uint64(1)}},
 		{"a: 1\n!<tag:yaml.org,2002:null> :\n", map[any]any{"a": uint64(1), nil: nil}},
-		{"{! : x}\n", map[any]any{nil: "x"}},
+		{"{! : x}\n", map[string]any{"": "x"}},
 		{"%TAG !e! tag:yaml.org,2002:\n---\n!e!str : x\n", map[string]any{"": "x"}},
 	} {
 		var got any
@@ -3777,13 +3777,13 @@ func TestFixedAnAnchorAndATagOnAnEmptyKeyStayOnTheKey(t *testing.T) {
 		{"&a1 !!null : 1\n", map[any]any{nil: uint64(1)}},
 		{"a: 1\n&a1 !!null : 2\n", map[any]any{"a": uint64(1), nil: uint64(2)}},
 		{"a: 1\n!!null &a1 : 2\n", map[any]any{"a": uint64(1), nil: uint64(2)}},
-		{"a: 1\n&a1 !t : 2\n", map[any]any{"a": uint64(1), nil: uint64(2)}},
+		{"a: 1\n&a1 !t : 2\n", map[string]any{"a": uint64(1), "": uint64(2)}},
 		{"&a1 !!null : 1\nb: *a1\n", map[any]any{nil: uint64(1), "b": nil}},
 		{"!!null &a1 : 1\nb: *a1\n", map[any]any{nil: uint64(1), "b": nil}},
 		{"&a1 !!str : 1\nb: *a1\n", map[string]any{"": uint64(1), "b": ""}},
-		{"{&a !t : 1, b: *a}\n", map[any]any{nil: uint64(1), "b": nil}},
-		{"{&a\n !t : 1}\n", map[any]any{nil: uint64(1)}},
-		{"- &a !t : 1\n", []any{map[any]any{nil: uint64(1)}}},
+		{"{&a !t : 1, b: *a}\n", map[string]any{"": uint64(1), "b": ""}},
+		{"{&a\n !t : 1}\n", map[string]any{"": uint64(1)}},
+		{"- &a !t : 1\n", []any{map[string]any{"": uint64(1)}}},
 	} {
 		var got any
 		require.NoErrorf(t, codec.Unmarshal([]byte(tc.src), &got), "%q", tc.src)

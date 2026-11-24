@@ -123,9 +123,9 @@ var decodeLedger = map[string]string{
 	// admitted as an explicit key's body.
 	//
 	// syntax-character-edge-cases/02 is "!", the non-specific tag on the empty
-	// node. It denotes null and was read as no document at all until the
-	// decoder stopped folding every document into a value to decide whether it
-	// held one; go.yaml.in/yaml/v3 hands back one document holding nil.
+	// node, which "!" makes the empty string. It was read as no document at
+	// all until the decoder stopped folding every document into a value to
+	// decide whether it held one.
 	//
 	// What each of the nine composes to is pinned in noexpectation_test.go.
 	"block-mapping-with-missing-keys":                  reasonNoExpectation,
