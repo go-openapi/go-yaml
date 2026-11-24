@@ -3840,3 +3840,24 @@ func TestFixedTwoBareColonLinesInARowRead(t *testing.T) {
 	var got any
 	require.ErrorContains(t, codec.Unmarshal([]byte("? a\n:\n:\n: v\n"), &got), `mapping key "null" already defined`)
 }
+
+// TestFixedACommentAboveABlankLineSettles pins that a sequence entry carrying a comment, with a blank line before its
+// content, renders the same on the first pass as on the second.
+//
+// Renderer.sequence wrote the blank line above the '-', so "-\t#" over a blank line over " e" came back as "\n- e #",
+// and the next parse dropped the leading break. entryGap now leaves out a blank line below a comment on the '-' line,
+// as the renderer does after "a: # c" or a bare "-". The tab is not part of the shape: a space does it too.
+//
+// Reached by the Settle property on a generated document carrying a line comment and the padding that writes blank
+// lines.
+func TestFixedACommentAboveABlankLineSettles(t *testing.T) {
+	for _, src := range []string{"-\t#\n\n e\n", "- #\n\n e\n", "-\t# c\n\n e\n", "-\t#\n e\n"} {
+		once := renderOnce(t, src)
+		assert.Falsef(t, strings.HasPrefix(once, "\n"), "%q renders to %q", src, once)
+		assert.Equalf(t, once, renderOnce(t, once), "%q settles on the first render", src)
+
+		var got any
+		require.NoErrorf(t, codec.Unmarshal([]byte(once), &got), "%q", once)
+		assert.Equalf(t, []any{"e"}, got, "%q", once)
+	}
+}

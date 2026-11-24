@@ -5,7 +5,7 @@ package yamlgen_test
 
 import "github.com/go-openapi/conformance-suites/yaml/yamlgen"
 
-// ledger records every shape known to diverge.
+// ledger records every shape known to diverge, and is empty.
 //
 // An entry is not an excuse. It is a measurement with a name attached, and the
 // property test reports which entries were exercised and which of those
@@ -24,24 +24,7 @@ import "github.com/go-openapi/conformance-suites/yaml/yamlgen"
 // The emitter is gated against the YAML 1.2 grammar, so each of these documents
 // is one the library is obliged to read. Add one when a property test finds a
 // shape that diverges and the fix is not immediate; take it out with the fix.
-var ledger = []yamlgen.Divergence{
-	{
-		Name: "render/a-comment-above-a-blank-line-adds-a-leading-break",
-		Pin:  "TestDefectACommentAboveABlankLineAddsALeadingBreak",
-		Reason: "A sequence entry carrying a comment, with a blank line before its content, renders " +
-			"with a blank line at the head of the document: `-\t#` over an empty line over ` e` " +
-			"comes back as `\n- e #`. Rendering that again drops the leading break, so the first " +
-			"pass does not settle and the second does.\n\n" +
-			"The value survives every pass -- [\"e\"] throughout -- so this claims Settle alone. The " +
-			"tab is not part of it: `- #` over a blank line over ` e` does the same, and " +
-			"`-\t#` over ` e` with no blank line settles on the first pass.\n\n" +
-			"The predicate is wider than the defect. It asks for a line comment and the padding that " +
-			"writes blank lines, which is where the pair comes from in a generated document; a blank " +
-			"line arriving another way would fail the property rather than be excused. Widen it then.",
-		Property: yamlgen.Settle,
-		Match:    yamlgen.WritesACommentAboveABlankLine,
-	},
-}
+var ledger = []yamlgen.Divergence{}
 
 // lax records every document known to be accepted against the grammar.
 //

@@ -949,6 +949,7 @@ func (r *Renderer) sequence(n *SequenceNode) rendered {
 		// A blank line inside an entry surfaces as a leading break on the
 		// entry's own text. It belongs above the "- ", not after it.
 		entry, lifted := er.sequenceEntry(value)
+		comment := r.entryLineComment(n, i)
 		var blank string
 		if lifted {
 			blank = "\n"
@@ -962,9 +963,8 @@ func (r *Renderer) sequence(n *SequenceNode) rendered {
 			lines = append(lines, join(sepNone, leaf(blank), r.render(head)))
 			blank = ""
 		} else if blank == "" {
-			blank = r.entryGap(n, i, value, head)
+			blank = r.entryGap(n, i, value, head, comment != "")
 		}
-		comment := r.entryLineComment(n, i)
 		if comment != "" && (carriesOwnIndent(value) ||
 			!r.fitsOnKeyLine(value) || entry.spans || endsOnAComment(value)) {
 			// Everything after the '#' is commented out, so a value that would
@@ -1008,7 +1008,12 @@ func (r *Renderer) sequence(n *SequenceNode) rendered {
 
 // entryGap returns the blank line the author left above entry i of n, value,
 // where no head comment is rendered to carry it.
-func (r *Renderer) entryGap(n *SequenceNode, i int, value Node, head *CommentGroupNode) string {
+//
+// commented says a comment stands on the entry's '-' line. A blank line above the value then lies below that
+// comment, inside the entry, and is dropped, as it is after "a: # c" or a bare "-". Written above the '-', "- # c"
+// over a blank over "  e" came back as a blank line over "- e # c": a leading break at the head of a document, which
+// the next parse dropped, so the first render did not settle.
+func (r *Renderer) entryGap(n *SequenceNode, i int, value Node, head *CommentGroupNode, commented bool) string {
 	// A head comment the caller removed still records where the author left
 	// a gap, and nothing else records it: the entry's own token stands
 	// under the comment, not under the blank line.
@@ -1022,6 +1027,9 @@ func (r *Renderer) entryGap(n *SequenceNode, i int, value Node, head *CommentGro
 	// An empty entry has no token of its own to read: ": &1" over a blank over
 	// "-" over "? \"\"" wrote the '-' with nothing above it and lost the
 	// author's blank line.
+	if commented {
+		return entryBlankLine(n, i)
+	}
 	if blank := blankLineBefore(value); blank != "" {
 		return blank
 	}

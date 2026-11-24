@@ -118,3 +118,27 @@ func TestACommentBelowAnEmptyBlockScalarStaysOnItsLine(t *testing.T) {
 		require.Equalf(t, src, file.String(), "%q", src)
 	}
 }
+
+// TestABlankLineBelowAnEntrysCommentStaysInsideTheEntry covers a sequence entry with a comment on its '-' line and a
+// blank line before its value. The renderer wrote that blank line above the '-', so the first entry of a document came
+// back behind a leading break, which the next parse dropped. A blank line the author left above the '-' stays there.
+func TestABlankLineBelowAnEntrysCommentStaysInsideTheEntry(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct{ src, want string }{
+		{"-\t#\n\n e\n", "- e #\n"},
+		{"- # c\n\n  e\n", "- e # c\n"},
+		{"- a\n- # c\n\n  e\n", "- a\n- e # c\n"},
+		{"k:\n  - # c\n\n    e\n", "k:\n- e # c\n"},
+		{"- a\n\n- # c\n\n  e\n", "- a\n\n- e # c\n"},
+	} {
+		file, err := parser.ParseBytes([]byte(tc.src), parser.WithComments())
+		require.NoError(t, err)
+		once := file.String()
+		require.Equalf(t, tc.want, once, "%q", tc.src)
+
+		again, err := parser.ParseBytes([]byte(once), parser.WithComments())
+		require.NoError(t, err)
+		require.Equalf(t, once, again.String(), "%q settles on the first render", tc.src)
+	}
+}

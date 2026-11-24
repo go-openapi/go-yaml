@@ -7,11 +7,9 @@ import (
 	"bytes"
 	"errors"
 	"io"
-	"strings"
 	"testing"
 
 	yamloracle "github.com/go-openapi/conformance-suites/yaml"
-	"github.com/go-openapi/testify/v2/assert"
 	"github.com/go-openapi/testify/v2/require"
 
 	"github.com/go-openapi/go-yaml/codec"
@@ -85,43 +83,4 @@ func readTheStream(t *testing.T, src string) []any {
 
 		out = append(out, v)
 	}
-}
-
-// TestDefectACommentAboveABlankLineAddsALeadingBreak pins it.
-//
-// A sequence entry carrying a comment, with a blank line before its content,
-// renders with a blank line at the head of the document. Rendering again drops
-// it, so the first pass does not settle and the second does.
-//
-// The value survives every pass, and the tab is not part of the shape: a space
-// does it too, and without the blank line it settles on the first pass.
-func TestDefectACommentAboveABlankLineAddsALeadingBreak(t *testing.T) {
-	t.Run("today the first render adds a leading break", func(t *testing.T) {
-		for _, src := range []string{"-\t#\n\n e\n", "- #\n\n e\n", "-\t# c\n\n e\n"} {
-			f, err := parser.ParseBytes([]byte(src), parser.WithComments())
-			require.NoErrorf(t, err, "%q", src)
-
-			once := f.String()
-			assert.Truef(t, strings.HasPrefix(once, "\n"), "today: %q renders to %q", src, once)
-
-			g, err := parser.ParseBytes([]byte(once), parser.WithComments())
-			require.NoErrorf(t, err, "%q", once)
-			assert.Equalf(t, strings.TrimPrefix(once, "\n"), g.String(),
-				"the second render settles: %q", once)
-		}
-	})
-
-	t.Run("the value survives every pass", func(t *testing.T) {
-		const src = "-\t#\n\n e\n"
-
-		var got any
-		require.NoError(t, codec.Unmarshal([]byte(src), &got))
-		assert.Equal(t, []any{"e"}, got)
-	})
-
-	t.Run("without the blank line it settles on the first pass", func(t *testing.T) {
-		f, err := parser.ParseBytes([]byte("-\t#\n e\n"), parser.WithComments())
-		require.NoError(t, err)
-		assert.Equal(t, "- e #\n", f.String())
-	})
 }
