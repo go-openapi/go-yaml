@@ -21,8 +21,10 @@ into the Go types it describes, 0.57 MiB once decoded; it is the only workload d
 
 ## How these figures were taken
 
-Measured on 2026-11-24 at `4b1593e9`, on an AMD Ryzen 7 5800X with go1.27.3, go.yaml.in/yaml/v3 v3.0.6 and
-github.com/goccy/go-yaml v1.19.2. Each figure is the median of 6 runs.
+Measured on 2026-11-24 on an AMD Ryzen 7 5800X with go1.27.3, go.yaml.in/yaml/v3 v3.0.6 and
+github.com/goccy/go-yaml v1.19.2. Each figure is the median of 6 runs. The decode and `ToJSON` tables were taken at
+`4b1593e9`. The `FromJSON` and `Encode` tables were taken again at `470992ee`, which cuts the renderer's and the
+encoder's allocations. Decode and `ToJSON` allocate exactly as much at both commits.
 
 Every library is built with profile-guided optimisation from one profile, [`default.pgo`](default.pgo), taken over all
 five benchmarks and all three libraries. `go test` does not read `default.pgo` by itself, so pass it:
@@ -76,34 +78,36 @@ of the document.
 
 ## JSON to YAML
 
-`codec.FromJSON` renders YAML from the JSON tokens and builds no Go value. It is slower than v3's route on the two
-swagger documents, citm_catalog and golang_source, up to 1.67x, and allocates a quarter of the bytes or less.
+`codec.FromJSON` renders YAML from the JSON tokens and builds no Go value. It is slower than v3's route on azure_swagger,
+citm_catalog and golang_source, up to 1.48x, takes about v3's time on commented_swagger, and is faster on
+canada_geometry. It allocates under a fifth of v3's bytes, in fewer allocations.
 
 v3 has no row for twitter_status: the workload holds the plain scalar `3E4415`, which `codec.ToJSON` writes as a JSON
 number, and `json.Unmarshal` cannot read it into a `float64`.
 
 | workload | time: go-openapi | v3 | goccy | bytes: go-openapi | v3 | goccy | allocs: go-openapi | v3 | goccy |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| azure_swagger | 69 ms | 48 ms | 111 ms | 11.6 MiB | 55.4 MiB | 76.6 MiB | 106k | 133k | 1.32M |
-| canada_geometry | 28 ms | 49 ms | 80 ms | 5.05 MiB | 41.6 MiB | 51.0 MiB | 57k | 89k | 946k |
-| citm_catalog | 132 ms | 86 ms | 185 ms | 24.4 MiB | 134.0 MiB | 143.2 MiB | 223k | 272k | 2.79M |
-| commented_swagger | 67 ms | 56 ms | 113 ms | 11.6 MiB | 55.4 MiB | 76.6 MiB | 106k | 133k | 1.32M |
-| golang_source | 363 ms | 217 ms | 692 ms | 87.5 MiB | 354.3 MiB | 780.8 MiB | 793k | 790k | 11.45M |
-| twitter_status | 72 ms | -- | 107 ms | 12.8 MiB | -- | 72.1 MiB | 119k | -- | 1.28M |
+| azure_swagger | 54 ms | 40 ms | 89 ms | 7.29 MiB | 55.4 MiB | 76.6 MiB | 81k | 133k | 1.32M |
+| canada_geometry | 28 ms | 46 ms | 78 ms | 4.83 MiB | 41.6 MiB | 51.0 MiB | 57k | 89k | 946k |
+| citm_catalog | 106 ms | 78 ms | 177 ms | 16.1 MiB | 134.0 MiB | 143.2 MiB | 172k | 272k | 2.79M |
+| commented_swagger | 50 ms | 53 ms | 105 ms | 7.29 MiB | 55.4 MiB | 76.6 MiB | 81k | 133k | 1.32M |
+| golang_source | 312 ms | 211 ms | 725 ms | 59.3 MiB | 354.3 MiB | 780.8 MiB | 614k | 790k | 11.45M |
+| twitter_status | 58 ms | -- | 93 ms | 8.49 MiB | -- | 72.1 MiB | 93k | -- | 1.28M |
 
 ## Encode
 
-The encoder takes v3's time within about 10%, except on citm_catalog, where it is 23% slower. It allocates about a
-third of v3's bytes, in 2.5 to 4.3 times as many allocations.
+The encoder takes 71% to 89% of v3's time, and allocates about a quarter of v3's bytes, in 1.6 to 4.3 times as many
+allocations. Do not read a ranking into citm_catalog: v3's time there moved from 58 ms to 85 ms between two builds
+that left v3's code unchanged.
 
 | workload | time: go-openapi | v3 | goccy | bytes: go-openapi | v3 | goccy | allocs: go-openapi | v3 | goccy |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| azure_swagger | 44 ms | 42 ms | 63 ms | 17.7 MiB | 52.9 MiB | 33.8 MiB | 205k | 82k | 680k |
-| canada_geometry | 23 ms | 31 ms | 40 ms | 12.4 MiB | 40.3 MiB | 23.0 MiB | 126k | 29k | 430k |
-| citm_catalog | 71 ms | 58 ms | 96 ms | 37.7 MiB | 128.7 MiB | 55.0 MiB | 455k | 157k | 1.37M |
-| commented_swagger | 42 ms | 41 ms | 64 ms | 17.7 MiB | 52.9 MiB | 33.8 MiB | 205k | 82k | 680k |
-| golang_source | 185 ms | 181 ms | 484 ms | 113.2 MiB | 346.9 MiB | 499.3 MiB | 1.37M | 532k | 7.06M |
-| twitter_status | 45 ms | 51 ms | 66 ms | 16.4 MiB | 42.2 MiB | 32.8 MiB | 190k | 76k | 662k |
+| azure_swagger | 38 ms | 43 ms | 61 ms | 12.9 MiB | 52.9 MiB | 33.8 MiB | 150k | 81k | 680k |
+| canada_geometry | 23 ms | 31 ms | 37 ms | 10.5 MiB | 40.3 MiB | 23.0 MiB | 126k | 29k | 430k |
+| citm_catalog | 60 ms | 85 ms | 100 ms | 27.8 MiB | 128.7 MiB | 55.0 MiB | 345k | 157k | 1.37M |
+| commented_swagger | 39 ms | 44 ms | 62 ms | 12.9 MiB | 53.0 MiB | 33.8 MiB | 150k | 82k | 680k |
+| golang_source | 158 ms | 177 ms | 479 ms | 80.5 MiB | 346.9 MiB | 499.3 MiB | 925k | 532k | 7.06M |
+| twitter_status | 37 ms | 52 ms | 63 ms | 11.3 MiB | 42.2 MiB | 32.8 MiB | 123k | 76k | 662k |
 
 ## Peak memory
 

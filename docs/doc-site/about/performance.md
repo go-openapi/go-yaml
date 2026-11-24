@@ -136,11 +136,11 @@ command that reproduces every figure on this page. In short:
 - `ToJSON` takes 37% to 72% of the time of v3's route (`Unmarshal`, then
   `json.Marshal`), and allocates 95 to 3,263 times per document, where v3's
   route allocates 175k to 1.40M times.
-- `FromJSON` is slower than v3's route (`json.Unmarshal`, then `Marshal`) on four
-  of the five workloads v3 can convert, up to 1.67x on golang_source, and
-  allocates a quarter of its bytes or less.
-- `Marshal` takes v3's time within about 10%, except on citm_catalog, where it is
-  23% slower, and allocates about a third of v3's bytes.
+- `FromJSON` is slower than v3's route (`json.Unmarshal`, then `Marshal`) on
+  three of the five workloads v3 can convert, up to 1.48x on golang_source, and
+  allocates under a fifth of its bytes.
+- `Marshal` takes 71% to 89% of v3's time, and allocates about a quarter of
+  v3's bytes.
 
 Parsing alone has benchmarks in `internal/analysis`, `BenchmarkWorkloadParse`
 and `BenchmarkWorkloadParseWithComments`, with no comparison yet.
