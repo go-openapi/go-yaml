@@ -131,3 +131,51 @@ func TestAWalkLeavesAFlowCollectionOnItsOwnToken(t *testing.T) {
 		})
 	}
 }
+
+// blockMappingTokens records the token of every block mapping at Enter and at Leave, in the order the walk reaches
+// them.
+type blockMappingTokens struct{ entered, left []string }
+
+func (r *blockMappingTokens) Enter(node ast.Node, _ parser.Cursor) error {
+	if m, ok := node.(*ast.MappingNode); ok && !m.IsFlowStyle {
+		r.entered = append(r.entered, tokenAt(node))
+	}
+
+	return nil
+}
+
+func (r *blockMappingTokens) Leave(node ast.Node, _ parser.Closing) error {
+	if m, ok := node.(*ast.MappingNode); ok && !m.IsFlowStyle {
+		r.left = append(r.left, tokenAt(node))
+	}
+
+	return nil
+}
+
+// TestAWalkLeavesABlockMappingOnItsFirstColon holds what ast.MappingNode.Start and parser.Visitor document: a block
+// mapping enters on its first entry's first token and leaves on that entry's ':', which a parse keeps.
+//
+// The ':' cannot be known at Enter in every case: "? a" holds none, and an explicit key may put it lines below.
+func TestAWalkLeavesABlockMappingOnItsFirstColon(t *testing.T) {
+	for _, tc := range []struct {
+		src           string
+		entered, left []string
+	}{
+		{"name: app\nport: 80\n", []string{`"name" at 1:1`}, []string{`":" at 1:5`}},
+		{"server:\n  host: x\n", []string{`"server" at 1:1`, `"host" at 2:3`}, []string{`":" at 2:7`, `":" at 1:7`}},
+		{"? long\n  key\n: v\n", []string{`"?" at 1:1`}, []string{`":" at 3:1`}},
+		{"? a\n", []string{`"?" at 1:1`}, []string{`"a" at 1:3`}},
+	} {
+		t.Run(tc.src, func(t *testing.T) {
+			r := &blockMappingTokens{}
+			_, err := parser.New().Walk([]byte(tc.src), r)
+			require.NoError(t, err)
+			assert.Equal(t, tc.entered, r.entered)
+			assert.Equal(t, tc.left, r.left)
+
+			file, err := parser.ParseBytes([]byte(tc.src))
+			require.NoError(t, err)
+			assert.Equal(t, tc.left[len(tc.left)-1], tokenAt(file.Docs[0].Body), "the parse keeps the token Leave saw")
+		})
+	}
+}

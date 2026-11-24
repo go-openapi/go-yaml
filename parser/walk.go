@@ -182,6 +182,10 @@ type Visitor interface {
 	Enter(node ast.Node, at Cursor) error
 	// Leave is called after the node's content has been visited, and the Cursor answers as it did for Enter.
 	//
+	// The node is the one Enter received, filled in by what the parse read since. A block mapping's token is the
+	// exception to watch for: Enter sees the first entry's key, or its '?', and Leave the entry's ':', as
+	// [ast.MappingNode.Start] describes. In "name: app" Enter reads 1:1 and Leave 1:5.
+	//
 	// Return an error to stop the walk.
 	Leave(node ast.Node, at Closing) error
 }

@@ -105,6 +105,13 @@ func FirstRefused(dups []DuplicateKey, byName bool) (DuplicateKey, bool) {
 type MappingNode struct {
 	BaseNode
 
+	// Start is the '{' of a flow mapping, and the first entry's ':' of a block mapping: "a: 1" starts at column 2.
+	// A block mapping whose first entry has no ':', as "? a", starts at its key's first token.
+	//
+	// A walk hands a block mapping to [github.com/go-openapi/go-yaml/parser.Visitor] Enter before its first entry is
+	// read, so Start then holds the first token of that entry: the key, or the '?' of an explicit one. The parse sets
+	// the ':' once the entry is read, and Leave sees it. Record the position at Enter to keep the one the reader sees
+	// the mapping begin at.
 	Start       *token.Token
 	End         *token.Token
 	IsFlowStyle bool
