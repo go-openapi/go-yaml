@@ -8,7 +8,7 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
-	"os"
+	"io/fs"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -23,7 +23,7 @@ import (
 )
 
 // messageTemplates reads every literal the parser and scanner build a syntax
-// error from.
+// error from, in every package under parser/ and internal/scanner/.
 //
 // NewSyntax and ErrInvalidToken are the two constructors. Taking the first
 // argument's string literal misses the handful assembled at runtime, which is
@@ -33,21 +33,33 @@ func messageTemplates(t *testing.T) []string {
 
 	var out []string
 
-	for _, dir := range []string{"../../../parser", "../../../internal/scanner"} {
+	for _, root := range []string{"../../../parser", "../../../internal/scanner"} {
 		fset := token.NewFileSet()
 
-		// File by file: parser.ParseDir is deprecated, and ast.Package with it.
-		entries, err := os.ReadDir(filepath.Clean(dir))
-		require.NoError(t, err, dir)
-
-		for _, entry := range entries {
-			name := entry.Name()
-			if entry.IsDir() || !strings.HasSuffix(name, ".go") || strings.HasSuffix(name, "_test.go") {
-				continue
+		// File by file, through every package under root: parser.ParseDir is
+		// deprecated, and parser/group builds syntax errors of its own.
+		err := filepath.WalkDir(filepath.Clean(root), func(path string, entry fs.DirEntry, err error) error {
+			if err != nil {
+				return err
 			}
 
-			file, err := parser.ParseFile(fset, filepath.Join(dir, name), nil, 0)
-			require.NoError(t, err, name)
+			name := entry.Name()
+			if entry.IsDir() {
+				if name == "testdata" {
+					return filepath.SkipDir
+				}
+
+				return nil
+			}
+
+			if !strings.HasSuffix(name, ".go") || strings.HasSuffix(name, "_test.go") {
+				return nil
+			}
+
+			file, err := parser.ParseFile(fset, path, nil, 0)
+			if err != nil {
+				return err
+			}
 
 			ast.Inspect(file, func(n ast.Node) bool {
 				call, ok := n.(*ast.CallExpr)
@@ -65,7 +77,10 @@ func messageTemplates(t *testing.T) []string {
 
 				return true
 			})
-		}
+
+			return nil
+		})
+		require.NoError(t, err, root)
 	}
 
 	sort.Strings(out)
@@ -207,7 +222,13 @@ func TestTheParserVocabularyGapIsMeasured(t *testing.T) {
 	// more. A message a defect was the only route to joins `unexpected scalar
 	// value` and `specified not scalar tag` in stream 8 -- reachable in
 	// principle, and reached by nothing anybody should write.
-	const ceiling = 25
+	//
+	// It went to 28 on 2026-11-24, with no message lost: the walk used to read
+	// parser/ alone and missed the packages under it. parser/group adds six
+	// templates, and three of them are unreached: `undefined alias name` and
+	// `undefined anchor name`, which flushProperties raises when the stream ends
+	// on an '&' or a '*' with no name, and `undefined directive value`.
+	const ceiling = 28
 
 	if len(unreached) > ceiling {
 		t.Errorf("%d templates unreached, and the ceiling is %d: either a new message arrived with no "+
