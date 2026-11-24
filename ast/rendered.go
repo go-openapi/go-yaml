@@ -31,18 +31,20 @@ type rendered struct {
 	// parts are written one after another with sep between them, exactly as
 	// strings.Join would.
 	parts []rendered
-	sep   sepKind
 	// indent is added to every line of this piece that has content. A blank
 	// line takes none, so nothing gains trailing spaces.
 	indent int32
+	// size counts the bytes this piece flattens to, indentation excluded, so that an
+	// empty piece can be told from one holding a line break.
+	size int32
+	// The one-byte fields come last and share a word, so a piece takes 56 bytes
+	// instead of 64.
+	sep sepKind
 	// hanging marks a piece whose first line takes no indentation, wherever it
 	// falls. A sequence entry and a "?" key are written after a marker that
 	// already holds their first line, and the marker's own line break is not
 	// theirs to indent under.
 	hanging bool
-	// size counts the bytes this piece flattens to, indentation excluded, so that an
-	// empty piece can be told from one holding a line break.
-	size int32
 	// spans records that the piece covers more than one line, and leads that it
 	// opens on a line break.
 	spans bool

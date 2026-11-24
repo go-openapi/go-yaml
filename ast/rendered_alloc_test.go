@@ -6,6 +6,7 @@ package ast
 import (
 	"strings"
 	"testing"
+	"unsafe"
 
 	"github.com/go-openapi/testify/v2/assert"
 )
@@ -58,4 +59,10 @@ func TestAJoinOfOnePartIsThatPart(t *testing.T) {
 
 	assert.Zero(t, allocs)
 	assert.Equal(t, text, p)
+}
+
+// TestAPieceTakesFiftySixBytes guards the field order of rendered: join copies a piece per part it
+// keeps, and a field moved between two one-byte fields pads it back to 64.
+func TestAPieceTakesFiftySixBytes(t *testing.T) {
+	assert.Equal(t, uintptr(56), unsafe.Sizeof(rendered{}))
 }
