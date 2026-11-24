@@ -1,6 +1,6 @@
 ---
 title: Decoding into Go values
-weight: 30
+weight: 10
 description: |
   The codec: turning YAML into Go values and back.
 

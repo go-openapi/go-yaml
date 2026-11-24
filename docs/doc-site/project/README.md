@@ -6,125 +6,152 @@ weight: 10
 
 **An advanced Go library to work with YAML documents.**
 
-This page carries the repository
-[README](https://github.com/go-openapi/go-yaml/blob/master/README.md), with its
-links pointed at the site.
-
 ## Status
 
-Early days. The API remains subject to change.
+Early days. API remains subject to changes.
 
-{{% notice style="warning" %}}
-This library is a hard fork of [`goccy/go-yaml`](https://github.com/goccy/go-yaml).
-A lot of work has gone in on top of the fork point
-(`edee2f91616c6d73112a13e7c0dbde72ce938877`), and the exported API is still in
-flux.
+> [!WARNING]
+>
+> This library is still in its early days.
+>
+> It is a hard fork of [`goccy/go-yaml`][upstream]. A lot of work has been issued on top of our fork point
+> (`edee2f91616c6d73112a13e7c0dbde72ce938877`).
+>
+> The exported API is still in flux.
+> The posture we have adopted for various YAML puzzles may also be debatable and might need to be revisited.
+>
+> If you want a stable version of this library today, use upstream: [`github.com/goccy/go-yaml`][upstream].
+>
+> If you only need to hydrate Go values from YAML, use [`go.yaml.in/yaml/v3`][goyamlv3]: it's stable, it's maintained, it works.
 
-The posture adopted on various YAML puzzles may also be debatable and might need
-to be revisited.
+## Motivation & goals
 
-If you want a stable version of this library today, use upstream:
-[`github.com/goccy/go-yaml`](https://github.com/goccy/go-yaml).
-
-If you only need to hydrate Go values from YAML, use
-[`go.yaml.in/yaml/v3`](https://github.com/yaml/go-yaml): it is stable, it is
-maintained, it works.
-{{% /notice %}}
-
-See [Status](../../about/status/) for what is not built yet.
-
-## Motivation and goals
-
-1. At go-openapi we consume and produce a lot of YAML. A typical API
-   specification can be a fairly large document, so we need an efficient parser,
-   both in CPU cycles and in memory.
-2. We also face challenges that a typical Go program does not care about, such
-   as keeping the order of keys, or the comments in a document.
+1. At `go-openapi` we consume and produce a lot of YAML. A typical API spec can be a fairly large document, so
+   we need an efficient parser for those, both in CPU cycles and memory.
+2. We also face a lot of challenges dealing with YAML that your typical go program won't care about, like keeping the order
+   of keys, or the comments in a document.
 
 What we need is:
 
-- a relatively fast, memory-efficient YAML parser, written in pure Go;
-- a low-level API to parse, transform and render YAML streams;
-- ways to process YAML without an intermediate Go value.
+- a relatively fast, memory-efficient YAML parser, written in pure go
+- a low-level API to parse, transform and render YAML streams
+- ways to process YAML without the need for an intermediate Go value representation
 
-In addition, we want this library to bring tools for advanced work with YAML
-documents:
+In addition, we want this lib to bring tools for advanced work with YAML documents:
 
-- a strict YAML 1.2 parser, with optional support for YAML 1.1;
-- full support of YAML constructs, including comments, aliases, tags, custom
-  tags, non-scalar keys and directives;
-- _verbatim_ rendering of a parsed document, without loss of comments, layout
-  style, indentation or ordering.
+- a strict YAML 1.2 parser, with optional support for YAML 1.1
+- full support of YAML constructs, including comments, aliases, tags, custom tags, non-scalar keys, directives etc
+- _verbatim_ rendering of a parsed document, without loss (e.g. comments, layout style, indentation, ordering)
 
 ## Features
 
 - full YAML 1.2 support, strict by default, with optionally relaxed constraints
-- [`codec`](../../values/) for Go values: `Unmarshal`, `Marshal`, `Decoder`,
-  `Encoder`
-  - also: fast, lossless [`ToJSON` and `FromJSON`](../../documents/json/)
-    conversions, and a JSON tokenizer
-- a low-level API: the [parser](../../documents/parser/), and a
-  [renderer](../../documents/ast/) able to write a document back _verbatim_
-- document transforms, such as a colorizer
-- YAML path [expressions](../../documents/yamlpath/)
-- a programmatic document API through the [`ast`](../../documents/ast/)
-  representation of a document
+- [codec](./codec) for go: `Unmarshal`,`Marshal`,`Decoder`,`Encoder`
+  - also provides: fast, lossless `ToJSON` (from YAML), `FromJSON` (to YAML) transforms and a JSON tokenizer
+- low-level API: [parser](./parser), [renderer](./ast/render.go) able to render a document _verbatim_, extract comments, etc
+- document transforms (examples: colorizer, custom tag parser)
+- YAML path [expressions](./expressions)
+- programmatic document API via `ast` representation of a YAML document
 
-## Performance
+See also our [documentation][doc-url] for a detailed presentation of these features, and the differences
+with other libraries etc.
 
-A decode keeps its peak memory near the size of the value it returns. See
-[Performance](../../about/performance/) for timings, allocations and peak memory
-against `go.yaml.in/yaml/v3` and `goccy/go-yaml`.
+See the runnable examples in our [go doc][godoc-url] as well as the [commented examples][doc-examples] in the documentation.
+
+## Performances
+
+Our main design goal for this lib was to reduce _peak_ memory usage as much as we could.
+
+Example: decoding YAML into a Go value.
+
+Each library unmarshals each workload into an `any`, built with PGO from one shared profile. Times are the median of 6
+runs; peak memory is the highest live heap during the decode.
+
+| workload          | source   | time: go-openapi | v3     | goccy  | peak: go-openapi | v3       | goccy     |
+|-------------------|---------:|-----------------:|-------:|-------:|-----------------:|---------:|----------:|
+| azure_swagger     | 0.52 MiB |            24 ms |  33 ms |  54 ms |         2.37 MiB | 6.16 MiB | 17.08 MiB |
+| canada_geometry   | 0.38 MiB |            18 ms |  46 ms |  40 ms |         0.56 MiB | 4.56 MiB | 12.71 MiB |
+| citm_catalog      | 0.56 MiB |            55 ms |  57 ms |  95 ms |         4.76 MiB | 15.04 MiB | 35.78 MiB |
+| commented_swagger | 0.57 MiB |            25 ms |  35 ms |  50 ms |         2.38 MiB | 6.52 MiB | 17.53 MiB |
+| golang_source     | 3.61 MiB |           156 ms | 190 ms | 290 ms |         8.47 MiB | 38.04 MiB | 116.79 MiB |
+| twitter_status    | 0.48 MiB |            25 ms |  34 ms |  56 ms |         1.77 MiB | 5.72 MiB | 14.98 MiB |
+
+> `v3` is [`go.yaml.in/yaml/v3`][goyamlv3].
+> `goccy` is upstream [github.com/goccy/go-yaml][upstream].
+
+Our implementation of YAML decode brings only a modest time improvement, and a massive reduction in memory activity
+(allocated garbage and peak memory).
+
+Our peak stays near the size of the decoded Go value: the decoding process holds little besides its result.
+
+citm_catalog is our least favourable workload for a decode into `any`: our time is on a par with v3's, 55 ms against 57 ms.
+This workload is where `v3`'s parser shines: it is simpler than ours and optimized specifically for decoding Go values,
+whereas our parser pays the cost of full support for YAML features, even those not consumed by the decode use-case.
+
+See [internal/benchmarks](./internal/benchmarks) for decoding into a struct, `ToJSON`, `FromJSON` and encoding, and
+for the command that reproduces these figures.
+
+> Measured on 2026-11-22 with `go.yaml.in/yaml/v3` v3.0.6 and `github.com/goccy/go-yaml` v1.19.2, on an AMD Ryzen 7 5800X.
 
 ## Known limitations
 
-By design:
+By design limitations - they'll stay here:
+- only support UTF-8 encoding
 
-- only UTF-8 is supported. Encode a UTF-16 document to UTF-8 before you parse it.
+> no UTF-16 support is offered: you need to encode any UTF-16 input prior to parsing.
 
-For now:
+Transitory limitations - we are currently working on those.
 
-- no streaming: a decode reads the whole of its `io.Reader` before it parses;
-- a document must be under 2 GiB.
+- no streaming support: a decoder reads the whole of its `io.Reader` before it parses
+- document size is currently limited to 2 GB
 
 ## Credits
 
-This library was forked from the work started by
-[Masaaki Goshima (@goccy)](https://github.com/goccy), which is maintained
-upstream at [github.com/goccy/go-yaml](https://github.com/goccy/go-yaml).
+This library was forked from the work started by [Masaaki Goshima (@goccy)][goccy],
+which is maintained upstream at [github.com/goccy/go-yaml][upstream].
 
-We are grateful to Masaaki for this great piece of work. This fork tries to
-remain faithful to its spirit: an independent YAML 1.2 library that brings Go
-developers advanced insight into YAML subtleties.
+We are grateful to Masaaki for this great piece of work. This fork tries to remain faithful to its spirit:
+an independent YAML 1.2 library that brings to go developers advanced insight into YAML subtleties.
 
-Our work was also inspired by ideas and designs from:
+Our work was also inspired by some of the ideas and designs proposed by:
 
-- the [YAML Test Suite](https://github.com/yaml/yaml-test-suite), by
-  [@ingydotnet](https://github.com/ingydotnet). It inspired a companion project
-  that generates
-  [conformance test suites](https://github.com/go-openapi/conformance-suites)
-  for YAML and JSON.
-- [libfyaml](https://github.com/pantoniou/libfyaml), by
-  [@pantoniou](https://github.com/pantoniou): arguably one of the best YAML
-  libraries out there, in C. We used it a lot as a yardstick.
-- the [Perl reference parser](https://github.com/ingydotnet/yaml-pp-p5), by
-  [@ingydotnet](https://github.com/ingydotnet).
-- [`go.yaml.in/yaml/v3`](https://github.com/yaml/go-yaml), by the go-yaml
-  contributors: originally [@niemeyer](https://github.com/niemeyer), with
-  seminal work ported from Kirill Simonov.
-- PyYAML, for YAML 1.1 compatibility checks.
+- the [YAML Test Suite][conformance], by [`@ingydotnet`][ingydotnet].
+  This inspired us a companion project to generate [Conformance Test Suites][conformance-gen], for YAML and JSON.
+- [libfyaml][libfyaml](https://github.com/pantoniou/libfyaml), by [`@pantoniou`][pantoniou].
+  Arguably one of the best YAML library out there (`C`). We've used it a lot as a yardstick to compare against.
+- the [Perl reference parser][referenceparser], by [`@ingydotnet`][ingydotnet].
+- [`go.yaml.in/yaml/v3`][goyamlv3], by the go-yaml contributors (originally [`@niemeyer`][niemeyer], with ported seminal work from `Kirill Simonov`)
+- PyYAML for YAML 1.1 compatibility checks
 
 ## Reference
 
-- [YAML 1.2 specification](https://yaml.org/spec/1.2.2/) (2021)
-- [YAML 1.2 grammar](https://github.com/yaml/yaml-grammar/blob/master/yaml-spec-1.2.yaml)
-- [YAML types](https://yaml.org/type/) (2005-)
+- [YAML 1.2 spec][yamlspec] (2021)
+- [YAML 1.2 grammar][yamlgrammar]
+- [YAML types][yamltypes] (2005-)
 
 ## License
 
-Apache-2.0: see [LICENSE](../license/).
+Apache-2.0 — see [LICENSE](./LICENSE.md).
 
-This is a hard fork of `goccy/go-yaml`, whose MIT licence permits it. That
-licence, and the terms of every other component this library is built on, are
-recorded in the
-[NOTICE](https://github.com/go-openapi/go-yaml/blob/master/NOTICE).
+This is a hard fork of `goccy/go-yaml`, whose MIT licence permits it. That licence, and the terms of
+every other component this library is built on, are recorded in the [NOTICE](./NOTICE.md).
+
+<!-- Organization docs -->
+[contributing-doc-site]: https://go-openapi.github.io/doc-site/contributing/contributing/index.html
+[maintainers-doc-site]: https://go-openapi.github.io/doc-site/maintainers/index.html
+[style-doc-site]: https://go-openapi.github.io/doc-site/contributing/style/index.html
+<!-- Reference material -->
+[yamlspec]: https://yaml.org/spec/1.2.2/
+[yamltypes]: https://yaml.org/type/
+[yamlgrammar]: https://github.com/yaml/yaml-grammar/blob/master/yaml-spec-1.2.yaml
+<!-- Credits & mentions -->
+[upstream]: https://github.com/goccy/go-yaml
+[goyamlv3]: https://github.com/yaml/go-yaml
+[libfyaml]: https://github.com/pantoniou/libfyaml
+[conformance]: https://github.com/yaml/yaml-test-suite
+[conformance-gen]: https://github.com/go-openapi/conformance-suites
+[referenceparser]: https://github.com/ingydotnet/yaml-pp-p5
+[goccy]: https://github.com/goccy
+[ingydotnet]: https://github.com/ingydotnet
+[niemeyer]: https://github.com/niemeyer
+[pantoniou]: https://github.com/pantoniou
