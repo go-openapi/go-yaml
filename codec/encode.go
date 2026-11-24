@@ -4,6 +4,7 @@
 package codec
 
 import (
+	"bytes"
 	"encoding"
 	"errors"
 	"fmt"
@@ -42,7 +43,9 @@ type Encoder struct {
 	customMarshalerMap map[reflect.Type]func(any) ([]byte, error)
 	// noCustomMarshalers records, for one EncodeToNode call, that neither the Encoder nor RegisterCustomMarshaler
 	// holds a custom marshaler, so the lookups for one can be skipped on every value. False on a zero Encoder.
-	noCustomMarshalers         bool
+	noCustomMarshalers bool
+	// treeOnly makes Encode build the whole tree even where it could stream. Tests set it to compare the two.
+	treeOnly                   bool
 	omitZero                   bool
 	omitEmpty                  bool
 	writeJSONTags              bool
@@ -80,28 +83,50 @@ func NewEncoder(w io.Writer, opts ...EncodeOption) *Encoder {
 // Encode writes v to the stream as one document. Every document after the first opens with a "---" separator.
 //
 // See [Marshal] for how a Go value maps to YAML.
+//
+// Encode writes the document as it walks v, through an [ast.Stream], and keeps only the output in memory. It builds
+// the whole tree first under [WithComment], [WithSmartAnchor], [MarshalAnchor], [Flow] and [JSON]. Either way an
+// error writes nothing to the stream.
 func (e *Encoder) Encode(v any) error {
-	node, err := e.EncodeToNode(v)
-	if err != nil {
+	if err := e.prepare(); err != nil {
 		return err
 	}
-	if err := e.setCommentByCommentMap(node); err != nil {
-		return err
-	}
-	if e.written {
-		// Every document after the first opens with a separator.
-		if _, err := io.WriteString(e.writer, "---\n"); err != nil {
-			return err
-		}
-	}
-	e.written = true
-
 	// Lay the document out from the tree, not from the positions held by the
 	// nodes. The encoder's indentation options take effect here.
 	renderer := ast.NewRenderer(
 		ast.WithIndent(e.indentNum),
 		ast.WithIndentSequence(e.indentSequence),
 	)
+
+	if e.streams() {
+		saved := e.saveAnchors()
+		var out bytes.Buffer
+		err := e.encodeStream(renderer.Stream(&out), v)
+		switch {
+		case err == nil:
+			if err := e.separate(); err != nil {
+				return err
+			}
+			_, err = e.writer.Write(out.Bytes())
+
+			return err
+		case !errors.Is(err, errStreamFallback):
+			return err
+		default:
+			e.restoreAnchors(saved)
+		}
+	}
+
+	node, err := e.encodeTree(v)
+	if err != nil {
+		return err
+	}
+	if err := e.setCommentByCommentMap(node); err != nil {
+		return err
+	}
+	if err := e.separate(); err != nil {
+		return err
+	}
 	if err := renderer.Render(e.writer, node); err != nil {
 		return err
 	}
@@ -112,13 +137,40 @@ func (e *Encoder) Encode(v any) error {
 
 // EncodeToNode returns the AST node that [Encoder.Encode] would write for v, without writing it.
 func (e *Encoder) EncodeToNode(v any) (ast.Node, error) {
+	if err := e.prepare(); err != nil {
+		return nil, err
+	}
+
+	return e.encodeTree(v)
+}
+
+// separate writes the "---" that opens every document after the first.
+func (e *Encoder) separate() error {
+	if e.written {
+		if _, err := io.WriteString(e.writer, "---\n"); err != nil {
+			return err
+		}
+	}
+	e.written = true
+
+	return nil
+}
+
+// prepare applies the options, once per call.
+func (e *Encoder) prepare() error {
 	for _, opt := range e.opts {
 		if err := opt(e); err != nil {
-			return nil, err
+			return err
 		}
 	}
 	// Read once per call, never cached across calls: a RegisterCustomMarshaler between two calls takes effect.
 	e.noCustomMarshalers = len(e.customMarshalerMap) == 0 && !hasCustomMarshalers()
+
+	return nil
+}
+
+// encodeTree builds the node tree of v.
+func (e *Encoder) encodeTree(v any) (ast.Node, error) {
 	if e.enableSmartAnchor {
 		// The first encoding stores every mapping from an alias address to its name.
 		if _, err := e.encodeValue(reflect.ValueOf(v), 1); err != nil {
@@ -475,6 +527,13 @@ func (e *Encoder) encodeValue(v reflect.Value, column int) (ast.Node, error) {
 
 		return e.encodeBinary(b, column), nil
 	}
+
+	return e.encodeKind(v, column)
+}
+
+// encodeKind writes v by its kind, once encodeValue has ruled out a null, a tagged time, a node, a go.yaml.in/yaml/v3
+// Node, a marshaler and a Base64. A streamed encode calls it for a scalar it has run those checks on.
+func (e *Encoder) encodeKind(v reflect.Value, column int) (ast.Node, error) {
 	switch v.Type().Kind() {
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
 		return e.encodeInt(v.Int()), nil
