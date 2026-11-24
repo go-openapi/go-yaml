@@ -997,6 +997,57 @@ func TestAnUnresolvedTagOnNothingIsEmpty(t *testing.T) {
 	})
 }
 
+// TestAScalarTagOnAnEmptyKeyNamesTheKeyByItsDefault holds a key whose scalar tag stands on no value: the key is the
+// tag's default, as a value under the same tag is, and every path names it so.
+//
+// ast.TaggedKeyName named it by its empty text, so ToJSON wrote "? !!float" as the key "" where the decoder keyed the
+// entry 0.0. "? !!float" beside "? 0.0" then passed the duplicate check and the decoder kept one of the two values,
+// and beside "? \"\"" ToJSON alone refused it for two keys of one name.
+func TestAScalarTagOnAnEmptyKeyNamesTheKeyByItsDefault(t *testing.T) {
+	for _, test := range []struct {
+		tag  string
+		key  any
+		json string
+	}{
+		{tag: "!!int", key: uint64(0), json: `{"0":"x"}`},
+		{tag: "!!float", key: float64(0), json: `{"0.0":"x"}`},
+		{tag: "!!bool", key: false, json: `{"false":"x"}`},
+		{tag: "!!timestamp", key: time.Time{}, json: `{"0001-01-01T00:00:00Z":"x"}`},
+		{tag: "!!str", key: "", json: `{"":"x"}`},
+		{tag: "!!null", key: nil, json: `{"null":"x"}`},
+	} {
+		t.Run(test.tag, func(t *testing.T) {
+			source := "? " + test.tag + "\n: x\n"
+
+			var decoded codec.MapSlice
+			require.NoError(t, codec.Unmarshal([]byte(source), &decoded))
+			require.Equal(t, 1, decoded.Len())
+			for key := range decoded.Keys() {
+				assert.Equal(t, test.key, key)
+			}
+
+			converted, err := codec.ToJSON([]byte(source))
+			require.NoError(t, err)
+			assert.JSONEq(t, test.json, string(converted))
+		})
+	}
+
+	t.Run("the default meets the same key written out", func(t *testing.T) {
+		for _, source := range []string{"? !!float\n: x\n? 0.0\n: y\n", "? !!int\n: x\n? 0\n: y\n", "? !!bool\n: x\n? false\n: y\n"} {
+			var decoded any
+			err := codec.Unmarshal([]byte(source), &decoded)
+			require.Errorf(t, err, "%q", source)
+			assert.Contains(t, err.Error(), "already defined")
+		}
+	})
+
+	t.Run("the default does not meet the empty string", func(t *testing.T) {
+		converted, err := codec.ToJSON([]byte("? !!float\n: x\n? \"\"\n: y\n"))
+		require.NoError(t, err)
+		assert.JSONEq(t, `{"0.0":"x","":"y"}`, string(converted))
+	})
+}
+
 // TestTagResolvesToItsURI records that a tag is read by the URI it names and
 // not by the shorthand it was written with.
 //

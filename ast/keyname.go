@@ -187,6 +187,9 @@ func TaggedKeyName(n *TagNode) (string, token.KeyKind, bool) {
 	if res.Verdict != TagResolved {
 		return "", token.KeyOther, false
 	}
+	if name, kind, named := emptyTaggedKeyName(res); named {
+		return name, kind, true
+	}
 
 	switch res.Tag {
 	case token.StringTag:
@@ -220,6 +223,33 @@ func TaggedKeyName(n *TagNode) (string, token.KeyKind, bool) {
 		// keys. Read as its node, it would be the string and the pair a
 		// repeat, while the decoder holds a Base64 and a string apart.
 		return token.CanonicalBase64(res.Text), token.KeyBinary, true
+	default:
+		return "", token.KeyOther, false
+	}
+}
+
+// emptyTaggedKeyName names a key whose tag stands on no value by the tag's default: "? !!int" is 0, "? !!float" 0.0,
+// "? !!bool" false and "? !!timestamp" the zero time, the values the decoder builds for them.
+//
+// Named by the empty text, the three numbers and the boolean read "", and the timestamp did not parse and fell back to
+// the null under it. ToJSON named "? !!float" "" where the decoder keyed it 0.0, so "? !!float" beside "? 0.0" passed
+// the duplicate check and lost a value in the decoder, and beside "? \"\"" collided in ToJSON alone.
+//
+// It reports false for a tag whose empty text already gives its name: "!!str", "!!null" and "!!binary".
+func emptyTaggedKeyName(res Resolution) (string, token.KeyKind, bool) {
+	if !res.Empty {
+		return "", token.KeyOther, false
+	}
+
+	switch res.Tag {
+	case token.IntegerTag:
+		return "0", token.KeyInt, true
+	case token.FloatTag:
+		return token.KeyNameOfFloat(0, 64), token.KeyFloat, true
+	case token.BooleanTag:
+		return "false", token.KeyBool, true
+	case token.TimestampTag:
+		return time.Time{}.Format(time.RFC3339Nano), token.KeyTimestamp, true
 	default:
 		return "", token.KeyOther, false
 	}
