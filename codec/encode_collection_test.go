@@ -256,3 +256,27 @@ func theEncoderRefusesTwoKeysThatAreOneYAMLKeyCases() iter.Seq[theEncoderRefuses
 		{name: "two NaN", value: map[float64]string{math.NaN(): "a", math.NaN(): "b"}},
 	})
 }
+
+// reversedKey prints as the reverse of its contents.
+type reversedKey string
+
+func (k reversedKey) String() string {
+	r := []rune(string(k))
+	slices.Reverse(r)
+
+	return string(r)
+}
+
+// TestMarshalSortsAStringerKeyByItsString covers the shortcut that reads a plain string key without
+// fmt.Sprint: a key type with a String method sorts by what String returns, and writes its contents.
+func TestMarshalSortsAStringerKeyByItsString(t *testing.T) {
+	t.Parallel()
+
+	got, err := codec.Marshal(map[reversedKey]int{"ab": 1, "ba": 2, "c": 3})
+	require.NoError(t, err)
+	assert.Equal(t, "ba: 2\nab: 1\nc: 3\n", string(got))
+
+	got, err = codec.Marshal(map[string]int{"ab": 1, "ba": 2, "c": 3})
+	require.NoError(t, err)
+	assert.Equal(t, "ab: 1\nba: 2\nc: 3\n", string(got))
+}

@@ -741,32 +741,53 @@ func (e *Encoder) jsonKeyNode(key ast.MapKeyNode, column int) ast.MapKeyNode {
 
 func (e *Encoder) encodeMap(value reflect.Value, column int) (ast.Node, error) {
 	node := ast.Mapping(token.New("", "", e.pos(column)), e.isFlowStyle)
-	// Each key keeps its reflect.Value for MapIndex: a nil key in a map[any]any
-	// does not come back from reflect.ValueOf(nil), which returns the zero Value.
-	mapKeys := value.MapKeys()
-	keys := make([]any, len(mapKeys))
-	for i, k := range mapKeys {
-		keys[i] = k.Interface()
+	n := value.Len()
+	node.Values = make([]*ast.MappingValueNode, 0, n)
+
+	// The keys and values are copied into two slices, one allocation each.
+	// MapKeys and MapIndex allocate a copy per key and per value. Each key
+	// keeps its reflect.Value: a nil key in a map[any]any does not come back
+	// from reflect.ValueOf(nil), which returns the zero Value.
+	keyType := value.Type().Key()
+	mapKeys := reflect.MakeSlice(reflect.SliceOf(keyType), n, n)
+	mapValues := reflect.MakeSlice(reflect.SliceOf(value.Type().Elem()), n, n)
+	iter := value.MapRange()
+	for i := 0; iter.Next(); i++ {
+		mapKeys.Index(i).SetIterKey(iter)
+		mapValues.Index(i).SetIterValue(iter)
 	}
-	order := make([]int, len(keys))
+
+	// names holds each key as fmt.Sprint prints it, once: the sort compares
+	// them n log n times, and the entry writes them as the anchor name.
+	names := make([]string, n)
+	plain := isPlainString(keyType)
+	for i := range names {
+		if plain {
+			names[i] = mapKeys.Index(i).String()
+		} else {
+			names[i] = fmt.Sprint(mapKeys.Index(i).Interface())
+		}
+	}
+	order := make([]int, n)
 	for i := range order {
 		order[i] = i
 	}
 	sort.Slice(order, func(i, j int) bool {
-		ki, kj := keys[order[i]], keys[order[j]]
-		a, b := fmt.Sprint(ki), fmt.Sprint(kj)
+		a, b := names[order[i]], names[order[j]]
 		if a != b {
 			return a < b
 		}
 
 		// int(1) and uint64(1) print alike. Ordering them by Go type makes the
 		// entry kept by SkipDuplicateMapKey independent of map iteration.
-		return fmt.Sprintf("%T", ki) < fmt.Sprintf("%T", kj)
+		return fmt.Sprintf("%T", mapKeys.Index(order[i]).Interface()) <
+			fmt.Sprintf("%T", mapKeys.Index(order[j]).Interface())
 	})
-	seen := repeatableKeys(value.Type().Key())
+	seen := repeatableKeys(keyType)
 	for _, idx := range order {
-		key := keys[idx]
+		keyValue := mapKeys.Index(idx)
 		if seen != nil {
+			key := keyValue.Interface()
 			first, repeated := seen.add(key)
 			if repeated && e.skipDuplicateMapKey {
 				continue
@@ -776,12 +797,12 @@ func (e *Encoder) encodeMap(value reflect.Value, column int) (ast.Node, error) {
 			}
 		}
 
-		v := value.MapIndex(mapKeys[idx])
+		v := mapValues.Index(idx)
 		encoded, err := e.encodeValue(v, column)
 		if err != nil {
 			return nil, err
 		}
-		keyText := fmt.Sprint(key)
+		keyText := names[idx]
 		vRef := e.toPointer(v)
 
 		// The second encoding assigns an anchor to a value used by an alias.
@@ -793,16 +814,12 @@ func (e *Encoder) encodeMap(value reflect.Value, column int) (ast.Node, error) {
 			encoded = anchorNode
 		}
 
-		keyValue := reflect.ValueOf(key)
-		if value.Type().Key().Kind() == reflect.Interface {
-			// A map[any]any key stands in an interface slot, and reaches
-			// encodeValue as one: a time.Time there takes its tag.
-			keyValue = reflect.ValueOf(&key).Elem()
-		}
+		// keyValue has the map's key type, so a map[any]any key reaches
+		// encodeValue in an interface slot: a time.Time there takes its tag.
 		kn, err := e.encodeValue(keyValue, column)
 		keyNode, ok := kn.(ast.MapKeyNode)
 		if !ok || err != nil {
-			keyNode = e.encodeString(fmt.Sprint(key), column)
+			keyNode = e.encodeString(keyText, column)
 		}
 		keyNode = e.jsonKeyNode(keyNode, column)
 		node.Values = append(node.Values, ast.MappingValue(
@@ -813,6 +830,15 @@ func (e *Encoder) encodeMap(value reflect.Value, column int) (ast.Node, error) {
 		e.setSmartAnchor(vRef, keyText)
 	}
 	return node, nil
+}
+
+// isPlainString reports whether fmt.Sprint prints a value of t as its string
+// contents: a string kind with no String, Error or Format method.
+func isPlainString(t reflect.Type) bool {
+	return t.Kind() == reflect.String &&
+		!t.Implements(reflect.TypeFor[fmt.Stringer]()) &&
+		!t.Implements(reflect.TypeFor[error]()) &&
+		!t.Implements(reflect.TypeFor[fmt.Formatter]())
 }
 
 // keySet records the YAML identity of each key written from a Go map, for a

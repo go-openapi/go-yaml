@@ -376,3 +376,27 @@ i:
 `
 	require.Equal(t, strings.TrimPrefix(expected, "\n"), string(got))
 }
+
+// TestMarshalAnchorTakesAStructHeldInAMap covers a struct with an inline anchor field held as a map
+// value. MarshalAnchor passes the callback the struct's address, and a value read with MapIndex has
+// none: Marshal panicked with "reflect.Value.Addr of unaddressable value".
+func TestMarshalAnchorTakesAStructHeldInAMap(t *testing.T) {
+	type Inner struct{ A int }
+	type Outer struct {
+		*Inner `yaml:",inline,anchor"`
+
+		B int
+	}
+
+	var got []any
+	opt := codec.MarshalAnchor(func(_ *ast.AnchorNode, value any) error {
+		got = append(got, value)
+
+		return nil
+	})
+	out, err := codec.Marshal(map[string]Outer{"k": {Inner: &Inner{A: 1}, B: 2}}, opt)
+	require.NoError(t, err)
+	require.Equal(t, "k: &anchor\n  a: 1\n  b: 2\n", string(out))
+	require.Len(t, got, 1)
+	require.IsType(t, &Outer{}, got[0])
+}
