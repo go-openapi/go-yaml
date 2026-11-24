@@ -2,24 +2,20 @@
 title: Status
 weight: 40
 description: |
-  No release yet, an API that still moves, and the list of what is not built.
+  The API is still in flux. The list of what is not built yet.
 ---
 
 {{% notice style="warning" title="Experimental" %}}
-There is no tagged release. `go get github.com/go-openapi/go-yaml` resolves a
+There is no tagged release yet. `go get github.com/go-openapi/go-yaml` resolves a
 pseudo-version on `master`, and the API changes without notice.
 {{% /notice %}}
 
 ## Can I depend on this?
 
-Not with any promise. Any exported name may still be renamed or removed.
-`parser.ParseFile`, `codec.MarshalWithOptions` and the `context.Context`
-variants of the codec functions were removed in 2026.
+Not blindly yet :) But we are steadily improving the library.
 
-Pin a pseudo-version if you depend on it now. If you need a stable library
-today, use [`goccy/go-yaml`](https://github.com/goccy/go-yaml), the project this
-one forked from, or [`go.yaml.in/yaml/v3`](https://github.com/yaml/go-yaml) to
-decode YAML into Go values.
+The parts that remain very much in flux are the `ast` and the `transform` package.
+`codec` and `parser` should be steadier now.
 
 ## Not built
 
@@ -37,10 +33,6 @@ decode YAML into Go values.
 
 ## Where to watch
 
-Releases will appear on the
-[GitHub releases page](https://github.com/go-openapi/go-yaml/releases).
+Releases will appear on the [GitHub releases page][releases]
 
-{{% notice style="info" %}}
-This page is the one place on the site allowed to describe what does not exist.
-Everywhere else, a page describes committed code or says nothing.
-{{% /notice %}}
+[releases]: https://github.com/go-openapi/go-yaml/releases

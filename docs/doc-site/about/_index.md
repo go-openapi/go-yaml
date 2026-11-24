@@ -1,9 +1,8 @@
 ---
-title: About
+title: About go-yaml
 weight: 80
 description: |
-  Why this library exists, how correct it is, how fast it is, and what is not
-  built yet.
+  The motivation for this library and its design goals.
 ---
 
 {{< children type="card" description="true" >}}

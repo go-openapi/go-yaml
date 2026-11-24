@@ -113,7 +113,7 @@ Transitory limitations - we are currently working on those.
 
 ## Credits
 
-This library was forked from the work started by [Masaaki Goshima (@goccy)](https://github.com/goccy),
+This library was forked from the work started by [Masaaki Goshima (@goccy)][goccy],
 which is maintained upstream at [github.com/goccy/go-yaml][upstream].
 
 We are grateful to Masaaki for this great piece of work. This fork tries to remain faithful to its spirit:
@@ -189,6 +189,7 @@ every other component this library is built on, are recorded in the [NOTICE](./N
 [conformance]: https://github.com/yaml/yaml-test-suite
 [conformance-gen]: https://github.com/go-openapi/conformance-suites
 [referenceparser]: https://github.com/ingydotnet/yaml-pp-p5
+[goccy]: https://github.com/goccy
 [ingydotnet]: https://github.com/ingydotnet
 [niemeyer]: https://github.com/niemeyer
 [pantoniou]: https://github.com/pantoniou
