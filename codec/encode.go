@@ -741,22 +741,31 @@ func (e *Encoder) jsonKeyNode(key ast.MapKeyNode, column int) ast.MapKeyNode {
 
 func (e *Encoder) encodeMap(value reflect.Value, column int) (ast.Node, error) {
 	node := ast.Mapping(token.New("", "", e.pos(column)), e.isFlowStyle)
-	keys := make([]any, len(value.MapKeys()))
-	for i, k := range value.MapKeys() {
+	// Each key keeps its reflect.Value for MapIndex: a nil key in a map[any]any
+	// does not come back from reflect.ValueOf(nil), which returns the zero Value.
+	mapKeys := value.MapKeys()
+	keys := make([]any, len(mapKeys))
+	for i, k := range mapKeys {
 		keys[i] = k.Interface()
 	}
-	sort.Slice(keys, func(i, j int) bool {
-		a, b := fmt.Sprint(keys[i]), fmt.Sprint(keys[j])
+	order := make([]int, len(keys))
+	for i := range order {
+		order[i] = i
+	}
+	sort.Slice(order, func(i, j int) bool {
+		ki, kj := keys[order[i]], keys[order[j]]
+		a, b := fmt.Sprint(ki), fmt.Sprint(kj)
 		if a != b {
 			return a < b
 		}
 
 		// int(1) and uint64(1) print alike. Ordering them by Go type makes the
 		// entry kept by SkipDuplicateMapKey independent of map iteration.
-		return fmt.Sprintf("%T", keys[i]) < fmt.Sprintf("%T", keys[j])
+		return fmt.Sprintf("%T", ki) < fmt.Sprintf("%T", kj)
 	})
 	seen := repeatableKeys(value.Type().Key())
-	for _, key := range keys {
+	for _, idx := range order {
+		key := keys[idx]
 		if seen != nil {
 			first, repeated := seen.add(key)
 			if repeated && e.skipDuplicateMapKey {
@@ -767,8 +776,7 @@ func (e *Encoder) encodeMap(value reflect.Value, column int) (ast.Node, error) {
 			}
 		}
 
-		k := reflect.ValueOf(key)
-		v := value.MapIndex(k)
+		v := value.MapIndex(mapKeys[idx])
 		encoded, err := e.encodeValue(v, column)
 		if err != nil {
 			return nil, err

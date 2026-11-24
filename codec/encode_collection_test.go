@@ -160,6 +160,30 @@ func TestEncodeDefinedTypeKeyMap(t *testing.T) {
 	require.Equal(t, expect, actual)
 }
 
+// TestMarshalWritesANilInterfaceKeyAsNull covers a nil key in a map[any]any, which panicked: the
+// encoder looked the value up through reflect.ValueOf(nil), the zero Value.
+func TestMarshalWritesANilInterfaceKeyAsNull(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		in   any
+		want string
+	}{
+		{in: map[any]any{nil: 1}, want: "null: 1\n"},
+		{in: map[any]any{nil: 1, "a": 2}, want: "null: 1\na: 2\n"},
+		{in: map[any]any{nil: map[any]any{nil: nil}}, want: "null:\n  null: null\n"},
+		{in: map[*int]int{nil: 1}, want: "null: 1\n"},
+	} {
+		got, err := codec.Marshal(tc.in)
+		require.NoErrorf(t, err, "%#v", tc.in)
+		assert.Equalf(t, tc.want, string(got), "%#v", tc.in)
+
+		var back map[any]any
+		require.NoErrorf(t, codec.Unmarshal(got, &back), "%q", got)
+		assert.Containsf(t, back, nil, "%q reads back with a nil key", got)
+	}
+}
+
 // TestTheEncoderRefusesTwoKeysThatAreOneYAMLKey covers a Go map whose keys are
 // two Go values and one YAML key.
 //
