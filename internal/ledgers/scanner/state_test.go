@@ -82,12 +82,21 @@ var stateLedger = map[string]disagreement{ //nolint:gochecknoglobals // ok to st
 	// denominator grew with the corpus, and no entry that stood at 0 moved. On the corpus before it, the same day,
 	// the plain and whole-buffer reads had risen by 49 and the extents by 9 when a '}' or a ']' inside a flow
 	// collection began to end a plain scalar wherever it stands: "[b}]" scans "b" and then the '}'.
-	"buf.notSpaceCharPos==trimmed/plain": {0, 787731},
-	"buf.notSpaceCharPos==trimmed/block": {0, 3805},
+	//
+	// Re-baselined 2026-11-24 after four scanner fixes, measured commit by commit; every entry is still at 0, and
+	// only the denominators moved (plain / whole buffer / block / spaces / extents):
+	//
+	//   - e1097b2f, a tab before a key's properties rejected: -16 / -16 / 0 / 0 / -1;
+	//   - 2ccac9a0, a '-' before a blank in a flow collection rejected: +14,944 / +14,943 / -1 / -71 / -54;
+	//   - ba6b3161, a '-' continuing a plain scalar scanned as plain, the headerless folded block gone:
+	//     -33,083 / -33,106 / -23 / -258 / +3;
+	//   - 0a4a9742, a token cut at a CR LF ended before the '\r': -1 / -1 / 0 / 0 / 0.
+	"buf.notSpaceCharPos==trimmed/plain": {0, 769575},
+	"buf.notSpaceCharPos==trimmed/block": {0, 3781},
 
 	// A mark past the end of the buffer made bufferedSrc slice a byte the last token wrote.
 	// Fixed; nothing may raise this.
-	"buf.notSpaceCharPos<=len(buf)": {0, 791536},
+	"buf.notSpaceCharPos<=len(buf)": {0, 773356},
 
 	// Both entries count a space opening a line where indentNum has stopped tracking the column, the second where a
 	// tab stands in the run before it. Nothing may raise either.
@@ -100,13 +109,13 @@ var stateLedger = map[string]disagreement{ //nolint:gochecknoglobals // ok to st
 	// marked as opening: past the closing quote, the space before "# lala" in "a: \"double" over "  quotes\" # lala"
 	// counted as indentation.
 	"indent.indentNum==column-1/tab":    {0, 7},
-	"indent.indentNum==column-1/spaces": {0, 100135},
+	"indent.indentNum==column-1/spaces": {0, 99806},
 
 	// bufferedToken assembles a token's extent from what the scanner already holds: where the origin began, how long
 	// it is, and the line the text ends on. It does not read the origin back to work the extent out.
 	// This compares that extent against token.MeasureOrigin's, which token.Make used.
 	// Nothing may raise it: a disagreement is a token pointing at the wrong stretch of source.
-	"token.extentMatchesTheOrigin": {0, 116109},
+	"token.extentMatchesTheOrigin": {0, 116057},
 }
 
 // TestStateLedger holds the scanner's state pairs to what they were measured at.
