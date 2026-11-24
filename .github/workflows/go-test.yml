@@ -20,3 +20,21 @@ jobs:
       # temporarily disable windows, which takes too long, and macos (not really significant)
       test-matrix: '{"os":["ubuntu-latest"],"go": ["oldstable","stable"]}'
     secrets: inherit
+
+  # The ledgers behind the yamlprobe build tag hold the scanner's internal state to a measured baseline. The shared
+  # test workflow passes no build tags, so they run here.
+  ledgers:
+    runs-on: ubuntu-latest
+    steps:
+      -
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      -
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: stable
+          check-latest: true
+          cache: true
+          cache-dependency-path: '**/go.sum'
+      -
+        name: Run the yamlprobe ledgers
+        run: go test -count=1 -tags yamlprobe ./internal/ledgers/...
