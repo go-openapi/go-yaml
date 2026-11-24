@@ -9,7 +9,9 @@ import (
 	"testing"
 
 	"github.com/go-openapi/testify/v2/assert"
+	"github.com/go-openapi/testify/v2/require"
 
+	"github.com/go-openapi/go-yaml/internal/scanner"
 	"github.com/go-openapi/go-yaml/internal/scanner/internal/testscanner"
 	"github.com/go-openapi/go-yaml/token"
 )
@@ -304,4 +306,40 @@ func plainCommentTestCases() iter.Seq[plainCommentTestCase] {
 			vals:  []string{"k", ":", "|", "a\n# not a comment\n"},
 		},
 	})
+}
+
+// TestATabMaySeparateACommentLine checks that a tab in the leading whitespace of a comment line separates, as a space
+// does, and that a tab indenting content is still refused.
+//
+// A comment line is l-comment, s-separate-in-line c-nb-comment-text, and s-separate-in-line is s-white+. scanTab
+// took a tab opening a line for indentation unless the line was blank, so "a: 1" over "\t# c" over "b: 2" was refused
+// with "found character '\t' that cannot start any token", while "a: 1" over "  \t# c" read.
+func TestATabMaySeparateACommentLine(t *testing.T) {
+	for _, src := range []string{
+		"a: 1\n\t# c\nb: 2\n",
+		"- a\n\t# c\n- b\n",
+		"a:\n  b: 1\n  \t# c\n  c: 2\n",
+		"a:\n\t# c\n  b: 1\n",
+		"\t  # c\na: 1\n",
+	} {
+		var s scanner.Scanner
+		s.Init([]byte(src))
+
+		var comments int
+		for tk := range s.Tokens() {
+			if tk.Type == token.CommentType {
+				comments++
+			}
+		}
+		require.NoErrorf(t, s.Err(), "%q", src)
+		assert.Equalf(t, 1, comments, "%q", src)
+	}
+
+	for _, src := range []string{"a: 1\n\tb: 2\n", "- a\n\t- b\n"} {
+		var s scanner.Scanner
+		s.Init([]byte(src))
+		for range s.Tokens() {
+		}
+		require.Errorf(t, s.Err(), "%q indents with a tab", src)
+	}
 }

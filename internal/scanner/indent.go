@@ -202,6 +202,21 @@ func (s *Scanner) checkContinuationIndent(ctx *Context, rest string, base int32)
 	return ErrInvalidToken("a scalar continues on a line that is not indented past the one it started on", token.Invalid(ctx.origin(), s.pos()))
 }
 
+// opensComment reports whether the line at the head of src, past its leading spaces and tabs, opens with a comment.
+func opensComment(src string) bool {
+	for i := range len(src) {
+		switch src[i] {
+		case ' ', '\t':
+		case '#':
+			return true
+		default:
+			return false
+		}
+	}
+
+	return false
+}
+
 // lineIndent returns how many spaces begin the line, and whether the line holds nothing else.
 //
 // A blank line is part of no indentation.

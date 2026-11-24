@@ -144,11 +144,19 @@ func (s *Scanner) scanTab(ctx *Context, c rune) (bool, error) {
 		return false, nil
 	}
 
-	if _, blank := lineIndent(ctx.src[ctx.idx:]); blank {
-		// Nothing follows the tab but the end of the line.
+	if _, blank := lineIndent(ctx.src[ctx.idx:]); blank || opensComment(ctx.src[ctx.idx:]) {
+		// Nothing follows the tab but the end of the line, or a comment.
 		// A line holding only whitespace is a blank line however it is spelled, and indents nothing: it separates the entries
 		// around it and belongs to neither.
+		//
+		// A comment line is l-comment, s-separate-in-line c-nb-comment-text, and s-separate-in-line is s-white+, a tab
+		// included. Refused as indentation, "a: 1" over "\t# c" over "b: 2" was no document, while "a: 1" over
+		// "  \t# c" read, the tab standing where the scan loop's tab arm takes it for separation.
+		//
+		// Among the line's leading whitespace the tab counts one column of indentNum, as the tab arm counts it. Left out,
+		// the spaces after it in "\t  # c" read indentNum one short of the column.
 		ctx.addOriginBuf(c)
+		s.indentNum++
 		s.progressColumn(ctx, 1)
 
 		return true, nil
