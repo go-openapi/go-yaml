@@ -230,17 +230,14 @@ func commentTestCases() iter.Seq[testscanner.Case] {
 // before it, so one following a space, a tab or a line break opens a comment
 // wherever it is written. The column decides nothing.
 //
-// The scan decided by column. A multi-line plain scalar enters the same state a
-// block scalar does, and scanMultiLine took a '#' inside the continuation's
-// indentation for content: "?" over "  a" over "      - b" over "      # c"
-// gave one String token "a - b # c", where perlref, PyYAML 6.0.1,
-// go.yaml.in/yaml/v3 and libfyaml 1.0.0b1 all read the key "a - b". Outside the
-// indentation the indent state went down, the scalar was cut and the same
-// document read correctly -- which is what made it look like an indentation
-// rule.
-//
-// isRawFolded is what tells a plain scalar from a literal or folded block,
-// where a '#' is content whatever precedes it.
+// The scan decided by column. A multi-line plain scalar continued by a '-'
+// entered the state a block scalar does, and scanMultiLine took a '#' inside
+// the continuation's indentation for content: "?" over "  a" over "      - b"
+// over "      # c" gave one String token "a - b # c", where perlref, PyYAML
+// 6.0.1, go.yaml.in/yaml/v3 and libfyaml 1.0.0b1 all read the key "a - b".
+// Outside the indentation the indent state went down, the scalar was cut and
+// the same document read correctly -- which is what made it look like an
+// indentation rule. Such a scalar is now scanned as plain to its end.
 func TestFixedAPlainScalarEndsAtAComment(t *testing.T) {
 	for tc := range plainCommentTestCases() {
 		t.Run(tc.name, func(t *testing.T) {

@@ -129,7 +129,12 @@ func TestTheWalkHandsOverTheSameTree(t *testing.T) {
 // suite/flow-mapping-missing-a-separating-comma, which is still refused: the scalar now folds "1" and "bar" into
 // one value, and the complaint "',' or '}' must be specified" moved from "bar" at [4:2] to the ':' after it at
 // [4:5], where the entry ends. No other source walks differently.
-const fixedWalkDigest = "9fc325a91cc159979cf931b7a0692775c74f02195bec642a26cc09a4a358cd43"
+//
+// Re-baselined on 2026-11-24 when a plain scalar continued by a '-' on a deeper line stopped being scanned as a block
+// scalar. One source moved, suite/sequence-entry-that-looks-like-two-with-wrong-indentation: its scalar's span ended at
+// byte 37, past the line break closing the 37-byte source, and now ends at 36, before it. The value is unchanged, and
+// no other source walks differently.
+const fixedWalkDigest = "e065fe7fd8ae2c274ff1ee167cbcbdeadec486c5b9ca88dac2dde052a7170728"
 
 // digestVisitor writes each node it is handed, so a node the walk reads from a reused cell changes the digest.
 type digestVisitor struct {

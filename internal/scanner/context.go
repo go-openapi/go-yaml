@@ -201,12 +201,6 @@ func (c *Context) setFolded(lastDelimColumn int32, opt string) {
 	c.mstate = &c.block
 }
 
-func (c *Context) setRawFolded(column int32) {
-	c.block = MultiLineState{isRawFolded: true}
-	c.block.updateIndentColumn(column)
-	c.mstate = &c.block
-}
-
 func (c *Context) addToken(tk *token.Token) {
 	if tk == nil {
 		return
@@ -316,23 +310,6 @@ func (c *Context) keyPropertiesLedByATab(line int32) bool {
 // While the text is still a window, this finds the run by reading back over the source.
 // Marking it while reading forward cost a compare and a store for every character of the document.
 // Reading back costs the length of the run, once, and only for a line that has one.
-// trimTrailingFold drops the breaks and spaces a plain scalar's buffer ends
-// with, for a scalar cut where a comment opens rather than where its own text
-// runs out.
-//
-// The origin is left alone: it records what was read, which is what a verbatim
-// rendering writes back, and only the value loses the fold. A plain scalar's
-// breaks fold to spaces, so a scalar cut after one would otherwise carry it --
-// "a - b" over a comment line came out "a - b\n".
-func (c *Context) trimTrailingFold() {
-	end := len(c.buf)
-	for end > 0 && (c.buf[end-1] == '\n' || c.buf[end-1] == '\r' || c.buf[end-1] == ' ' || c.buf[end-1] == '\t') {
-		end--
-	}
-	c.buf = c.buf[:end]
-	c.notSpaceCharPos = min(c.notSpaceCharPos, int32(end))
-}
-
 func (c *Context) removeRightSpaceFromBuf() {
 	if c.originCut {
 		trimmed := len(c.originCopy)

@@ -307,7 +307,11 @@ func onlyValueOf(t *testing.T, body ast.Node) ast.Node {
 
 // insertableDocuments is how many corpus documents hold a mapping an entry can be inserted into. The count may not
 // fall: fewer documents measured is the harness or the parser losing ground, and zero failures over them proves less.
-const insertableDocuments = 3563
+//
+// 3564 -> 3561 on 2026-11-24, when a plain scalar continued by a '-' on a deeper line began to be held to the plain
+// scalar rules: the three documents that left hold a ": " on a line below the '-', a multi-line implicit key, which
+// yaml/yaml-reference-parser, libfyaml and go.yaml.in/yaml/v3 refuse.
+const insertableDocuments = 3561
 
 // TestInsertingIntoTheCorpus puts one entry into every document the corpus holds
 // and asks for it back.

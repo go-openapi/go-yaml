@@ -105,13 +105,11 @@ func TestADoubleQuotedScalarReachesItsClosingQuote(t *testing.T) {
 // TestAPlainScalarContinuedByADashStartsWhereItsTextDoes checks the position of a plain scalar whose continuation line
 // opens with "- ".
 //
-// The dash on a more indented line continues the scalar, and scanRawFoldedChar reads the rest as a block of its own.
-// That block recorded its start at the dash, and the token took its position from there: "- single multiline" over
+// The dash on a more indented line continues the scalar. The scan read the rest as a block scalar of its own, which
+// recorded its start at the dash, and the token took its position from there: "- single multiline" over
 // " - sequence entry" gave line 2, offset 21 and an end past the source, and Renderer.Verbatim wrote
-// " sequence entry". The block now starts where the scalar did.
-//
-// Read through this path, the token's end takes in the line break closing the source, where a plain scalar read the
-// ordinary way stops before it, so the text is compared without it.
+// " sequence entry". The scalar is now scanned as plain to its end, and stops before the line break closing the
+// source.
 func TestAPlainScalarContinuedByADashStartsWhereItsTextDoes(t *testing.T) {
 	for _, tc := range []struct {
 		name, src, text string
@@ -134,7 +132,8 @@ func TestAPlainScalarContinuedByADashStartsWhereItsTextDoes(t *testing.T) {
 				from, to := int(tk.Position.Offset()), int(tk.EndOffset())
 				require.LessOrEqualf(t, to, len(tc.src), "%q ends past the source", tc.src)
 				require.LessOrEqualf(t, from, to, "%q", tc.src)
-				assert.Equalf(t, tc.text, strings.TrimRight(tc.src[from:to], "\r\n"), "%q", tc.src)
+				// A plain scalar's span ends on the '\r' of a CRLF break, as "a\r\n" spans "a\r", so only that is left out.
+				assert.Equalf(t, tc.text, strings.TrimSuffix(tc.src[from:to], "\r"), "%q", tc.src)
 				assert.Equalf(t, tc.line, tk.Position.Line, "%q", tc.src)
 			}
 			require.Truef(t, found, "%q holds no plain scalar", tc.src)

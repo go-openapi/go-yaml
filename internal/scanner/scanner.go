@@ -341,9 +341,6 @@ func (s *Scanner) scan(ctx *Context) error {
 			if s.scanDocumentStart(ctx) {
 				continue
 			}
-			if s.scanRawFoldedChar(ctx) {
-				continue
-			}
 			// Inside a flow collection a '-' is a scalar or nothing, so scanFlowDash decides before the entry scan
 			// could take it for a sequence entry.
 			if err := s.scanFlowDash(ctx); err != nil {
@@ -766,25 +763,6 @@ func (s *Scanner) scanMergeKey(ctx *Context) bool {
 	ctx.addTokenValue(token.MakeMergeKey(ctx.origin()+"<<", s.pos()))
 	s.progressColumn(ctx, 2)
 	ctx.clear()
-
-	return true
-}
-
-func (s *Scanner) scanRawFoldedChar(ctx *Context) bool {
-	if !ctx.existsBuffer() || !s.isChangedToIndentStateUp() {
-		return false
-	}
-
-	ctx.setRawFolded(s.column)
-	if s.hasSavedPos {
-		// The scalar began on a line above, where scanNewLine saved its position. The block starts there, and not
-		// at the '-': emitMultiLine takes the token's position from the block's start, and taking it from here put
-		// "single multiline" over " - sequence entry" at line 2, with an end past the source.
-		ctx.getMultiLineState().began(s.savedPos)
-	}
-	ctx.addBuf('-')
-	ctx.addOriginBuf('-')
-	s.progressColumn(ctx, 1)
 
 	return true
 }

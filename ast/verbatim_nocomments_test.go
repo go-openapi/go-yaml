@@ -50,7 +50,13 @@ import (
 // 16620 -> 16619 the same day, when a '-' before a blank inside a flow collection began to be refused: the seed holds
 // "[..., - 2142...]", which yaml/yaml-reference-parser, libfyaml and go.yaml.in/yaml/v3 refuse, and the corpus marks
 // it so.
-const withoutCommentsDocuments = 16619
+//
+// 16620 -> 16615 on 2026-11-24, when a plain scalar continued by a '-' on a deeper line began to be held to the plain
+// scalar rules. The scan read the lines after the '-' as a block scalar with no header, so a ": " below it was text:
+// seeds 3272, 11972, 14525, 15706 and 16559 each hold one, a multi-line implicit key, and
+// yaml/yaml-reference-parser, libfyaml and go.yaml.in/yaml/v3 refuse each of them. The 16620 included one seed that a
+// tag-led key after an empty nested value had kept out.
+const withoutCommentsDocuments = 16615
 
 func TestVerbatimRebuildsTheCorpusParsedWithoutComments(t *testing.T) {
 	t.Parallel()

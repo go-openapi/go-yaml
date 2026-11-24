@@ -20,29 +20,6 @@ import (
 func (s *Scanner) scanMultiLine(ctx *Context, c rune) error {
 	state := ctx.getMultiLineState()
 
-	if state.isRawFolded && c == '#' && startsAComment(ctx) {
-		// A plain scalar ends here. ns-plain-char admits a '#' only where an
-		// ns-char stands immediately before it, so one following a space, a tab
-		// or a line break opens a comment wherever it is written -- the column
-		// decides nothing, and the scan was deciding by column: a '#' inside
-		// the continuation's indentation was taken as content and one outside
-		// it as a comment, so "?" over "  a" over "      - b" over "      # c"
-		// read the key "a - b # c" where every other implementation reads
-		// "a - b".
-		//
-		// Only a plain scalar. Inside a literal or a folded block the '#' is
-		// content whatever precedes it, which is what isRawFolded tells apart.
-		//
-		// Before addOriginBuf below: the '#' belongs to the comment that
-		// follows, and counting it here left the scalar's extent a byte long
-		// and overlapping the comment's.
-		ctx.breakMultiLine()
-		ctx.trimTrailingFold()
-		s.addBufferedTokenIfExists(ctx)
-
-		return nil
-	}
-
 	ctx.addOriginBuf(c)
 	c = s.normalizeMultiLineBreak(ctx, c)
 
@@ -522,7 +499,6 @@ type MultiLineState struct {
 	// keep.
 	sawLineBreak bool
 	hasStart     bool
-	isRawFolded  bool
 	isLiteral    bool
 }
 
@@ -620,14 +596,12 @@ func (s *MultiLineState) addIndent(ctx *Context, column int32) bool {
 	return true
 }
 
-// updateNewLineInFolded folds the break above this line into a space, for a folded or raw folded block whose content
-// starts in the same column as the line before it.
+// updateNewLineInFolded folds the break above this line into a space, for a folded block whose content starts in the
+// same column as the line before it.
 func (s *MultiLineState) updateNewLineInFolded(ctx *Context, column int32) {
 	if s.isLiteral {
 		return
 	}
-
-	// Folded or RawFolded.
 
 	if !s.foldedNewLine {
 		return
@@ -668,12 +642,8 @@ func (s *MultiLineState) updateNewLineInFolded(ctx *Context, column int32) {
 
 // hasTrimAllEndNewlineOpt reports whether the header strips every line break the block ends on: the "-" of "|-",
 // which may stand before or after the indentation indicator.
-//
-// A raw folded scalar strips them too, with no header to state it.
-// The scan reads such a scalar as folded although the document never wrote it as a block, and it carries no trailing
-// blank lines into its value.
 func (s *MultiLineState) hasTrimAllEndNewlineOpt() bool {
-	return strings.HasPrefix(s.opt, "-") || strings.HasSuffix(s.opt, "-") || s.isRawFolded
+	return strings.HasPrefix(s.opt, "-") || strings.HasSuffix(s.opt, "-")
 }
 
 // hasKeepAllEndNewlineOpt reports whether the header keeps every line break the block ends on: the "+" of "|+".
@@ -766,15 +736,4 @@ func validateMultiLineHeaderOption(opt string) error {
 	}
 
 	return nil
-}
-
-// startsAComment reports whether the '#' at the cursor opens one.
-//
-// c-nb-comment-text is preceded by separation or starts a line, which is the
-// same test [Scanner.scanComment] makes; this one is asked before the multi-line
-// scan swallows the character as content.
-func startsAComment(ctx *Context) bool {
-	c := ctx.previousChar()
-
-	return c == rune(0) || c == ' ' || c == '\t' || isNewLineChar(c)
 }

@@ -149,10 +149,6 @@ func (s *Scanner) isChangedToIndentStateDown() bool {
 	return s.indentState == IndentStateDown
 }
 
-func (s *Scanner) isChangedToIndentStateUp() bool {
-	return s.indentState == IndentStateUp
-}
-
 // checkFlowIndent rejects the line about to start when it is not indented past the line its flow collection opened on.
 //
 // This refuses "flow: [a,\nb]": "b" sits in the same column as the key owning the collection, so nothing marks it as
