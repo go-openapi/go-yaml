@@ -5,6 +5,7 @@ package codec
 
 import (
 	"bytes"
+	"iter"
 	"strconv"
 	"strings"
 
@@ -18,21 +19,43 @@ import (
 // MarshalJSON method without the check. json.RawMessage returns its bytes unchecked, and a RawMessage holding YAML
 // has always been written as that YAML.
 func fromJSON(src []byte, syntax bool, opts ...ast.RenderOption) ([]byte, error) {
-	var out bytes.Buffer
-	out.Grow(len(src) + len(src)/4)
-
-	stream := ast.NewRenderer(opts...).Stream(&out)
-	// A zero Encoder styles a string as Marshal does with no options.
-	var enc Encoder
-
 	var parseOpts []parser.Option
 	if syntax {
 		parseOpts = append(parseOpts, parser.WithJSONSyntax())
 	}
 	tokens := ToJSONTokens(src, parseOpts...)
+
+	return renderJSONTokens(tokens.Tokens(), len(src), tokens.Err, opts...)
+}
+
+// FromJSONTokens writes the YAML for a sequence of JSON tokens, as [FromJSON] writes it for the JSON text they come
+// from.
+//
+// It takes the tokens of any JSON reader that yields them in document order, as [JSONTokens.Tokens] does, with no
+// token for a "," or a ":". It checks their order and nothing else: a key repeated in one object is written twice. A
+// reader that stops on an error leaves a collection open, and FromJSONTokens then returns
+// [ast.ErrStreamOrder]: check the reader's own error first, since it names the fault.
+//
+// opts lay the YAML out: [ast.WithIndent] and [ast.WithIndentSequence].
+func FromJSONTokens(tokens iter.Seq[JSONToken], opts ...ast.RenderOption) ([]byte, error) {
+	return renderJSONTokens(tokens, 0, nil, opts...)
+}
+
+// renderJSONTokens writes tokens through an [ast.Stream]. sizeHint presizes the output. sourceErr, when set, returns
+// the error that stopped the source, and is checked before the stream closes.
+func renderJSONTokens(
+	tokens iter.Seq[JSONToken], sizeHint int, sourceErr func() error, opts ...ast.RenderOption,
+) ([]byte, error) {
+	var out bytes.Buffer
+	out.Grow(sizeHint + sizeHint/4)
+
+	stream := ast.NewRenderer(opts...).Stream(&out)
+	// A zero Encoder styles a string as Marshal does with no options.
+	var enc Encoder
+
 	// depth counts the collections open around a token, to give each key the scratch set of its own depth.
 	var depth int
-	for tok := range tokens.Tokens() {
+	for tok := range tokens {
 		switch tok.Kind {
 		case JSONObjectStart, JSONArrayStart:
 			enc.scratch = nil
@@ -51,8 +74,10 @@ func fromJSON(src []byte, syntax bool, opts ...ast.RenderOption) ([]byte, error)
 			depth++
 		}
 	}
-	if err := tokens.Err(); err != nil {
-		return nil, err
+	if sourceErr != nil {
+		if err := sourceErr(); err != nil {
+			return nil, err
+		}
 	}
 	if err := stream.Close(); err != nil {
 		return nil, err

@@ -15,6 +15,8 @@ import (
 	"github.com/go-openapi/go-yaml/ast"
 	"github.com/go-openapi/go-yaml/codec"
 	yamlerrors "github.com/go-openapi/go-yaml/errors"
+	"github.com/go-openapi/go-yaml/internal/yamltestsuite"
+	"github.com/go-openapi/go-yaml/parser"
 )
 
 // TestFromJSONWritesWhatTheJSONWrote converts JSON whose values Go types would change: numbers keep their text, null
@@ -122,4 +124,45 @@ func TestFromJSONLaysTheYAMLOutWithRenderOptions(t *testing.T) {
 	out, err = codec.FromJSON(src, ast.WithIndentSequence(true))
 	require.NoError(t, err)
 	assert.Equal(t, "a:\n  b:\n    - 1\n    - c: 2\n      d: 3\n", string(out))
+}
+
+// TestFromJSONTokensWritesWhatFromJSONWrites feeds FromJSONTokens the tokens ToJSONTokens reads from JSON text, and
+// compares the output with FromJSON's for the same text, on the JSON of every YAML Test Suite document that has one.
+func TestFromJSONTokensWritesWhatFromJSONWrites(t *testing.T) {
+	t.Parallel()
+
+	suites, err := yamltestsuite.TestSuites()
+	require.NoError(t, err)
+
+	var compared int
+	for _, s := range suites {
+		src, err := codec.ToJSON(s.InYAML)
+		if err != nil {
+			continue
+		}
+		want, err := codec.FromJSON(src)
+		require.NoErrorf(t, err, "%s", src)
+
+		tokens := codec.ToJSONTokens(src, parser.WithJSONSyntax())
+		got, err := codec.FromJSONTokens(tokens.Tokens())
+		require.NoError(t, tokens.Err())
+		require.NoErrorf(t, err, "%s", src)
+		assert.Equalf(t, string(want), string(got), "%s", src)
+		compared++
+	}
+	assert.Greater(t, compared, 200)
+}
+
+// TestFromJSONTokensRejectsASourceThatStopsEarly hands FromJSONTokens an object that never closes, as a reader stopped
+// by an error leaves it.
+func TestFromJSONTokensRejectsASourceThatStopsEarly(t *testing.T) {
+	t.Parallel()
+
+	stopped := slices.Values([]codec.JSONToken{
+		{Kind: codec.JSONObjectStart},
+		{Kind: codec.JSONKey, Value: "a"},
+		{Kind: codec.JSONNumber, Value: "1"},
+	})
+	_, err := codec.FromJSONTokens(stopped)
+	require.ErrorIs(t, err, ast.ErrStreamOrder)
 }
