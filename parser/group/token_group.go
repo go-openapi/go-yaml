@@ -589,7 +589,16 @@ type explicitKey struct {
 // Only the entries of that one sequence continue such a body. A '-' back at the
 // '?'s column after the key has content of another shape belongs to the
 // collection around the entry, not to the key.
+//
+// The sequence's anchor and tag stand in front of it, on the '?'s line or on a
+// line of their own: s-l+block-collection opens with the node's properties. So
+// a body holding properties only is still empty here. Without that, "?" over
+// " !!seq" over "- a" ended the key at the '-', and the parser refused the
+// sequence as "non-map value is specified".
 func opensZeroIndentedSeq(body []*TapeToken, keyColumn int) bool {
+	for len(body) > 0 && isProperty(body[0]) {
+		body = body[1:]
+	}
 	if len(body) == 0 {
 		return true
 	}

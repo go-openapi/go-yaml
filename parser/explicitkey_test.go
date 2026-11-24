@@ -48,6 +48,27 @@ func TestAZeroIndentedSequenceIsAnExplicitKeysBody(t *testing.T) {
 		assert.Equal(t, "? a\n:\n- x\n", f.String())
 	})
 
+	// s-l+block-collection opens with the node's properties, so a tag or an anchor in front of the sequence, on the
+	// '?'s line or on its own, still leaves the body to the sequence. libfyaml and yaml.v3 parse every one of these;
+	// go-yaml refused them as "non-map value is specified".
+	t.Run("the sequence's properties stand in front of it", func(t *testing.T) {
+		for _, tc := range []struct{ src, want string }{
+			{"?\n !!seq\n- a\n: x\n", "? !!seq\n  - a\n: x\n"},
+			{"? !!seq\n- a\n: x\n", "? !!seq\n  - a\n: x\n"},
+			{"? &k\n- a\n: x\n", "? &k\n  - a\n: x\n"},
+			{"? &k !!seq\n- a\n- b\n: x\n", "? &k !!seq\n  - a\n  - b\n: x\n"},
+			{"- ? &x\n  - a\n  : b\n", "- ? &x\n    - a\n  : b\n"},
+		} {
+			f, err := parser.ParseBytes([]byte(tc.src))
+			require.NoErrorf(t, err, "%q", tc.src)
+			assert.Equalf(t, tc.want, f.String(), "%q", tc.src)
+		}
+
+		// A scalar after the properties is the key, and a '-' below it stands past it.
+		_, err := parser.ParseBytes([]byte("? !!str a\n- b\n"))
+		require.Error(t, err)
+	})
+
 	// Shapes outside the rule, held so that a change to it cannot move them.
 	t.Run("content on the '?'s own line is unchanged", func(t *testing.T) {
 		for _, tc := range []struct{ src, want string }{
