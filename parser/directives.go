@@ -28,7 +28,7 @@ func (p *Parser) parseDirective(ctx context, g *group.TokenGroup) (*ast.Directiv
 		return nil, err
 	}
 
-	switch directive.Name.String() {
+	switch directiveNameOf(directive) {
 	case "YAML":
 		if g.Len() != 2 {
 			return nil, yamlerrors.NewSyntax("unexpected format YAML directive", g.First().RawToken())
@@ -109,12 +109,25 @@ func (p *Parser) parseBareDirective(ctx context) (*ast.DirectiveNode, error) {
 		return nil, err
 	}
 
-	switch name := directive.Name.String(); name {
+	switch name := directiveNameOf(directive); name {
 	case "YAML", "TAG":
 		return nil, yamlerrors.NewSyntax(fmt.Sprintf("unexpected format %s directive", name), directive.GetToken())
 	default:
 		return directive, nil
 	}
+}
+
+// directiveNameOf returns the name a directive was written with, "YAML" for "%YAML 1.2".
+//
+// It reads the name's token, not [ast.Node.String], which writes the comment closing the line too:
+// "%YAML #1.1" has no version, and its name read as "YAML #1.1" matched neither "YAML" nor "TAG",
+// so the directive passed as one the parser does not know.
+func directiveNameOf(directive *ast.DirectiveNode) string {
+	if directive.Name == nil || directive.Name.GetToken() == nil {
+		return ""
+	}
+
+	return directive.Name.GetToken().Value
 }
 
 func (p *Parser) parseDirectiveName(ctx context) (*ast.DirectiveNode, error) {

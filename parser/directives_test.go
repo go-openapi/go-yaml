@@ -127,6 +127,10 @@ func TestParseDirectiveWithoutDocument(t *testing.T) {
 // before a "---" or a directive, and refuses one before a bare document or a comment, "\ufeffa: 1" included, which
 // [202] admits; so the mark cases rest on the grammar and on grammar.NewRecognizer: [202] admits a mark in a document
 // prefix, and l-directives-document leaves no room for one before its "---".
+//
+// The two directives followed only by a comment, "%YAML # c" and "%TAG #x", are the exception: the reference parser
+// reads both, and libfyaml and go.yaml.in/yaml/v3 refuse both. A comment is no version and no handle, so the
+// production refuses them too.
 func TestADirectiveIsHeldToItsProductions(t *testing.T) {
 	t.Parallel()
 
@@ -146,6 +150,7 @@ func TestADirectiveIsHeldToItsProductions(t *testing.T) {
 		{"yaml-with-no-version", "%YAML\n---\n", "[1:1] unexpected format YAML directive"},
 		{"yaml-with-a-comment-for-a-version", "%YAML # c\n---\n", "[1:1] unexpected format YAML directive"},
 		{"tag-with-no-handle", "%TAG \n---\n", "[1:1] unexpected format TAG directive"},
+		{"tag-with-a-comment-for-a-handle", "%TAG #x\n---\n", "[1:1] unexpected format TAG directive"},
 	} {
 		t.Run("refused/"+tc.name, func(t *testing.T) {
 			t.Parallel()
@@ -153,6 +158,12 @@ func TestADirectiveIsHeldToItsProductions(t *testing.T) {
 			_, err := parser.ParseBytes([]byte(tc.src))
 			require.Error(t, err)
 			assert.Contains(t, err.Error(), tc.want)
+
+			// A comment closing the directive's line is kept on the directive's name, and the name was then
+			// matched with the comment: "%YAML # c" read as a directive named "YAML # c" and passed.
+			_, err = parser.ParseBytes([]byte(tc.src), parser.WithComments())
+			require.Error(t, err, "with comments")
+			assert.Contains(t, err.Error(), tc.want, "with comments")
 		})
 	}
 
