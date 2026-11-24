@@ -16,6 +16,13 @@ func (p *Parser) parseFlowMap(ctx context) (*ast.MappingNode, error) {
 	defer p.keys.Close(base)
 	ctx = ctx.withMapping(base)
 
+	// The '{' is the node's token, which leave hands to the visitor again once every entry is read. A walk moves the
+	// tape's tail past it as entries are handed over, so the chunk holding it is kept until the mapping closes: on a
+	// flow mapping long enough to refill that chunk, the root's leave read the ',' of an entry deep inside it.
+	runSeq := ctx.currentToken().Seq()
+	p.holdRun(runSeq)
+	defer p.releaseRun(runSeq)
+
 	node, err := newMappingNode(ctx, ctx.currentToken().RawToken(), true, nil)
 	if err != nil {
 		return nil, err
@@ -397,6 +404,11 @@ func closesFlowEntry(tk *group.TapeToken) bool {
 }
 
 func (p *Parser) parseFlowSequence(ctx context) (*ast.SequenceNode, error) {
+	// The '[' is kept for the sequence's leave, as parseFlowMap keeps its '{'.
+	runSeq := ctx.currentToken().Seq()
+	p.holdRun(runSeq)
+	defer p.releaseRun(runSeq)
+
 	node, err := newSequenceNode(ctx, ctx.currentToken(), true)
 	if err != nil {
 		return nil, err

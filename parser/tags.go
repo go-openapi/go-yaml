@@ -30,6 +30,12 @@ func (p *Parser) parseScalarTag(ctx context) (*ast.TagNode, error) {
 func (p *Parser) parseTag(ctx context) (*ast.TagNode, error) {
 	tagTk := ctx.currentToken()
 	tagRawTk := tagTk.RawToken()
+	// The tag is the node's token, which leave hands to the visitor again after the whole node under it, as parseFlowMap
+	// keeps its '{'. Over a long collection the walk refilled the chunk the tag stood in, and a "!!map" over a commented
+	// block mapping was left on a token of no width at 0:0.
+	runSeq := tagTk.Seq()
+	p.holdRun(runSeq)
+	defer p.releaseRun(runSeq)
 	if handle, named := namedTagHandle(tagRawTk.Value); named {
 		if _, declared := p.tagHandles[handle]; !declared {
 			return nil, yamlerrors.NewSyntax(
