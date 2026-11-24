@@ -5,7 +5,7 @@ package yamlgen_test
 
 import "github.com/go-openapi/conformance-suites/yaml/yamlgen"
 
-// ledger records every shape known to diverge, and is empty.
+// ledger records every shape known to diverge.
 //
 // An entry is not an excuse. It is a measurement with a name attached, and the
 // property test reports which entries were exercised and which of those
@@ -40,26 +40,6 @@ var ledger = []yamlgen.Divergence{
 			"line arriving another way would fail the property rather than be excused. Widen it then.",
 		Property: yamlgen.Settle,
 		Match:    yamlgen.WritesACommentAboveABlankLine,
-	},
-	{
-		Name: "parse/two-bare-colon-lines-in-a-row-are-refused",
-		Pin:  "TestDefectTwoBareColonLinesInARowAreRefused",
-		Reason: "`? a` over `:` over `: v` is refused with `found an invalid key for this map`. The " +
-			"first `:` is the explicit entry's empty value and the second opens an entry whose key " +
-			"is the empty node, which 8.2.2 allows in both places.\n\n" +
-			"Three neighbors say it is the pair of bare `:` lines and nothing else, and each reads: " +
-			"`a:` over `: v` writes the same two entries with an implicit key; `? a` over `: 1` over " +
-			"`: v` gives the explicit entry a value; and the collection key that first reached this " +
-			"is not needed at all -- a scalar key does it.\n\n" +
-			"grammar.NewRecognizer accepts the document, the reference parser passes it, and " +
-			"libfyaml 1.0.0b1 reads {a: null, null: \"v\"}. go.yaml.in/yaml/v3 v3.0.5 refuses it, " +
-			"which is its own refusal of a bare `:` as an empty key rather than agreement with us -- " +
-			"see yamlcorpus's key shape `a block scalar under an entry with no key`.\n\n" +
-			"Reached on 2026-09-08 by Keys drawing a collection, which forces the explicit form and " +
-			"so put a bare `:` where nothing had put one before. It claims every property, because a " +
-			"document that does not parse answers none.",
-		Property: yamlgen.Parses | yamlgen.Decode | yamlgen.Render | yamlgen.Settle | yamlgen.CommentsKept | yamlgen.RenderValid | yamlgen.DecodeTyped,
-		Match:    yamlgen.WritesTwoBareColonLinesInARow,
 	},
 }
 

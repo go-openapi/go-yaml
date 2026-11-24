@@ -3797,3 +3797,46 @@ func TestFixedAnAnchorAndATagOnAnEmptyKeyStayOnTheKey(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "stands inside its own anchor")
 }
+
+// TestFixedTwoBareColonLinesInARowRead pins that a ':' after an explicit key's own ':' opens an entry with an empty key.
+//
+// 8.2.2 lets an explicit entry's value be the empty node and lets an entry's key be the empty node, so "? a" over ":"
+// over ": v" is two entries. hasNoKey exempted a "?" key from the line rule, since its ':' may stand on the next line,
+// and still did once the key had taken its ':': the second ':' took the first entry's key again, and the first ':'
+// reached the parser as a value, refused with "found an invalid key for this map". yaml/yaml-reference-parser accepts
+// each document here, and libfyaml reads {a: null, null: "v"}; go.yaml.in/yaml/v3 refuses a bare ':' as an empty key
+// anywhere, "a:" over ": v" included.
+//
+// Reached on 2026-09-08 by Keys drawing a collection: a collection key forces the explicit form, which put a bare ":"
+// where nothing had put one before.
+func TestFixedTwoBareColonLinesInARowRead(t *testing.T) {
+	for _, tc := range []struct {
+		src  string
+		want any
+	}{
+		{"? a\n:\n: v\n", map[any]any{"a": nil, nil: "v"}},
+		{"- ? a\n  :\n  : v\n", []any{map[any]any{"a": nil, nil: "v"}}},
+		{"? a\n: : v\n", map[string]any{"a": map[any]any{nil: "v"}}},
+		// The neighbors read before the fix and still do.
+		{"a:\n: v\n", map[any]any{"a": nil, nil: "v"}},
+		{"? a\n: 1\n: v\n", map[any]any{"a": uint64(1), nil: "v"}},
+		{"? a\n:\nk: v\n", map[string]any{"a": nil, "k": "v"}},
+		{"? a\n:\n", map[string]any{"a": nil}},
+	} {
+		wellFormed(t, tc.src)
+
+		var got any
+		require.NoErrorf(t, codec.Unmarshal([]byte(tc.src), &got), "%q", tc.src)
+		assert.Equalf(t, tc.want, got, "%q", tc.src)
+	}
+
+	// A mapping key cannot be a Go map key, so this one is read by the parser alone.
+	const collectionKey = "?\n \"\": 0\n:\n: v\n"
+	wellFormed(t, collectionKey)
+	_, err := parser.ParseBytes([]byte(collectionKey))
+	require.NoError(t, err)
+
+	// A third bare ':' is a second empty key, and the decoder rejects the repeat.
+	var got any
+	require.ErrorContains(t, codec.Unmarshal([]byte("? a\n:\n:\n: v\n"), &got), `mapping key "null" already defined`)
+}

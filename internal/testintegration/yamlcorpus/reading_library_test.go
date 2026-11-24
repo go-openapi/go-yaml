@@ -100,29 +100,6 @@ func TestTheLibraryMeansWhatTheCorpusSaysUnderEachReading(t *testing.T) {
 				continue
 			}
 
-			// A collection standing as a key. Two open defects live there:
-			// TestDefectACollectionKeyWrittenAloneInFlowIsRefused and
-			// TestDefectTwoBareColonLinesInARowAreRefused. The library refuses
-			// both documents.
-			//
-			// Three more closed. Two with [ast.KeyIdentity], which names a
-			// collection key by what it holds: two block collection keys no
-			// longer collide, and "[a]" beside "[ a ]" is now one key rather
-			// than two -- see
-			// yamlgen.TestFixedACollectionKeyIsNamedByWhatItResolvesTo. The
-			// third is the nesting of two '?', see
-			// yamlgen.TestFixedAnExplicitKeyInsideAnExplicitKeyReads.
-			//
-			// Wide on purpose: it holds out every document with a collection
-			// key rather than the three shapes, because they are the same
-			// region of the parser and it is being repaired. Narrow it when
-			// they are closed.
-			if holdsACollectionKeyInText(string(c.Src)) {
-				declared++
-
-				continue
-			}
-
 			src, askable := asking(table, c.Src)
 			if !askable {
 				declared++
@@ -228,28 +205,6 @@ func propertyFollowedByTab(src string) bool {
 			if src[j] == ' ' || src[j] == '\n' || src[j] == '\r' {
 				break
 			}
-		}
-	}
-
-	return false
-}
-
-// holdsACollectionKeyInText reports whether a collection stands as a key.
-//
-// Two spellings reach it: a "?" next to a flow collection's opener, which is
-// how a collection key is written inside a flow collection, and a line holding
-// nothing but "?", which is where a block collection key goes -- explicitKey
-// puts it on the lines below.
-func holdsACollectionKeyInText(src string) bool {
-	for _, pair := range []string{"{?", "[?", "? {", "? ["} {
-		if strings.Contains(src, pair) {
-			return true
-		}
-	}
-
-	for line := range strings.FieldsFuncSeq(src, func(r rune) bool { return r == '\n' || r == '\r' }) {
-		if strings.TrimSpace(strings.TrimPrefix(line, "\ufeff")) == "?" {
-			return true
 		}
 	}
 

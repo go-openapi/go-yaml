@@ -1111,6 +1111,13 @@ func (w *keyWindow) hasNoKey(last int, tk *TapeToken, inFlow bool) bool {
 		// stand on a line of its own, so whatever precedes it is its key.
 		return false
 	}
+	if candidate.Type() == token.MappingKeyType && candidate.Group != nil &&
+		candidate.Group.Last().Type() == token.MappingValueType {
+		// The "?" key has its ':' already, and nothing stands between that ':' and this one, so this ':' has no key:
+		// "? a" over ":" over ": v" is {a: null, null: v}, and "? a" over ": : v" is {a: {null: v}}. Taken as the
+		// explicit key again, the key was wrapped a second time and its first ':' read as a value.
+		return true
+	}
 	if candidate.Type() == token.MappingKeyType {
 		// An explicit key writes its "?" and its ':' on two lines by design --
 		// 8.1 -- so the line rule below does not apply to it. The column does:
