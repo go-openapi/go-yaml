@@ -9,7 +9,10 @@ import (
 
 func (s *Scanner) scanMapDelim(ctx *Context) (bool, error) {
 	nc := ctx.nextChar()
-	if s.isDirective || s.isAnchor || s.isAlias {
+	if s.isDirective || s.inAnchorName(':') {
+		// A ':' straight after an anchor's or an alias's name is part of the name: "{&a: b}" anchors a node named "a:".
+		// isAnchor and isAlias stay set past the ']' that ends a name inside a flow collection, so testing them alone
+		// took the ':' of "{[*m]:, c: 1}" for one too, and the key's ':' came out as the plain scalar ":".
 		return false, nil
 	}
 	if nc != ' ' && nc != '\t' && !isNewLineChar(nc) && !ctx.isEOS() {

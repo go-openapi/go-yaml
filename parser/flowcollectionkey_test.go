@@ -49,3 +49,37 @@ func TestAFlowCollectionStandsAsAFlowMappingKey(t *testing.T) {
 		})
 	}
 }
+
+// TestAFlowCollectionEndingOnAnAliasTakesAnAdjacentColon holds a flow collection key whose last item is an alias, with
+// the ':' written straight after the closing bracket.
+//
+// c-ns-flow-map-adjacent-value lets a ':' follow a JSON-like key with no space, and a flow collection is one. The scan
+// took that ':' for a character of the alias's name, because the name ended on the ']' and the alias was still marked
+// as being read: "{[*m]:, c: 1}" was refused with "',' or '}' must be specified", and "{[*m] :, c: 1}" read. A ':'
+// right after a name stays part of it, so "{&a: b}" still anchors a node named "a:". yaml/yaml-reference-parser reads
+// each document below, and go.yaml.in/yaml/v3 parses each one and refuses only the sequence as a Go map key.
+func TestAFlowCollectionEndingOnAnAliasTakesAnAdjacentColon(t *testing.T) {
+	for _, source := range []string{
+		"a: &m x\nb: {[*m]:, c: 1}\n",
+		"a: &m x\nb: {[*m]: y}\n",
+		"a: &m x\nb: {[*m]:}\n",
+		"a: &m x\nb: {[a, *m]: y}\n",
+		"a: &m x\nb: {{k: *m}: y}\n",
+		"a: &m x\nb: [[*m]: y]\n",
+	} {
+		t.Run(source, func(t *testing.T) {
+			file, err := parser.ParseBytes([]byte(source))
+			require.NoError(t, err)
+
+			reread, err := parser.ParseBytes([]byte(file.String()))
+			require.NoErrorf(t, err, "cannot read back %q", file.String())
+			assert.Equal(t, file.String(), reread.String())
+		})
+	}
+
+	t.Run("a colon after a name is part of it", func(t *testing.T) {
+		file, err := parser.ParseBytes([]byte("{&a: b}\n"))
+		require.NoError(t, err)
+		assert.Contains(t, file.String(), "&a:")
+	})
+}
