@@ -9,6 +9,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"slices"
 	"sort"
 	"strings"
 	"testing"
@@ -50,6 +51,12 @@ func renderConfigs() []struct {
 // per-document hashes, which makes it independent of the order the seeds are
 // generated in, though not of which documents they are.
 //
+// The aggregates hold only for the seeds they were taken over, and the first line
+// of the golden names that set by a hash of its sources. Run over another
+// corpus -- the extended one a release ships beside the compact one -- the
+// aggregates are left out and the Test Suite lines are still compared, so the
+// test pins the renderer there too instead of failing on the corpus.
+//
 // It is a golden and not a judgement: nothing here says the output is right, and
 // 131 documents are known to render to a different document than the one that
 // went in. Regenerate deliberately with -update when a rendering change is
@@ -69,6 +76,12 @@ func TestTheRendererWritesWhatItWroteBefore(t *testing.T) {
 	require.NoErrorf(t, err, "run: go test ./ast/ -run TestTheRendererWritesWhatItWroteBefore -update")
 	want := strings.Split(strings.TrimSuffix(string(raw), "\n"), "\n")
 
+	if want[0] != got[0] {
+		t.Logf("the golden's seed aggregates were taken over another seed set (%s), and this run loads %s: "+
+			"they are left out, and the Test Suite lines are compared", want[0], got[0])
+		want, got = withoutSeedAggregates(want), withoutSeedAggregates(got)
+	}
+
 	require.Equalf(t, len(want), len(got), "the golden holds %d lines and this run produced %d", len(want), len(got))
 
 	var differed int
@@ -85,8 +98,22 @@ func TestTheRendererWritesWhatItWroteBefore(t *testing.T) {
 	}
 }
 
+// withoutSeedAggregates returns the golden's lines past the seed set's, with no
+// seed aggregate among them.
+func withoutSeedAggregates(lines []string) []string {
+	kept := make([]string, 0, len(lines))
+	for _, line := range lines[1:] {
+		if !strings.Contains(line, "\tseeds-aggregate\t") {
+			kept = append(kept, line)
+		}
+	}
+
+	return kept
+}
+
 // renderAll renders every document under every configuration and returns the
-// golden's lines.
+// golden's lines. The first names the seed set, by its size and a hash over its
+// sorted sources.
 func renderAll(t *testing.T) []string {
 	t.Helper()
 
@@ -95,7 +122,8 @@ func renderAll(t *testing.T) []string {
 	seeds, err := fuzzseeds.All()
 	require.NoError(t, err)
 
-	lines := make([]string, 0, len(suites)*len(renderConfigs())+len(renderConfigs()))
+	lines := make([]string, 0, 1+len(suites)*len(renderConfigs())+len(renderConfigs()))
+	lines = append(lines, seedSetLine(seeds))
 	for _, cfg := range renderConfigs() {
 		r := ast.NewRenderer(cfg.opts...)
 
@@ -113,6 +141,15 @@ func renderAll(t *testing.T) []string {
 	}
 
 	return lines
+}
+
+// seedSetLine names the seeds the aggregates are taken over, independently of the order they are generated in.
+func seedSetLine(seeds []string) string {
+	sorted := slices.Clone(seeds)
+	sort.Strings(sorted)
+	sum := sha256.Sum256([]byte(strings.Join(sorted, "\x00")))
+
+	return fmt.Sprintf("seeds\t%d\t%s", len(seeds), hex.EncodeToString(sum[:]))
 }
 
 // digestOf renders src and returns a short hash of the result, or a word saying
