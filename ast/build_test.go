@@ -11,6 +11,7 @@ import (
 
 	yaml "github.com/go-openapi/go-yaml"
 	"github.com/go-openapi/go-yaml/ast"
+	"github.com/go-openapi/go-yaml/token"
 )
 
 // TestTextReadsBackAsTheStringItHolds checks the quoting Text does for a caller.
@@ -81,4 +82,101 @@ func TestMapAndSeqBuildADocumentWithoutTokens(t *testing.T) {
 
 	assert.Empty(t, ast.Map().Values, "a mapping of nothing")
 	assert.Empty(t, ast.Seq().Values, "a sequence of nothing")
+}
+
+// TestFillMakesTheNodeTheConstructorBuilds fills a node that holds a comment and another token, for each scalar kind,
+// and requires the node the constructor builds for the same token: the value it derives, and nothing left over.
+func TestFillMakesTheNodeTheConstructorBuilds(t *testing.T) {
+	t.Parallel()
+
+	old := token.New("old", "old", token.Position{})
+	comment := ast.CommentGroup([]*token.Token{token.New("# c", "# c", token.Position{})})
+	tok := func(s string) *token.Token { return token.New(s, s, token.Position{}) }
+
+	for name, tc := range map[string]struct {
+		build func(*token.Token) ast.Node
+		fill  func(*token.Token, *ast.CommentGroupNode) ast.Node
+		text  string
+	}{
+		"string": {
+			func(tk *token.Token) ast.Node { return ast.String(tk) },
+			func(tk *token.Token, c *ast.CommentGroupNode) ast.Node {
+				n := ast.String(old)
+				require.NoError(t, n.SetComment(c))
+				n.Fill(tk)
+
+				return n
+			}, "x",
+		},
+		"integer": {
+			func(tk *token.Token) ast.Node { return ast.Integer(tk) },
+			func(tk *token.Token, c *ast.CommentGroupNode) ast.Node {
+				n := ast.Integer(old)
+				require.NoError(t, n.SetComment(c))
+				n.Fill(tk)
+
+				return n
+			}, "12",
+		},
+		"float": {
+			func(tk *token.Token) ast.Node { return ast.Float(tk) },
+			func(tk *token.Token, c *ast.CommentGroupNode) ast.Node {
+				n := ast.Float(old)
+				require.NoError(t, n.SetComment(c))
+				n.Fill(tk)
+
+				return n
+			}, "1.5",
+		},
+		"bool": {
+			func(tk *token.Token) ast.Node { return ast.Bool(tk) },
+			func(tk *token.Token, c *ast.CommentGroupNode) ast.Node {
+				n := ast.Bool(tok("true"))
+				require.NoError(t, n.SetComment(c))
+				n.Fill(tk)
+
+				return n
+			}, "false",
+		},
+		"null": {
+			func(tk *token.Token) ast.Node { return ast.Null(tk) },
+			func(tk *token.Token, c *ast.CommentGroupNode) ast.Node {
+				n := ast.Null(old)
+				require.NoError(t, n.SetComment(c))
+				n.Fill(tk)
+
+				return n
+			}, "null",
+		},
+		"infinity": {
+			func(tk *token.Token) ast.Node { return ast.Infinity(tk) },
+			func(tk *token.Token, c *ast.CommentGroupNode) ast.Node {
+				n := ast.Infinity(tok(".inf"))
+				require.NoError(t, n.SetComment(c))
+				n.Fill(tk)
+
+				return n
+			}, "-.inf",
+		},
+		"nan": {
+			func(tk *token.Token) ast.Node { return ast.Nan(tk) },
+			func(tk *token.Token, c *ast.CommentGroupNode) ast.Node {
+				n := ast.Nan(old)
+				require.NoError(t, n.SetComment(c))
+				n.Fill(tk)
+
+				return n
+			}, ".nan",
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			tk := tok(tc.text)
+			want := tc.build(tk)
+			got := tc.fill(tk, comment)
+			assert.Equal(t, want, got)
+			assert.Nil(t, got.GetComment())
+		})
+	}
 }

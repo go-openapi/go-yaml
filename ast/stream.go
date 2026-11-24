@@ -30,6 +30,11 @@ var ErrStreamOrder = errors.New("a stream call that does not fit the document wr
 // An empty collection is written "{}" or "[]", on the line of its key or its "- ". The stream writes a collection's
 // key or "- " when the first entry arrives, which is the one event of lookahead that decision takes.
 //
+// The stream keeps a node only until it has written it, so a caller may refill a node for the next call, as an encoder
+// does with one scalar node per kind. [Stream.Value] is done with its node when it returns. [Stream.Key] keeps its node
+// until the entry it opens is written: by the next Value, or, when a Begin call follows, by that collection's first
+// entry or its End. A caller that reuses key nodes needs one per open collection.
+//
 // No blank line is written between entries. The Renderer keeps one the author left, read off the tokens of the
 // entry and of its "- ", and a collection handed over as a Begin call has neither.
 type Stream struct {

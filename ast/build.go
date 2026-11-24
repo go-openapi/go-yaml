@@ -53,33 +53,55 @@ func Seq(values ...Node) *SequenceNode {
 
 // Null returns a [NullNode] for tk.
 func Null(tk *token.Token) *NullNode {
-	return &NullNode{
-		Token: tk,
-	}
+	n := new(NullNode)
+	n.Fill(tk)
+
+	return n
+}
+
+// Fill makes n the node [Null] builds for tk, reusing n. It clears everything else n held, comments included.
+func (n *NullNode) Fill(tk *token.Token) {
+	*n = NullNode{Token: tk}
 }
 
 // Bool returns a [BoolNode] for tk, holding the value tk spells.
 func Bool(tk *token.Token) *BoolNode {
-	b, _ := token.ParseBool(tk.Value)
+	n := new(BoolNode)
+	n.Fill(tk)
 
-	return &BoolNode{
-		Token: tk,
-		Value: b,
-	}
+	return n
+}
+
+// Fill makes n the node [Bool] builds for tk, reusing n. It clears everything else n held, comments included.
+func (n *BoolNode) Fill(tk *token.Token) {
+	b, _ := token.ParseBool(tk.Value)
+	*n = BoolNode{Token: tk, Value: b}
 }
 
 // Integer returns an [IntegerNode] for tk.
 func Integer(tk *token.Token) *IntegerNode {
-	return &IntegerNode{
-		Token: tk,
-	}
+	n := new(IntegerNode)
+	n.Fill(tk)
+
+	return n
+}
+
+// Fill makes n the node [Integer] builds for tk, reusing n. It clears everything else n held, comments included.
+func (n *IntegerNode) Fill(tk *token.Token) {
+	*n = IntegerNode{Token: tk}
 }
 
 // Float returns a [FloatNode] for tk.
 func Float(tk *token.Token) *FloatNode {
-	return &FloatNode{
-		Token: tk,
-	}
+	n := new(FloatNode)
+	n.Fill(tk)
+
+	return n
+}
+
+// Fill makes n the node [Float] builds for tk, reusing n. It clears everything else n held, comments included.
+func (n *FloatNode) Fill(tk *token.Token) {
+	*n = FloatNode{Token: tk}
 }
 
 // Infinity create node for .inf or -.inf value.
@@ -89,35 +111,50 @@ func Float(tk *token.Token) *FloatNode {
 // of matching all nine spellings keeps this in step with the scanner's
 // reservedInfKeywords, which lists them.
 func Infinity(tk *token.Token) *InfinityNode {
-	node := &InfinityNode{
-		Token: tk,
-	}
+	n := new(InfinityNode)
+	n.Fill(tk)
+
+	return n
+}
+
+// Fill makes n the node [Infinity] builds for tk, reusing n. It clears everything else n held, comments included.
+func (n *InfinityNode) Fill(tk *token.Token) {
+	*n = InfinityNode{Token: tk}
 	if tk.Type != token.InfinityType {
-		return node
+		return
 	}
 	if strings.HasPrefix(tk.Value, "-") {
-		node.Value = math.Inf(-1)
+		n.Value = math.Inf(-1)
 
-		return node
+		return
 	}
-	node.Value = math.Inf(0)
-
-	return node
+	n.Value = math.Inf(0)
 }
 
 // Nan returns a [NanNode] for tk.
 func Nan(tk *token.Token) *NanNode {
-	return &NanNode{
-		Token: tk,
-	}
+	n := new(NanNode)
+	n.Fill(tk)
+
+	return n
+}
+
+// Fill makes n the node [Nan] builds for tk, reusing n. It clears everything else n held, comments included.
+func (n *NanNode) Fill(tk *token.Token) {
+	*n = NanNode{Token: tk}
 }
 
 // String returns a [StringNode] for tk.
 func String(tk *token.Token) *StringNode {
-	return &StringNode{
-		Token: tk,
-		Value: tk.Value,
-	}
+	n := new(StringNode)
+	n.Fill(tk)
+
+	return n
+}
+
+// Fill makes n the node [String] builds for tk, reusing n. It clears everything else n held, comments included.
+func (n *StringNode) Fill(tk *token.Token) {
+	*n = StringNode{Token: tk, Value: tk.Value}
 }
 
 // Comment returns a [CommentNode] for tk.
