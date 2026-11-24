@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -215,7 +216,7 @@ func TestWalkMatchesTheStream(t *testing.T) {
 			if oneErr <= 5 {
 				t.Logf("%s: stream err=%v walk err=%v src=%q", src.name, wantErr, gotErr, src.text)
 			}
-		case fmt.Sprintf("%#v", want) == fmt.Sprintf("%#v", got):
+		case sameDecoded(want, got):
 			same++
 		case walkStreamHoldOuts[src.text] != "":
 			heldOut++
@@ -226,13 +227,23 @@ func TestWalkMatchesTheStream(t *testing.T) {
 			}
 		}
 		if reason, held := walkStreamHoldOuts[src.text]; held {
-			assert.NotEqualf(t, fmt.Sprintf("%#v", want), fmt.Sprintf("%#v", got),
+			assert.Falsef(t, sameDecoded(want, got),
 				"%s: %q agrees now, so %s has closed: delete the hold-out", src.name, src.text, reason)
 		}
 	}
 	t.Logf("same=%d differ=%d bothErr=%d oneErr=%d skipped=%d heldOut=%d", same, differ, bothErr, oneErr, skipped, heldOut)
 	assert.Zero(t, differ, "documents the walk and the tree decode differently")
 	assert.Zero(t, oneErr, "documents only one of the walk and the tree refuses")
+}
+
+// sameDecoded reports whether the walk and the tree decoded a document to the same values.
+//
+// The printed form compares most values, and a NaN among them, which equals nothing under reflect.DeepEqual. It
+// prints a *big.Int as its address, though, so an integer too wide for a uint64 differed between two decodes that
+// read the same number: five seeds holding a 31-digit integer under an anchored "!!omap" were counted as differing.
+// reflect.DeepEqual follows the pointer and compares the numbers.
+func sameDecoded(want, got any) bool {
+	return fmt.Sprintf("%#v", want) == fmt.Sprintf("%#v", got) || reflect.DeepEqual(want, got)
 }
 
 // TestStreamSwitchesFromWalkToTree covers a Decoder handed an any for one
