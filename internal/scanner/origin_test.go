@@ -132,11 +132,37 @@ func TestAPlainScalarContinuedByADashStartsWhereItsTextDoes(t *testing.T) {
 				from, to := int(tk.Position.Offset()), int(tk.EndOffset())
 				require.LessOrEqualf(t, to, len(tc.src), "%q ends past the source", tc.src)
 				require.LessOrEqualf(t, from, to, "%q", tc.src)
-				// A plain scalar's span ends on the '\r' of a CRLF break, as "a\r\n" spans "a\r", so only that is left out.
-				assert.Equalf(t, tc.text, strings.TrimSuffix(tc.src[from:to], "\r"), "%q", tc.src)
+				assert.Equalf(t, tc.text, tc.src[from:to], "%q", tc.src)
 				assert.Equalf(t, tc.line, tk.Position.Line, "%q", tc.src)
 			}
 			require.Truef(t, found, "%q holds no plain scalar", tc.src)
+		})
+	}
+}
+
+// TestATokenCutAtACRLFEndsBeforeIt holds the end of a token the scan cuts at a CR LF line break: before the '\r', as
+// a token cut at a '\n' ends before the '\n'.
+//
+// scanNewLine cut such a token after stepping past the '\r', at the end of the source and after an anchor, an alias
+// or a directive's parameter, so the token's extent took the '\r' in: "a\r\n" spanned "a\r" where "a\n" spans "a".
+// A token cut further on keeps the break it was read across in both spellings, "x: a\r\ny" spanning "a\r\n" as
+// "x: a\ny" spans "a\n", so those are compared too.
+func TestATokenCutAtACRLFEndsBeforeIt(t *testing.T) {
+	for _, src := range []string{
+		"a\n", "a  \n", "&x\n", "&x\ny\n", "*x\n", "%YAML 1.2\n---\na\n", "x: a\ny: b\n", "- a\n  b\n",
+		"a\n---\nb\n", "\"q\"\n",
+	} {
+		crlf := strings.ReplaceAll(src, "\n", "\r\n")
+		t.Run(crlf, func(t *testing.T) {
+			lf, cr := tokenize(t, src), tokenize(t, crlf)
+			require.Len(t, cr, len(lf))
+			for i := range lf {
+				want := strings.ReplaceAll(src[lf[i].Position.Offset():lf[i].EndOffset()], "\n", "\r\n")
+				require.LessOrEqualf(t, int(cr[i].EndOffset()), len(crlf), "%v %q ends past the source", cr[i].Type, cr[i].Value)
+				assert.Equalf(t, want, crlf[cr[i].Position.Offset():cr[i].EndOffset()], "%v %q", cr[i].Type, cr[i].Value)
+			}
+
+			assertOriginsTile(t, crlf)
 		})
 	}
 }
@@ -231,6 +257,15 @@ func assertOriginsTile(t *testing.T, src string) {
 	}
 	require.NoError(t, s.Err())
 
-	require.Equal(t, len(strings.TrimSuffix(src, "\n")), len(strings.TrimSuffix(src[:prev], "\n")),
+	require.Equal(t, len(trimFinalBreak(src)), len(trimFinalBreak(src[:prev])),
 		"the extents do not reach the end of the document")
+}
+
+// trimFinalBreak drops the line break a document ends on, a '\n' or a CR LF: no token takes it in.
+func trimFinalBreak(src string) string {
+	if trimmed, cut := strings.CutSuffix(src, "\r\n"); cut {
+		return trimmed
+	}
+
+	return strings.TrimSuffix(src, "\n")
 }

@@ -94,16 +94,22 @@ func (s *Scanner) scanNewLine(ctx *Context, c rune) {
 	// spec. > Line breaks inside scalar content must be normalized by the YAML processor.
 	// Each such line break must be parsed into a single line feed character. > Outside scalar content, YAML allows any
 	// line break to be used to terminate lines. > See https://yaml.org/spec/1.2/spec.html.
-	if c == '\r' && ctx.nextChar() == '\n' {
+	// A token cut here is cut before the break, so it ends where its text does: before the '\r' of a CR LF as before
+	// a '\n'. Cut once the scan had stepped past the '\r', it took the '\r' into its extent, and "a\r\n" spanned "a\r"
+	// where "a\n" spans "a". The origin is a window on the source, so the '\r' joins it only after the cut, in order.
+	crlf := c == '\r' && ctx.nextChar() == '\n'
+	endsTheSource := ctx.isEOS()
+	if crlf {
+		endsTheSource = ctx.idx+2 >= ctx.size
+	}
+	if endsTheSource || s.isAnchor || s.isAlias || s.isDirective {
+		s.addBufferedTokenIfExists(ctx)
+	}
+
+	if crlf {
 		ctx.addOriginBuf('\r')
 		s.progress(ctx, 1)
 		c = '\n'
-	}
-
-	if ctx.isEOS() {
-		s.addBufferedTokenIfExists(ctx)
-	} else if s.isAnchor || s.isAlias || s.isDirective {
-		s.addBufferedTokenIfExists(ctx)
 	}
 
 	if ctx.existsBuffer() && s.isFirstCharAtLine {
