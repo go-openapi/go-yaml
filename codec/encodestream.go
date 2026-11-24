@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/go-openapi/go-yaml/ast"
+	"github.com/go-openapi/go-yaml/token"
 )
 
 // errStreamFallback stops a streamed encode that met a value the stream cannot write as the tree does: a collection
@@ -85,7 +86,10 @@ func (e *Encoder) streamValue(s *ast.Stream, v reflect.Value, column int) error 
 	case streamHeldNode:
 		return errStreamFallback
 	case streamChecked:
+		// Stream.Value is done with the node when it returns, so every value shares one scratch set.
+		e.scratch = &e.valueScratch
 		node, err := e.encodeKind(target, column)
+		e.scratch = nil
 		if err != nil {
 			return err
 		}
@@ -178,6 +182,9 @@ func isWrittenStruct(v reflect.Value) bool {
 }
 
 func (e *Encoder) streamSeq(s *ast.Stream, value reflect.Value) error {
+	e.streamDepth++
+	defer func() { e.streamDepth-- }()
+
 	if e.indentSequence {
 		e.column += e.indentNum
 		defer func() { e.column -= e.indentNum }()
@@ -207,8 +214,13 @@ func (e *Encoder) streamMap(s *ast.Stream, value reflect.Value, column int) erro
 	if err := s.BeginMapping(); err != nil {
 		return err
 	}
+	depth := e.streamDepth
+	e.streamDepth++
+	defer func() { e.streamDepth-- }()
 	for _, idx := range order {
+		e.scratch = e.keyScratchAt(depth)
 		key := e.mapKeyNode(keys.Index(idx), names[idx], column)
+		e.scratch = nil
 		if isCollectionNode(key) {
 			return errStreamFallback
 		}
@@ -234,6 +246,9 @@ func (e *Encoder) streamStruct(s *ast.Stream, value reflect.Value, column int) e
 	if err := s.BeginMapping(); err != nil {
 		return err
 	}
+	depth := e.streamDepth
+	e.streamDepth++
+	defer func() { e.streamDepth-- }()
 	var entries []*ast.MappingValueNode
 	for _, fp := range plan.write {
 		fieldValue := value.Field(fp.index)
@@ -241,7 +256,10 @@ func (e *Encoder) streamStruct(s *ast.Stream, value reflect.Value, column int) e
 			continue
 		}
 		if fp.streamed {
-			if err := s.Key(e.fieldKey(fp, column)); err != nil {
+			e.scratch = e.keyScratchAt(depth)
+			key := e.fieldKey(fp, column)
+			e.scratch = nil
+			if err := s.Key(key); err != nil {
 				return err
 			}
 			if err := e.streamValue(s, fieldValue, column); err != nil {
@@ -279,4 +297,112 @@ func isCollectionNode(n ast.Node) bool {
 	default:
 		return false
 	}
+}
+
+// scalarScratch holds one token and one node of each scalar kind, which the scalar encoders refill instead of
+// allocating while Encoder.scratch points at it.
+//
+// The stream keeps a value's node until Value returns, and a key's node until the entry it opens is written, which
+// may be after the entries of a nested collection. Values therefore share one set, Encoder.valueScratch, and keys take
+// one set per depth, from keyScratchAt. A collection used as a key builds its scalars from a single set and comes out
+// wrong, but the stream rejects such a key and the document falls back to the tree.
+type scalarScratch struct {
+	tk       token.Token
+	str      ast.StringNode
+	integer  ast.IntegerNode
+	float    ast.FloatNode
+	boolean  ast.BoolNode
+	null     ast.NullNode
+	infinity ast.InfinityNode
+	nan      ast.NanNode
+}
+
+// keyScratchAt returns the scratch set for the keys of the collection at depth.
+func (e *Encoder) keyScratchAt(depth int) *scalarScratch {
+	for len(e.keyScratch) <= depth {
+		e.keyScratch = append(e.keyScratch, new(scalarScratch))
+	}
+
+	return e.keyScratch[depth]
+}
+
+// newToken returns the token for value at column: the scratch token when one is set, a new token otherwise.
+func (e *Encoder) newToken(value string, column int) *token.Token {
+	if s := e.scratch; s != nil {
+		s.tk = token.Make(value, value, e.pos(column))
+
+		return &s.tk
+	}
+
+	return token.New(value, value, e.pos(column))
+}
+
+func (e *Encoder) stringNode(tk *token.Token) *ast.StringNode {
+	if s := e.scratch; s != nil {
+		s.str.Fill(tk)
+
+		return &s.str
+	}
+
+	return ast.String(tk)
+}
+
+func (e *Encoder) integerNode(tk *token.Token) *ast.IntegerNode {
+	if s := e.scratch; s != nil {
+		s.integer.Fill(tk)
+
+		return &s.integer
+	}
+
+	return ast.Integer(tk)
+}
+
+func (e *Encoder) floatNode(tk *token.Token) *ast.FloatNode {
+	if s := e.scratch; s != nil {
+		s.float.Fill(tk)
+
+		return &s.float
+	}
+
+	return ast.Float(tk)
+}
+
+func (e *Encoder) boolNode(tk *token.Token) *ast.BoolNode {
+	if s := e.scratch; s != nil {
+		s.boolean.Fill(tk)
+
+		return &s.boolean
+	}
+
+	return ast.Bool(tk)
+}
+
+func (e *Encoder) nullNode(tk *token.Token) *ast.NullNode {
+	if s := e.scratch; s != nil {
+		s.null.Fill(tk)
+
+		return &s.null
+	}
+
+	return ast.Null(tk)
+}
+
+func (e *Encoder) infinityNode(tk *token.Token) *ast.InfinityNode {
+	if s := e.scratch; s != nil {
+		s.infinity.Fill(tk)
+
+		return &s.infinity
+	}
+
+	return ast.Infinity(tk)
+}
+
+func (e *Encoder) nanNode(tk *token.Token) *ast.NanNode {
+	if s := e.scratch; s != nil {
+		s.nan.Fill(tk)
+
+		return &s.nan
+	}
+
+	return ast.Nan(tk)
 }

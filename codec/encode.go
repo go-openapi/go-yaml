@@ -45,7 +45,14 @@ type Encoder struct {
 	// holds a custom marshaler, so the lookups for one can be skipped on every value. False on a zero Encoder.
 	noCustomMarshalers bool
 	// treeOnly makes Encode build the whole tree even where it could stream. Tests set it to compare the two.
-	treeOnly                   bool
+	treeOnly bool
+	// scratch, when set, makes the scalar encoders refill its token and node instead of allocating. The stream sets
+	// it around one scalar at a time; see scalarScratch.
+	scratch *scalarScratch
+	// valueScratch serves every value the stream writes, and keyScratch one key per depth of the stream.
+	valueScratch               scalarScratch
+	keyScratch                 []*scalarScratch
+	streamDepth                int
 	omitZero                   bool
 	omitEmpty                  bool
 	writeJSONTags              bool
@@ -605,42 +612,36 @@ func (e *Encoder) pos(column int) token.Position {
 }
 
 func (e *Encoder) encodeNil() *ast.NullNode {
-	value := "null"
-	return ast.Null(token.New(value, value, e.pos(e.column)))
+	return e.nullNode(e.newToken("null", e.column))
 }
 
 func (e *Encoder) encodeInt(v int64) *ast.IntegerNode {
-	value := strconv.FormatInt(v, 10)
-	return ast.Integer(token.New(value, value, e.pos(e.column)))
+	return e.integerNode(e.newToken(strconv.FormatInt(v, 10), e.column))
 }
 
 func (e *Encoder) encodeUint(v uint64) *ast.IntegerNode {
-	value := strconv.FormatUint(v, 10)
-	return ast.Integer(token.New(value, value, e.pos(e.column)))
+	return e.integerNode(e.newToken(strconv.FormatUint(v, 10), e.column))
 }
 
 func (e *Encoder) encodeFloat(v float64, bitSize int) ast.Node {
 	switch {
 	case v == math.Inf(0):
-		value := ".inf"
-		return ast.Infinity(token.New(value, value, e.pos(e.column)))
+		return e.infinityNode(e.newToken(".inf", e.column))
 	case v == math.Inf(-1):
-		value := "-.inf"
-		return ast.Infinity(token.New(value, value, e.pos(e.column)))
+		return e.infinityNode(e.newToken("-.inf", e.column))
 	case math.IsNaN(v):
-		value := ".nan"
-		return ast.Nan(token.New(value, value, e.pos(e.column)))
+		return e.nanNode(e.newToken(".nan", e.column))
 	default:
 		value := strconv.FormatFloat(v, 'g', -1, bitSize)
 		if !strings.Contains(value, ".") && !strings.Contains(value, "e") {
 			if e.autoInt {
-				return ast.Integer(token.New(value, value, e.pos(e.column)))
+				return e.integerNode(e.newToken(value, e.column))
 			}
 			// Append a ".0" suffix so that the value reads back as a float.
 			value += ".0"
 		}
 
-		return ast.Float(token.New(value, value, e.pos(e.column)))
+		return e.floatNode(e.newToken(value, e.column))
 	}
 }
 
@@ -715,12 +716,11 @@ func (e *Encoder) encodeString(v string, column int) *ast.StringNode {
 			v = strconv.Quote(v)
 		}
 	}
-	return ast.String(token.New(v, v, e.pos(column)))
+	return e.stringNode(e.newToken(v, column))
 }
 
 func (e *Encoder) encodeBool(v bool) *ast.BoolNode {
-	value := strconv.FormatBool(v)
-	return ast.Bool(token.New(value, value, e.pos(e.column)))
+	return e.boolNode(e.newToken(strconv.FormatBool(v), e.column))
 }
 
 func (e *Encoder) encodeSlice(value reflect.Value) (*ast.SequenceNode, error) {
@@ -1242,7 +1242,7 @@ func (e *Encoder) omitsField(sf *structfields.Info, fieldValue reflect.Value) bo
 func (e *Encoder) fieldKey(fp fieldPlan, column int) ast.MapKeyNode {
 	if fp.plainKey && !e.isJSONStyle {
 		// isNeedQuoted returns false for this name under every option but JSON.
-		return ast.String(token.New(fp.info.RenderName, fp.info.RenderName, e.pos(column)))
+		return e.stringNode(e.newToken(fp.info.RenderName, column))
 	}
 
 	return e.encodeString(fp.info.RenderName, column)
