@@ -70,16 +70,17 @@ Our main design goal for this lib was to reduce _peak_ memory usage as much as w
 
 Example: decoding YAML into a Go value.
 
-Each library unmarshals each workload into an `any`. Times are the median of 6 runs; peak memory is the highest live heap during the decode.
+Each library unmarshals each workload into an `any`, built with PGO from one shared profile. Times are the median of 6
+runs; peak memory is the highest live heap during the decode.
 
 | workload          | source   | time: go-openapi | v3     | goccy  | peak: go-openapi | v3       | goccy     |
 |-------------------|---------:|-----------------:|-------:|-------:|-----------------:|---------:|----------:|
-| azure_swagger     | 0.52 MiB |            25 ms |  31 ms |  57 ms |         2.39 MiB | 6.41 MiB | 17.04 MiB |
-| canada_geometry   | 0.38 MiB |            19 ms |  47 ms |  41 ms |         0.56 MiB | 4.53 MiB | 12.53 MiB |
-| citm_catalog      | 0.56 MiB |            61 ms |  55 ms | 104 ms |         4.78 MiB | 14.66 MiB | 35.79 MiB |
-| commented_swagger | 0.57 MiB |            28 ms |  39 ms |  63 ms |         2.35 MiB | 6.59 MiB | 17.49 MiB |
-| golang_source     | 3.61 MiB |           163 ms | 196 ms | 324 ms |         8.46 MiB | 38.06 MiB | 116.72 MiB |
-| twitter_status    | 0.48 MiB |            29 ms |  35 ms |  59 ms |         1.77 MiB | 5.89 MiB | 15.05 MiB |
+| azure_swagger     | 0.52 MiB |            24 ms |  33 ms |  54 ms |         2.37 MiB | 6.16 MiB | 17.08 MiB |
+| canada_geometry   | 0.38 MiB |            18 ms |  46 ms |  40 ms |         0.56 MiB | 4.56 MiB | 12.71 MiB |
+| citm_catalog      | 0.56 MiB |            55 ms |  57 ms |  95 ms |         4.76 MiB | 15.04 MiB | 35.78 MiB |
+| commented_swagger | 0.57 MiB |            25 ms |  35 ms |  50 ms |         2.38 MiB | 6.52 MiB | 17.53 MiB |
+| golang_source     | 3.61 MiB |           156 ms | 190 ms | 290 ms |         8.47 MiB | 38.04 MiB | 116.79 MiB |
+| twitter_status    | 0.48 MiB |            25 ms |  34 ms |  56 ms |         1.77 MiB | 5.72 MiB | 14.98 MiB |
 
 > `v3` is [`go.yaml.in/yaml/v3`][goyamlv3].
 > `goccy` is upstream [github.com/goccy/go-yaml][upstream].
@@ -89,11 +90,12 @@ Our implementation of YAML decode brings only a modest time improvement, and a m
 
 Our peak stays near the size of the decoded Go value: the decoding process holds little besides its result.
 
-citm_catalog is our least favourable workload: the two runs we took put our time almost on a par with v3's, +/-7%.
+citm_catalog is our least favourable workload for a decode into `any`: our time is on a par with v3's, 55 ms against 57 ms.
 This workload is where `v3`'s parser shines: it is simpler than ours and optimized specifically for decoding Go values,
 whereas our parser pays the cost of full support for YAML features, even those not consumed by the decode use-case.
 
-See [internal/benchmarks](./internal/benchmarks) for more details and comparisons.
+See [internal/benchmarks](./internal/benchmarks) for decoding into a struct, `ToJSON`, `FromJSON` and encoding, and
+for the command that reproduces these figures.
 
 > Measured on 2026-11-22 with `go.yaml.in/yaml/v3` v3.0.6 and `github.com/goccy/go-yaml` v1.19.2, on an AMD Ryzen 7 5800X.
 
