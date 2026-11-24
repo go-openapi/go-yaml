@@ -12,6 +12,7 @@ import (
 	"github.com/go-openapi/testify/v2/require"
 
 	"github.com/go-openapi/go-yaml/internal/scanner/internal/testscanner"
+	"github.com/go-openapi/go-yaml/token"
 )
 
 // TestFirstUnprintableMatchesTheByteLoop holds the word-at-a-time scan to the
@@ -96,4 +97,18 @@ func same(t *testing.T, text string) {
 		"the two disagree on %q",
 		text,
 	)
+}
+
+// TestARefusalCountsEveryLineBreak checks the position of the character a stream may not hold, after each line break
+// YAML admits: a line feed, a carriage return and line feed, and a carriage return alone.
+func TestARefusalCountsEveryLineBreak(t *testing.T) {
+	for src, want := range map[string]token.Position{
+		"a\nb\x01":      token.At(2, 2, 4, 0),
+		"a\r\nb\x01":    token.At(2, 2, 5, 0),
+		"a\rb\x01":      token.At(2, 2, 4, 0),
+		"a\r\rb\x01":    token.At(3, 2, 5, 0),
+		"---\r{} #\xcf": token.At(2, 5, 9, 0),
+	} {
+		assert.Equalf(t, want, streamPosition(src, len(src)-1), "%q", src)
+	}
 }

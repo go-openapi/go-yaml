@@ -194,11 +194,13 @@ func printableASCII(c byte) bool {
 //
 // Line, column and offset all count from 1, and offset counts characters, not bytes.
 // validateStream reported them that way back when it counted every character to report one.
+// A line ends at a line feed, a carriage return and line feed, or a carriage return alone, as for the scan: the error
+// token stands among the tokens, and has to stand after the ones in front of it.
 func streamPosition(text string, i int) token.Position {
 	line, column, offset := 1, 1, 1
-	for _, r := range text[:i] {
+	for j, r := range text[:i] {
 		offset++
-		if r == '\n' {
+		if r == '\n' || r == '\r' && (j+1 == len(text) || text[j+1] != '\n') {
 			line++
 			column = 1
 
