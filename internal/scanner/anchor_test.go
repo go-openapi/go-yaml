@@ -4,6 +4,7 @@
 package scanner_test
 
 import (
+	"strings"
 	"testing"
 	"unsafe"
 
@@ -79,4 +80,25 @@ func TestValueAliasesTheSource(t *testing.T) {
 	assert.Equal(t, token.SingleQuoteType, seen["no escape either"])
 	assert.Equal(t, token.DoubleQuoteType, seen["needs\ta copy"])
 	assert.Equal(t, token.SingleQuoteType, seen["over two lines"])
+}
+
+// TestAFlowIndicatorClosesAnAlias checks that a ',' or a bracket ending an alias's name ends the alias.
+//
+// The flow scans cut the name and left isAlias set, and inAnchorName then read a ':' two characters on as part of a
+// name: in "[*m,b: c]" the ':' after the "b", so the pair was refused with "',' or ']' must be specified".
+// "[*m, b: c]" read, the blank having closed the alias first.
+func TestAFlowIndicatorClosesAnAlias(t *testing.T) {
+	for _, src := range []string{"[*m,b: c]", "{a: *m,b: c}", "[b: *m,c: d]", "[*m,'b': c]", "[&a x,b: c]", "[[*m],b: c]"} {
+		var s scanner.Scanner
+		s.Init([]byte("x: &m 1\nv: " + src + "\n"))
+
+		var mappingValues int
+		for tk := range s.Tokens() {
+			if tk.Type == token.MappingValueType {
+				mappingValues++
+			}
+		}
+		require.NoErrorf(t, s.Err(), "%q", src)
+		assert.Equalf(t, 2+strings.Count(src, ": "), mappingValues, "every ': ' of %q is a value indicator", src)
+	}
 }

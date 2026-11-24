@@ -100,12 +100,16 @@ var stateLedger = map[string]disagreement{ //nolint:gochecknoglobals // ok to st
 	// end the scalar: +28 / +36 / +8 / +1 / +1. Six seeds such as "|2-" over "#c" now scan to their end.
 	//
 	// Still all at 0 when "<<::" began to read as the key "<<:" instead of a merge key: -4 / -4 / 0 / 0 / 0.
-	"buf.notSpaceCharPos==trimmed/plain": {0, 757266},
+	//
+	// And once more, still all at 0, when a flow indicator began to close an anchor or an alias: -1,437 / -1,437 / 0 /
+	// 0 / -1. The likely cause, not measured: while isAlias outlived the ',' of "[*m, b]", scanWhiteSpace took every
+	// later space for the end of a property and cut the buffer there, and each cut ran the plain and whole-buffer probes.
+	"buf.notSpaceCharPos==trimmed/plain": {0, 755829},
 	"buf.notSpaceCharPos==trimmed/block": {0, 3795},
 
 	// A mark past the end of the buffer made bufferedSrc slice a byte the last token wrote.
 	// Fixed; nothing may raise this.
-	"buf.notSpaceCharPos<=len(buf)": {0, 761061},
+	"buf.notSpaceCharPos<=len(buf)": {0, 759624},
 
 	// Both entries count a space opening a line where indentNum has stopped tracking the column, the second where a
 	// tab stands in the run before it. Nothing may raise either.
@@ -124,7 +128,7 @@ var stateLedger = map[string]disagreement{ //nolint:gochecknoglobals // ok to st
 	// it is, and the line the text ends on. It does not read the origin back to work the extent out.
 	// This compares that extent against token.MeasureOrigin's, which token.Make used.
 	// Nothing may raise it: a disagreement is a token pointing at the wrong stretch of source.
-	"token.extentMatchesTheOrigin": {0, 116390},
+	"token.extentMatchesTheOrigin": {0, 116389},
 }
 
 // TestStateLedger holds the scanner's state pairs to what they were measured at.

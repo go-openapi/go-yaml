@@ -61,6 +61,11 @@ func (s *Scanner) scanWhiteSpace(ctx *Context) bool {
 // the anchor and the value in one buffer and cut the anchor "xy" -- the value
 // gone, and a later "*x" naming nothing. All three oracles read that document
 // as {a: y}.
+//
+// A flow indicator ends a name as a blank does, and the flow scans close the
+// property here as well. They cut the token alone before, and isAlias outlived
+// the ',' of "[*m,b: c]": the ':' after the "b" read as a character of a name,
+// and the pair was refused with "',' or ']' must be specified".
 func (s *Scanner) endsProperty(ctx *Context) {
 	s.addBufferedTokenIfExists(ctx)
 	s.isAnchor = false

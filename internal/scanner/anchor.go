@@ -114,9 +114,9 @@ func anchorNameEnd(src string, start int32) int32 {
 //
 // Example: "&@" is an anchor named "@" and not a reserved character.
 //
-// The name runs on only from the character before: the '&' or '*' itself, or a character of the name. isAnchor and
-// isAlias stay set past a ',' or a ']' that ends a name inside a flow collection, so without that test the '*' of the
-// next entry of "[*a,*a]" read as a character of a name and the entry as the plain scalar "*a".
+// The name runs on only from the character before: the '&' or '*' itself, or a character of the name. A flow
+// indicator ending a name closes the property too, through [Scanner.endsProperty], so the next entry of "[*a,*a]"
+// and of "[*m,b: c]" opens no name.
 func (s *Scanner) inAnchorName(c rune) bool {
 	return (s.isAnchor || s.isAlias) && !endsAnchorName(c) && !endsAnchorName(s.ctx.previousChar())
 }
