@@ -35,3 +35,27 @@ func TestALeafFlattensWithoutAllocating(t *testing.T) {
 
 	assert.Zero(t, testing.AllocsPerRun(100, func() { _ = p.string() }))
 }
+
+func TestAJoinKeepsOnlyThePartsThatWrite(t *testing.T) {
+	head, inline, trailing, foot := rendered{}, rendered{}, rendered{}, rendered{}
+	key, colon, value := leaf("k"), leaf(":"), leaf(" v")
+
+	var p rendered
+	allocs := testing.AllocsPerRun(100, func() {
+		p = join(sepNone, head, key, colon, inline, value, trailing, foot)
+	})
+
+	assert.Equal(t, 1.0, allocs, "the kept parts, and not the variadic slice")
+	assert.Len(t, p.parts, 3)
+	assert.Equal(t, "k: v", p.string())
+}
+
+func TestAJoinOfOnePartIsThatPart(t *testing.T) {
+	text := leaf("v").indentedBy(2)
+
+	var p rendered
+	allocs := testing.AllocsPerRun(100, func() { p = join(sepNone, leaf(""), text, rendered{}) })
+
+	assert.Zero(t, allocs)
+	assert.Equal(t, text, p)
+}

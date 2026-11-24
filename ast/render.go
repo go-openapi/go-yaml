@@ -152,7 +152,7 @@ func (r *Renderer) File(n *File) string {
 
 	// The final line break belongs to the file: a node's rendering never ends
 	// in one, so that it can be placed anywhere.
-	return join(sepNone, join(sepBreak, docs...), leaf("\n")).string()
+	return join(sepNone, joinAll(sepBreak, docs), leaf("\n")).string()
 }
 
 // text renders n with the margin the caller stands at, for the renderer's own
@@ -369,7 +369,7 @@ func (r *Renderer) document(n *DocumentNode) rendered {
 		parts = append(parts, r.withComment(leaf(n.End.Value), n.EndComment))
 	}
 
-	return join(sepBreak, parts...)
+	return joinAll(sepBreak, parts)
 }
 
 func (r *Renderer) mapping(n *MappingNode) rendered {
@@ -405,7 +405,7 @@ func (r *Renderer) mapping(n *MappingNode) rendered {
 		lines = append(lines, join(sepNone, leaf(blankLineBefore(n.FootComment)), r.render(n.FootComment)))
 	}
 
-	return join(sepBreak, lines...)
+	return joinAll(sepBreak, lines)
 }
 
 func (r *Renderer) mappingValue(n *MappingValueNode) rendered {
@@ -1003,7 +1003,7 @@ func (r *Renderer) sequence(n *SequenceNode) rendered {
 		lines = append(lines, join(sepNone, leaf(blankLineBefore(n.FootComment)), r.render(n.FootComment)))
 	}
 
-	return join(sepBreak, lines...)
+	return joinAll(sepBreak, lines)
 }
 
 // entryGap returns the blank line the author left above entry i of n, value,

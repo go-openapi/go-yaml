@@ -86,17 +86,51 @@ func leaf(text string) rendered {
 }
 
 // join writes the parts one after another with sep between them.
+//
+// join copies the parts it keeps, so the variadic slice stays on the caller's
+// stack: a mapping entry passes seven or eight parts of 64 bytes each, and most
+// of them are comments and blank lines that write nothing. Use [joinAll] to hand
+// over a slice the caller built and holds nowhere else.
 func join(sep sepKind, parts ...rendered) rendered {
-	out := rendered{parts: parts, sep: sep}
-
-	if sep == sepNone {
-		// Nothing separates the parts, so a part that writes nothing changes
-		// nothing. Dropping them here removes most of the parts: a plain
-		// "k: v" entry is built from seven parts and four of them are the
-		// comments and the blank line it does not have.
-		parts = withoutEmpty(parts)
-		out.parts = parts
+	if sep != sepNone {
+		return joinAll(sep, append([]rendered(nil), parts...))
 	}
+
+	// Nothing separates the parts, so a part that writes nothing changes
+	// nothing. A plain "k: v" entry is built from seven parts and four of them
+	// are the comments and the blank line it does not have.
+	kept, last := 0, 0
+	for i, part := range parts {
+		if part.size > 0 {
+			kept++
+			last = i
+		}
+	}
+	switch kept {
+	case 0:
+		return rendered{}
+	case 1:
+		// The join would add no indent and no separator to its only part.
+		return parts[last]
+	}
+
+	out := make([]rendered, 0, kept)
+	for _, part := range parts {
+		if part.size > 0 {
+			out = append(out, part)
+		}
+	}
+
+	return joinAll(sepNone, out)
+}
+
+// joinAll is [join] on a slice the caller gives up: the piece keeps parts as
+// they are, empty ones included where sep is not [sepNone].
+func joinAll(sep sepKind, parts []rendered) rendered {
+	if sep == sepNone {
+		parts = withoutEmpty(parts)
+	}
+	out := rendered{parts: parts, sep: sep}
 
 	isBreak := sep == sepBreak
 	var leadSet bool
@@ -122,10 +156,7 @@ func join(sep sepKind, parts ...rendered) rendered {
 // withoutEmpty returns the parts that write something, and parts itself where
 // they all do.
 func withoutEmpty(parts []rendered) []rendered {
-	// Filtered in place: parts is the variadic slice, which belongs to this
-	// call and nothing else holds. A second slice would trade a wide slice
-	// for a narrow one plus an allocation, and the allocation costs more than
-	// the width.
+	// Filtered in place: joinAll owns parts, and nothing else holds it.
 	out := parts[:0]
 	for _, part := range parts {
 		if part.size > 0 {
@@ -194,7 +225,7 @@ func (p rendered) withoutLead() rendered {
 		parts := make([]rendered, len(p.parts))
 		copy(parts, p.parts)
 		parts[i] = part.withoutLead()
-		out := join(p.sep, parts...)
+		out := joinAll(p.sep, parts)
 		out.indent = p.indent
 
 		return out
