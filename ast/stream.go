@@ -114,6 +114,9 @@ func (s *Stream) Value(n Node) error {
 		}
 		s.key = nil
 		s.entry(len(s.open) - 1)
+		if s.writeScalarEntry(key, n, top.col) {
+			return s.err
+		}
 		s.write(s.r.withMargin(top.col == 0).render(MappingValue(nil, key, n)).withoutLead(), top.col)
 	default:
 		s.entry(len(s.open) - 1)
@@ -253,4 +256,44 @@ func (s *Stream) fail() error {
 	}
 
 	return s.err
+}
+
+// writeScalarEntry writes "key: value" for a scalar that fits on its key's line, as the Renderer writes the entry,
+// without building a MappingValueNode and joining its pieces. Most entries a Marshal or a FromJSON hands over are of
+// this shape.
+//
+// It takes a key and a value that are plain scalars without comments, a key short enough to stay implicit, and a value
+// that renders to one line. For those, Renderer.mappingValue writes the key, the ':' and the value after a space, and
+// nothing else: the blank line it may write above the key is taken off with the entry's lead. It returns false,
+// having written nothing, for any other entry.
+func (s *Stream) writeScalarEntry(key MapKeyNode, n Node, col int) bool {
+	if !isPlainScalar(key) || !isPlainScalar(n) || key.GetComment() != nil || n.GetComment() != nil {
+		return false
+	}
+	r := s.r.withMargin(col == 0)
+	keyText := r.implicitKey(key)
+	colon := r.colonAfter(key)
+	if implicitKeyTooLong(keyText, colon) {
+		return false
+	}
+	text := r.withMargin(false).render(n)
+	if text.empty() || text.spans {
+		return false
+	}
+
+	s.write(leaf(keyText), col)
+	s.write(leaf(colon), col)
+	s.write(text.afterSpace(), col)
+
+	return true
+}
+
+// isPlainScalar reports a scalar node with no anchor, tag or block form of its own.
+func isPlainScalar(n Node) bool {
+	switch n.(type) {
+	case *StringNode, *IntegerNode, *FloatNode, *BoolNode, *NullNode, *InfinityNode, *NanNode:
+		return true
+	default:
+		return false
+	}
 }

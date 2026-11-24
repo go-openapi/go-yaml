@@ -260,6 +260,14 @@ func TestAStreamWritesTheShapesTheCorpusRarelyHolds(t *testing.T) {
 		"a block scalar alone":             "|-\n  a\n  b\n",
 		"a block scalar in an entry":       "- |-\n  a\n  b\n- c: |\n    d\n",
 		"a key reading --- at the margin":  "'---': 1\n",
+		"scalars of every kind":            "s: x\ni: 1\nf: 1.5\nb: true\nn: null\nt: ~\ninf: .inf\nnan: .nan\nz: -0.0\n",
+		"quoted values":                    "a: 'yes'\nb: \"1\"\nc: ''\nd: \"a: b\"\ne: '#x'\nf: \" lead\"\n",
+		"a value over several lines":       "a: |-\n  x\n  y\nb: \"x\\ny\"\nc: 1\n",
+		"a nested key reading ---":         "a:\n  '---': 1\n",
+		"a key at the implicit limit":      strings.Repeat("k", 1022) + ": 1\n",
+		"a key past the implicit limit":    strings.Repeat("k", 1030) + ": 1\n",
+		"a quoted key":                     "'a: b': 1\n'': 2\n'yes': 3\n",
+		"scalars in a sequence of maps":    "- a: 1\n  b: x\n- c: null\n",
 	} {
 		for _, opts := range [][]ast.RenderOption{nil, {ast.WithIndent(4)}, {ast.WithIndentSequence(true)}} {
 			t.Run(name, func(t *testing.T) {
