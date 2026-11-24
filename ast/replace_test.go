@@ -112,6 +112,70 @@ func TestVerbatimWritesAReplacedNode(t *testing.T) {
 	}
 }
 
+// TestVerbatimKeepsTheCommaAfterAReplacedPairInAFlowSequence replaces the value of a pair written as a flow sequence
+// element, as in "[a: 1, b: 2]".
+//
+// writeComma leaves a ',' to the copy where the text in front of it belongs to a removed node. The replaced value's
+// text read as one, and the copy that took the ',' was dropping that text, so the ',' went with it: "[a: 1, b: 2]"
+// came back "[a: X b: 2]", which does not parse. 114 documents of the extended corpus held the shape, an "!!omap" or
+// a "!!pairs" among them.
+func TestVerbatimKeepsTheCommaAfterAReplacedPairInAFlowSequence(t *testing.T) {
+	t.Parallel()
+
+	for src, want := range map[string]string{
+		"[a: 1, b: 2]\n":                   "[a: X, b: 2]\n",
+		"[a: 1 , b: 2]\n":                  "[a: X , b: 2]\n",
+		"[a: 1,b: 2]\n":                    "[a: X,b: 2]\n",
+		"[\"a\": 1, \"b\": 2, \"c\": 3]\n": "[\"a\": X, \"b\": 2, \"c\": 3]\n",
+		"x: !!omap [a: 1, b: 2]\n":         "x: !!omap [a: X, b: 2]\n",
+		"{x: [a: 1, b: 2], y: 3}\n":        "{x: [a: X, b: 2], y: 3}\n",
+		"[a: 1, # c\n b: 2]\n":             "[a: X, # c\n b: 2]\n",
+	} {
+		t.Run(src, func(t *testing.T) {
+			t.Parallel()
+
+			file, err := parser.ParseBytes([]byte(src), parser.WithComments())
+			require.NoError(t, err)
+			pair := firstPairIn(t, file.Docs[0].Body)
+			built, err := codec.ValueToNode("X")
+			require.NoError(t, err)
+			pair.Value = built
+
+			var out bytes.Buffer
+			require.NoError(t, ast.NewRenderer(ast.WithSource([]byte(src))).VerbatimFile(&out, file))
+			require.Equal(t, want, out.String())
+
+			_, err = parser.ParseBytes(out.Bytes(), parser.WithComments())
+			require.NoErrorf(t, err, "cannot read back %q", out.String())
+		})
+	}
+}
+
+// firstPairIn returns the first pair held by the first flow sequence under n.
+func firstPairIn(t *testing.T, n ast.Node) *ast.MappingValueNode {
+	t.Helper()
+
+	for {
+		switch v := n.(type) {
+		case *ast.TagNode:
+			n = v.Value
+		case *ast.MappingNode:
+			n = v.Values[0].Value
+		case *ast.MappingValueNode:
+			n = v.Value
+		case *ast.SequenceNode:
+			mapping, isMapping := v.Values[0].(*ast.MappingNode)
+			require.True(t, isMapping, "the first element is a pair")
+
+			return mapping.Values[0]
+		default:
+			t.Fatalf("%T holds no flow sequence", n)
+
+			return nil
+		}
+	}
+}
+
 // TestVerbatimIndentsAReplacedBlockFromTheDocument checks the one thing the
 // layout renderer cannot do: a collection put in place of a scalar is indented
 // from the line it lands on, not from its depth in the tree.

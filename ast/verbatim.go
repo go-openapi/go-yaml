@@ -2084,8 +2084,15 @@ func (r *Renderer) writeNameOf(vw *verbatimWriter, name Node, owner Node) {
 // A ',' stands on the line of the value before it. Where a caller removed that value, the copy up to the ',' reads
 // the removed value's line as the line of the token it writes, and keeps it: "[" over "a," over "b," over "c]" with
 // "b" removed wrote "b" back. The ',' is then left to the copy up to the next token, which drops that line whole.
+//
+// A replaced node's text is not a removed one's. While the copy drops it, the ',' after it is written, and
+// writeTokenOf drops the text in front: in "[a: 1, b: 2]" with the 1 replaced, the ',' was left to a copy that was
+// dropping, and "[a: X b: 2]" no longer parsed.
 func (r *Renderer) writeComma(vw *verbatimWriter, tk *token.Token, n Node) {
-	if tk == nil || !tk.FromSource() || vw.holdsNodeText(vw.cursor, int(tk.Position.Offset())) {
+	if tk == nil || !tk.FromSource() {
+		return
+	}
+	if !vw.dropping && vw.holdsNodeText(vw.cursor, int(tk.Position.Offset())) {
 		return
 	}
 	r.writeTokenOf(vw, tk, n)
