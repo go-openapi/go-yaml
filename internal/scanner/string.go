@@ -145,6 +145,8 @@ func (s *Scanner) scanSingleQuote(ctx *Context) (token.Token, error) {
 				s.quoted = value[:0]
 			}
 
+			ctx.holdQuotedOnly(startIndex, idx)
+
 			return token.MakeSingleQuote(text, ctx.origin(), srcpos), nil
 		}
 	}
@@ -473,6 +475,8 @@ func (s *Scanner) scanDoubleQuote(ctx *Context) (token.Token, error) {
 				text = string(value)
 				s.quoted = value[:0]
 			}
+
+			ctx.holdQuotedOnly(startIndex, idx)
 
 			return token.MakeDoubleQuote(text, ctx.origin(), srcpos), nil
 		}

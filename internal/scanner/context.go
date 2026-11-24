@@ -56,6 +56,9 @@ type Context struct {
 	// lookback belongs to the Scanner and outlives the Context, so a token still reads what stands above it when the
 	// source is scanned in more than one pass.
 	lookback *token.Lookback
+	// quotedOnly holds the byte offsets, ascending, of the characters c-printable leaves out and a quoted scalar may
+	// hold, which validateStream found and no quoted scalar has claimed yet. See [Context.holdQuotedOnly].
+	quotedOnly []int32
 
 	// The five fields below take one byte each and stand together, as in Scanner and MultiLineState. They cost the
 	// struct 32 bytes of padding scattered among the words above, and a Context lasts as long as its source.
@@ -67,6 +70,9 @@ type Context struct {
 	stopped          bool
 	hasLastTk        bool
 	hasLastContentTk bool
+	// strayQuotedOnly records that a token reached past the first of quotedOnly, which then stands outside every
+	// quoted scalar. The scan refuses the stream at its next step.
+	strayQuotedOnly bool
 }
 
 // Reset clears the context of its source and of every state a scan left,
@@ -216,6 +222,14 @@ func (c *Context) addToken(tk *token.Token) {
 // A caller building a token only to hand it over should call [token.MakeLiteral] and its kind.
 // The [token.Literal] form puts the token on the heap for a value that is copied and dropped.
 func (c *Context) addTokenValue(tk token.Token) {
+	// A quoted scalar claims its characters before it is handed over, so one still waiting behind the scan lies outside
+	// it. The token holding it goes no further, and neither does anything after it.
+	if len(c.quotedOnly) > 0 && (c.strayQuotedOnly || c.quotedOnly[0] < c.idx) {
+		c.strayQuotedOnly = true
+
+		return
+	}
+
 	// Every token the scanner reads passes through here, which is what makes
 	// this the one place the mark can be set without a path missing it.
 	tk.MarkFromSource()
@@ -232,6 +246,20 @@ func (c *Context) addTokenValue(tk token.Token) {
 	}
 
 	c.appendToken(tk)
+}
+
+// holdQuotedOnly drops from quotedOnly the offsets in [from, to), the text of the quoted scalar just read.
+//
+// An offset in front of from stands outside the scalar, and stays for addTokenValue to find.
+func (c *Context) holdQuotedOnly(from, to int32) {
+	n := 0
+	for n < len(c.quotedOnly) && c.quotedOnly[n] < to {
+		if c.quotedOnly[n] < from {
+			return
+		}
+		n++
+	}
+	c.quotedOnly = c.quotedOnly[n:]
 }
 
 // recordToken keeps what the tokens already read say about the ones to come.

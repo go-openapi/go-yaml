@@ -107,8 +107,10 @@ func (s *Scanner) Init(src []byte) {
 	// this one. Context.reset takes the bytes back out for the swar word loads, which cannot read a string.
 	// See the README.
 	text := nocopy.String(src)
-	s.initErr = validateSource(text)
+	held, err := validateSource(text)
+	s.initErr = err
 	s.reset(text)
+	s.ctx.quotedOnly = held
 }
 
 // InitJSON sets s to read src as [Scanner.Init] does, and checks it as JSON text instead of a YAML stream.
@@ -271,6 +273,9 @@ func (s *Scanner) scan(ctx *Context) error {
 	emitted := ctx.buffered()
 
 	for ctx.next() {
+		if ctx.strayQuotedOnly {
+			return unprintableErr(ctx.src, int(ctx.quotedOnly[0]))
+		}
 		if ctx.stopped || ctx.buffered() > emitted {
 			return nil
 		}
@@ -559,6 +564,11 @@ func (s *Scanner) scan(ctx *Context) error {
 		}
 	}
 
+	// The source has ended, and a character only a quoted scalar may hold is still waiting for one.
+	if len(ctx.quotedOnly) > 0 {
+		return unprintableErr(ctx.src, int(ctx.quotedOnly[0]))
+	}
+
 	s.addBufferedTokenIfExists(ctx)
 
 	return nil
@@ -837,8 +847,9 @@ func (s *Scanner) clearState() {
 // The token err is queued behind the tokens already read so that it is handed over at the place it holds in the source.
 func (s *Scanner) stop(err error) {
 	s.err = err
-	// Nothing more is read once the scan has stopped.
+	// Nothing more is read once the scan has stopped, and the token naming the refusal is handed over whatever it spans.
 	s.ctx.idx = s.ctx.size
+	s.ctx.quotedOnly = nil
 
 	var invalidTokenErr *InvalidTokenError
 	if errors.As(err, &invalidTokenErr) && invalidTokenErr.Token != nil {

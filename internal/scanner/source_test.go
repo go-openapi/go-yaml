@@ -31,6 +31,8 @@ func TestSourceLengthBound(t *testing.T) {
 // TestValidateSourceReadsAnOrdinarySource checks that the length gate hands an ordinary document on to the printable
 // check instead of standing in front of it.
 func TestValidateSourceReadsAnOrdinarySource(t *testing.T) {
-	require.NoError(t, validateSource("a: 1\nb: [c, d]\n"))
-	assert.ErrorContains(t, validateSource("a: \x00\n"), "a YAML stream may not hold")
+	_, err := validateSource("a: 1\nb: [c, d]\n")
+	require.NoError(t, err)
+	_, err = validateSource("a: \x00\n")
+	assert.ErrorContains(t, err, "a YAML stream may not hold")
 }

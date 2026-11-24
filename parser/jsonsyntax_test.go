@@ -120,10 +120,15 @@ func TestWithJSONSyntaxKeepsOtherKinds(t *testing.T) {
 }
 
 // TestWithoutJSONSyntaxTheDocumentIsYAML reads the same text with and without the option.
+//
+// A raw DEL inside a string no longer tells the two apart: YAML 1.2.2 5.1 admits every non-C0 character inside a
+// quoted scalar, so that JSON text holding one is also YAML.
 func TestWithoutJSONSyntaxTheDocumentIsYAML(t *testing.T) {
 	_, err := parser.ParseBytes([]byte("a: b"))
 	require.NoError(t, err)
+	_, err = parser.ParseBytes([]byte("a: b"), parser.WithJSONSyntax())
+	require.ErrorContains(t, err, "is not a JSON value")
 
 	_, err = parser.ParseBytes([]byte("[\"a" + string(rune(0x7f)) + "b\"]"))
-	require.ErrorIs(t, err, yamlerrors.ErrSyntax)
+	require.NoError(t, err)
 }

@@ -22,10 +22,11 @@ import (
 // That spends a compare per token to report a document too large to hold in memory.
 const maxSourceLen = math.MaxInt32 - 1
 
-// validateSource checks the source before the scan reads a byte of it.
-func validateSource(text string) error {
+// validateSource checks the source before the scan reads a byte of it, and returns the offsets of the characters only
+// a quoted scalar may hold.
+func validateSource(text string) ([]int32, error) {
 	if sourceTooLong(len(text)) {
-		return ErrInvalidToken(
+		return nil, ErrInvalidToken(
 			fmt.Sprintf("a source must be under %d bytes, and this one is %d", maxSourceLen, len(text)),
 			token.Invalid("", token.At(1, 1, 0, 0)),
 		)

@@ -33,21 +33,45 @@ const byteOrderMark = '\ufeff'
 // byteOrderMarkText is the mark's three bytes, for the prefix tests that step over a run of them.
 const byteOrderMarkText = string(byteOrderMark)
 
-// validateStream checks that the source is text a YAML stream may hold.
+// validateStream checks that the source is text a YAML stream may hold, and returns the offsets of the characters
+// only a quoted scalar may hold.
 //
 // c-printable admits every character a stream may contain, so the control characters below 0x20 apart from tab, line
 // feed and carriage return are not YAML however they got there.
+//
+// A quoted scalar is built from nb-json instead, which admits every character from 0x20 up: DEL, the C1 controls,
+// U+FFFE and U+FFFF as well. See [quotedOnly]. validateStream cannot tell where the quoted scalars stand, so it keeps
+// the offset of each such character, and the scan refuses any that no quoted scalar holds.
 //
 // A stream is also Unicode, and a byte belonging to no character is not a character.
 // Converting the source to runes turns each such byte into U+FFFD, and by the time anything else looks, the byte has
 // gone unreported.
 // So this reads the string, where the rest of the scanner works on runes.
-func validateStream(text string) error {
-	if at := firstUnprintable(text); at >= 0 {
-		return unprintableErr(text, at)
-	}
+func validateStream(text string) ([]int32, error) {
+	var held []int32
+	for from := 0; ; {
+		at := firstUnprintable(text[from:])
+		if at < 0 {
+			return held, nil
+		}
+		at += from
 
-	return nil
+		r, width := utf8.DecodeRuneInString(text[at:])
+		if !quotedOnly(r) {
+			return nil, unprintableErr(text, at)
+		}
+		held = append(held, posInt(at))
+		from = at + width
+	}
+}
+
+// quotedOnly reports whether r is a character nb-json admits and c-printable does not: DEL, the C1 controls but NEL,
+// U+FFFE and U+FFFF.
+//
+// YAML 1.2.2 5.1: "To ensure JSON compatibility, YAML processors must allow all non-C0 characters inside quoted
+// scalars." RFC 8259 admits these raw inside a JSON string, so a JSON document holding one is also YAML.
+func quotedOnly(r rune) bool {
+	return r == 0x7F || r >= 0x80 && r <= 0x9F && r != 0x85 || r == 0xFFFE || r == 0xFFFF
 }
 
 // validateJSONText checks that the source is text JSON may hold: UTF-8, with no control character below 0x20 other
