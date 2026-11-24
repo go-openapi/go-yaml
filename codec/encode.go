@@ -28,18 +28,21 @@ import (
 
 // Encoder writes Go values to a YAML stream, one document for each call to [Encoder.Encode].
 type Encoder struct {
-	writer                     io.Writer
-	opts                       []EncodeOption
-	singleQuote                bool
-	isFlowStyle                bool
-	isJSONStyle                bool
-	useJSONMarshaler           bool
-	enableSmartAnchor          bool
-	aliasRefToName             map[uintptr]string
-	anchorRefToName            map[uintptr]string
-	anchorNameMap              map[string]struct{}
-	anchorCallback             func(*ast.AnchorNode, any) error
-	customMarshalerMap         map[reflect.Type]func(any) ([]byte, error)
+	writer             io.Writer
+	opts               []EncodeOption
+	singleQuote        bool
+	isFlowStyle        bool
+	isJSONStyle        bool
+	useJSONMarshaler   bool
+	enableSmartAnchor  bool
+	aliasRefToName     map[uintptr]string
+	anchorRefToName    map[uintptr]string
+	anchorNameMap      map[string]struct{}
+	anchorCallback     func(*ast.AnchorNode, any) error
+	customMarshalerMap map[reflect.Type]func(any) ([]byte, error)
+	// noCustomMarshalers records, for one EncodeToNode call, that neither the Encoder nor RegisterCustomMarshaler
+	// holds a custom marshaler, so the lookups for one can be skipped on every value. False on a zero Encoder.
+	noCustomMarshalers         bool
 	omitZero                   bool
 	omitEmpty                  bool
 	writeJSONTags              bool
@@ -114,6 +117,8 @@ func (e *Encoder) EncodeToNode(v any) (ast.Node, error) {
 			return nil, err
 		}
 	}
+	// Read once per call, never cached across calls: a RegisterCustomMarshaler between two calls takes effect.
+	e.noCustomMarshalers = len(e.customMarshalerMap) == 0 && !hasCustomMarshalers()
 	if e.enableSmartAnchor {
 		// The first encoding stores every mapping from an alias address to its name.
 		if _, err := e.encodeValue(reflect.ValueOf(v), 1); err != nil {
@@ -200,6 +205,9 @@ func (e *Encoder) isInvalidValue(v reflect.Value) bool {
 }
 
 func (e *Encoder) existsTypeInCustomMarshalerMap(t reflect.Type) bool {
+	if e.noCustomMarshalers {
+		return false
+	}
 	if _, exists := e.customMarshalerMap[t]; exists {
 		return true
 	}
@@ -213,6 +221,9 @@ func (e *Encoder) existsTypeInCustomMarshalerMap(t reflect.Type) bool {
 }
 
 func (e *Encoder) marshalerFromCustomMarshalerMap(t reflect.Type) (func(any) ([]byte, error), bool) {
+	if e.noCustomMarshalers {
+		return nil, false
+	}
 	if marshaler, exists := e.customMarshalerMap[t]; exists {
 		return marshaler, exists
 	}

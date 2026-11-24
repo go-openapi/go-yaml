@@ -343,3 +343,23 @@ func TestIssue174(t *testing.T) {
 	got := strings.TrimSuffix(string(b), "\n")
 	require.Equal(t, `{"00:00:00-23:59:59": [1, 2, 3]}`, got)
 }
+
+// TestMarshalUsesAMarshalerRegisteredBetweenTwoCalls covers RegisterCustomMarshaler on the encode side. The encoder
+// skips its marshaler lookups when none is registered, and reads that once per call: a marshaler registered after a
+// first Marshal applies to the next one.
+func TestMarshalUsesAMarshalerRegisteredBetweenTwoCalls(t *testing.T) {
+	type registeredLater struct{ V int }
+	doc := map[string]registeredLater{"k": {V: 1}}
+
+	before, err := codec.Marshal(doc)
+	require.NoError(t, err)
+	assert.Equal(t, "k:\n  v: 1\n", string(before))
+
+	codec.RegisterCustomMarshaler(func(r registeredLater) ([]byte, error) {
+		return []byte(fmt.Sprintf("custom-%d", r.V)), nil
+	})
+
+	after, err := codec.Marshal(doc)
+	require.NoError(t, err)
+	assert.Equal(t, "k: custom-1\n", string(after))
+}

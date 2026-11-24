@@ -59,3 +59,11 @@ func registeredUnmarshaler(ptr reflect.Type) bool {
 
 	return exists
 }
+
+// hasCustomMarshalers reports whether RegisterCustomMarshaler has registered any marshaler.
+func hasCustomMarshalers() bool {
+	customMarshalerMx.RLock()
+	defer customMarshalerMx.RUnlock()
+
+	return len(customMarshalerMap) > 0
+}
