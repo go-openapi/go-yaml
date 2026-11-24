@@ -166,3 +166,71 @@ func TestFromJSONTokensRejectsASourceThatStopsEarly(t *testing.T) {
 	_, err := codec.FromJSONTokens(stopped)
 	require.ErrorIs(t, err, ast.ErrStreamOrder)
 }
+
+// jsonTokensOf builds a token sequence from a compact spelling: "{" "}" "[" "]" open and close collections, "k:name"
+// is a key, and any other word is a number.
+func jsonTokensOf(words ...string) iter.Seq[codec.JSONToken] {
+	toks := make([]codec.JSONToken, 0, len(words))
+	for _, w := range words {
+		switch {
+		case w == "{":
+			toks = append(toks, codec.JSONToken{Kind: codec.JSONObjectStart})
+		case w == "}":
+			toks = append(toks, codec.JSONToken{Kind: codec.JSONObjectEnd})
+		case w == "[":
+			toks = append(toks, codec.JSONToken{Kind: codec.JSONArrayStart})
+		case w == "]":
+			toks = append(toks, codec.JSONToken{Kind: codec.JSONArrayEnd})
+		case strings.HasPrefix(w, "k:"):
+			toks = append(toks, codec.JSONToken{Kind: codec.JSONKey, Value: strings.TrimPrefix(w, "k:")})
+		default:
+			toks = append(toks, codec.JSONToken{Kind: codec.JSONNumber, Value: w})
+		}
+	}
+
+	return slices.Values(toks)
+}
+
+// TestFromJSONTokensRejectsAKeyRepeatedInOneObject covers the check FromJSONTokens runs for a source that does not:
+// a repeat in one object fails at any depth and any distance, and the same name in two objects passes.
+func TestFromJSONTokensRejectsAKeyRepeatedInOneObject(t *testing.T) {
+	t.Parallel()
+
+	for name, tc := range map[string]struct {
+		tokens iter.Seq[codec.JSONToken]
+		want   string
+	}{
+		"a repeat":                    {tokens: jsonTokensOf("{", "k:a", "1", "k:a", "2", "}")},
+		"a repeat past other keys":    {tokens: jsonTokensOf("{", "k:a", "1", "k:b", "2", "k:a", "3", "}")},
+		"a repeat in a nested object": {tokens: jsonTokensOf("{", "k:x", "{", "k:a", "1", "k:a", "2", "}", "}")},
+		"a repeat after a nested object": {
+			tokens: jsonTokensOf("{", "k:a", "{", "k:b", "1", "}", "k:a", "2", "}"),
+		},
+		"a repeat in an object in an array": {tokens: jsonTokensOf("[", "{", "k:a", "1", "k:a", "2", "}", "]")},
+		"the same key in sibling objects": {
+			tokens: jsonTokensOf("[", "{", "k:a", "1", "}", "{", "k:a", "2", "}", "]"),
+			want:   "- a: 1\n- a: 2\n",
+		},
+		"the same key in a nested object": {
+			tokens: jsonTokensOf("{", "k:a", "1", "k:b", "{", "k:a", "2", "}", "}"),
+			want:   "a: 1\nb:\n  a: 2\n",
+		},
+		"a key again after its object closed": {
+			tokens: jsonTokensOf("{", "k:o", "{", "k:a", "1", "}", "k:p", "{", "k:a", "2", "k:b", "3", "}", "}"),
+			want:   "o:\n  a: 1\np:\n  a: 2\n  b: 3\n",
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			out, err := codec.FromJSONTokens(tc.tokens)
+			if tc.want == "" {
+				require.ErrorIs(t, err, yamlerrors.ErrDuplicateKey)
+
+				return
+			}
+			require.NoError(t, err)
+			assert.Equal(t, tc.want, string(out))
+		})
+	}
+}

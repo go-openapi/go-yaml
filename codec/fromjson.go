@@ -5,11 +5,13 @@ package codec
 
 import (
 	"bytes"
+	"fmt"
 	"iter"
 	"strconv"
 	"strings"
 
 	"github.com/go-openapi/go-yaml/ast"
+	yamlerrors "github.com/go-openapi/go-yaml/errors"
 	"github.com/go-openapi/go-yaml/parser"
 )
 
@@ -25,26 +27,30 @@ func fromJSON(src []byte, syntax bool, opts ...ast.RenderOption) ([]byte, error)
 	}
 	tokens := ToJSONTokens(src, parseOpts...)
 
-	return renderJSONTokens(tokens.Tokens(), len(src), tokens.Err, opts...)
+	// The YAML parser already rejects a key repeated in one object, so the tokens need no second check.
+	return renderJSONTokens(tokens.Tokens(), len(src), tokens.Err, false, opts...)
 }
 
 // FromJSONTokens writes the YAML for a sequence of JSON tokens, as [FromJSON] writes it for the JSON text they come
 // from.
 //
 // It takes the tokens of any JSON reader that yields them in document order, as [JSONTokens.Tokens] does, with no
-// token for a "," or a ":". It checks their order and nothing else: a key repeated in one object is written twice. A
-// reader that stops on an error leaves a collection open, and FromJSONTokens then returns
+// token for a "," or a ":". It checks their order, and returns an error wrapping
+// [github.com/go-openapi/go-yaml/errors.ErrDuplicateKey] for a key repeated in one object, as FromJSON does: YAML has
+// no mapping with two equal keys. Keys are compared as the tokens hold them, after unescaping, with no Unicode
+// normalization. A reader that stops on an error leaves a collection open, and FromJSONTokens then returns
 // [ast.ErrStreamOrder]: check the reader's own error first, since it names the fault.
 //
 // opts lay the YAML out: [ast.WithIndent] and [ast.WithIndentSequence].
 func FromJSONTokens(tokens iter.Seq[JSONToken], opts ...ast.RenderOption) ([]byte, error) {
-	return renderJSONTokens(tokens, 0, nil, opts...)
+	return renderJSONTokens(tokens, 0, nil, true, opts...)
 }
 
 // renderJSONTokens writes tokens through an [ast.Stream]. sizeHint presizes the output. sourceErr, when set, returns
-// the error that stopped the source, and is checked before the stream closes.
+// the error that stopped the source, and is checked before the stream closes. checkKeys rejects a key repeated in one
+// object, for a source that does not.
 func renderJSONTokens(
-	tokens iter.Seq[JSONToken], sizeHint int, sourceErr func() error, opts ...ast.RenderOption,
+	tokens iter.Seq[JSONToken], sizeHint int, sourceErr func() error, checkKeys bool, opts ...ast.RenderOption,
 ) ([]byte, error) {
 	var out bytes.Buffer
 	out.Grow(sizeHint + sizeHint/4)
@@ -55,7 +61,13 @@ func renderJSONTokens(
 
 	// depth counts the collections open around a token, to give each key the scratch set of its own depth.
 	var depth int
+	var keys jsonKeySets
 	for tok := range tokens {
+		if checkKeys {
+			if err := keys.track(tok); err != nil {
+				return nil, err
+			}
+		}
 		switch tok.Kind {
 		case JSONObjectStart, JSONArrayStart:
 			enc.scratch = nil
@@ -84,6 +96,55 @@ func renderJSONTokens(
 	}
 
 	return out.Bytes(), nil
+}
+
+// jsonKeySets holds the keys seen in each open object, so that a repeat is rejected before it is written.
+//
+// The sets are kept by depth and cleared for reuse, so a document allocates one set per level of object nesting, not
+// one per object.
+type jsonKeySets struct {
+	// sets holds one set per open collection, nil for an array.
+	sets []map[string]struct{}
+	// spare holds the set last used at each depth, nil where no object has opened at that depth yet.
+	spare []map[string]struct{}
+}
+
+func (k *jsonKeySets) track(tok JSONToken) error {
+	depth := len(k.sets)
+	switch tok.Kind {
+	case JSONObjectStart:
+		for len(k.spare) <= depth {
+			// An array leaves its depth without a set, so the slice can be more than one short.
+			k.spare = append(k.spare, nil)
+		}
+		set := k.spare[depth]
+		if set == nil {
+			set = make(map[string]struct{})
+			k.spare[depth] = set
+		} else {
+			clear(set)
+		}
+		k.sets = append(k.sets, set)
+	case JSONArrayStart:
+		k.sets = append(k.sets, nil)
+	case JSONObjectEnd, JSONArrayEnd:
+		if depth > 0 {
+			k.sets = k.sets[:depth-1]
+		}
+	case JSONKey:
+		if depth == 0 || k.sets[depth-1] == nil {
+			// Out of place: the stream rejects it.
+			return nil
+		}
+		set := k.sets[depth-1]
+		if _, repeated := set[tok.Value]; repeated {
+			return fmt.Errorf("mapping key %q already defined in this object: %w", tok.Value, yamlerrors.ErrDuplicateKey)
+		}
+		set[tok.Value] = struct{}{}
+	default:
+	}
+
+	return nil
 }
 
 // streamJSONToken hands one JSON token to the stream. It builds a scalar from enc's scratch set when one is set.
