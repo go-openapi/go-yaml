@@ -86,8 +86,11 @@ func (s *Stream) Key(key Node) error {
 	return nil
 }
 
-// Value writes a scalar: the value of the key just handed over, the next entry of the innermost sequence, or the
+// Value writes a node whole: the value of the key just handed over, the next entry of the innermost sequence, or the
 // document's own node.
+//
+// The node is usually a scalar. It may also be a subtree the stream takes no events for, such as an anchor, an alias,
+// a tag or a flow collection: Value writes it as [Renderer.Render] writes the same subtree in place, in its own style.
 func (s *Stream) Value(n Node) error {
 	if s.err != nil {
 		return s.err

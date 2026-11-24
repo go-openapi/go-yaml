@@ -5,6 +5,7 @@ package ast_test
 
 import (
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -282,4 +283,166 @@ func TestAStreamWritesTheShapesTheCorpusRarelyHolds(t *testing.T) {
 			})
 		}
 	}
+}
+
+// handOver hands n to s, streaming each collection above depth cut and handing the rest to [ast.Stream.Value] whole:
+// a collection at depth cut or deeper, and an anchor, an alias or a tag at any depth. A negative cut streams every
+// collection. It sets the streamed collections to block style, and leaves a handed-over subtree as it is.
+func handOver(s *ast.Stream, n ast.Node, depth, cut int, handed *int) error {
+	streamed := cut < 0 || depth < cut
+	switch node := n.(type) {
+	case *ast.MappingNode:
+		if !streamed {
+			return handWhole(s, n, depth, handed)
+		}
+		node.SetIsFlowStyle(false)
+		if err := s.BeginMapping(); err != nil {
+			return err
+		}
+		for _, mv := range node.Values {
+			switch mv.Key.(type) {
+			case *ast.MappingNode, *ast.SequenceNode, *ast.AnchorNode, *ast.AliasNode, *ast.TagNode, *ast.MergeKeyNode,
+				*ast.MappingKeyNode, nil:
+				// A Stream takes a scalar key only, and an explicit "? " key stays explicit in the tree.
+				return errNotStreamable
+			}
+			if err := s.Key(mv.Key); err != nil {
+				return err
+			}
+			if err := handOver(s, mv.Value, depth+1, cut, handed); err != nil {
+				return err
+			}
+		}
+
+		return s.End()
+	case *ast.SequenceNode:
+		if !streamed {
+			return handWhole(s, n, depth, handed)
+		}
+		node.SetIsFlowStyle(false)
+		if err := s.BeginSequence(); err != nil {
+			return err
+		}
+		for _, v := range node.Values {
+			if err := handOver(s, v, depth+1, cut, handed); err != nil {
+				return err
+			}
+		}
+
+		return s.End()
+	case *ast.MappingKeyNode, *ast.MappingValueNode, *ast.CommentGroupNode, *ast.DocumentNode, *ast.MergeKeyNode:
+		return errNotStreamable
+	case *ast.AnchorNode, *ast.AliasNode, *ast.TagNode:
+		return handWhole(s, n, depth, handed)
+	default:
+		return s.Value(n)
+	}
+}
+
+// handWhole hands n to [ast.Stream.Value], and counts it when it stands inside a collection the stream opened.
+func handWhole(s *ast.Stream, n ast.Node, depth int, handed *int) error {
+	if depth > 0 {
+		*handed++
+	}
+
+	return s.Value(n)
+}
+
+// TestAStreamWritesAHandedOverSubtreeAsTheRendererDoes hands whole subtrees to [ast.Stream.Value]: every anchor, alias
+// and tag, and every collection from a cut depth down, in the author's style. An encoder that streams what it can and
+// builds a tree for the rest relies on this. The corpus and the settings are those of
+// TestAStreamWritesWhatTheRendererWrites, and the output must match Renderer.Render byte for byte.
+func TestAStreamWritesAHandedOverSubtreeAsTheRendererDoes(t *testing.T) {
+	t.Parallel()
+
+	suites, err := yamltestsuite.TestSuites()
+	require.NoError(t, err)
+	seeds, err := fuzzseeds.All()
+	require.NoError(t, err)
+	srcs := make([]string, 0, len(suites)+len(seeds))
+	for _, s := range suites {
+		srcs = append(srcs, string(s.InYAML))
+	}
+	srcs = append(srcs, seeds...)
+
+	for _, cfg := range []struct {
+		name string
+		opts []ast.RenderOption
+	}{
+		{"default", nil},
+		{"indent4", []ast.RenderOption{ast.WithIndent(4)}},
+		{"indentseq", []ast.RenderOption{ast.WithIndentSequence(true)}},
+		{"indent3seq", []ast.RenderOption{ast.WithIndent(3), ast.WithIndentSequence(true)}},
+	} {
+		for _, cut := range []int{-1, 0, 1, 2, 3} {
+			t.Run(fmt.Sprintf("%s/cut%d", cfg.name, cut), func(t *testing.T) {
+				r := ast.NewRenderer(append([]ast.RenderOption{ast.WithComments(false)}, cfg.opts...)...)
+				compareHandOver(t, r, srcs, cut)
+			})
+		}
+	}
+}
+
+// compareHandOver streams every source with [handOver] at one cut and compares it with Renderer.Render.
+func compareHandOver(t *testing.T, r *ast.Renderer, srcs []string, cut int) {
+	t.Helper()
+
+	var compared, differed, withHandover int
+	for _, src := range srcs {
+		file, err := parser.ParseBytes([]byte(src))
+		if err != nil {
+			continue
+		}
+		for _, doc := range file.Docs {
+			streamed, want, handed, ok := handOverAndRender(t, r, doc.Body, cut)
+			if !ok {
+				continue
+			}
+			compared++
+			if handed > 0 {
+				withHandover++
+			}
+			if streamed != want {
+				differed++
+				if differed <= 3 {
+					t.Errorf("the stream wrote\n%s\nthe renderer wrote\n%s\nfor\n%s", streamed, want, src)
+				}
+			}
+		}
+	}
+	if differed > 3 {
+		t.Errorf("%d of %d documents differ", differed, compared)
+	}
+	t.Logf("%d documents compared, %d with a subtree handed over inside a streamed collection", compared, withHandover)
+	assert.Greater(t, compared, 5000)
+	if cut != 0 {
+		// At cut 0 the whole document goes to Value, and the stream opens no collection.
+		assert.Greater(t, withHandover, 1000)
+	}
+}
+
+// handOverAndRender writes body through a Stream with [handOver] and through Renderer.Render, and returns both and
+// the number of subtrees handed over inside a streamed collection. It returns false for a body a Stream cannot take.
+func handOverAndRender(t *testing.T, r *ast.Renderer, body ast.Node, cut int) (string, string, int, bool) {
+	t.Helper()
+
+	if body == nil {
+		return "", "", 0, false
+	}
+	ast.Walk(noBlankLines{}, body)
+
+	var streamed strings.Builder
+	var handed int
+	s := r.Stream(&streamed)
+	if err := handOver(s, body, 0, cut, &handed); errors.Is(err, errNotStreamable) {
+		return "", "", 0, false
+	} else if err != nil {
+		t.Fatalf("stream: %v", err)
+	}
+	require.NoError(t, s.Close())
+
+	var tree strings.Builder
+	require.NoError(t, r.Render(&tree, body))
+
+	return streamed.String(), tree.String() + "\n", handed, true
 }
