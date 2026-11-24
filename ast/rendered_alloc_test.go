@@ -91,3 +91,34 @@ func TestShiftingAPieceWritesLikeAWrapper(t *testing.T) {
 	p := leaf("a\nb")
 	assert.Zero(t, testing.AllocsPerRun(100, func() { _ = p.shifted(3, true) }))
 }
+
+// TestASpaceBeforeAPieceWritesLikeAJoin checks rendered.afterSpace against the join it replaces, on its own, inside a
+// join, shifted and hanging, and with its lead taken off.
+func TestASpaceBeforeAPieceWritesLikeAJoin(t *testing.T) {
+	pieces := []rendered{
+		{},
+		leaf("v"), leaf("a\nb"), leaf("\na"),
+		join(sepBreak, leaf("a"), leaf("b")),
+		leaf("a\nb").indentedBy(2), leaf("a\nb").shifted(2, true),
+		leaf("v").afterSpace(),
+	}
+	for _, p := range pieces {
+		joined, spaced := join(sepNone, leaf(" "), p), p.afterSpace()
+
+		assert.Equalf(t, joined.string(), spaced.string(), "%q", p.string())
+		assert.Equalf(t, joined.size, spaced.size, "%q size", p.string())
+		assert.Equalf(t, joined.spans, spaced.spans, "%q spans", p.string())
+		assert.Equalf(t, joined.leads, spaced.leads, "%q leads", p.string())
+		assert.Equalf(t, joined.withoutLead().string(), spaced.withoutLead().string(), "%q without its lead", p.string())
+
+		for _, hanging := range []bool{false, true} {
+			in := func(q rendered) string {
+				return join(sepBreak, leaf("- x"), join(sepNone, leaf("k:"), q)).shifted(4, hanging).string()
+			}
+			assert.Equalf(t, in(joined), in(spaced), "%q in an entry, hanging %v", p.string(), hanging)
+		}
+	}
+
+	p := leaf("v")
+	assert.Zero(t, testing.AllocsPerRun(100, func() { _ = p.afterSpace() }))
+}

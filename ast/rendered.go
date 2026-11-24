@@ -40,6 +40,10 @@ type rendered struct {
 	// The one-byte fields come last and share a word, so a piece takes 56 bytes
 	// instead of 64.
 	sep sepKind
+	// pre is written before the piece, at the indent of whatever holds it, as a
+	// leaf joined in front of it would be. Renderer.value puts the space after
+	// a key's ':' here, which saves a join per entry.
+	pre sepKind
 	// hanging marks a piece whose first line takes no indentation, wherever it
 	// falls. A sequence entry and a "?" key are written after a marker that
 	// already holds their first line, and the marker's own line break is not
@@ -185,7 +189,7 @@ func (p rendered) shifted(spaces int, hanging bool) rendered {
 	if spaces <= 0 || p.size == 0 {
 		return p
 	}
-	if p.indent == 0 && !p.hanging {
+	if p.indent == 0 && !p.hanging && p.pre == sepNone {
 		// Nothing to keep: a wrapper would add its indent to none, so the
 		// piece takes the indent itself and skips a one-part slice.
 		p.indent = int32(spaces)
@@ -244,12 +248,29 @@ func (p rendered) withoutLead() rendered {
 	return leaf(strings.TrimPrefix(p.string(), "\n"))
 }
 
+// afterSpace returns the piece written after a space, as join(sepNone, leaf(" "), p) would write it, without the
+// join's slice.
+func (p rendered) afterSpace() rendered {
+	if p.size == 0 {
+		return leaf(" ")
+	}
+	if p.pre != sepNone {
+		return join(sepNone, leaf(" "), p)
+	}
+	// The space is the piece's first byte now: it opens no line, and adds none.
+	p.pre = sepSpace
+	p.size++
+	p.leads = false
+
+	return p
+}
+
 // empty reports whether the piece writes nothing at all.
 func (p rendered) empty() bool { return p.size == 0 }
 
 // string flattens the piece.
 func (p rendered) string() string {
-	if p.parts == nil && (p.indent == 0 || !p.spans) {
+	if p.parts == nil && p.pre == sepNone && (p.indent == 0 || !p.spans) {
 		// A leaf's indent pads the lines after its first, so a leaf with no
 		// indent or a single line flattens to its own text. Most scalars take
 		// this path, and skip the strings.Builder.
@@ -267,6 +288,7 @@ func (p rendered) string() string {
 // writeTo writes the piece, putting indent in after each line break instead of
 // splitting a finished block into lines.
 func (p rendered) writeTo(w *lineWriter, indent int) {
+	w.writeString(p.pre.text(), indent)
 	indent += int(p.indent)
 	if p.hanging {
 		// The marker that introduced this piece holds its first line, so that

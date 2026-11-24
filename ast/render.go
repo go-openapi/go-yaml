@@ -736,7 +736,7 @@ func (r *Renderer) value(n Node, keyCommented bool) rendered {
 	// value.
 	if r.fitsOnKeyLine(shape) && (!collection || !spansLines) &&
 		(!keyCommented || (!collection && !spansLines)) {
-		return join(sepNone, leaf(" "), text)
+		return text.afterSpace()
 	}
 	if sequence, ok := shape.(*SequenceNode); ok && !r.flowsInline(sequence.IsFlowStyle) && !r.indentSequence {
 		// A block sequence under a mapping key sits at the key's own
