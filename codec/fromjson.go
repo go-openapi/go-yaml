@@ -10,7 +10,6 @@ import (
 
 	"github.com/go-openapi/go-yaml/ast"
 	"github.com/go-openapi/go-yaml/parser"
-	"github.com/go-openapi/go-yaml/token"
 )
 
 // fromJSON implements [FromJSON]. It checks src as JSON text when syntax is set.
@@ -31,9 +30,25 @@ func fromJSON(src []byte, syntax bool, opts ...ast.RenderOption) ([]byte, error)
 		parseOpts = append(parseOpts, parser.WithJSONSyntax())
 	}
 	tokens := ToJSONTokens(src, parseOpts...)
+	// depth counts the collections open around a token, to give each key the scratch set of its own depth.
+	var depth int
 	for tok := range tokens.Tokens() {
+		switch tok.Kind {
+		case JSONObjectStart, JSONArrayStart:
+			enc.scratch = nil
+		case JSONObjectEnd, JSONArrayEnd:
+			enc.scratch = nil
+			depth--
+		case JSONKey:
+			enc.scratch = enc.keyScratchAt(max(depth-1, 0))
+		default:
+			enc.scratch = &enc.valueScratch
+		}
 		if err := streamJSONToken(stream, &enc, tok); err != nil {
 			return nil, err
+		}
+		if tok.Kind == JSONObjectStart || tok.Kind == JSONArrayStart {
+			depth++
 		}
 	}
 	if err := tokens.Err(); err != nil {
@@ -46,7 +61,7 @@ func fromJSON(src []byte, syntax bool, opts ...ast.RenderOption) ([]byte, error)
 	return out.Bytes(), nil
 }
 
-// streamJSONToken hands one JSON token to the stream.
+// streamJSONToken hands one JSON token to the stream. It builds a scalar from enc's scratch set when one is set.
 func streamJSONToken(stream *ast.Stream, enc *Encoder, tok JSONToken) error {
 	switch tok.Kind {
 	case JSONObjectStart:
@@ -60,17 +75,15 @@ func streamJSONToken(stream *ast.Stream, enc *Encoder, tok JSONToken) error {
 	case JSONString:
 		return stream.Value(enc.encodeString(tok.Value, 0))
 	case JSONNumber:
-		tk := token.New(tok.Value, tok.Value, token.Position{})
+		tk := enc.newToken(tok.Value, 0)
 		if strings.ContainsAny(tok.Value, ".eE") {
-			return stream.Value(ast.Float(tk))
+			return stream.Value(enc.floatNode(tk))
 		}
 
-		return stream.Value(ast.Integer(tk))
+		return stream.Value(enc.integerNode(tk))
 	case JSONBool:
-		value := strconv.FormatBool(tok.Bool)
-
-		return stream.Value(ast.Bool(token.New(value, value, token.Position{})))
+		return stream.Value(enc.boolNode(enc.newToken(strconv.FormatBool(tok.Bool), 0)))
 	default:
-		return stream.Value(ast.Null(token.New("null", "null", token.Position{})))
+		return stream.Value(enc.nullNode(enc.newToken("null", 0)))
 	}
 }
