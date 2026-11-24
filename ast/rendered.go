@@ -185,6 +185,14 @@ func (p rendered) shifted(spaces int, hanging bool) rendered {
 	if spaces <= 0 || p.size == 0 {
 		return p
 	}
+	if p.indent == 0 && !p.hanging {
+		// Nothing to keep: a wrapper would add its indent to none, so the
+		// piece takes the indent itself and skips a one-part slice.
+		p.indent = int32(spaces)
+		p.hanging = hanging
+
+		return p
+	}
 	// shifted wraps p instead of adding to p.indent, so that a piece already
 	// carrying an indent keeps it and the two accumulate as the write descends.
 	return rendered{

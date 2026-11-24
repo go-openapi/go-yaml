@@ -66,3 +66,28 @@ func TestAJoinOfOnePartIsThatPart(t *testing.T) {
 func TestAPieceTakesFiftySixBytes(t *testing.T) {
 	assert.Equal(t, uintptr(56), unsafe.Sizeof(rendered{}))
 }
+
+// TestShiftingAPieceWritesLikeAWrapper checks the shortcut in rendered.shifted against the wrapper it replaces, for
+// a leaf and a join, hanging or not, and for a piece that already carries an indent.
+func TestShiftingAPieceWritesLikeAWrapper(t *testing.T) {
+	pieces := []rendered{
+		leaf("a"), leaf("a\nb"), leaf("\na\n\nb"),
+		join(sepBreak, leaf("a"), leaf("b: c")),
+		leaf("a\nb").indentedBy(2),
+	}
+	for _, p := range pieces {
+		for _, hanging := range []bool{false, true} {
+			wrapped := rendered{parts: []rendered{p}, indent: 4, hanging: hanging, size: p.size, spans: p.spans, leads: p.leads}
+			shifted := p.shifted(4, hanging)
+
+			assert.Equalf(t, wrapped.string(), shifted.string(), "%q, hanging %v", p.string(), hanging)
+			assert.Equalf(t, wrapped.withoutLead().string(), shifted.withoutLead().string(), "%q without its lead", p.string())
+
+			outer := join(sepNone, leaf("- "), shifted).indentedBy(2)
+			assert.Equalf(t, join(sepNone, leaf("- "), wrapped).indentedBy(2).string(), outer.string(), "%q nested", p.string())
+		}
+	}
+
+	p := leaf("a\nb")
+	assert.Zero(t, testing.AllocsPerRun(100, func() { _ = p.shifted(3, true) }))
+}
