@@ -1132,22 +1132,16 @@ func (e *Encoder) tagMode() structfields.Mode {
 //nolint:gocyclo,cyclop,gocognit // one branch per tag flag (omitempty, omitzero, flow, anchor, alias, inline)
 func (e *Encoder) encodeStruct(value reflect.Value, column int) (ast.Node, error) {
 	node := ast.Mapping(token.New("", "", e.pos(column)), e.isFlowStyle)
-	structType := value.Type()
-	mode := e.tagMode()
-	fields, err := structfields.Of(structType, mode)
+	plan, err := planOf(value.Type(), e.tagMode())
 	if err != nil {
 		return nil, err
 	}
-	fieldMap := fields.ByGoName
+	fields := plan.fields
 	hasInlineAnchorField := false
 	var inlineAnchorValue reflect.Value
-	for i := range value.NumField() {
-		field := structType.Field(i)
-		if structfields.Ignored(field, mode) {
-			continue
-		}
-		fieldValue := value.FieldByName(field.Name)
-		sf := fieldMap[field.Name]
+	for _, fp := range plan.write {
+		fieldValue := value.Field(fp.index)
+		sf := fp.info
 		if (e.omitZero || sf.IsOmitZero) && e.isOmittedByOmitZero(fieldValue) {
 			// omit encoding by omitzero tag or OmitZero option.
 			continue
@@ -1170,7 +1164,13 @@ func (e *Encoder) encodeStruct(value reflect.Value, column int) (ast.Node, error
 		if err != nil {
 			return nil, err
 		}
-		var key ast.MapKeyNode = e.encodeString(sf.RenderName, column)
+		var key ast.MapKeyNode
+		if fp.plainKey && !e.isJSONStyle {
+			// isNeedQuoted returns false for this name under every option but JSON.
+			key = ast.String(token.New(sf.RenderName, sf.RenderName, e.pos(column)))
+		} else {
+			key = e.encodeString(sf.RenderName, column)
+		}
 		switch {
 		case encoded.Type() == ast.AliasType:
 			if aliasName := sf.AliasName; aliasName != "" {
