@@ -11,6 +11,7 @@ import (
 	"github.com/go-openapi/testify/v2/require"
 
 	"github.com/go-openapi/go-yaml/ast"
+	"github.com/go-openapi/go-yaml/codec"
 	"github.com/go-openapi/go-yaml/parser"
 )
 
@@ -174,5 +175,43 @@ func TestABlockScalarsLastLineIsCheckedWhereTheSourceEndsOnIt(t *testing.T) {
 			_, err := parser.ParseBytes([]byte(src))
 			require.NoErrorf(t, err, "%q", src)
 		}
+	})
+}
+
+// TestACommentIndentedLessThanABlockScalarEndsIt checks l-trail-comments: a comment line indented less than a block
+// scalar's content closes the scalar, and only comment lines may follow it.
+//
+// The scan ended a block scalar only where a line fell to its parent's indentation, so a comment standing between the
+// two read as content indented too little: "k: |3-" over "  # c", and "|2-" over "#c" at the root, were refused with
+// "the content of a block scalar is indented less than the indicator in its header states". On the seven corpus cases
+// of the root shape, the reference parser, YAMLStar and go.yaml.in/yaml/v3 read them and libfyaml refuses them.
+func TestACommentIndentedLessThanABlockScalarEndsIt(t *testing.T) {
+	for _, tc := range []struct{ src, want string }{
+		{src: "|2-\n#c\n", want: `""`},
+		{src: "---\n|2-\n#_##l\n", want: `""`},
+		{src: "|2\n\n#c\n", want: `""`},
+		{src: "|2+\n\n#c\n", want: `"\n"`},
+		{src: "|2-\n a\n#c\n", want: `"a"`},
+		{src: "k: |3-\n  # c\nj: 1\n", want: `{"j":1,"k":""}`},
+		{src: "k: |3\n   a\n  # c\n # d\nj: 1\n", want: `{"j":1,"k":"a\n"}`},
+		{src: "k: |\n   a\n  # c\nj: 1\n", want: `{"j":1,"k":"a\n"}`},
+		{src: "- |3\n   a\n  # c\n- b\n", want: `["a\n","b"]`},
+	} {
+		got, err := codec.ToJSON([]byte(tc.src))
+		require.NoErrorf(t, err, "%q", tc.src)
+		assert.JSONEqf(t, tc.want, string(got), "%q", tc.src)
+	}
+
+	t.Run("content after the comment is refused", func(t *testing.T) {
+		for _, src := range []string{"|2-\n a\n#c\n b\n", "k: |3-\n  # c\n   x\n"} {
+			_, err := parser.ParseBytes([]byte(src))
+			require.Errorf(t, err, "%q", src)
+		}
+	})
+
+	t.Run("a comment as indented as the content is content", func(t *testing.T) {
+		got, err := codec.ToJSON([]byte("|2-\n #c\n"))
+		require.NoError(t, err)
+		assert.JSONEq(t, `"#c"`, string(got))
 	})
 }

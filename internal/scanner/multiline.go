@@ -185,6 +185,26 @@ func (s *Scanner) readMultiLineContent(ctx *Context, state *MultiLineState, c ru
 	return nil
 }
 
+// trailCommentEndsBlock reports whether c, the first character of its line past the indentation, opens a comment that
+// ends the block scalar being read.
+//
+// l-chomped-empty(n,t) closes a block scalar on l-trail-comments(n), which is s-indent(<n) c-nb-comment-text: a
+// comment indented less than the content, after which only comment lines follow. The scan ended the block only where
+// a line fell to its parent's indentation, so a comment between the two read as content indented too little:
+// "k: |3-" over "  # c" and "|2-" over "#c" at the root were refused with "the content of a block scalar is indented
+// less than the indicator in its header states".
+//
+// The content column is known once the header stated a width or a content line set it. Before that, the first
+// non-empty line sets it, and a '#' there is content.
+func (s *Scanner) trailCommentEndsBlock(ctx *Context, c rune) bool {
+	if c != '#' || !ctx.isMultiLine() {
+		return false
+	}
+	state := ctx.getMultiLineState()
+
+	return state.firstLineIndentColumn != 0 && s.column < state.firstLineIndentColumn
+}
+
 // emitMultiLine hands over the block read so far and starts the buffers again.
 func (s *Scanner) emitMultiLine(ctx *Context, state *MultiLineState) {
 	value := ctx.bufferedSrc()
@@ -263,11 +283,15 @@ func (s *Scanner) refuseMultiLine(ctx *Context, msg string) error {
 //
 // Empty literal/folded content adds no string token, so an empty one is
 // added; but a literal/folded indicator at column 1 is invalid at the drop.
-func (s *Scanner) endMultiLine(ctx *Context) error {
+func (s *Scanner) endMultiLine(ctx *Context, fell bool) error {
 	if tk := ctx.lastToken(); tk != nil {
 		// Only the header is asked about its column. A keep scalar holding nothing but empty lines, "keep: |+" over
 		// a blank line, has handed its content over already, and that token stands at column 1 of the blank line.
-		if tk.Position.Column == 1 && (tk.Type == token.LiteralType || tk.Type == token.FoldedType) {
+		//
+		// The question is asked only of a block the indentation ended: a header at column 1 under a key, "a:" over
+		// "|" over "b: c", leaves its value nothing to stand on. A block a trailing comment ended stands at the root
+		// when its header is at column 1, and "|2-" over "#c" is an empty scalar.
+		if fell && tk.Position.Column == 1 && (tk.Type == token.LiteralType || tk.Type == token.FoldedType) {
 			return ErrInvalidToken("could not find multi-line content", token.Invalid(ctx.origin(), s.pos()))
 		}
 		if tk.Type != token.StringType {

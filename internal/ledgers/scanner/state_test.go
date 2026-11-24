@@ -95,12 +95,15 @@ var stateLedger = map[string]disagreement{ //nolint:gochecknoglobals // ok to st
 	// Re-baselined the same day, still all at 0, when a directive's name and parameters began to read as text with no
 	// indicator's scan: -12,333 / -12,327 / +6 / +129 / +332. The words skip the arm the plain and whole-buffer probes
 	// sit in, and the seeds holding a reserved directive such as "%%YAML 1.2" now scan past their first line.
-	"buf.notSpaceCharPos==trimmed/plain": {0, 757242},
-	"buf.notSpaceCharPos==trimmed/block": {0, 3787},
+	//
+	// Again the same day, still all at 0, when a comment line indented less than a block scalar's content began to
+	// end the scalar: +28 / +36 / +8 / +1 / +1. Six seeds such as "|2-" over "#c" now scan to their end.
+	"buf.notSpaceCharPos==trimmed/plain": {0, 757270},
+	"buf.notSpaceCharPos==trimmed/block": {0, 3795},
 
 	// A mark past the end of the buffer made bufferedSrc slice a byte the last token wrote.
 	// Fixed; nothing may raise this.
-	"buf.notSpaceCharPos<=len(buf)": {0, 761029},
+	"buf.notSpaceCharPos<=len(buf)": {0, 761065},
 
 	// Both entries count a space opening a line where indentNum has stopped tracking the column, the second where a
 	// tab stands in the run before it. Nothing may raise either.
@@ -113,13 +116,13 @@ var stateLedger = map[string]disagreement{ //nolint:gochecknoglobals // ok to st
 	// marked as opening: past the closing quote, the space before "# lala" in "a: \"double" over "  quotes\" # lala"
 	// counted as indentation.
 	"indent.indentNum==column-1/tab":    {0, 7},
-	"indent.indentNum==column-1/spaces": {0, 99935},
+	"indent.indentNum==column-1/spaces": {0, 99936},
 
 	// bufferedToken assembles a token's extent from what the scanner already holds: where the origin began, how long
 	// it is, and the line the text ends on. It does not read the origin back to work the extent out.
 	// This compares that extent against token.MeasureOrigin's, which token.Make used.
 	// Nothing may raise it: a disagreement is a token pointing at the wrong stretch of source.
-	"token.extentMatchesTheOrigin": {0, 116389},
+	"token.extentMatchesTheOrigin": {0, 116390},
 }
 
 // TestStateLedger holds the scanner's state pairs to what they were measured at.

@@ -298,21 +298,26 @@ func (s *Scanner) scan(ctx *Context) error {
 		// First, change the IndentState.
 		// If the target character is the first character in a line, IndentState is Up/Down/Equal state.
 		// The second and subsequent letters are Keep.
+		opensLine := s.isFirstCharAtLine
 		s.updateIndent(ctx, c)
 
+		// A '#' opening a line indented less than a block scalar's content ends the scalar, as a line indented less than
+		// its parent does. See trailCommentEndsBlock.
+		endsBlock := s.isChangedToIndentStateDown() || (opensLine && s.trailCommentEndsBlock(ctx, c))
+
 		// If IndentState is down, tokens are split, so the buffer accumulated until that point needs to be cutted as a token.
-		if s.isChangedToIndentStateDown() {
+		if endsBlock {
 			s.addBufferedTokenIfExists(ctx)
 		}
 
 		if ctx.isMultiLine() {
-			if !s.isChangedToIndentStateDown() {
+			if !endsBlock {
 				if err := s.scanMultiLine(ctx, c); err != nil {
 					return err
 				}
 				continue
 			}
-			if err := s.endMultiLine(ctx); err != nil {
+			if err := s.endMultiLine(ctx, s.isChangedToIndentStateDown()); err != nil {
 				return err
 			}
 		}
