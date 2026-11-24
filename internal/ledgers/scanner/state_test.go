@@ -98,12 +98,14 @@ var stateLedger = map[string]disagreement{ //nolint:gochecknoglobals // ok to st
 	//
 	// Again the same day, still all at 0, when a comment line indented less than a block scalar's content began to
 	// end the scalar: +28 / +36 / +8 / +1 / +1. Six seeds such as "|2-" over "#c" now scan to their end.
-	"buf.notSpaceCharPos==trimmed/plain": {0, 757270},
+	//
+	// Still all at 0 when "<<::" began to read as the key "<<:" instead of a merge key: -4 / -4 / 0 / 0 / 0.
+	"buf.notSpaceCharPos==trimmed/plain": {0, 757266},
 	"buf.notSpaceCharPos==trimmed/block": {0, 3795},
 
 	// A mark past the end of the buffer made bufferedSrc slice a byte the last token wrote.
 	// Fixed; nothing may raise this.
-	"buf.notSpaceCharPos<=len(buf)": {0, 761065},
+	"buf.notSpaceCharPos<=len(buf)": {0, 761061},
 
 	// Both entries count a space opening a line where indentNum has stopped tracking the column, the second where a
 	// tab stands in the run before it. Nothing may raise either.

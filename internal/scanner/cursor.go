@@ -284,6 +284,10 @@ func (c *cursor) resetBuffer() {
 // "<<", any run of blanks, then a ':' followed by a blank or a line break.
 //
 // A blank is a space or a tab. s-separate-in-line is s-white+, and s-white admits both.
+//
+// Only the first ':' is asked. A ':' followed by anything else is a character of a plain scalar, ns-plain-char, so
+// "<<:: y" is the key "<<:". The scan read on to the second ':' and cut a merge key, leaving the first ':' for a
+// value indicator with nothing after it: "[<<:: y]" was refused with "',' or ']' must be specified".
 func (c *cursor) isMergeKey() bool {
 	if c.repeatNum('<') != 2 {
 		return false
@@ -295,15 +299,12 @@ func (c *cursor) isMergeKey() bool {
 		if char == ' ' || char == '\t' {
 			continue
 		}
-		if char != ':' {
+		if char != ':' || idx+1 >= size {
 			return false
 		}
-		if idx+1 < size {
-			nc := rune(src[idx+1])
-			if nc == ' ' || nc == '\t' || isNewLineChar(nc) {
-				return true
-			}
-		}
+		nc := rune(src[idx+1])
+
+		return nc == ' ' || nc == '\t' || isNewLineChar(nc)
 	}
 
 	return false

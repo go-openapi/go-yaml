@@ -86,7 +86,9 @@ func TestAMergeKeyTakesATabAsSeparation(t *testing.T) {
 	})
 
 	t.Run("anything else after the '<<' leaves a plain scalar", func(t *testing.T) {
-		for _, src := range []string{"<<x: 1\n", "<<:x\n"} {
+		// A ':' followed by anything but a blank is ns-plain-char, and only the first ':' is asked: "<<:: 1" is the
+		// key "<<:". Read on to the second ':', the scan cut a merge key, and "[<<:: y]" was refused.
+		for _, src := range []string{"<<x: 1\n", "<<:x\n", "<<:: 1\n", "[<<:: y]\n", "{<<:: y}\n"} {
 			tokens, err := scanTokens(src)
 			require.NoErrorf(t, err, "%q", src)
 			assert.Falsef(t, slices.ContainsFunc(tokens, isMergeKey), "%q", src)
