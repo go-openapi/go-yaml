@@ -208,6 +208,13 @@ func (p rendered) empty() bool { return p.size == 0 }
 
 // string flattens the piece.
 func (p rendered) string() string {
+	if p.parts == nil && (p.indent == 0 || !p.spans) {
+		// A leaf's indent pads the lines after its first, so a leaf with no
+		// indent or a single line flattens to its own text. Most scalars take
+		// this path, and skip the strings.Builder.
+		return p.text
+	}
+
 	var b strings.Builder
 	b.Grow(int(p.size))
 	w := lineWriter{w: &b}
