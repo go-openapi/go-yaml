@@ -112,6 +112,34 @@ func TestADirectiveLineHoldsNoAnchorOrAlias(t *testing.T) {
 	}
 }
 
+// TestADirectiveWordMayOpenWithAnIndicator holds the scan to 6.8: a directive's name and each parameter are ns-char+,
+// so an indicator opening one is text. Dispatched to its own scan, the second '%' of "%%YAML 1.2" was refused as a
+// plain scalar opening with '%', and the quote of "%'YAML 1.2" opened a scalar that ran over the "---".
+func TestADirectiveWordMayOpenWithAnIndicator(t *testing.T) {
+	t.Parallel()
+
+	for src, want := range map[string][]string{
+		"%%YAML 1.2\n---\n":           {"%", "%YAML", "1.2"},
+		"%'YAML 1.2\n---\n":           {"%", "'YAML", "1.2"},
+		"%{YAML [1.1\n---\n":          {"%", "{YAML", "[1.1"},
+		"%FOO | > , @ ` ? - :\n---\n": {"%", "FOO", "|", ">", ",", "@", "`", "?", "-", ":"},
+		"%TAG !e! tag:a#b # c\n---\n": {"%", "TAG", "!e!", "tag:a#b"},
+	} {
+		var s scanner.Scanner
+		s.Init([]byte(src))
+
+		var got []string
+		for tk := range s.Tokens() {
+			if tk.Type == token.DocumentHeaderType || tk.Type == token.CommentType {
+				break
+			}
+			got = append(got, tk.Value)
+		}
+		require.NoErrorf(t, s.Err(), "%q", src)
+		assert.Equalf(t, want, got, "%q", src)
+	}
+}
+
 func scanDirectiveTokens(t *testing.T, src string) ([]token.Type, error) {
 	t.Helper()
 

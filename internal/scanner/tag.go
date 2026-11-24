@@ -25,7 +25,7 @@ func (s *Scanner) addTag(ctx *Context, value string, tagPos token.Position) erro
 }
 
 func (s *Scanner) scanTag(ctx *Context) (bool, error) {
-	if ctx.existsBuffer() || s.isDirective || s.inAnchorName('!') {
+	if ctx.existsBuffer() || s.inAnchorName('!') {
 		return false, nil
 	}
 

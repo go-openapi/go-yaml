@@ -181,6 +181,13 @@ func TestADirectiveIsHeldToItsProductions(t *testing.T) {
 		{"yaml-directive", "%YAML 1.2\n---\n"},
 		{"reserved-directive-named-like-tag", "%TAGS\n---\n"},
 		{"reserved-directive-named-like-yaml", "%YAMLX 1\n---\n"},
+		{"reserved-directive-named-with-a-percent", "%%YAML 1.2\n---\na\n"},
+		{"reserved-directive-named-with-a-quote", "%'YAML 1.2\r---\r-1536.0\r"},
+		{"reserved-directive-named-with-a-flow-indicator", "%{YAML 1.1\n---\n''\n"},
+		{"reserved-directive-named-with-a-reserved-character", "%`AML 1.1\n---\na\n"},
+		{"reserved-directive-named-with-a-block-indicator", "%|YAML 1.2\n---\na\n"},
+		{"reserved-directive-with-indicator-parameters", "%FOO [x] 'y' \"z\" | > , @\n---\na\n"},
+		{"hash-inside-a-prefix", "%TAG !e! tag:a#b\n---\n!e!x v\n"},
 	} {
 		t.Run("read/"+tc.name, func(t *testing.T) {
 			t.Parallel()
@@ -189,4 +196,28 @@ func TestADirectiveIsHeldToItsProductions(t *testing.T) {
 			require.NoError(t, err)
 		})
 	}
+}
+
+// TestADirectiveComesBackAsWritten holds DirectiveNode.String to the words of the line.
+//
+// 6.8 makes a directive's name and parameters ns-char+, and gives them no quoting. Rendered as scalars, a word
+// opening with an indicator came back quoted: "%{YAML 1.2" as "%'{YAML' 1.2", a directive with another name.
+func TestADirectiveComesBackAsWritten(t *testing.T) {
+	t.Parallel()
+
+	for _, src := range []string{
+		"%%YAML 1.2\n---\na\n",
+		"%{YAML 1.2\n---\na\n",
+		"%FOO [x] 'y' \"z\" &a *b !c | >\n---\na\n",
+		"%TAG !e! tag:a#b\n---\n!e!x v\n",
+		"%YAML 1.2\n---\na\n",
+	} {
+		f, err := parser.ParseBytes([]byte(src))
+		require.NoErrorf(t, err, "%q", src)
+		assert.Equalf(t, src, f.String(), "%q", src)
+	}
+
+	f, err := parser.ParseBytes([]byte("%FOO [x] # c\n---\na\n"), parser.WithComments())
+	require.NoError(t, err)
+	assert.Equal(t, "%FOO [x] # c\n---\na\n", f.String(), "the comment closing the line stays on it")
 }

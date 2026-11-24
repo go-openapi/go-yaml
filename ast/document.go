@@ -131,7 +131,26 @@ func (n *DirectiveNode) GetToken() *token.Token {
 func (n *DirectiveNode) String() string {
 	values := make([]string, 0, len(n.Values))
 	for _, val := range n.Values {
-		values = append(values, val.String())
+		values = append(values, directiveWord(val))
 	}
-	return strings.Join(append([]string{"%" + n.Name.String()}, values...), " ")
+	return strings.Join(append([]string{"%" + directiveWord(n.Name)}, values...), " ")
+}
+
+// directiveWord returns the text of a directive's name or parameter, as written, with the comment closing the line
+// when the word is the last one.
+//
+// 6.8 reads each as ns-char+ and has no quoting, so the word is written as its token holds it. Rendered as a
+// scalar, it was quoted wherever it opened with an indicator, and "%{YAML 1.2" came back as "%'{YAML' 1.2", a
+// directive with another name.
+func directiveWord(n Node) string {
+	tk := n.GetToken()
+	if tk == nil {
+		return n.String()
+	}
+
+	if comment := n.GetComment(); comment != nil {
+		return addCommentString(tk.Value, comment)
+	}
+
+	return tk.Value
 }

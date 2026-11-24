@@ -317,6 +317,17 @@ func (s *Scanner) scan(ctx *Context) error {
 			}
 		}
 
+		if s.isDirective && s.inDirectiveWord(ctx, c) {
+			// 6.8: a directive's name and parameters are ns-char+ each, so an indicator inside one is text.
+			// Read through the dispatch below, "%%YAML 1.2" refused its name as a plain scalar opening with '%',
+			// and "%'YAML 1.2" opened a quoted scalar.
+			ctx.addBuf(c)
+			ctx.addOriginBuf(c)
+			s.progressColumn(ctx, 1)
+
+			continue
+		}
+
 		switch c {
 		case '{':
 			if s.scanFlowMapStart(ctx) {

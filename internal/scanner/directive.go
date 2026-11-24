@@ -48,3 +48,25 @@ func (s *Scanner) scanDirective(ctx *Context) (bool, error) {
 
 	return true, nil
 }
+
+// inDirectiveWord reports whether c, read on a directive's line, belongs to the directive's name or to one of its
+// parameters.
+//
+// ns-directive-name and ns-directive-parameter are both ns-char+, so every character but a blank, a line break and
+// a '#' opening a comment belongs to one, indicators included. The scan loop reads such a character as text before
+// any indicator's scan sees it: "%*x y" is a reserved directive and no alias, "%TAG !e! ..." declares the handle
+// "!e!" and opens no tag, and "%{YAML 1.2" opens no flow mapping.
+//
+// A '#' right after other text is an ns-char: "%TAG !e! tag:a#b" declares the prefix "tag:a#b".
+func (s *Scanner) inDirectiveWord(ctx *Context, c rune) bool {
+	switch c {
+	case ' ', '\t', '\r', '\n':
+		return false
+	case '#':
+		prev := ctx.previousChar()
+
+		return prev != ' ' && prev != '\t'
+	default:
+		return true
+	}
+}
