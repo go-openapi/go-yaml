@@ -286,8 +286,8 @@ func TestAStreamWritesTheShapesTheCorpusRarelyHolds(t *testing.T) {
 }
 
 // handOver hands n to s, streaming each collection above depth cut and handing the rest to [ast.Stream.Value] whole:
-// a collection at depth cut or deeper, and an anchor, an alias or a tag at any depth. A negative cut streams every
-// collection. It sets the streamed collections to block style, and leaves a handed-over subtree as it is.
+// a collection at depth cut or deeper, an anchor, an alias or a tag at any depth, and the value of a key that is an
+// anchor, an alias, a tag or a merge key. A negative cut streams every collection. It sets the streamed collections to block style, and leaves a handed-over subtree as it is.
 func handOver(s *ast.Stream, n ast.Node, depth, cut int, handed *int) error {
 	streamed := cut < 0 || depth < cut
 	switch node := n.(type) {
@@ -300,16 +300,25 @@ func handOver(s *ast.Stream, n ast.Node, depth, cut int, handed *int) error {
 			return err
 		}
 		for _, mv := range node.Values {
+			whole := false
 			switch mv.Key.(type) {
-			case *ast.MappingNode, *ast.SequenceNode, *ast.AnchorNode, *ast.AliasNode, *ast.TagNode, *ast.MergeKeyNode,
-				*ast.MappingKeyNode, nil:
-				// A Stream takes a scalar key only, and an explicit "? " key stays explicit in the tree.
+			case *ast.MappingNode, *ast.SequenceNode, *ast.MappingKeyNode, nil:
+				// A Stream takes no collection key, and an explicit "? " key stays explicit in the tree.
 				return errNotStreamable
+			case *ast.AnchorNode, *ast.AliasNode, *ast.TagNode, *ast.MergeKeyNode:
+				// A key that is not a plain scalar takes its value whole, as an encoder streaming a mapping does.
+				whole = true
 			}
 			if err := s.Key(mv.Key); err != nil {
 				return err
 			}
-			if err := handOver(s, mv.Value, depth+1, cut, handed); err != nil {
+			var err error
+			if whole {
+				err = handWhole(s, mv.Value, depth+1, handed)
+			} else {
+				err = handOver(s, mv.Value, depth+1, cut, handed)
+			}
+			if err != nil {
 				return err
 			}
 		}
