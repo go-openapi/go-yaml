@@ -11,7 +11,7 @@ import (
 	"math"
 	"math/big"
 	"reflect"
-	"sort"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -797,64 +797,16 @@ func (e *Encoder) jsonKeyNode(key ast.MapKeyNode, column int) ast.MapKeyNode {
 }
 
 func (e *Encoder) encodeMap(value reflect.Value, column int) (ast.Node, error) {
-	node := ast.Mapping(token.New("", "", e.pos(column)), e.isFlowStyle)
 	n := value.Len()
-	node.Values = make([]*ast.MappingValueNode, 0, n)
-
-	// The keys and values are copied into two slices, one allocation each.
-	// MapKeys and MapIndex allocate a copy per key and per value. Each key
-	// keeps its reflect.Value: a nil key in a map[any]any does not come back
-	// from reflect.ValueOf(nil), which returns the zero Value.
-	keyType := value.Type().Key()
-	mapKeys := reflect.MakeSlice(reflect.SliceOf(keyType), n, n)
-	mapValues := reflect.MakeSlice(reflect.SliceOf(value.Type().Elem()), n, n)
-	iter := value.MapRange()
-	for i := 0; iter.Next(); i++ {
-		mapKeys.Index(i).SetIterKey(iter)
-		mapValues.Index(i).SetIterValue(iter)
+	names, order := make([]string, n), make([]int, n)
+	keys, values, order, err := e.mapEntries(value, names, order)
+	if err != nil {
+		return nil, err
 	}
-
-	// names holds each key as fmt.Sprint prints it, once: the sort compares
-	// them n log n times, and the entry writes them as the anchor name.
-	names := make([]string, n)
-	plain := isPlainString(keyType)
-	for i := range names {
-		if plain {
-			names[i] = mapKeys.Index(i).String()
-		} else {
-			names[i] = fmt.Sprint(mapKeys.Index(i).Interface())
-		}
-	}
-	order := make([]int, n)
-	for i := range order {
-		order[i] = i
-	}
-	sort.Slice(order, func(i, j int) bool {
-		a, b := names[order[i]], names[order[j]]
-		if a != b {
-			return a < b
-		}
-
-		// int(1) and uint64(1) print alike. Ordering them by Go type makes the
-		// entry kept by SkipDuplicateMapKey independent of map iteration.
-		return fmt.Sprintf("%T", mapKeys.Index(order[i]).Interface()) <
-			fmt.Sprintf("%T", mapKeys.Index(order[j]).Interface())
-	})
-	seen := repeatableKeys(keyType)
+	node := ast.Mapping(token.New("", "", e.pos(column)), e.isFlowStyle)
+	node.Values = make([]*ast.MappingValueNode, 0, len(order))
 	for _, idx := range order {
-		keyValue := mapKeys.Index(idx)
-		if seen != nil {
-			key := keyValue.Interface()
-			first, repeated := seen.add(key)
-			if repeated && e.skipDuplicateMapKey {
-				continue
-			}
-			if repeated {
-				return nil, fmt.Errorf("map keys %#v and %#v are one YAML key: %w", first, key, yamlerrors.ErrDuplicateKey)
-			}
-		}
-
-		v := mapValues.Index(idx)
+		v := values.Index(idx)
 		encoded, err := e.encodeValue(v, column)
 		if err != nil {
 			return nil, err
@@ -871,22 +823,94 @@ func (e *Encoder) encodeMap(value reflect.Value, column int) (ast.Node, error) {
 			encoded = anchorNode
 		}
 
-		// keyValue has the map's key type, so a map[any]any key reaches
-		// encodeValue in an interface slot: a time.Time there takes its tag.
-		kn, err := e.encodeValue(keyValue, column)
-		keyNode, ok := kn.(ast.MapKeyNode)
-		if !ok || err != nil {
-			keyNode = e.encodeString(keyText, column)
-		}
-		keyNode = e.jsonKeyNode(keyNode, column)
-		node.Values = append(node.Values, ast.MappingValue(
-			nil,
-			keyNode,
-			encoded,
-		))
+		node.Values = append(node.Values, ast.MappingValue(nil, e.mapKeyNode(keys.Index(idx), keyText, column), encoded))
 		e.setSmartAnchor(vRef, keyText)
 	}
 	return node, nil
+}
+
+// mapEntries reads a Go map and sorts its entries by key name. It returns an error for two keys that are one YAML
+// key, unless SkipDuplicateMapKey keeps the first.
+//
+// keys and values are slices of the map's key and value types, filled from one MapRange. names receives each key as
+// fmt.Sprint prints it. The returned order lists the indexes to write, sorted by name, without the repeats
+// SkipDuplicateMapKey drops.
+//
+// The caller makes names and order, value.Len() long each, and keeps them in variables of their own: escape analysis
+// treats a struct as one value, and a struct holding them beside a reflect.Value moved a small map's slices off the
+// caller's stack.
+func (e *Encoder) mapEntries(value reflect.Value, names []string, order []int) (keys, values reflect.Value, _ []int, _ error) {
+	n := value.Len()
+
+	// MapKeys and MapIndex allocate a copy per key and per value; two slices
+	// take one allocation each. Each key keeps its reflect.Value: a nil key in
+	// a map[any]any does not come back from reflect.ValueOf(nil), which returns
+	// the zero Value.
+	keyType := value.Type().Key()
+	keys = reflect.MakeSlice(reflect.SliceOf(keyType), n, n)
+	values = reflect.MakeSlice(reflect.SliceOf(value.Type().Elem()), n, n)
+	iter := value.MapRange()
+	for i := 0; iter.Next(); i++ {
+		keys.Index(i).SetIterKey(iter)
+		values.Index(i).SetIterValue(iter)
+	}
+
+	// Each key is printed once: the sort compares the names n log n times,
+	// and the entry writes them as the anchor name.
+	plain := isPlainString(keyType)
+	for i := range names {
+		if plain {
+			names[i] = keys.Index(i).String()
+		} else {
+			names[i] = fmt.Sprint(keys.Index(i).Interface())
+		}
+	}
+	for i := range order {
+		order[i] = i
+	}
+	// slices.SortFunc takes order as a slice. sort.Slice took it as an any, which moved it to the heap.
+	slices.SortFunc(order, func(i, j int) int {
+		if c := strings.Compare(names[i], names[j]); c != 0 {
+			return c
+		}
+
+		// int(1) and uint64(1) print alike. Ordering them by Go type makes the
+		// entry kept by SkipDuplicateMapKey independent of map iteration.
+		return strings.Compare(fmt.Sprintf("%T", keys.Index(i).Interface()), fmt.Sprintf("%T", keys.Index(j).Interface()))
+	})
+
+	seen := repeatableKeys(keyType)
+	if seen == nil {
+		return keys, values, order, nil
+	}
+	kept := order[:0]
+	for _, idx := range order {
+		key := keys.Index(idx).Interface()
+		first, repeated := seen.add(key)
+		if repeated && e.skipDuplicateMapKey {
+			continue
+		}
+		if repeated {
+			return keys, values, nil, fmt.Errorf("map keys %#v and %#v are one YAML key: %w", first, key, yamlerrors.ErrDuplicateKey)
+		}
+		kept = append(kept, idx)
+	}
+
+	return keys, values, kept, nil
+}
+
+// mapKeyNode returns the node of a map key named name.
+//
+// The key has the map's key type, so a map[any]any key reaches encodeValue in an interface slot: a time.Time there
+// takes its tag. A key that gives no node usable as a key is written as its name.
+func (e *Encoder) mapKeyNode(key reflect.Value, name string, column int) ast.MapKeyNode {
+	kn, err := e.encodeValue(key, column)
+	keyNode, ok := kn.(ast.MapKeyNode)
+	if !ok || err != nil {
+		keyNode = e.encodeString(name, column)
+	}
+
+	return e.jsonKeyNode(keyNode, column)
 }
 
 // isPlainString reports whether fmt.Sprint prints a value of t as its string
@@ -1140,113 +1164,134 @@ func (e *Encoder) tagMode() structfields.Mode {
 	return mode
 }
 
-//nolint:gocyclo,cyclop,gocognit // one branch per tag flag (omitempty, omitzero, flow, anchor, alias, inline)
+// omitsField reports whether the omitzero and omitempty tags, or the OmitZero and OmitEmpty options, leave a field
+// out.
+func (e *Encoder) omitsField(sf *structfields.Info, fieldValue reflect.Value) bool {
+	switch {
+	case (e.omitZero || sf.IsOmitZero) && e.isOmittedByOmitZero(fieldValue):
+		return true
+	case e.omitEmpty && e.isOmittedByOmitEmptyOption(fieldValue):
+		return true
+	case sf.IsOmitEmpty && e.isOmittedByOmitEmptyTag(fieldValue):
+		return true
+	default:
+		return false
+	}
+}
+
+// fieldKey returns the key node a field is written under.
+func (e *Encoder) fieldKey(fp fieldPlan, column int) ast.MapKeyNode {
+	if fp.plainKey && !e.isJSONStyle {
+		// isNeedQuoted returns false for this name under every option but JSON.
+		return ast.String(token.New(fp.info.RenderName, fp.info.RenderName, e.pos(column)))
+	}
+
+	return e.encodeString(fp.info.RenderName, column)
+}
+
+// structField encodes a field that is not omitted, and appends the entries it writes to out: one entry, none for an
+// inline field that is null, or the entries an inline field brings. inlineAnchor reports an inline field tagged as
+// an anchor, which anchors the whole mapping.
+func (e *Encoder) structField(
+	fields *structfields.Fields, fp fieldPlan, fieldValue reflect.Value, column int, out []*ast.MappingValueNode,
+) (_ []*ast.MappingValueNode, inlineAnchor bool, _ error) {
+	sf := fp.info
+	ve := e
+	if !e.isFlowStyle && sf.IsFlow {
+		ve = &Encoder{}
+		*ve = *e
+		ve.isFlowStyle = true
+	}
+	encoded, err := ve.encodeValue(fieldValue, column)
+	if err != nil {
+		return out, false, err
+	}
+	key := e.fieldKey(fp, column)
+	switch {
+	case encoded.Type() == ast.AliasType:
+		if aliasName := sf.AliasName; aliasName != "" {
+			alias, ok := encoded.(*ast.AliasNode)
+			if !ok {
+				return out, false, yamlerrors.NewUnexpectedNodeType(encoded.Type(), ast.AliasType, encoded.GetToken())
+			}
+			got := alias.Value.String()
+			if aliasName != got {
+				return out, false, fmt.Errorf("expected alias name is %q but got %q", aliasName, got)
+			}
+		}
+		if sf.IsInline {
+			// With both alias and inline, write `<<: *alias`.
+			key = ast.MergeKey(token.New("<<", "<<", e.pos(column)))
+		}
+	case sf.AnchorName != "":
+		anchorNode, err := e.encodeAnchor(sf.AnchorName, encoded, fieldValue, column)
+		if err != nil {
+			return out, false, err
+		}
+		encoded = anchorNode
+	case sf.IsInline:
+		inlineAnchor = sf.IsAutoAnchor
+		mapNode, ok := encoded.(ast.MapNode)
+		if !ok {
+			// Skip an inline field that is null.
+			if _, ok := encoded.(*ast.NullNode); ok {
+				return out, inlineAnchor, nil
+			}
+			return out, false, errors.New("inline value is must be map or struct type")
+		}
+		// A map holds the document's own keys, so the encoder only checks
+		// whether a field already writes the name. A struct holds fields,
+		// and flat records the field reached by each name.
+		fromMap := structfields.InlineTakesUnclaimedEntries(fieldValue.Type())
+		mapIter := mapNode.MapRange()
+		for mapIter.Next() {
+			mapKey := mapIter.Key()
+			mapValue := mapIter.Value()
+			keyName := mapKey.GetToken().Value
+			if fromMap {
+				if fields.Claims(keyName) {
+					continue
+				}
+			} else if !fields.WritesPromoted(keyName, sf.Index) {
+				continue
+			}
+			out = append(out, ast.MappingValue(nil, mapKey, mapValue))
+		}
+
+		return out, inlineAnchor, nil
+	case sf.IsAutoAnchor:
+		anchorNode, err := e.encodeAnchor(sf.RenderName, encoded, fieldValue, column)
+		if err != nil {
+			return out, false, err
+		}
+		encoded = anchorNode
+	}
+
+	return append(out, ast.MappingValue(nil, key, encoded)), false, nil
+}
+
 func (e *Encoder) encodeStruct(value reflect.Value, column int) (ast.Node, error) {
 	node := ast.Mapping(token.New("", "", e.pos(column)), e.isFlowStyle)
 	plan, err := planOf(value.Type(), e.tagMode())
 	if err != nil {
 		return nil, err
 	}
-	fields := plan.fields
 	hasInlineAnchorField := false
 	var inlineAnchorValue reflect.Value
 	for _, fp := range plan.write {
 		fieldValue := value.Field(fp.index)
-		sf := fp.info
-		if (e.omitZero || sf.IsOmitZero) && e.isOmittedByOmitZero(fieldValue) {
-			// omit encoding by omitzero tag or OmitZero option.
+		if e.omitsField(fp.info, fieldValue) {
 			continue
 		}
-		if e.omitEmpty && e.isOmittedByOmitEmptyOption(fieldValue) {
-			// omit encoding by OmitEmpty option.
-			continue
-		}
-		if sf.IsOmitEmpty && e.isOmittedByOmitEmptyTag(fieldValue) {
-			// omit encoding by omitempty tag.
-			continue
-		}
-		ve := e
-		if !e.isFlowStyle && sf.IsFlow {
-			ve = &Encoder{}
-			*ve = *e
-			ve.isFlowStyle = true
-		}
-		encoded, err := ve.encodeValue(fieldValue, column)
+		var inlineAnchor bool
+		node.Values, inlineAnchor, err = e.structField(plan.fields, fp, fieldValue, column, node.Values)
 		if err != nil {
 			return nil, err
 		}
-		var key ast.MapKeyNode
-		if fp.plainKey && !e.isJSONStyle {
-			// isNeedQuoted returns false for this name under every option but JSON.
-			key = ast.String(token.New(sf.RenderName, sf.RenderName, e.pos(column)))
-		} else {
-			key = e.encodeString(sf.RenderName, column)
+		if inlineAnchor {
+			hasInlineAnchorField = true
+			inlineAnchorValue = fieldValue
 		}
-		switch {
-		case encoded.Type() == ast.AliasType:
-			if aliasName := sf.AliasName; aliasName != "" {
-				alias, ok := encoded.(*ast.AliasNode)
-				if !ok {
-					return nil, yamlerrors.NewUnexpectedNodeType(encoded.Type(), ast.AliasType, encoded.GetToken())
-				}
-				got := alias.Value.String()
-				if aliasName != got {
-					return nil, fmt.Errorf("expected alias name is %q but got %q", aliasName, got)
-				}
-			}
-			if sf.IsInline {
-				// With both alias and inline, write `<<: *alias`.
-				key = ast.MergeKey(token.New("<<", "<<", e.pos(column)))
-			}
-		case sf.AnchorName != "":
-			anchorNode, err := e.encodeAnchor(sf.AnchorName, encoded, fieldValue, column)
-			if err != nil {
-				return nil, err
-			}
-			encoded = anchorNode
-		case sf.IsInline:
-			isAutoAnchor := sf.IsAutoAnchor
-			if !hasInlineAnchorField {
-				hasInlineAnchorField = isAutoAnchor
-			}
-			if isAutoAnchor {
-				inlineAnchorValue = fieldValue
-			}
-			mapNode, ok := encoded.(ast.MapNode)
-			if !ok {
-				// Skip an inline field that is null.
-				if _, ok := encoded.(*ast.NullNode); ok {
-					continue
-				}
-				return nil, errors.New("inline value is must be map or struct type")
-			}
-			// A map holds the document's own keys, so the encoder only checks
-			// whether a field already writes the name. A struct holds fields,
-			// and flat records the field reached by each name.
-			fromMap := structfields.InlineTakesUnclaimedEntries(fieldValue.Type())
-			mapIter := mapNode.MapRange()
-			for mapIter.Next() {
-				mapKey := mapIter.Key()
-				mapValue := mapIter.Value()
-				keyName := mapKey.GetToken().Value
-				if fromMap {
-					if fields.Claims(keyName) {
-						continue
-					}
-				} else if !fields.WritesPromoted(keyName, sf.Index) {
-					continue
-				}
-				node.Values = append(node.Values, ast.MappingValue(nil, mapKey, mapValue))
-			}
-			continue
-		case sf.IsAutoAnchor:
-			anchorNode, err := e.encodeAnchor(sf.RenderName, encoded, fieldValue, column)
-			if err != nil {
-				return nil, err
-			}
-			encoded = anchorNode
-		}
-		node.Values = append(node.Values, ast.MappingValue(nil, key, encoded))
 	}
 	if !hasInlineAnchorField {
 		return node, nil
