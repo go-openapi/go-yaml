@@ -145,3 +145,47 @@ func BenchmarkTyped(b *testing.B) {
 		}
 	})
 }
+
+// BenchmarkTypedEncode marshals citm_catalog from the Go types it describes, the encode a caller with a schema runs.
+//
+// BenchmarkEncode marshals an any, which holds maps and slices only. A struct goes through encodeStruct, which reads
+// each field by reflection, so the two benchmarks measure the encoder's two halves. Each library's output must read
+// back into the value it was given.
+func BenchmarkTypedEncode(b *testing.B) {
+	var doc citmCatalog
+	if err := yaml.Unmarshal(citmSource(b), &doc); err != nil {
+		b.Fatalf("go-openapi/go-yaml: %v", err)
+	}
+
+	for _, lib := range []struct {
+		name      string
+		marshal   func(any) ([]byte, error)
+		unmarshal func([]byte, any) error
+	}{
+		{"goyaml3", goyaml3.Marshal, goyaml3.Unmarshal},
+		{"goccy", goccy.Marshal, goccy.Unmarshal},
+		{"goopenapi", yaml.Marshal, yaml.Unmarshal},
+	} {
+		b.Run(lib.name, func(b *testing.B) {
+			out, err := lib.marshal(doc)
+			if err != nil {
+				b.Fatal(err)
+			}
+			var back citmCatalog
+			if err := lib.unmarshal(out, &back); err != nil {
+				b.Fatal(err)
+			}
+			if !reflect.DeepEqual(back, doc) {
+				b.Fatal("the output does not read back into the value encoded; the comparison would be meaningless")
+			}
+
+			b.SetBytes(int64(len(out)))
+			b.ReportAllocs()
+			for b.Loop() {
+				if _, err := lib.marshal(doc); err != nil {
+					b.Fatal(err)
+				}
+			}
+		})
+	}
+}
