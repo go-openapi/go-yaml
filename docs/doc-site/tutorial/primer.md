@@ -12,8 +12,9 @@ had written Data::Denter for it. The three wrote the first drafts together: the 
 Another Markup Language*. By 2002 the name read *YAML Ain't Markup Language*, to say what the language was for: data,
 not documents.
 
-Its roots are in the Perl world: Data::Denter, the format Ingy wrote before YAML, was a Perl module, and so was his
-first YAML implementation.
+Its roots are in the Perl world. Data::Denter, the format Ingy wrote before YAML, was a Perl module, and so was
+[YAML.pm](https://metacpan.org/pod/YAML), released in December 2001. Its documentation calls it the first YAML
+implementation.
 
 ## The versions
 
@@ -51,5 +52,6 @@ go-yaml reads YAML 1.2 by default, and YAML 1.1 on request or where a document o
 - [About YAML](https://yaml.org/about.html), on yaml.org.
 - The [YAML 1.2.2 specification](https://yaml.org/spec/1.2.2/), and its
   [list of changes](https://yaml.org/spec/1.2.2/ext/changes/).
+- [YAML.pm](https://metacpan.org/pod/YAML) on MetaCPAN, and its [release history](https://metacpan.org/dist/YAML).
 - The [2001 working draft](https://yaml.org/spec/history/2001-08-01.html) and the
   [YAML 1.1 specification](https://yaml.org/spec/1.1/).
