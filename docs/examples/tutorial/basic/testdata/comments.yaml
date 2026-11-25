@@ -1,0 +1,3 @@
+# The whole line is a comment.
+port: 8080 # So is the rest of this one.
+url: http://example.com/#anchor

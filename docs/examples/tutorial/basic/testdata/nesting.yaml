@@ -1,0 +1,7 @@
+service:
+  name: api
+  ports:
+    - 80
+    - 443
+  owner:
+    team: platform

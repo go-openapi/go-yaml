@@ -60,6 +60,8 @@ module:
       target: assets/examples
       files:
         - '**/*.go'
+        # The snippets the tutorial pages quote.
+        - '**/*.yaml'
 
     # Custom SCSS (for theme customization) + logo
     - source: themes/goyaml-assets

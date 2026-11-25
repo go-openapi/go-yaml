@@ -5,48 +5,11 @@ description: YAML constructs and advanced usage.
 weight: 85
 ---
 
-## A primer on the YAML language
+YAML from the ground up: the data JSON writes, then the features that make YAML a serialization language, then the
+corners only a conformant parser has to know.
 
-Original authors, back in 2005 => YAML 1.1
+Every snippet on these pages is a file in the documentation's examples, and every answer is go-yaml's own output for it.
+`go test` checks each answer, so the pages cannot drift from the parser. The snippets and their examples are in
+[docs/examples/tutorial](https://github.com/go-openapi/go-yaml/tree/master/docs/examples/tutorial).
 
-"Perl-like" spiritual filiation.
-
-YAML 1.2 the big undertaking
-
-## Basic YAML: "json for humans"
-
-```yaml
-object:
-  key: value  # this key holds a value
-  array:
-    - 1
-    - 2
-```
-
-```json
-{"object":{"key":"value","array":[1,2]}}
-```
-
-## Intermediate YAML: serialization experts
-
-Quizz: test your YAML knowledge (expert level)
-
-## Advanced YAML for machines mostly
-
-Quizz: test your YAML knowledge (guru level)
-
-## YAML bestiary 
-
-YAML for conformant parsers only.
-
-```yaml
-```
-
-Quizz: test your YAML knowledge (impossible level)
-
-## More
-
-### KYAML: simplified YAML
-
-### YAMLStar, YAMLScript
-
+{{< children description="true" >}}

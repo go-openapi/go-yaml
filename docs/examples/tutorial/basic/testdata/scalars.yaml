@@ -1,0 +1,9 @@
+plain: hello world
+quoted: "hello world"
+single: 'it''s'
+integer: 42
+float: 3.14
+boolean: true
+nothing: null
+tilde: ~
+empty:
