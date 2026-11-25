@@ -335,6 +335,30 @@ func (c *Context) keyPropertiesLedByATab(line int32) bool {
 	return c.propRun.length > 0 && c.propRun.line == line && c.propRun.tabLed
 }
 
+// quotedKeyLedByATab reports whether the last token is a quoted scalar on line led by a tab, as [Context.ledByATab]
+// reads it.
+func (c *Context) quotedKeyLedByATab(line int32) bool {
+	if !c.hasLastTk || c.lastTk.Position.Line != line || c.lastTk.Type.Indicator() != token.QuotedScalarIndicator {
+		return false
+	}
+
+	return c.ledByATab(c.lastTk.Position.Offset())
+}
+
+// ledByATab reports whether the node starting at offset stands after a block indicator with a tab among the blanks
+// between them.
+//
+// A tab after a property or after another node separates, so only a '-', a '?' or a ':' in front of the blanks counts:
+// "- &a\t'k' : 1" reads.
+func (c *Context) ledByATab(offset int32) bool {
+	i, tab := int(offset)-1, false
+	for ; i >= 0 && (c.src[i] == ' ' || c.src[i] == '\t'); i-- {
+		tab = tab || c.src[i] == '\t'
+	}
+
+	return tab && i >= 0 && (c.src[i] == '-' || c.src[i] == '?' || c.src[i] == ':')
+}
+
 // removeRightSpaceFromBuf cuts the spaces and tabs a line ends with from the token's text and from its value.
 //
 // While the text is still a window, this finds the run by reading back over the source.

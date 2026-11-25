@@ -39,8 +39,11 @@ type Scanner struct {
 	startedFlowMapNum      int32
 	// flowIndent holds the indentation of the line that opened the outermost flow collection.
 	// Every further line of that collection must be indented past it.
-	flowIndent  int32
-	indentState IndentState
+	flowIndent int32
+	// flowOpenOffset and flowOpenLine record where the outermost flow collection opened, for a key that is one.
+	flowOpenOffset int32
+	flowOpenLine   int32
+	indentState    IndentState
 	// savedPos holds the position a token started at. hasSavedPos records whether savedPos holds one.
 	savedPos token.Position
 	// initErr holds the fault Init found in the source, which the first scan then returns.

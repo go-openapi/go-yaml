@@ -38,11 +38,12 @@ func (s *Scanner) scanFlowDash(ctx *Context) error {
 // enterFlow records what a flow collection's continuation lines must clear.
 //
 // Only the outermost one matters: a collection nested inside another is already past the indentation its parent required.
-func (s *Scanner) enterFlow() {
+func (s *Scanner) enterFlow(ctx *Context) {
 	if s.isFlowMode() {
 		return
 	}
 	s.flowIndent = s.contentIndent()
+	s.flowOpenOffset, s.flowOpenLine = ctx.idx, s.line
 }
 
 // isFlowMode reports whether the scan stands inside a flow collection, of either kind.
@@ -58,7 +59,7 @@ func (s *Scanner) scanFlowMapStart(ctx *Context) bool {
 	s.endsProperty(ctx)
 	ctx.addOriginBuf('{')
 	ctx.addTokenValue(token.MakeMappingStart(ctx.origin(), s.pos()))
-	s.enterFlow()
+	s.enterFlow(ctx)
 	s.startedFlowMapNum++
 	s.progressColumn(ctx, 1)
 	ctx.clear()
@@ -96,7 +97,7 @@ func (s *Scanner) scanFlowArrayStart(ctx *Context) bool {
 	s.endsProperty(ctx)
 	ctx.addOriginBuf('[')
 	ctx.addTokenValue(token.MakeSequenceStart(ctx.origin(), s.pos()))
-	s.enterFlow()
+	s.enterFlow(ctx)
 	s.startedFlowSequenceNum++
 	s.progressColumn(ctx, 1)
 	ctx.clear()

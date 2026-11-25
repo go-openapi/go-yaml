@@ -122,8 +122,11 @@ func (s *Scanner) indentHoldsATab() bool { return s.indentHasTab }
 //
 // A key's properties are cut before its ':' is reached, so the blanks in front of them are a third run, read when the
 // run starts and kept with it: "-\t&a : 1", "?\t!t : 1" and "-\t!!str k: 1" put the tab before the key's '&' or '!'.
+// A quoted key or a flow collection is cut the same way, and [Context.ledByATab] reads the blanks in front of it:
+// "?\t'a' : 1", "-\t\"a\" : 1" and "?\t[a] : 1" were read as entries.
 func (s *Scanner) tabStandsWhereAnEntryNeedsIndent(ctx *Context) bool {
-	if s.indentHoldsATab() || ctx.keyPropertiesLedByATab(s.line) {
+	if s.indentHoldsATab() || ctx.keyPropertiesLedByATab(s.line) || ctx.quotedKeyLedByATab(s.line) ||
+		s.flowKeyLedByATab(ctx) {
 		return true
 	}
 	if !ctx.leadingBlanksHoldATab() {
@@ -133,6 +136,17 @@ func (s *Scanner) tabStandsWhereAnEntryNeedsIndent(ctx *Context) bool {
 	last := ctx.lastToken()
 
 	return last == nil || last.Position.Line != s.line || isBlockIndicator(last.Type)
+}
+
+// flowKeyLedByATab reports whether the last token closes a flow collection opened on this line and led by a tab.
+func (s *Scanner) flowKeyLedByATab(ctx *Context) bool {
+	last := ctx.lastToken()
+	if last == nil || last.Position.Line != s.line || s.flowOpenLine != s.line || s.isFlowMode() ||
+		(last.Type != token.SequenceEndType && last.Type != token.MappingEndType) {
+		return false
+	}
+
+	return ctx.ledByATab(s.flowOpenOffset)
 }
 
 // isBlockIndicator reports whether t is one of the indicators a block entry follows: "-", "?" or ":".
