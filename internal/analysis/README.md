@@ -45,7 +45,13 @@ benchstat testdata/baseline-master.txt new.txt
 
 ## The synthetic shapes
 
-`TestFlatMapScaling` is the important one: it prints the growth factor per doubling of
-sibling-key count. **~2 is linear and correct; ~4 means the quadratic `parseMap` defect is
-still present.** It is a report, not an assertion, so it never fails the build — see
-`TestParseScalesLinearly` for the guard to enable once the fix lands.
+`BenchmarkFlatMapWidth` parses one flat mapping of 1,000 to 64,000 keys three ways: the scanner alone, the
+parser, and yaml.v3 as a reference. Read its `ns/key` metric down a column: flat is linear, growing is super-linear.
+
+```sh
+go test -run XXX -bench FlatMapWidth -count 6 ./
+```
+
+The guards that fail a build live with the code. `parser`'s `TestParseScalesLinearlyInWidth` and
+`internal/testintegration/yamlgen`'s `TestNestingCostStaysLinear` count allocations, and `parser`'s
+`TestWindowShiftStaysLinear` counts the grouper's work under `-tags yamlprobe`. None of them reads the clock.
