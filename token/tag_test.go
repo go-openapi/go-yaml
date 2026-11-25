@@ -4,6 +4,7 @@
 package token_test
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/go-openapi/testify/v2/assert"
@@ -26,5 +27,20 @@ func TestReservedTagOfNamesOnlyTheYAMLNamespace(t *testing.T) {
 	for _, uri := range []string{"tag:yaml.org,2002:foo", "!int", "tag:example.com,2000:int", "", "!!int"} {
 		_, ok := token.ReservedTagOf(uri)
 		assert.Falsef(t, ok, "%q", uri)
+	}
+}
+
+// TestReservedTagOfReadsEveryKeywordWithoutAllocating expands each reserved keyword to its URI, reads it back, and
+// counts the allocations of the read.
+func TestReservedTagOfReadsEveryKeywordWithoutAllocating(t *testing.T) {
+	for _, keyword := range []token.ReservedTagKeyword{
+		token.IntegerTag, token.FloatTag, token.NullTag, token.SequenceTag, token.MappingTag, token.StringTag,
+		token.BinaryTag, token.OrderedMapTag, token.SetTag, token.TimestampTag, token.BooleanTag, token.MergeTag,
+	} {
+		uri := token.YAMLTagPrefix + strings.TrimPrefix(string(keyword), "!!")
+		got, ok := token.ReservedTagOf(uri)
+		assert.Truef(t, ok, "%q", uri)
+		assert.Equalf(t, keyword, got, "%q", uri)
+		assert.Zerof(t, testing.AllocsPerRun(100, func() { _, _ = token.ReservedTagOf(uri) }), "%q", uri)
 	}
 }

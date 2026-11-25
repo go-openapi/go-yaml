@@ -23,12 +23,9 @@ func ReservedTagOf(uri string) (ReservedTagKeyword, bool) {
 		return "", false
 	}
 
-	keyword := ReservedTagKeyword("!!" + name)
-	if _, reserved := reservedTags[keyword]; !reserved {
-		return "", false
-	}
+	keyword, reserved := reservedTags[name]
 
-	return keyword, true
+	return keyword, reserved
 }
 
 // ReservedTagKeyword is a tag of the YAML type repository, in its "!!" shorthand, such as "!!int".
@@ -61,19 +58,21 @@ const (
 	MergeTag ReservedTagKeyword = "!!merge"
 )
 
-// reservedTags holds the tags YAML 1.2 reserves. A tag outside it belongs to the document, and a scalar carrying
-// one keeps the type of its text.
-var reservedTags = map[ReservedTagKeyword]struct{}{
-	IntegerTag:    {},
-	FloatTag:      {},
-	NullTag:       {},
-	SequenceTag:   {},
-	MappingTag:    {},
-	StringTag:     {},
-	BinaryTag:     {},
-	OrderedMapTag: {},
-	SetTag:        {},
-	TimestampTag:  {},
-	BooleanTag:    {},
-	MergeTag:      {},
+// reservedTags holds the tags YAML 1.2 reserves, keyed by the name after the "!!". A tag outside it belongs to the
+// document, and a scalar carrying one keeps the type of its text.
+//
+// [ReservedTagOf] looks the name up without building the "!!" spelling, and returns the constant stored here.
+var reservedTags = map[string]ReservedTagKeyword{
+	"int":       IntegerTag,
+	"float":     FloatTag,
+	"null":      NullTag,
+	"seq":       SequenceTag,
+	"map":       MappingTag,
+	"str":       StringTag,
+	"binary":    BinaryTag,
+	"omap":      OrderedMapTag,
+	"set":       SetTag,
+	"timestamp": TimestampTag,
+	"bool":      BooleanTag,
+	"merge":     MergeTag,
 }
