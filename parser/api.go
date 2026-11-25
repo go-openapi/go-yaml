@@ -9,8 +9,8 @@ import (
 	"github.com/go-openapi/go-yaml/ast"
 	"github.com/go-openapi/go-yaml/internal/scanner"
 	"github.com/go-openapi/go-yaml/internal/tokenarena"
-	"github.com/go-openapi/go-yaml/parser/group"
-	"github.com/go-openapi/go-yaml/parser/key"
+	"github.com/go-openapi/go-yaml/parser/internal/group"
+	"github.com/go-openapi/go-yaml/parser/internal/key"
 	"github.com/go-openapi/go-yaml/token"
 )
 

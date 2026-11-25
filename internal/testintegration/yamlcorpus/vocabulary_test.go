@@ -37,7 +37,7 @@ func messageTemplates(t *testing.T) []string {
 		fset := token.NewFileSet()
 
 		// File by file, through every package under root: parser.ParseDir is
-		// deprecated, and parser/group builds syntax errors of its own.
+		// deprecated, and parser/internal/group builds syntax errors of its own.
 		err := filepath.WalkDir(filepath.Clean(root), func(path string, entry fs.DirEntry, err error) error {
 			if err != nil {
 				return err
@@ -224,7 +224,7 @@ func TestTheParserVocabularyGapIsMeasured(t *testing.T) {
 	// principle, and reached by nothing anybody should write.
 	//
 	// It went to 28 on 2026-11-24, with no message lost: the walk used to read
-	// parser/ alone and missed the packages under it. parser/group adds six
+	// parser/ alone and missed the packages under it. parser/internal/group adds six
 	// templates, and three of them are unreached: `undefined alias name` and
 	// `undefined anchor name`, which flushProperties raises when the stream ends
 	// on an '&' or a '*' with no name, and `undefined directive value`.

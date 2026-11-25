@@ -9,7 +9,7 @@ import (
 	"github.com/go-openapi/go-yaml/ast"
 	yamlerrors "github.com/go-openapi/go-yaml/errors"
 	"github.com/go-openapi/go-yaml/internal/scanner"
-	"github.com/go-openapi/go-yaml/parser/group"
+	"github.com/go-openapi/go-yaml/parser/internal/group"
 )
 
 // tagDirectiveLen counts the tokens of a "%TAG" line: the directive, the handle and the prefix.

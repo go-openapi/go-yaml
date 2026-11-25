@@ -8,7 +8,7 @@ import (
 
 	"github.com/go-openapi/go-yaml/ast"
 	yamlerrors "github.com/go-openapi/go-yaml/errors"
-	"github.com/go-openapi/go-yaml/parser/group"
+	"github.com/go-openapi/go-yaml/parser/internal/group"
 	"github.com/go-openapi/go-yaml/token"
 )
 

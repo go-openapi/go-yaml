@@ -8,8 +8,8 @@ import (
 	"github.com/go-openapi/go-yaml/internal/probe"
 	"github.com/go-openapi/go-yaml/internal/scanner"
 	"github.com/go-openapi/go-yaml/internal/tokenarena"
-	runarena "github.com/go-openapi/go-yaml/parser/arena"
-	"github.com/go-openapi/go-yaml/parser/group"
+	runarena "github.com/go-openapi/go-yaml/parser/internal/arena"
+	"github.com/go-openapi/go-yaml/parser/internal/group"
 	"github.com/go-openapi/go-yaml/token"
 )
 

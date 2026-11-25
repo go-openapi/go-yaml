@@ -9,8 +9,8 @@ import (
 	"github.com/go-openapi/testify/v2/assert"
 	"github.com/go-openapi/testify/v2/require"
 
-	"github.com/go-openapi/go-yaml/parser/arena"
-	"github.com/go-openapi/go-yaml/parser/probe"
+	"github.com/go-openapi/go-yaml/parser/internal/arena"
+	"github.com/go-openapi/go-yaml/parser/internal/probe"
 )
 
 // TestRecycleTakesBackEveryChunk checks that Recycle poisons every cell handed out, the chunk being filled included,

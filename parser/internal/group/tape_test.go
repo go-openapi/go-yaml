@@ -9,7 +9,7 @@ import (
 	"github.com/go-openapi/testify/v2/assert"
 	"github.com/go-openapi/testify/v2/require"
 
-	"github.com/go-openapi/go-yaml/parser/group"
+	"github.com/go-openapi/go-yaml/parser/internal/group"
 	"github.com/go-openapi/go-yaml/token"
 )
 

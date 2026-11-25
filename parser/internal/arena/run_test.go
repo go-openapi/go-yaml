@@ -11,8 +11,8 @@ import (
 	"github.com/go-openapi/testify/v2/assert"
 	"github.com/go-openapi/testify/v2/require"
 
-	"github.com/go-openapi/go-yaml/parser/arena"
-	"github.com/go-openapi/go-yaml/parser/probe"
+	"github.com/go-openapi/go-yaml/parser/internal/arena"
+	"github.com/go-openapi/go-yaml/parser/internal/probe"
 )
 
 // cell is the type these cases hand out. It carries a string so that a stale

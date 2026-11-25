@@ -11,7 +11,7 @@ import (
 
 	yamlerrors "github.com/go-openapi/go-yaml/errors"
 	"github.com/go-openapi/go-yaml/internal/probe"
-	"github.com/go-openapi/go-yaml/parser/arena"
+	"github.com/go-openapi/go-yaml/parser/internal/arena"
 	"github.com/go-openapi/go-yaml/token"
 )
 

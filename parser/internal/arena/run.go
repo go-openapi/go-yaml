@@ -3,7 +3,7 @@
 
 package arena
 
-import "github.com/go-openapi/go-yaml/parser/probe"
+import "github.com/go-openapi/go-yaml/parser/internal/probe"
 
 const (
 	MinGroupBlock = 16
@@ -89,8 +89,8 @@ func (a *Run[T]) advance() {
 	// probe.ReuseReleased is a constant: true in a normal build, so a chunk
 	// Release gave back is filled again, and false under yamlprobe, where a
 	// released chunk is kept aside so a cell read after it went back still
-	// carries the stamp poisonLeaves put there. parser/probe holds both, and
-	// parser/probe/poison_test.go pins each to its build.
+	// carries the stamp poisonLeaves put there. parser/internal/probe holds both, and
+	// parser/internal/probe/poison_test.go pins each to its build.
 	if n := len(a.free); n > 0 && probe.ReuseReleased {
 		a.filling = a.free[n-1]
 		a.free = a.free[:n-1]

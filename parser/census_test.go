@@ -13,7 +13,7 @@ import (
 
 	"github.com/go-openapi/go-yaml/internal/scanner"
 	"github.com/go-openapi/go-yaml/internal/tokenarena"
-	"github.com/go-openapi/go-yaml/parser/group"
+	"github.com/go-openapi/go-yaml/parser/internal/group"
 )
 
 // TestGroupCensus counts the groups one document builds, by kind.

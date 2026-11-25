@@ -14,7 +14,7 @@ import (
 
 	"github.com/go-openapi/go-yaml/ast"
 	"github.com/go-openapi/go-yaml/internal/probe"
-	"github.com/go-openapi/go-yaml/parser/key"
+	"github.com/go-openapi/go-yaml/parser/internal/key"
 	"github.com/go-openapi/go-yaml/token"
 )
 

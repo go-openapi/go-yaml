@@ -10,7 +10,7 @@ import (
 
 	"github.com/go-openapi/testify/v2/assert"
 
-	"github.com/go-openapi/go-yaml/parser/probe"
+	"github.com/go-openapi/go-yaml/parser/internal/probe"
 )
 
 // TestReuseReleasedIsOnWithoutTheTag pins the default: a normal build fills a
