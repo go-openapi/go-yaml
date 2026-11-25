@@ -171,3 +171,64 @@ func Example_mergeListKeys() {
 	//   }
 	// }
 }
+
+// Example_mergeTag reads "<<" with the explicit tag "!!merge": go-yaml honors a written tag under every version, so the
+// mapping merges without parser.WithMergeKeys.
+func Example_mergeTag() {
+	answer.Print("testdata/merge-tag.yaml")
+
+	// Output:
+	// {
+	//   "base": {
+	//     "retries": 3,
+	//     "timeout": "10s"
+	//   },
+	//   "service": {
+	//     "timeout": "30s",
+	//     "retries": 3
+	//   }
+	// }
+}
+
+// Example_set reads a "!!set" that names a member twice. A set holds each member once, so go-yaml rejects it.
+func Example_set() {
+	answer.Print("testdata/set.yaml")
+
+	// Output:
+	// [4:3] mapping key "red" already defined at [2:3]
+	//    1 | colors: !!set
+	//    2 |   ? red
+	//    3 |   ? green
+	// >  4 |   ? red
+	//          ^
+}
+
+// Example_pairs reads "!!pairs", a sequence of single-pair mappings that may repeat a key and keeps their order.
+func Example_pairs() {
+	answer.Print("testdata/pairs.yaml")
+
+	// Output:
+	// {
+	//   "moves": [
+	//     {
+	//       "e2": "e4"
+	//     },
+	//     {
+	//       "e7": "e5"
+	//     },
+	//     {
+	//       "e2": "e3"
+	//     }
+	//   ]
+	// }
+}
+
+// Example_timestamp reads a "!!timestamp" written with a space and an offset, which go-yaml writes in RFC 3339.
+func Example_timestamp() {
+	answer.Print("testdata/timestamp.yaml")
+
+	// Output:
+	// {
+	//   "when": "2026-11-25T10:30:00+01:00"
+	// }
+}

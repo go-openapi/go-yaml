@@ -40,6 +40,13 @@ into the one that holds it, and a key written in place wins over a merged one.
 
 {{< code file="tutorial/advanced/example_test.go" lang="json" output="Example_mergeKeys" nolink="true" >}}
 
+An explicit tag does the same without the option. go-yaml honors a tag written in the document under every version, so
+`!!merge <<` merges under YAML 1.2 too:
+
+{{< code file="tutorial/advanced/testdata/merge-tag.yaml" lang="yaml" nolink="true" >}}
+
+{{< code file="tutorial/advanced/example_test.go" lang="json" output="Example_mergeTag" nolink="true" >}}
+
 See [Reading a merge key](../../features/values/anchors-and-aliases/#reading-a-merge-key) for the options and the
 decoder's rules.
 
@@ -68,6 +75,11 @@ The *non-specific* tag `!` tells the reader not to guess the type of a plain sca
 A tag with a single `!` and a name, such as `!point`, is a *local* tag: its meaning belongs to the application that reads
 the document. JSON has no tags, so the JSON holds the mapping as it is.
 
+GitLab CI is one such application: its `!reference [.setup, script]` names part of the same document, to be copied where
+the tag stands. The `ast` package's
+[resolve a custom tag](https://pkg.go.dev/github.com/go-openapi/go-yaml/ast#example-package-ResolveACustomTag) example
+finds each `!reference` in a parsed document and splices in the entries it names.
+
 ## Quizz: test your YAML knowledge (guru level)
 
 {{< code file="tutorial/advanced/testdata/merge-list.yaml" lang="yaml" nolink="true" >}}
@@ -94,4 +106,34 @@ Under YAML 1.2 without the option, `<<` is an ordinary key holding a list of two
 
 Nothing: the document is not valid. A key can carry an anchor, and an alias can stand as a key. Here the alias stands
 for `key`, so the mapping holds the same key twice, and YAML forbids that.
+{{% /expand %}}
+
+The last three use types from the [YAML 1.1 type repository](https://yaml.org/type/): standard tags, outside the core
+schema, that a document must name to get.
+
+{{< code file="tutorial/advanced/testdata/set.yaml" lang="yaml" nolink="true" >}}
+
+{{% expand title="What does it hold?" %}}
+{{< code file="tutorial/advanced/example_test.go" lang="text" output="Example_set" nolink="true" >}}
+
+Nothing: `!!set` is a mapping of keys with no values, and a set holds each member once. `red` appears twice, so go-yaml
+rejects the document.
+{{% /expand %}}
+
+{{< code file="tutorial/advanced/testdata/pairs.yaml" lang="yaml" nolink="true" >}}
+
+{{% expand title="What does it hold?" %}}
+{{< code file="tutorial/advanced/example_test.go" lang="json" output="Example_pairs" nolink="true" >}}
+
+`!!pairs` is a sequence of single-pair mappings that keeps their order and, unlike a mapping or an `!!omap`, may repeat
+a key: `e2` moves twice. JSON has no such type, so the JSON holds a list of one-member objects.
+{{% /expand %}}
+
+{{< code file="tutorial/advanced/testdata/timestamp.yaml" lang="yaml" nolink="true" >}}
+
+{{% expand title="What does it hold?" %}}
+{{< code file="tutorial/advanced/example_test.go" lang="json" output="Example_timestamp" nolink="true" >}}
+
+`!!timestamp` reads a date and time written with a space before the time and before the offset, as YAML 1.1 allows.
+go-yaml writes the instant in RFC 3339, with a `T` and the offset it was given.
 {{% /expand %}}

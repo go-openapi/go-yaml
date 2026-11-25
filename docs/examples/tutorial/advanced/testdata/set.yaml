@@ -1,0 +1,4 @@
+colors: !!set
+  ? red
+  ? green
+  ? red

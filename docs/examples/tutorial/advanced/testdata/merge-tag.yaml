@@ -1,0 +1,6 @@
+base: &base
+  retries: 3
+  timeout: 10s
+service:
+  !!merge <<: *base
+  timeout: 30s
