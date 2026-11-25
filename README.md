@@ -75,12 +75,12 @@ runs; peak memory is the highest live heap during the decode.
 
 | workload          | source   | time: go-openapi | v3     | goccy  | peak: go-openapi | v3       | goccy     |
 |-------------------|---------:|-----------------:|-------:|-------:|-----------------:|---------:|----------:|
-| azure_swagger     | 0.52 MiB |            24 ms |  33 ms |  54 ms |         2.37 MiB | 6.16 MiB | 17.08 MiB |
-| canada_geometry   | 0.38 MiB |            18 ms |  46 ms |  40 ms |         0.56 MiB | 4.56 MiB | 12.71 MiB |
-| citm_catalog      | 0.56 MiB |            55 ms |  57 ms |  95 ms |         4.76 MiB | 15.04 MiB | 35.78 MiB |
-| commented_swagger | 0.57 MiB |            25 ms |  35 ms |  50 ms |         2.38 MiB | 6.52 MiB | 17.53 MiB |
-| golang_source     | 3.61 MiB |           156 ms | 190 ms | 290 ms |         8.47 MiB | 38.04 MiB | 116.79 MiB |
-| twitter_status    | 0.48 MiB |            25 ms |  34 ms |  56 ms |         1.77 MiB | 5.72 MiB | 14.98 MiB |
+| azure_swagger     | 0.52 MiB |            28 ms |  34 ms |  55 ms |         2.40 MiB | 6.38 MiB | 17.13 MiB |
+| canada_geometry   | 0.38 MiB |            19 ms |  45 ms |  43 ms |         0.56 MiB | 4.53 MiB | 12.54 MiB |
+| citm_catalog      | 0.56 MiB |            63 ms |  61 ms | 115 ms |         4.90 MiB | 14.70 MiB | 38.04 MiB |
+| commented_swagger | 0.57 MiB |            27 ms |  38 ms |  57 ms |         2.48 MiB | 7.17 MiB | 18.16 MiB |
+| golang_source     | 3.61 MiB |           158 ms | 190 ms | 304 ms |         8.64 MiB | 38.56 MiB | 117.12 MiB |
+| twitter_status    | 0.48 MiB |            27 ms |  34 ms |  50 ms |         1.84 MiB | 6.08 MiB | 14.85 MiB |
 
 > `v3` is [`go.yaml.in/yaml/v3`][goyamlv3].
 > `goccy` is upstream [github.com/goccy/go-yaml][upstream].
@@ -90,14 +90,19 @@ Our implementation of YAML decode brings only a modest time improvement, and a m
 
 Our peak stays near the size of the decoded Go value: the decoding process holds little besides its result.
 
-citm_catalog is our least favourable workload for a decode into `any`: our time is on a par with v3's, 55 ms against 57 ms.
+citm_catalog is our least favourable workload for a decode into `any`: our time is on a par with v3's, 63 ms against 61 ms.
 This workload is where `v3`'s parser shines: it is simpler than ours and optimized specifically for decoding Go values,
 whereas our parser pays the cost of full support for YAML features, even those not consumed by the decode use-case.
 
-See [internal/benchmarks](./internal/benchmarks) for decoding into a struct, `ToJSON`, `FromJSON` and encoding, and
-for the command that reproduces these figures.
+Encoding and converting go further. `Marshal` writes the document as it walks the value, takes 42% to 55% of v3's time
+and peaks at a twelfth to a twenty-eighth of v3's live heap (6.1 MiB against 117 MiB on golang_source). `FromJSON`
+reads its JSON with the lexer of [go-openapi/core/json](https://github.com/go-openapi/core) and takes 22% to 34% of the
+time of v3's route, `json.Unmarshal` then `Marshal`.
 
-> Measured on 2026-11-22 with `go.yaml.in/yaml/v3` v3.0.6 and `github.com/goccy/go-yaml` v1.19.2, on an AMD Ryzen 7 5800X.
+See [internal/benchmarks](./internal/benchmarks) for decoding into a struct, `ToJSON`, `FromJSON` and encoding, for
+the command that reproduces these figures, and for the same comparison on two cores, where v3 gains on decoding.
+
+> Measured on 2026-11-25 with `go.yaml.in/yaml/v3` v3.0.6 and `github.com/goccy/go-yaml` v1.19.2, on an AMD Ryzen 7 5800X.
 
 ## Known limitations
 
