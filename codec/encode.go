@@ -806,9 +806,17 @@ func (e *Encoder) encodeOrderedMapSeq(value MapSliceSeq, column int) (ast.Node, 
 		return e.encodeMapSlice(MapSlice(value), column)
 	}
 
+	// The sequence and its mappings are flow collections, so every value inside them is written in flow style
+	// too: a block mapping or sequence cannot stand inside a flow collection.
+	flow := e
+	if !e.isFlowStyle {
+		flow = &Encoder{}
+		*flow = *e
+		flow.isFlowStyle = true
+	}
 	seq := ast.Sequence(token.New("", "", e.pos(column)), true)
 	for _, item := range MapSlice(value).items {
-		entry, err := e.encodeMapItem(item, column)
+		entry, err := flow.encodeMapItem(item, column)
 		if err != nil {
 			return nil, err
 		}

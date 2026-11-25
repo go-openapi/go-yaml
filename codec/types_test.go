@@ -312,6 +312,23 @@ func TestAnOrderedMapTagReadsAsTheMapItNames(t *testing.T) {
 		assert.Equal(t, "!!omap [{x: 1}, {b: 2}]\n", string(out))
 	})
 
+	t.Run("an entry holding a collection is written in flow style", func(t *testing.T) {
+		// The sequence and its mappings are flow collections, and an entry's value was written in block style
+		// inside them, "!!omap [{a:   x: 1}]", which no reader takes. A merge key the document wrote inside an
+		// "!!omap" is held as a "<<" entry, and comes back as one.
+		const doc = "base: &m\n  x: 1\no: !!omap\n  - <<: *m\n  - a: {x: 1}\n  - b: [1, {c: \"two\\nlines\"}]\n"
+		var v any
+		require.NoError(t, codec.Unmarshal([]byte(doc), &v))
+		out, err := codec.Marshal(v)
+		require.NoError(t, err)
+		assert.Equal(t,
+			"base:\n  x: 1\no: !!omap [{<<: {x: 1}}, {a: {x: 1}}, {b: [1, {c: \"two\\nlines\"}]}]\n", string(out))
+
+		var back any
+		require.NoError(t, codec.Unmarshal(out, &back))
+		assert.Equal(t, v, back)
+	})
+
 	t.Run("a key written twice is refused", func(t *testing.T) {
 		// Each mapping of an "!!omap" holds one key, and the parser records a
 		// repeat across them on the sequence, so every reader refuses it as it
