@@ -1,6 +1,6 @@
 ---
 title: Status
-weight: 40
+weight: 50
 description: |
   The API is still in flux. The list of what is not built yet.
 ---

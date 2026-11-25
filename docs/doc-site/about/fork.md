@@ -29,14 +29,35 @@ other component the library is built on.
 We remain immensely grateful to [Masaaki Goshima (@goccy)](https://github.com/goccy) for this great piece of work,
 which provided a great starting point and a trove of ideas. It allowed us to rework and improve methodically each layer in turn.
 
+## Approach
+
+YAML is [so complex](./posture) that it is almost impossible to write a perfect parser by hand.
+The alternative is to use grammar-generated parsers, but even then, there are many extra-grammar rules to be considered.
+
+Besides, a grammar-generated parser is difficult to optimize for performances, especially in a language like go, where
+performance may drastically change when memory allocation can be tamed. In many parsers (not just go), this results in the identification
+of optimized "fast-paths" where a hand-rolled parser will leave a generated one in the dust.
+
+Our approach was to build a hand-rolled parser, with assistance from an AI coding agent and (heavy handed) human design and control.
+So yes, no human can really write such a parser, but no grammar generator could have either.
+A human could design it and rechallenge the agent again and again until the result becomes acceptable.
+
+To drive such an approach, the test harness is paramount, and that why we've built a more comprehensive YAML test suite,
+that feeds property-based or fuzz tests, and parsers consensus measurements.
+
+We keep in mind that the resulting code should remain human-readable and maintainable, so we've kept a constant eye on code and
+documentation quality. Still, the library is a sizable chunk of code to maintain (~ 200 kLOC).
+
 ## Which library should you use?
 
 - **To decode YAML into Go values**, and nothing else, use [`go.yaml.in/yaml/v3`](https://github.com/yaml/go-yaml).
   It is stable and maintained. The default struct tags of our `codec` match v3's:
   a field is named after its `yaml` tag, or after its Go name lowercased. See also [Struct tags](../../values/struct-tags/).
+  Notice that our library brings a few key differentiators that could help you if you hit some of `yaml/v3`'s limitations
+  (ordered maps, binary strings, big numbers...).
 
 - **For a stable library with a document-oriented API**, you may use [`goccy/go-yaml`](https://github.com/goccy/go-yaml).
-  We are not sure about whether that one remains actively maintained, but it is stable whereas ours will remain subject to API changes for a while.
+  We are not sure if it is still actively maintained, but at least it is stable whereas ours will remain subject to API changes for a while.
 
 - **To work on the document itself**, use this library.
   It keeps comments, key order, positions as well as the source text. It writes an edited document back as it was written.

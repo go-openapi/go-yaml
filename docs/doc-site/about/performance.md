@@ -1,6 +1,6 @@
 ---
 title: Performance
-weight: 30
+weight: 40
 description: |
   Time, allocation and peak memory of a decode, against go.yaml.in/yaml/v3 and
   goccy/go-yaml, and the options and types that change them.
