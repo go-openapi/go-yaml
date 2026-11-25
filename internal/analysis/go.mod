@@ -13,4 +13,10 @@ require (
 	go.yaml.in/yaml/v3 v3.0.6
 )
 
+require (
+	github.com/go-openapi/core/json v0.0.3 // indirect
+	github.com/go-openapi/swag/conv v0.28.0 // indirect
+	github.com/go-openapi/swag/pools v0.28.0 // indirect
+)
+
 replace github.com/go-openapi/go-yaml => ../..

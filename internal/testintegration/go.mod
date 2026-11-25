@@ -13,6 +13,12 @@ require (
 )
 
 require (
+	github.com/go-openapi/core/json v0.0.3 // indirect
+	github.com/go-openapi/swag/conv v0.28.0 // indirect
+	github.com/go-openapi/swag/pools v0.28.0 // indirect
+)
+
+require (
 	github.com/gabriel-vasile/mimetype v1.4.15 // indirect
 	github.com/go-openapi/conformance-suites v0.0.2
 	github.com/go-openapi/conformance-suites/yaml/consensus v0.0.2

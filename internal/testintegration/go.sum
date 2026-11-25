@@ -10,8 +10,16 @@ github.com/go-openapi/conformance-suites/yaml/corpus v0.0.2 h1:YelPb16ILphT3bG4w
 github.com/go-openapi/conformance-suites/yaml/corpus v0.0.2/go.mod h1:eMUeHOvWbjUH0EQpsWMkwOLxDlmPdMN6iiFjg0ajFK4=
 github.com/go-openapi/conformance-suites/yaml/yamlgen v0.0.2 h1:ukHYhyg/vzanZ9LZSuCXTEj0ELBifohwdT+Ko+Ge2RM=
 github.com/go-openapi/conformance-suites/yaml/yamlgen v0.0.2/go.mod h1:Dj3mUXXHWD61cygaBnhrMeu9pLcYkFA0V/n1TlaXpjU=
+github.com/go-openapi/core/json v0.0.3 h1:L4YuBIsLVtn5x52u27z+xRdJQkD0BaverQFNvxl7h6E=
+github.com/go-openapi/core/json v0.0.3/go.mod h1:nQl4bCBPXPOLlpjfSUcT2hcRKUBVuz+xLHx92aH524w=
 github.com/go-openapi/jsonpointer v1.0.2 h1:NbW7xT2b+l7x+JefiPGDsZWsrLk1ogrz4AHK1TTzMt8=
 github.com/go-openapi/jsonpointer v1.0.2/go.mod h1:N0rI4MbNKD7xAFTiHtB+5Nhrg2j/wwYg7m7Fmb4/jk8=
+github.com/go-openapi/swag/conv v0.28.0 h1:GtqqbyFe7vR5Y7ehxG9W6/OvrSFdf1OLeTGp40TqxH8=
+github.com/go-openapi/swag/conv v0.28.0/go.mod h1:mbUE+mzctnhxi864m0Q07SpN8OowD9JhxmxuYvZZD/k=
+github.com/go-openapi/swag/pools v0.28.0 h1:HPMZWSAfce3rdVTFcjFiCIBtDg9h4x2QlRrHipwhxeU=
+github.com/go-openapi/swag/pools v0.28.0/go.mod h1:kVQefhSK5RWuRe7BXsL8htgBPAMpN7HDGpGEknqugeE=
+github.com/go-openapi/swag/typeutils v0.28.0 h1:nRBKSBXjDgf01VDPB3fWeD9nQuhCOVeIYAkUx2tbkyY=
+github.com/go-openapi/swag/typeutils v0.28.0/go.mod h1:Srm0xFNRZ1Y+vCxJclo5qzx8aj+1pAKda/YfFPrG0dQ=
 github.com/go-openapi/testify/v2 v2.8.1 h1:zk3S6KaDY1iQW91vsOJc25Ql1xm5bhPrZKdnL930bRQ=
 github.com/go-openapi/testify/v2 v2.8.1/go.mod h1:4gUN8jC+RqOE2qjW/vDmfyTvl5BCht4qL7oca0odrak=
 github.com/go-playground/assert/v2 v2.2.0 h1:JvknZsQTYeFEAhQwI4qEt9cyV5ONwRHC+lYKSsYSR8s=

@@ -105,11 +105,11 @@ func NodeToValue(node ast.Node, v any, opts ...DecodeOption) error {
 
 // FromJSON converts a JSON document to YAML in block style.
 //
-// It reads src with the parser's walk under [parser.WithJSONSyntax], so a document not written as JSON returns
+// It reads src with the JSON lexer of [github.com/go-openapi/core/json], so a document not written as JSON returns
 // [github.com/go-openapi/go-yaml/errors.ErrNotJSONSyntax], and a repeated member name returns
-// [github.com/go-openapi/go-yaml/errors.ErrDuplicateKey]. It writes each value through an [ast.Stream] as the walk
-// reads it. Neither the walk nor the stream keeps what it has passed, so apart from its output, FromJSON holds memory
-// in proportion to the document's nesting depth, not its length.
+// [github.com/go-openapi/go-yaml/errors.ErrDuplicateKey]. It writes each value through an [ast.Stream] as the lexer
+// reads it. Neither keeps what it has passed, so apart from its output, FromJSON holds memory in proportion to the
+// document's nesting depth, not its length.
 //
 // The YAML holds what the JSON wrote. A number keeps its text, such as "1e3", "-0" or a 20-digit integer, and reads
 // back as a YAML 1.2 number. Member order is kept. A string is written as [Marshal] writes a Go string: plain where the plain text reads back as
@@ -118,7 +118,7 @@ func NodeToValue(node ast.Node, v any, opts ...DecodeOption) error {
 //
 // opts lay the YAML out: [ast.WithIndent] and [ast.WithIndentSequence].
 func FromJSON(src []byte, opts ...ast.RenderOption) ([]byte, error) {
-	return fromJSON(src, true, opts...)
+	return fromJSONText(src, opts...)
 }
 
 // ToJSON converts a YAML document to the JSON that holds the same values.

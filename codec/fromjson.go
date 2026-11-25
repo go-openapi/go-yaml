@@ -5,10 +5,15 @@ package codec
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"iter"
 	"strconv"
 	"strings"
+	"unsafe"
+
+	lexer "github.com/go-openapi/core/json/lexers/default-lexer"
+	coretoken "github.com/go-openapi/core/json/lexers/token"
 
 	"github.com/go-openapi/go-yaml/ast"
 	yamlerrors "github.com/go-openapi/go-yaml/errors"
@@ -171,5 +176,87 @@ func streamJSONToken(stream *ast.Stream, enc *Encoder, tok JSONToken) error {
 		return stream.Value(enc.boolNode(enc.newToken(strconv.FormatBool(tok.Bool), 0)))
 	default:
 		return stream.Value(enc.nullNode(enc.newToken("null", 0)))
+	}
+}
+
+// fromJSONText implements [FromJSON]: it reads src with the JSON lexer of github.com/go-openapi/core/json, which is
+// several times faster than the YAML parser's walk, and writes the YAML through [FromJSONTokens].
+//
+// A lexer error, and a token sequence the YAML stream cannot take, such as an empty input or two values in a row,
+// return an error wrapping [yamlerrors.ErrNotJSONSyntax]. A repeated member name returns one wrapping
+// [yamlerrors.ErrDuplicateKey].
+func fromJSONText(src []byte, opts ...ast.RenderOption) ([]byte, error) {
+	l, release := lexer.BorrowLexerWithBytes(src)
+	defer release()
+
+	lexErr := func() error {
+		if err := l.Err(); err != nil {
+			return fmt.Errorf("%w: %w", yamlerrors.ErrNotJSONSyntax, err)
+		}
+
+		return nil
+	}
+	out, err := renderJSONTokens(coreJSONTokens(l, src), len(src), lexErr, true, opts...)
+	if errors.Is(err, ast.ErrStreamOrder) {
+		return nil, fmt.Errorf("%w: the tokens do not form one JSON value", yamlerrors.ErrNotJSONSyntax)
+	}
+
+	return out, err
+}
+
+// coreJSONTokens adapts the core lexer's tokens to [JSONToken], dropping the "," and ":" tokens.
+//
+// src is the text l reads. A key, a string or a number the lexer returns as a window into src is used in place; one it
+// decoded into its own buffer, which it reuses, is copied. Nearly every value of a JSON document is a window: all of
+// them on the benchmark workloads but one with escaped strings. The tokens are valid while src is neither changed nor
+// freed, which holds for the call of [FromJSON] that reads them.
+func coreJSONTokens(l *lexer.L, src []byte) iter.Seq[JSONToken] {
+	lo := uintptr(unsafe.Pointer(unsafe.SliceData(src)))
+	hi := lo + uintptr(len(src))
+	text := func(v []byte) string {
+		if len(v) == 0 {
+			return ""
+		}
+		if p := uintptr(unsafe.Pointer(unsafe.SliceData(v))); p >= lo && p+uintptr(len(v)) <= hi {
+			return unsafe.String(unsafe.SliceData(v), len(v))
+		}
+
+		return string(v)
+	}
+
+	return func(yield func(JSONToken) bool) {
+		for t := range l.Tokens() {
+			var out JSONToken
+			switch t.Kind() {
+			case coretoken.Delimiter:
+				switch t.Delimiter() {
+				case coretoken.OpeningBracket:
+					out.Kind = JSONObjectStart
+				case coretoken.ClosingBracket:
+					out.Kind = JSONObjectEnd
+				case coretoken.OpeningSquareBracket:
+					out.Kind = JSONArrayStart
+				case coretoken.ClosingSquareBracket:
+					out.Kind = JSONArrayEnd
+				default:
+					continue
+				}
+			case coretoken.Key:
+				out.Kind, out.Value = JSONKey, text(t.Value())
+			case coretoken.String:
+				out.Kind, out.Value = JSONString, text(t.Value())
+			case coretoken.Number:
+				out.Kind, out.Value = JSONNumber, text(t.Value())
+			case coretoken.Boolean:
+				out.Kind, out.Bool = JSONBool, t.Bool()
+			case coretoken.Null:
+				out.Kind = JSONNull
+			default:
+				continue
+			}
+			if !yield(out) {
+				return
+			}
+		}
 	}
 }

@@ -13,6 +13,7 @@ require (
 )
 
 require (
+	github.com/go-openapi/core/json v0.0.3 // indirect
 	github.com/go-openapi/jsonpointer v1.0.0 // indirect
 	github.com/go-openapi/jsonreference v1.0.1 // indirect
 	github.com/go-openapi/swag/conv v0.29.1 // indirect
