@@ -310,5 +310,8 @@ func aTimeTimeInAnInterfaceSlotIsWrittenTaggedCases(
 		{name: "a map[any]any key and value", in: map[any]any{utc: zoned}, tags: 2},
 		{name: "a value in a map[string]any", in: map[string]any{"k": zoned}, tags: 1},
 		{name: "an element of a []any", in: []any{utc}, tags: 1},
+		// Marshal takes its value as an any, so the root is an interface slot too. It was written plain, and
+		// "Unmarshal(Marshal(t), &v)" gave a string.
+		{name: "the value handed to Marshal", in: zoned, tags: 1},
 	})
 }

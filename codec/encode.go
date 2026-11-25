@@ -177,15 +177,19 @@ func (e *Encoder) prepare() error {
 }
 
 // encodeTree builds the node tree of v.
+//
+// The root is v's interface slot, as an element of a []any or a value of a map[string]any is: a time.Time there
+// takes its "!!timestamp" tag, so a reader into any gets a time back and not a string.
 func (e *Encoder) encodeTree(v any) (ast.Node, error) {
+	root := reflect.ValueOf(&v).Elem()
 	if e.enableSmartAnchor {
 		// The first encoding stores every mapping from an alias address to its name.
-		if _, err := e.encodeValue(reflect.ValueOf(v), 1); err != nil {
+		if _, err := e.encodeValue(root, 1); err != nil {
 			return nil, err
 		}
 		e.clearSmartAnchorRef()
 	}
-	node, err := e.encodeValue(reflect.ValueOf(v), 1)
+	node, err := e.encodeValue(root, 1)
 	if err != nil {
 		return nil, err
 	}
@@ -1164,7 +1168,8 @@ func (e *Encoder) heldTime(v reflect.Value) (time.Time, bool) {
 }
 
 // encodeTaggedTime writes a time.Time held in an interface slot (a value in an
-// any, a map[any]any key, a MapSlice entry) as a "!!timestamp".
+// any, a map[any]any key, a MapSlice entry, the value handed to Marshal) as a
+// "!!timestamp".
 //
 // The core schema resolves no timestamp, so the plain spelling reads back as a
 // string wherever the destination is not a time.Time. A round trip through an

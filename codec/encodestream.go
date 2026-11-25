@@ -30,8 +30,10 @@ func (e *Encoder) streams() bool {
 // It walks v as encodeValue does, and streams each map, slice, array and struct encodeValue would write as a block
 // collection. It builds every other value as a node and hands it to [ast.Stream.Value] whole, so the stream writes
 // what [ast.Renderer.Render] writes for the same tree.
+//
+// The root is v's interface slot, as in [Encoder.encodeTree].
 func (e *Encoder) encodeStream(s *ast.Stream, v any) error {
-	if err := e.streamValue(s, reflect.ValueOf(v), 1); err != nil {
+	if err := e.streamValue(s, reflect.ValueOf(&v).Elem(), 1); err != nil {
 		return err
 	}
 
