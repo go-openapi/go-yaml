@@ -191,3 +191,18 @@ func TestFlowQuotesAMultilineString(t *testing.T) {
 		}
 	}
 }
+
+// TestFlowQuotesAFlowIndicator marshals keys and values holding "[" or "{" under Flow. A plain scalar inside a flow
+// collection holds no flow indicator, so each is quoted and reads back as it was. Written plain, "{<[<: 1}" opened a
+// flow sequence inside the key and did not parse.
+func TestFlowQuotesAFlowIndicator(t *testing.T) {
+	for _, s := range []string{"<[<", "a{b", "[", "{x}"} {
+		in := map[string]string{s: s}
+		out, err := codec.Marshal(in, codec.Flow(true))
+		require.NoError(t, err)
+
+		var back map[string]string
+		require.NoErrorf(t, codec.Unmarshal(out, &back), "%q", out)
+		require.Equalf(t, in, back, "%q", out)
+	}
+}

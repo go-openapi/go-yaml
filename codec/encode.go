@@ -678,9 +678,10 @@ func (e *Encoder) isNeedQuoted(v string) bool {
 		return true
 	}
 
-	if e.isFlowStyle && strings.ContainsAny(v, "]},'\"\n") {
-		// A block scalar cannot stand inside a flow collection, so a line break takes quotes there, whatever
-		// UseLiteralStyleIfMultiline asks.
+	if e.isFlowStyle && strings.ContainsAny(v, "[]{},'\"\n") {
+		// A plain scalar inside a flow collection holds no flow indicator: "[" or "{" opens a collection there, as
+		// "]", "}" and "," close one or part its entries. A block scalar cannot stand inside a flow collection
+		// either, so a line break takes quotes there, whatever UseLiteralStyleIfMultiline asks.
 		return true
 	}
 
