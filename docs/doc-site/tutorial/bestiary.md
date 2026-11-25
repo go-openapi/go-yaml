@@ -493,3 +493,22 @@ The entry's anchor stands on the mapping below it, past a comment. The mapping h
 Two documents: `...` ends the first. Its key is a float, and go-yaml names a number key in JSON by its value, so the
 `+` is gone. The second document is the string `#`: a quoted `#` starts no comment.
 {{% /expand %}}
+
+### An indentation indicator at the root
+
+{{< code file="tutorial/bestiary/testdata/root-indent.yaml" lang="yaml" nolink="true" >}}
+
+{{% expand title="What does it hold?" %}}
+{{< code file="tutorial/bestiary/example_test.go" lang="json" output="Example_rootIndent" nolink="true" >}}
+
+`|3` sets the content's indentation to the block scalar's own level plus 3. Under a key or a `-`, the level is 0 and the
+content starts in column 3. A root node stands at level -1, so here the content starts in column 2, and `|a` keeps no
+space.
+
+`indent a line further` moved the line four columns right. The four extra spaces are content:
+
+{{< code file="tutorial/bestiary/example_test.go" lang="json" output="Example_rootIndentFurther" nolink="true" >}}
+
+Readers disagree on this one. go-yaml and the YAML reference parser follow the grammar's level -1. libyaml, and PyYAML
+with it, count a root block scalar from level 0: it rejects the first document and reads three spaces in the second.
+{{% /expand %}}

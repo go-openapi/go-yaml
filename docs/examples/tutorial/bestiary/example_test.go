@@ -515,3 +515,19 @@ func Example_plusKey() {
 	// # document 2
 	// "#"
 }
+
+// Example_rootIndent reads a root block scalar whose indentation indicator counts from the root's level, -1.
+func Example_rootIndent() {
+	answer.Print("testdata/root-indent.yaml")
+
+	// Output:
+	// "|a"
+}
+
+// Example_rootIndentFurther reads the same block scalar with its line indented four more spaces.
+func Example_rootIndentFurther() {
+	answer.Print("testdata/root-indent-further.yaml")
+
+	// Output:
+	// "    |a"
+}
