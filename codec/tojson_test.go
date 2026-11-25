@@ -1628,11 +1628,24 @@ func anchoredFloatKeyStringKeyedCases() iter.Seq[anchoredFloatKeyStringKeyedCase
 func TestToJSONNamesAFloatKeyTheSameBothWays(t *testing.T) {
 	t.Run("the float, in every spelling of the key", func(t *testing.T) {
 		for _, src := range []string{
-			"? 1e3\n: x\n", "{? 1e3\n: x}\n", "1e3: x\n", "? &a 1e3\n: x\n",
+			"? 1e3\n: x\n", "{? 1e3\n: x}\n", "1e3: x\n", "? &a 1e3\n: x\n", "&a 1e3: x\n",
 		} {
 			out, err := codec.ToJSON([]byte(src))
 			require.NoErrorf(t, err, "%q", src)
 			assert.Equal(t, `{"1000.0":"x"}`, string(out), "%q", src)
+		}
+	})
+
+	// An alias names its entry as the node its anchor names would as a bare key, and the anchored value keeps its
+	// digits. Read from the value, the key was named "1e3" and "1.0e+00".
+	t.Run("an alias to the float", func(t *testing.T) {
+		for _, tc := range []struct{ src, want string }{
+			{"a: &a 1e3\n*a : x\n", `{"a":1e3,"1000.0":"x"}`},
+			{"a: &a 1.0e+00\n*a : x\n", `{"a":1.0e+00,"1.0":"x"}`},
+		} {
+			out, err := codec.ToJSON([]byte(tc.src))
+			require.NoErrorf(t, err, "%q", tc.src)
+			assert.Equal(t, tc.want, string(out), "%q", tc.src)
 		}
 	})
 

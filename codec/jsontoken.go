@@ -1316,9 +1316,8 @@ func (t *jsonTokener) enterKey(node ast.Node, at parser.Cursor) error {
 	}
 
 	if _, aliased := node.(*ast.AliasNode); aliased {
-		// An alias names the entry by the value its anchor wrote, converted to
-		// a string as ToJSON converts it. It does not take the canonical
-		// spelling given by [ast.KeyName].
+		// An alias names the entry as the node its anchor names would, written
+		// as a bare key.
 		t.emitKeyNamed(t.wrappedKeyName(node), astutils.NodeAt(node))
 
 		return t.skipped()
@@ -1345,9 +1344,8 @@ func (t *jsonTokener) closeKey(node ast.Node, at parser.Cursor) bool {
 
 	name := t.keyName(mark.node)
 	if _, anchored := mark.node.(*ast.AnchorNode); anchored {
-		// An anchor does not open a key the way a "?" does. The node under it
-		// is read as a value and then converted to a string, so it keeps the
-		// digits the document wrote.
+		// The node under an anchor is read as a value, and a tag under it
+		// sets the name. See wrappedKeyName.
 		name = t.wrappedKeyName(mark.node)
 	}
 	t.emitKeyNamed(name, t.keyAt(mark.node, astutils.NodeAt(node)))
@@ -1375,28 +1373,22 @@ func (t *jsonTokener) keyAt(node ast.Node, wrapper token.Position) token.Positio
 }
 
 // wrappedKeyName returns the string that names the entry of a key written inside
-// a "?" or an anchor.
+// a "?", an anchor or an alias.
 //
-// It writes the node as the JSON it would give as a value, converted to a member
-// name string. [ToJSON] does the same for an anchored key and for an alias key,
-// and [ast.KeyName] gives a different answer. A value keeps the digits the
-// document wrote where JSON spells the number the same way. A name takes the
-// canonical spelling of its type:
+// A property in front of a key does not change the key's name, so the scalar
+// underneath takes the canonical spelling [astutils.KeyText] gives a bare key:
 //
 //	1e3: x                  names the entry 1000.0
 //	? 1e3                   names it 1000.0
 //	!!float 1e3: x          names it 1000.0
-//	&a 1e3: x               names it 1e3
-//	a: &a1 1e3 / *a1 : v    names it 1e3
+//	&a 1e3: x               names it 1000.0
+//	a: &a1 1e3 / *a1 : v    names it 1000.0
 //
-// Only a float shows the difference: an integer, a null and a boolean have no
-// path that keeps the source text.
-//
-// ⚠️ The last two rows are a defect shared by the two converters, not a rule:
-// a property in front of a key should not change the key's name. The token
-// stream mirrors them so that it gives the same names as [ToJSON], and both
-// change together when the defect is fixed. [TestJSONTokensSpellAKeyAsToJSONDoes]
-// pins every row above, so a fix on either side fails the test.
+// A value keeps the digits the document wrote, and the name was read from the
+// value: the last two rows named the entry 1e3, so one float had two names in
+// one document. Only a float showed the difference, since an integer, a null and
+// a boolean have no path that keeps the source text.
+// [TestJSONTokensSpellAKeyAsToJSONDoes] pins every row above.
 //
 // A tag under the anchor sets the value, and [jsonTokener.taggedValue] reads it
 // as ToJSON does: "&a !!float 1e3: x" names the entry 1000.0 and
@@ -1414,7 +1406,7 @@ func (t *jsonTokener) wrappedKeyName(node ast.Node) string {
 		}
 	}
 
-	return scalarToken(inner).name()
+	return astutils.KeyText(inner)
 }
 
 // throughWrappers returns the node wrapped by a key's "?", anchors and aliases.

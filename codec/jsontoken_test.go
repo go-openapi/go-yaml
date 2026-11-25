@@ -321,10 +321,11 @@ func jsonTokensSpellAKeyAsToJSONDoesCases() iter.Seq[jsonTokensSpellAKeyAsToJSON
 		{"a timestamp under a ?", "? !!timestamp 2001-12-14\n: x\n", "2001-12-14T00:00:00Z"},
 		{"an anchored timestamp", "&a !!timestamp 2001-12-14: x\n", "2001-12-14T00:00:00Z"},
 		{"an alias to a zoned timestamp", "a: &a1 !!timestamp 2001-12-14t21:59:43.10-05:00\n*a1 : v\n", "2001-12-14T21:59:43.1-05:00"},
-		{"an anchored key", "&a 1e3: x\n", "1e3"},
-		{"an alias as a key", "a: &a1 1e3\n*a1 : v\n", "1e3"},
+		{"an anchored key", "&a 1e3: x\n", "1000.0"},
+		{"an alias as a key", "a: &a1 1e3\n*a1 : v\n", "1000.0"},
 		{"a bare small float", "0.00003: x\n", "3e-05"},
-		{"an anchored one", "&a 0.00003: x\n", "0.00003"},
+		{"an anchored one", "&a 0.00003: x\n", "3e-05"},
+		{"an alias to one", "a: &a1 0.00003\n*a1 : v\n", "3e-05"},
 	})
 }
 
