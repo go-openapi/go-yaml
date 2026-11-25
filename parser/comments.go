@@ -10,17 +10,17 @@ import (
 	"github.com/go-openapi/go-yaml/token"
 )
 
-// attachTrailingComment attaches a comment written after a ',' to the entry before the ',':
+// attachTrailingComment attaches a comment written after a ',' to last, the entry before the ',':
 // in "[ a, # note" the note stands on a's line and is about a.
 //
 // The scanner hangs such a comment on the ',' itself, so the loop reading the collection never sees it.
 // Left there, it would reach a sequence entry node that nothing renders, or the next entry of a mapping.
-func attachTrailingComment(ctx context, entryTk *group.TapeToken, values []ast.Node) error {
-	if entryTk == nil || len(values) == 0 || ctx.lineComment(entryTk) == nil {
+func attachTrailingComment(ctx context, entryTk *group.TapeToken, last ast.Node) error {
+	if entryTk == nil || last == nil || ctx.lineComment(entryTk) == nil {
 		return nil
 	}
 
-	target := values[len(values)-1]
+	target := last
 	if entry, ok := target.(*ast.MappingValueNode); ok && entry.Value != nil {
 		// On the entry itself it would render as a comment introducing the entry.
 		target = entry.Value
@@ -32,6 +32,15 @@ func attachTrailingComment(ctx context, entryTk *group.TapeToken, values []ast.N
 	comment.SetPathNode(ctx.path)
 
 	return target.SetComment(comment)
+}
+
+// lastOf returns the last of values, or nil when there is none.
+func lastOf[T ast.Node](values []T) ast.Node {
+	if len(values) == 0 {
+		return nil
+	}
+
+	return values[len(values)-1]
 }
 
 func (p *Parser) parseComment(ctx context) (ast.Node, error) {

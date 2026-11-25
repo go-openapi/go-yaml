@@ -4,6 +4,8 @@
 package parser_test
 
 import (
+	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/go-openapi/testify/v2/require"
@@ -73,4 +75,40 @@ func BenchmarkRender(b *testing.B) {
 			_ = file.String()
 		}
 	})
+}
+
+// BenchmarkParseWideFlow parses one flow mapping and one flow sequence of 1,000 and 10,000 entries.
+//
+// The time per entry stays flat as the collection grows. A cost that grows with the entries already read shows as a
+// 10,000-entry case more than ten times slower than the 1,000-entry one.
+func BenchmarkParseWideFlow(b *testing.B) {
+	for _, n := range []int{1000, 10000} {
+		var mapping, sequence strings.Builder
+		mapping.WriteString("{")
+		sequence.WriteString("[")
+		for i := range n {
+			fmt.Fprintf(&mapping, "k%d: v, ", i)
+			fmt.Fprintf(&sequence, "v%d, ", i)
+		}
+		mapping.WriteString("}")
+		sequence.WriteString("]")
+
+		for _, shape := range []struct {
+			name string
+			src  []byte
+		}{
+			{"mapping", []byte(mapping.String())},
+			{"sequence", []byte(sequence.String())},
+		} {
+			b.Run(fmt.Sprintf("%s-%d", shape.name, n), func(b *testing.B) {
+				b.SetBytes(int64(len(shape.src)))
+				b.ReportAllocs()
+				for b.Loop() {
+					if _, err := parser.ParseBytes(shape.src); err != nil {
+						b.Fatal(err)
+					}
+				}
+			})
+		}
+	}
 }

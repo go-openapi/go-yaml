@@ -64,11 +64,7 @@ func (p *Parser) parseFlowMap(ctx context) (*ast.MappingNode, error) {
 				return nil, yamlerrors.NewSyntax("expected mapping entry, but found ','", tk.RawToken())
 			}
 			entryTk = tk
-			entered := make([]ast.Node, 0, len(node.Values))
-			for _, value := range node.Values {
-				entered = append(entered, value)
-			}
-			if err := attachTrailingComment(ctx, entryTk, entered); err != nil {
+			if err := attachTrailingComment(ctx, entryTk, lastOf(node.Values)); err != nil {
 				return nil, err
 			}
 			ctx.goNext()
@@ -459,7 +455,7 @@ func (p *Parser) parseFlowSequence(ctx context) (*ast.SequenceNode, error) {
 				return nil, yamlerrors.NewSyntax("expected sequence element, but found ','", tk.RawToken())
 			}
 			entryTk = tk
-			if err := attachTrailingComment(ctx, entryTk, node.Values); err != nil {
+			if err := attachTrailingComment(ctx, entryTk, lastOf(node.Values)); err != nil {
 				return nil, err
 			}
 			ctx.goNext()
