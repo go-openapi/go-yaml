@@ -53,6 +53,42 @@ func FlatSequence(n int) string {
 	return b.String()
 }
 
+// FlatFlowMap builds a flow mapping of n entries on one line, the flow counterpart of FlatMap.
+func FlatFlowMap(n int) string {
+	var b strings.Builder
+	const entryBytes = 24 // the bytes one entry writes, rounded up
+	b.Grow(n*entryBytes + 2)
+
+	b.WriteByte('{')
+	for i := range n {
+		if i > 0 {
+			b.WriteString(", ")
+		}
+		fmt.Fprintf(&b, "key%06d: value%06d", i, i)
+	}
+	b.WriteString("}\n")
+
+	return b.String()
+}
+
+// FlatFlowSequence builds a flow sequence of n entries on one line, the flow counterpart of FlatSequence.
+func FlatFlowSequence(n int) string {
+	var b strings.Builder
+	const entryBytes = 13 // the bytes one entry writes, rounded up
+	b.Grow(n*entryBytes + 2)
+
+	b.WriteByte('[')
+	for i := range n {
+		if i > 0 {
+			b.WriteString(", ")
+		}
+		fmt.Fprintf(&b, "value%06d", i)
+	}
+	b.WriteString("]\n")
+
+	return b.String()
+}
+
 // NestedDoc builds an OpenAPI-shaped document with n sibling paths, each a
 // small nested mapping.
 func NestedDoc(n int) string {

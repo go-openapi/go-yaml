@@ -25,7 +25,8 @@ const (
 	scalingTolerance = 2.0
 )
 
-// TestParseScalesLinearlyInWidth checks that a flat mapping or sequence costs a constant amount per entry to parse.
+// TestParseScalesLinearlyInWidth checks that a flat mapping or sequence, block or flow, costs a constant amount per
+// entry to parse.
 //
 // A parse that handles sibling entries by recursion, or concatenates their slices, costs O(N^2) for N entries.
 // Small fixtures hide it, and a wide mapping such as a large OpenAPI paths: section exposes it.
@@ -34,8 +35,10 @@ const (
 // Allocation is deterministic, so the bound holds on a busy CI runner as on an idle workstation.
 func TestParseScalesLinearlyInWidth(t *testing.T) {
 	for name, generate := range map[string]func(int) string{
-		"mapping":  corpus.FlatMap,
-		"sequence": corpus.FlatSequence,
+		"mapping":       corpus.FlatMap,
+		"sequence":      corpus.FlatSequence,
+		"flow mapping":  corpus.FlatFlowMap,
+		"flow sequence": corpus.FlatFlowSequence,
 	} {
 		t.Run(name, func(t *testing.T) {
 			small := bytesPerEntry(t, generate(scalingSmall), scalingSmall)
