@@ -224,7 +224,8 @@ func (p *Parser) parseMapEntry(ctx context, keyTk *group.TapeToken) (*ast.Mappin
 	ctx.goNext()
 
 	valueTk := ctx.currentToken()
-	if keyTk.Line() == valueTk.Line() && valueTk.Type() == token.SequenceEntryType {
+	sameLine := valueTk != nil && keyTk.Line() == valueTk.Line()
+	if sameLine && valueTk.Type() == token.SequenceEntryType {
 		return nil, yamlerrors.NewSyntax("block sequence entries are not allowed in this context", valueTk.RawToken())
 	}
 	childCtx := p.valueContext(ctx, key)
@@ -235,7 +236,7 @@ func (p *Parser) parseMapEntry(ctx context, keyTk *group.TapeToken) (*ast.Mappin
 
 	// A value on the key's own line settles the entry, so nothing indented under it belongs to this key.
 	// The grouping gives this case no group of its own, so the condition is read off the tokens.
-	if valueTk != nil && keyTk.Line() == valueTk.Line() {
+	if sameLine {
 		if err := p.validateMapKeyValueNextToken(ctx, keyTk, ctx.currentToken()); err != nil {
 			return nil, err
 		}
@@ -402,10 +403,10 @@ func isMapToken(tk *group.TapeToken) bool {
 	return g.Type == group.TokenGroupMapKey || g.Type == group.TokenGroupMapKeyValue
 }
 
+// parseMapKeyValue parses an entry whose key and value the grouper holds in g, a [group.TokenGroupMapKeyValue].
+//
+// Both callers check the group type before calling.
 func (p *Parser) parseMapKeyValue(ctx context, g *group.TokenGroup, entryTk *group.TapeToken) (*ast.MappingValueNode, error) {
-	if g.Type != group.TokenGroupMapKeyValue {
-		return nil, yamlerrors.NewSyntax("unexpected map key-value pair", g.RawToken())
-	}
 	if g.First().Group == nil {
 		return nil, yamlerrors.NewSyntax("unexpected map key", g.RawToken())
 	}

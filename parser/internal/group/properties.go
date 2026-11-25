@@ -104,21 +104,18 @@ func (g *Grouper) joins(prop, next *TapeToken) bool {
 func (g *Grouper) property(at int, tk *TapeToken, out []*TapeToken) ([]*TapeToken, bool) {
 	switch g.prop {
 	case propNone:
-		switch tk.Type() {
-		case token.AnchorType, token.AliasType, token.TagType:
-			// Properties begin: record whether an explicit key's "?" was fed right before them.
-			g.propAfterKey = g.fedBefore == token.MappingKeyType
-		default:
-			// nothing begins
-		}
-
+		// Properties begin at an anchor, an alias or a tag: each case records whether an explicit key's "?" was fed
+		// right before them.
 		switch tk.Type() {
 		case token.AnchorType:
 			g.anchor, g.prop = tk, propSawAnchor
+			g.propAfterKey = g.fedBefore == token.MappingKeyType
 		case token.AliasType:
 			g.alias, g.prop = tk, propSawAlias
+			g.propAfterKey = g.fedBefore == token.MappingKeyType
 		case token.TagType:
 			g.tag, g.prop = tk, propSawTag
+			g.propAfterKey = g.fedBefore == token.MappingKeyType
 		default:
 			out = g.pass(at, tk, out)
 		}

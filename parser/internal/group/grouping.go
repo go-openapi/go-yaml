@@ -80,11 +80,12 @@ func init() {
 // Walking the chain to learn as much costs a call and a type test at every
 // stage; the table answers it once.
 func (g *Grouper) Feed(tk *TapeToken, out []*TapeToken) []*TapeToken {
-	g.fedBefore, g.fedLast = g.fedLast, tk.Type()
+	typ := tk.Type()
+	g.fedBefore, g.fedLast = g.fedLast, typ
 
 	// Brackets take the short way below, past stageProperties, so they are
 	// counted here, once each, for joins.
-	switch tk.Type() {
+	switch typ {
 	case token.MappingStartType, token.SequenceStartType:
 		g.propFlowDepth++
 	case token.MappingEndType, token.SequenceEndType:
@@ -95,7 +96,7 @@ func (g *Grouper) Feed(tk *TapeToken, out []*TapeToken) []*TapeToken {
 		// nothing to count
 	}
 
-	if g.settled() && !readsByAStage(tk.Type()) {
+	if g.settled() && !readsByAStage(typ) {
 		// stageLineComments notes every token it hands on, a comment closing a
 		// line attaching to whatever stood before it. Taking the short way
 		// still owes it that note.
@@ -184,14 +185,15 @@ func (g *Grouper) Finish(out []*TapeToken) []*TapeToken {
 
 // stageLineComments gives a comment closing a token's line to that token.
 func stageLineComments(g *Grouper, at int, tk *TapeToken, out []*TapeToken) []*TapeToken {
-	if tk.Type() == token.CommentType && g.LineComment != nil && g.LineComment.Line() == tk.Line() {
-		g.setLineComment(g.LineComment, tk.RawToken())
+	typ, raw := tk.Type(), tk.RawToken()
+	if typ == token.CommentType && g.LineComment != nil && g.LineComment.Line() == tk.Line() {
+		g.setLineComment(g.LineComment, raw)
 
 		return out
 	}
 
 	g.LineComment = tk
-	if raw := tk.RawToken(); tk.Type() == token.StringType && raw.EndOffset() == raw.Position.Offset() {
+	if typ == token.StringType && raw.EndOffset() == raw.Position.Offset() {
 		// An empty block scalar's content is a token of no width, standing at the start of the line after the
 		// header. A comment there opens its own line, and given to the content it moved up onto the header:
 		// "a: >" over "# c7" read as "a: > # c7", and a verbatim rendering kept it as part of the scalar.

@@ -1120,30 +1120,29 @@ func (w *keyWindow) hasNoKey(last int, tk *TapeToken, inFlow bool) bool {
 		// stand on a line of its own, so whatever precedes it is its key.
 		return false
 	}
-	if candidate.Type() == token.MappingKeyType && candidate.Group != nil &&
-		candidate.Group.Last().Type() == token.MappingValueType {
+	if candidate.Type() != token.MappingKeyType {
+		// A candidate other than a "?" is an implicit key and has to end on the ':'s own line,
+		// whether the grouping has already made something of it or not. Taking any
+		// group as the key skipped this test: "a:" over ": 2" read the first
+		// entry's own key group as the second entry's key and reported "unexpected
+		// scalar value", and "k: &a1 x" over ": 1" took the anchor group the same
+		// way and reported "mapping value is not allowed in this context", both
+		// naming the line above the empty key.
+		return keyEndLine(candidate) != tk.Line()
+	}
+	if candidate.Group != nil && candidate.Group.Last().Type() == token.MappingValueType {
 		// The "?" key has its ':' already, and nothing stands between that ':' and this one, so this ':' has no key:
 		// "? a" over ":" over ": v" is {a: null, null: v}, and "? a" over ": : v" is {a: {null: v}}. Taken as the
 		// explicit key again, the key was wrapped a second time and its first ':' read as a value.
 		return true
 	}
-	if candidate.Type() == token.MappingKeyType {
-		// An explicit key writes its "?" and its ':' on two lines by design --
-		// 8.1 -- so the line rule below does not apply to it. The column does:
-		// 8.2.2 stands the ':' at the '?'s own indent, and taking it wherever
-		// it stood accepted a ':' written to the left of its own '?'.
-		// " ? a" over ": b" read as {a: b}, which every oracle refuses.
-		return tk.Column() != candidate.Column()
-	}
 
-	// Everything else is an implicit key and has to end on the ':'s own line,
-	// whether the grouping has already made something of it or not. Taking any
-	// group as the key skipped this test: "a:" over ": 2" read the first
-	// entry's own key group as the second entry's key and reported "unexpected
-	// scalar value", and "k: &a1 x" over ": 1" took the anchor group the same
-	// way and reported "mapping value is not allowed in this context", both
-	// naming the line above the empty key.
-	return keyEndLine(candidate) != tk.Line()
+	// An explicit key writes its "?" and its ':' on two lines by design --
+	// 8.1 -- so the line rule above does not apply to it. The column does:
+	// 8.2.2 stands the ':' at the '?'s own indent, and taking it wherever
+	// it stood accepted a ':' written to the left of its own '?'.
+	// " ? a" over ": b" read as {a: b}, which every oracle refuses.
+	return tk.Column() != candidate.Column()
 }
 
 // groupMapKeyValues joins a map key with the value written on its line.
