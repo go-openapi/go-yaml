@@ -1,0 +1,6 @@
+base: &base
+  retries: 3
+  timeout: 10s
+service:
+  <<: *base
+  timeout: 30s
