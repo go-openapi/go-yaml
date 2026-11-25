@@ -84,33 +84,6 @@ func printableAbove7F(r rune) bool {
 	}
 }
 
-// isLeadingZeroDecimal reports whether value is a run of decimal digits written
-// with a leading zero, such as "088253".
-//
-// Under Schema11, "0" followed by digits is octal, so "088253" is no number and reads as a string, as PyYAML
-// reads it. Schema12 resolves [-+]?[0-9]+ and reads the integer 88253. The two also give "0777" different values:
-// 511 under Schema11 and in go.yaml.in/yaml/v3, 777 under Schema12.
-//
-// IsNeedQuoted quotes such a value, so a reader under either schema reads back the string written. It quotes 1.1's
-// boolean spellings, "y", "yes", "on", for the same reason.
-func isLeadingZeroDecimal(value string) bool {
-	digits := value
-	if digits != "" && (digits[0] == '+' || digits[0] == '-') {
-		digits = digits[1:]
-	}
-	if len(digits) < 2 || digits[0] != '0' {
-		return false
-	}
-
-	for i := range len(digits) {
-		if digits[i] < '0' || digits[i] > '9' {
-			return false
-		}
-	}
-
-	return true
-}
-
 // opensADocumentMarker reports whether value, written plain at the start of a
 // line, reads as a "---" or "..." marker: three dashes or three dots followed by
 // a blank or by nothing.
@@ -141,10 +114,10 @@ func IsNeedQuoted(value string) bool {
 	if _, exists := reservedEncKeywordTypes[value]; exists {
 		return true
 	}
+	// isNumber reads value under Schema12, which also quotes a decimal with a leading zero: Schema12 reads "088253"
+	// as the integer 88253, while under Schema11 a leading "0" opens an octal, so "088253" is a string.
+	// Quoted, it reads back as the string written under either schema.
 	if isNumber(value) {
-		return true
-	}
-	if isLeadingZeroDecimal(value) {
 		return true
 	}
 	if opensWithAnIndicator(value) {
