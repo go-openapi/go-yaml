@@ -709,32 +709,10 @@ func (p *Parser) parseMapValue(ctx context, key ast.MapKeyNode, colonTk *group.T
 		return p.handNull(ctx, ctx.insertNullToken(colonTk))
 	}
 
-	if next := ctx.nextNotCommentToken(); tk.Line() == keyLine && carriesProperty(tk) &&
-		next != nil && next.Column() <= keyCol && !isMapToken(next) &&
-		next.Type() != token.SequenceEntryType && next.Type() != token.DocumentHeaderType &&
-		next.Type() != token.DocumentEndType {
-		// key: &anchor
-		// next
-		// ^
-		//
-		// The property stands on the key's line, so its node is a block node and must be indented past the key.
-		// Level with the key, a token can only open the next entry, and this one opens nothing.
-		return nil, yamlerrors.NewSyntax("value is not indented past its key", next.RawToken())
-	}
-
-	if next := ctx.nextNotCommentToken(); tk.Line() == keyLine && tk.GroupType() == group.TokenGroupAnchorName &&
-		(next.Column() == keyCol && isMapToken(next) || next.Column() < keyCol) {
-		// key: &anchor
-		// next
-		//
-		//   key: &anchor
-		// next
-		//
-		// A comment may stand between the two. It belongs to the entry below,
-		// so the search for what follows the anchor skips it.
-		group := group.NewTokenGroup(group.TokenGroupAnchor, []*group.TapeToken{tk, ctx.createImplicitNullToken(tk)})
-
-		return ctx.passed(p.parseAnchor(ctx.withGroup(p, group), group))
+	if tk.Line() == keyLine {
+		if node, done, err := p.parsePropertyOnKeyLine(ctx, tk, keyCol); done {
+			return node, err
+		}
 	}
 
 	if err := refusePropertyBelowKey(tk, keyCol); err != nil {
@@ -768,6 +746,43 @@ func (p *Parser) parseMapValue(ctx context, key ast.MapKeyNode, colonTk *group.T
 		return nil, err
 	}
 	return value, nil
+}
+
+// parsePropertyOnKeyLine reads a property tk on its key's line against next, the first token past it that is not a
+// comment.
+//
+// It rejects a property when next stands at or left of the key and opens no entry, and reads an anchor on a null when
+// next opens the next entry or stands left of the key. done is false when neither applies.
+func (p *Parser) parsePropertyOnKeyLine(ctx context, tk *group.TapeToken, keyCol int) (node ast.Node, done bool, err error) {
+	next := ctx.nextNotCommentToken()
+	if nextType := next.Type(); carriesProperty(tk) &&
+		next != nil && next.Column() <= keyCol && !isMapToken(next) &&
+		nextType != token.SequenceEntryType && nextType != token.DocumentHeaderType && nextType != token.DocumentEndType {
+		// key: &anchor
+		// next
+		// ^
+		//
+		// The property stands on the key's line, so its node is a block node and must be indented past the key.
+		// Level with the key, a token can only open the next entry, and this one opens nothing.
+		return nil, true, yamlerrors.NewSyntax("value is not indented past its key", next.RawToken())
+	}
+
+	if tk.GroupType() == group.TokenGroupAnchorName && (next.Column() == keyCol && isMapToken(next) || next.Column() < keyCol) {
+		// key: &anchor
+		// next
+		//
+		//   key: &anchor
+		// next
+		//
+		// A comment may stand between the two. It belongs to the entry below,
+		// so the search for what follows the anchor skips it.
+		group := group.NewTokenGroup(group.TokenGroupAnchor, []*group.TapeToken{tk, ctx.createImplicitNullToken(tk)})
+		node, err := ctx.passed(p.parseAnchor(ctx.withGroup(p, group), group))
+
+		return node, true, err
+	}
+
+	return nil, false, nil
 }
 
 // refuseCollectionKey returns the error for a mapping key JSON cannot write, or nil when the key is a scalar.

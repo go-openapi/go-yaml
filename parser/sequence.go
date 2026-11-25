@@ -172,8 +172,8 @@ func (p *Parser) parseSequenceValue(ctx context, seqTk *group.TapeToken) (ast.No
 		return p.handNull(ctx, ctx.insertNullToken(seqTk))
 	}
 
-	if next := ctx.nextNotCommentToken(); tk.Line() == seqLine && tk.GroupType() == group.TokenGroupAnchorName &&
-		next.Column() <= seqCol {
+	if tk.Line() == seqLine && tk.GroupType() == group.TokenGroupAnchorName &&
+		ctx.nextNotCommentToken().Column() <= seqCol {
 		// An anchor ending the entry's line, followed by a token at or before the '-' column, as in "- &a" over "-".
 		// The anchored node must be further in than the '-', so the anchor names the empty node.
 		// A comment between the two belongs to what follows, so the check looks past it.
@@ -186,18 +186,19 @@ func (p *Parser) parseSequenceValue(ctx context, seqTk *group.TapeToken) (ast.No
 		return anchor, nil
 	}
 
-	if next := ctx.afterProperties(); tk.Line() == seqLine && carriesProperty(tk) && next != nil &&
-		next.Line() != seqLine && next.Column() <= seqCol && !isMapToken(next) &&
-		next.Type() != token.SequenceEntryType && next.Type() != token.DocumentHeaderType &&
-		next.Type() != token.DocumentEndType {
-		// - !!int
-		// 1
-		// ^
-		//
-		// The properties stand on the entry's line, so their node is a block node and must be indented past the '-'.
-		// At the column of the '-' a token can only open the next entry, as the anchor above does: "- &a" over "1" is
-		// refused there, and a tag took the "1" as its node.
-		return nil, yamlerrors.NewSyntax("value is not indented past its '-'", next.RawToken())
+	if tk.Line() == seqLine && carriesProperty(tk) {
+		next := ctx.afterProperties()
+		if nextType := next.Type(); next != nil && next.Line() != seqLine && next.Column() <= seqCol && !isMapToken(next) &&
+			nextType != token.SequenceEntryType && nextType != token.DocumentHeaderType && nextType != token.DocumentEndType {
+			// - !!int
+			// 1
+			// ^
+			//
+			// The properties stand on the entry's line, so their node is a block node and must be indented past the '-'.
+			// At the column of the '-' a token can only open the next entry, as the anchor above does: "- &a" over "1" is
+			// refused there, and a tag took the "1" as its node.
+			return nil, yamlerrors.NewSyntax("value is not indented past its '-'", next.RawToken())
+		}
 	}
 
 	if tk.Column() <= seqCol && tk.GroupType() == group.TokenGroupAnchorName {
