@@ -746,16 +746,16 @@ func (p *Parser) parseMapValue(ctx context, key ast.MapKeyNode, colonTk *group.T
 		return p.handNull(ctx, ctx.insertNullToken(colonTk))
 	}
 
-	if isScalarKeyToken(key.GetToken()) && tk.Column() == keyCol && tk.Line() != keyLine &&
-		tk.Type() != token.SequenceEntryType {
+	if tk.Column() == keyCol && tk.Line() != keyLine && tk.Type() != token.SequenceEntryType {
 		// a:
 		// b
 		// ^
 		//
 		// A value is indented further than its key, and a token level with the key can only open the next entry:
 		// another key (handled above) or the '-' of a block sequence, which by convention sits at its key's column.
-		// Only a plain or quoted key is measured this way.
-		// A key with a property or a '?' starts with that token, and its column does not mark where the entry begins.
+		//
+		// The key's token is where the entry begins: a property in front of the key stands on its line, and a '?' opens
+		// the entry. Measured only for a plain or quoted key, "!!str a:" over "b" and "? a" over ":" over "~" read.
 		return nil, yamlerrors.NewSyntax("value is not indented past its key", tk.RawToken())
 	}
 
