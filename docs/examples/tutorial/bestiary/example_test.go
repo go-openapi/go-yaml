@@ -378,3 +378,140 @@ func Example_longKey() {
 	// }
 }
 
+// Example_notADirective reads "&YAML 1.2" as an anchored number, in a document of its own.
+func Example_notADirective() {
+	answer.PrintDocuments("testdata/not-a-directive.yaml")
+
+	// Output:
+	// # document 1
+	// 1.2
+	// # document 2
+	// -1
+}
+
+// Example_reservedDirective ignores a directive whose name it does not know.
+func Example_reservedDirective() {
+	answer.Print("testdata/reserved-directive.yaml")
+
+	// Output:
+	// true
+}
+
+// Example_fourDashes reads "----" and the line below it as one plain scalar.
+func Example_fourDashes() {
+	answer.Print("testdata/four-dashes.yaml")
+
+	// Output:
+	// "---- &a1 !!float 55.12738563616954"
+}
+
+// Example_dashStar reads "---*" as the start of a key, not a document marker.
+func Example_dashStar() {
+	answer.Print("testdata/dash-star.yaml")
+
+	// Output:
+	// {
+	//   "---*{D": "False}"
+	// }
+}
+
+// Example_anchorSwallows reads an anchor named "a1!" and the text after it.
+func Example_anchorSwallows() {
+	answer.Print("testdata/anchor-swallows.yaml")
+
+	// Output:
+	// "<tag:yaml.org,2002:int> -23"
+}
+
+// Example_anchorTilde reads an anchor named "a1-~" on an empty node.
+func Example_anchorTilde() {
+	answer.Print("testdata/anchor-tilde.yaml")
+
+	// Output:
+	// null
+}
+
+// Example_localTrue reads "!true" as a local tag on an empty node.
+func Example_localTrue() {
+	answer.Print("testdata/local-true.yaml")
+
+	// Output:
+	// ""
+}
+
+// Example_truncated reads a tagged key whose value is an anchor and nothing else.
+func Example_truncated() {
+	answer.Print("testdata/truncated.yaml")
+
+	// Output:
+	// {
+	//   "base": null
+	// }
+}
+
+// Example_entryContinued reads a sequence entry whose plain scalar runs over a line starting with a dash.
+func Example_entryContinued() {
+	answer.Print("testdata/entry-continued.yaml")
+
+	// Output:
+	// [
+	//   "c2 - &a1 {}"
+	// ]
+}
+
+// Example_lostComma reads a flow sequence of one plain scalar holding a space.
+func Example_lostComma() {
+	answer.Print("testdata/lost-comma.yaml")
+
+	// Output:
+	// [
+	//   "FALSE ~"
+	// ]
+}
+
+// Example_commaKept reads the same flow sequence with its comma.
+func Example_commaKept() {
+	answer.Print("testdata/comma-kept.yaml")
+
+	// Output:
+	// [
+	//   false,
+	//   null
+	// ]
+}
+
+// Example_swappedDirective reads explicit flow keys under an unknown directive.
+func Example_swappedDirective() {
+	answer.Print("testdata/swapped-directive.yaml")
+
+	// Output:
+	// {
+	//   "": null,
+	//   "? a": null
+	// }
+}
+
+// Example_openBracket reads an anchored entry holding an explicit key, with a value ending on "[".
+func Example_openBracket() {
+	answer.Print("testdata/open-bracket.yaml")
+
+	// Output:
+	// [
+	//   {
+	//     "+0b11": "NULL["
+	//   }
+	// ]
+}
+
+// Example_plusKey reads a float key, then a second document holding "#".
+func Example_plusKey() {
+	answer.PrintDocuments("testdata/plus-key.yaml")
+
+	// Output:
+	// # document 1
+	// {
+	//   "212.83274740247398": null
+	// }
+	// # document 2
+	// "#"
+}

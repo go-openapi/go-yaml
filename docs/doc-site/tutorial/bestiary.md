@@ -336,3 +336,160 @@ Three documents, each one scalar. A document may start its content on the `---` 
 The root collection need not start in the first column. Its entries only have to line up with each other.
 {{% /expand %}}
 
+## From the generated corpus
+
+go-yaml tests itself against a corpus of generated documents, in
+[`internal/testintegration/yamlcorpus`](https://github.com/go-openapi/go-yaml/tree/master/internal/testintegration/yamlcorpus).
+The generator writes valid documents, then changes each one a little: it swaps two neighbours, substitutes or inserts
+an indicator, duplicates or deletes a byte, or cuts the document short. In the compact corpus, 16,239 of the 25,084
+changed documents are still legal YAML. The entries below are some of them: legal documents that no person would
+write.
+
+### A directive that lost its %
+
+`substitute an indicator` turned `%YAML 1.2` into this:
+
+{{< code file="tutorial/bestiary/testdata/not-a-directive.yaml" lang="yaml" nolink="true" >}}
+
+{{% expand title="What does it hold?" %}}
+{{< code file="tutorial/bestiary/example_test.go" lang="json" output="Example_notADirective" nolink="true" >}}
+
+Two documents. `&YAML` is an anchor named `YAML` on the number `1.2`, and that is the first document. A directive must
+come before a `---`, so the `---` here opens a second document, holding `-1`.
+{{% /expand %}}
+
+### A directive nobody knows
+
+{{< code file="tutorial/bestiary/testdata/reserved-directive.yaml" lang="yaml" nolink="true" >}}
+
+{{% expand title="What does it hold?" %}}
+{{< code file="tutorial/bestiary/example_test.go" lang="json" output="Example_reservedDirective" nolink="true" >}}
+
+`%YA]L` is a directive with a name YAML does not define. The specification reserves such names, and a parser ignores
+them, so the document reads as if the line were not there.
+{{% /expand %}}
+
+### Explicit keys under a swapped directive
+
+{{< code file="tutorial/bestiary/testdata/swapped-directive.yaml" lang="yaml" nolink="true" >}}
+
+{{% expand title="What does it hold?" %}}
+{{< code file="tutorial/bestiary/example_test.go" lang="json" output="Example_swappedDirective" nolink="true" >}}
+
+`swap neighbors` turned `%YAML` into `%AYML`, an unknown directive, so it is ignored. The first key is the empty string
+`''`, anchored, and its value `Null` is tagged `!!null`. The second key is the quoted `'? a'` under the non-specific
+tag `!`, with no value.
+{{% /expand %}}
+
+### Four dashes
+
+{{< code file="tutorial/bestiary/testdata/four-dashes.yaml" lang="yaml" nolink="true" >}}
+
+{{% expand title="What does it hold?" %}}
+{{< code file="tutorial/bestiary/example_test.go" lang="json" output="Example_fourDashes" nolink="true" >}}
+
+`duplicate a byte` added a fourth dash. `---` marks a document only when a space or a line break follows it, so
+`----` is text. The next line continues that plain scalar, and the anchor, the tag and the number join the text.
+{{% /expand %}}
+
+### A marker glued to a mapping
+
+{{< code file="tutorial/bestiary/testdata/dash-star.yaml" lang="yaml" nolink="true" >}}
+
+{{% expand title="What does it hold?" %}}
+{{< code file="tutorial/bestiary/example_test.go" lang="json" output="Example_dashStar" nolink="true" >}}
+
+`substitute a byte` replaced the line break after `---` with `*`. With no space after it, `---*{D` is a plain scalar,
+and the first `: ` makes it a key. Inside a plain scalar of a block mapping, `{` and `}` are ordinary characters, so
+the value is the string `False}`.
+{{% /expand %}}
+
+### An anchor that ate a tag
+
+{{< code file="tutorial/bestiary/testdata/anchor-swallows.yaml" lang="yaml" nolink="true" >}}
+
+{{% expand title="What does it hold?" %}}
+{{< code file="tutorial/bestiary/example_test.go" lang="json" output="Example_anchorSwallows" nolink="true" >}}
+
+`swap neighbors` moved the `!` before the space. An anchor name runs to the next space, so the anchor is `a1!`, and
+`<tag:yaml.org,2002:int> -23` is no longer a tag and a number: it is a string.
+{{% /expand %}}
+
+### An anchor and nothing
+
+{{< code file="tutorial/bestiary/testdata/anchor-tilde.yaml" lang="yaml" nolink="true" >}}
+
+{{% expand title="What does it hold?" %}}
+{{< code file="tutorial/bestiary/example_test.go" lang="json" output="Example_anchorTilde" nolink="true" >}}
+
+The `~` would be null, but it belongs to the anchor name: `a1-~`. The anchor stands on an empty node, which is null
+anyway.
+{{% /expand %}}
+
+### A tag that was a word
+
+{{< code file="tutorial/bestiary/testdata/local-true.yaml" lang="yaml" nolink="true" >}}
+
+{{% expand title="What does it hold?" %}}
+{{< code file="tutorial/bestiary/example_test.go" lang="json" output="Example_localTrue" nolink="true" >}}
+
+`insert an indicator` put a `!` before `true`. `!true` is now a local tag, and the node it stands on is empty. go-yaml
+has no type for the tag, so it keeps the node's text: the empty string, not a boolean and not null.
+{{% /expand %}}
+
+### Cut short
+
+{{< code file="tutorial/bestiary/testdata/truncated.yaml" lang="yaml" nolink="true" >}}
+
+{{% expand title="What does it hold?" %}}
+{{< code file="tutorial/bestiary/example_test.go" lang="json" output="Example_truncated" nolink="true" >}}
+
+`truncate` cut the document after the anchor. `!!str` tags the key `base`, and the value is an anchor on an empty
+node, which is null.
+{{% /expand %}}
+
+### A lost comma
+
+{{< code file="tutorial/bestiary/testdata/lost-comma.yaml" lang="yaml" nolink="true" >}}
+
+{{% expand title="What does it hold?" %}}
+{{< code file="tutorial/bestiary/example_test.go" lang="json" output="Example_lostComma" nolink="true" >}}
+
+`delete a byte` removed the comma. A plain scalar may hold spaces, so `FALSE ~` is one entry, and it reads as neither a
+boolean nor a null. With the comma, the same sequence holds two:
+
+{{< code file="tutorial/bestiary/example_test.go" lang="json" output="Example_commaKept" nolink="true" >}}
+{{% /expand %}}
+
+### An entry over three lines
+
+{{< code file="tutorial/bestiary/testdata/entry-continued.yaml" lang="yaml" nolink="true" >}}
+
+{{% expand title="What does it hold?" %}}
+{{< code file="tutorial/bestiary/example_test.go" lang="json" output="Example_entryContinued" nolink="true" >}}
+
+The `-` has nothing after it on its line, so its value starts at `c2`, after a blank line. The next line is indented
+further than the dash, so it continues the plain scalar: its `- ` opens no entry, and `&a1 {}` is text.
+{{% /expand %}}
+
+### A bracket left open
+
+{{< code file="tutorial/bestiary/testdata/open-bracket.yaml" lang="yaml" nolink="true" >}}
+
+{{% expand title="What does it hold?" %}}
+{{< code file="tutorial/bestiary/example_test.go" lang="json" output="Example_openBracket" nolink="true" >}}
+
+The entry's anchor stands on the mapping below it, past a comment. The mapping holds one explicit key, the quoted
+`"+0b11"`. `[` opens a flow sequence only at the start of a node, so `NULL[` is a plain scalar.
+{{% /expand %}}
+
+### A signed key
+
+{{< code file="tutorial/bestiary/testdata/plus-key.yaml" lang="yaml" nolink="true" >}}
+
+{{% expand title="What does it hold?" %}}
+{{< code file="tutorial/bestiary/example_test.go" lang="json" output="Example_plusKey" nolink="true" >}}
+
+Two documents: `...` ends the first. Its key is a float, and go-yaml names a number key in JSON by its value, so the
+`+` is gone. The second document is the string `#`: a quoted `#` starts no comment.
+{{% /expand %}}
