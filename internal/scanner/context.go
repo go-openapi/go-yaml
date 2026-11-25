@@ -186,6 +186,7 @@ func (c *Context) setLiteral(lastDelimColumn int32, opt string) {
 		isLiteral:       true,
 		opt:             opt,
 		indentIndicator: indent,
+		parentColumn:    lastDelimColumn,
 	}
 	if indent > 0 {
 		c.block.firstLineIndentColumn = lastDelimColumn + indent
@@ -200,6 +201,7 @@ func (c *Context) setFolded(lastDelimColumn int32, opt string) {
 	c.block = MultiLineState{
 		opt:             opt,
 		indentIndicator: indent,
+		parentColumn:    lastDelimColumn,
 	}
 	if indent > 0 {
 		c.block.firstLineIndentColumn = lastDelimColumn + indent

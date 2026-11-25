@@ -45,6 +45,20 @@ func (s *Scanner) scanMultiLine(ctx *Context, c rune) error {
 	case s.isFirstCharAtLine && c == '\t' && state.isIndentColumn(s.column):
 		return s.refuseMultiLine(ctx, "found a tab character where an indentation space is expected")
 
+	case s.isFirstCharAtLine && c == '\t' && state.firstLineIndentColumn == 0:
+		// Past the parent's column on the first content line, so the tab is the first character of the content and
+		// settles the content's column. Left to the character after it, the column fell one too far: "k: |" over " \tx"
+		// over " \ty" refused the second tab, and over "  y" read "\tx\ny\n" for "\tx\n y\n".
+		//
+		// The line's own column is still left to that character, as for any line opening with a tab: a folded scalar
+		// keeps the break around a line that opens with white space, and folds lines standing at one column.
+		if err := state.validateIndentAfterSpaceOnly(s.column); err != nil {
+			return s.refuseMultiLine(ctx, err.Error())
+		}
+		state.firstLineIndentColumn = s.column
+
+		fallthrough
+
 	case c == '\t' && !state.isIndentColumn(s.column):
 		// Past the indentation, so the tab is content and is kept as written.
 		ctx.addBufWithTab(c)
@@ -108,23 +122,35 @@ func (s *Scanner) closeMultiLineAtEOS(ctx *Context, state *MultiLineState, c run
 		// The checks readMultiLineContent and the tab arm of scanMultiLine make of a line's first character are made
 		// here too: ">-" over "   " over "#" read as "\n#" and ">-" over "   '" over a tab as "'\n\t", both refused
 		// once the source ends on a line break.
-		if s.isFirstCharAtLine && c == '\t' && state.isIndentColumn(s.column) {
+		tabOpensLine := s.isFirstCharAtLine && c == '\t'
+		if tabOpensLine && state.isIndentColumn(s.column) {
 			return s.refuseMultiLine(ctx, "found a tab character where an indentation space is expected")
 		}
 		if err := state.validateIndentAfterSpaceOnly(s.column); err != nil {
 			return s.refuseMultiLine(ctx, err.Error())
 		}
-		state.updateIndentColumn(s.column)
-		if err := state.validateIndentColumn(); err != nil {
-			return s.refuseMultiLine(ctx, err.Error())
+		switch {
+		case tabOpensLine:
+			// A line opening with a tab is spaced text, as in scanMultiLine: it settles the content's column if no
+			// line did, and its break stays. Folded, "k: >" over "  x" over "  \t" read "x \t\n" where the same
+			// document ending on a line break reads "x\n\t\n".
+			if state.firstLineIndentColumn == 0 {
+				state.firstLineIndentColumn = s.column
+			}
+		default:
+			state.updateIndentColumn(s.column)
+			if err := state.validateIndentColumn(); err != nil {
+				return s.refuseMultiLine(ctx, err.Error())
+			}
+			// The character is content, and in a folded scalar the break in front of its line folds as
+			// readMultiLineContent folds it. Skipped here, a last line of one character kept that break: "k: >-" over
+			// " a" over " b" read as "a\nb" where "a b" is the value, and " bc" folded because its first character came
+			// through readMultiLineContent.
+			state.updateNewLineInFolded(ctx, s.column)
 		}
-		// The character is content, and in a folded scalar the break in front of its line folds as readMultiLineContent
-		// folds it. Skipped here, a last line of one character kept that break: "k: >-" over " a" over " b" read as
-		// "a\nb" where "a b" is the value, and " bc" folded because its first character came through
-		// readMultiLineContent.
-		state.updateNewLineInFolded(ctx, s.column)
 		state.began(s.pos())
-		ctx.addBuf(c)
+		// A tab is content here: addBuf drops one that opens the buffer, and "|" over a lone tab read as "".
+		ctx.addBufWithTab(c)
 	}
 
 	if !isNewLineChar(c) {
@@ -497,7 +523,10 @@ type MultiLineState struct {
 	// indentIndicator holds the width the header stated, 0 when it stated none.
 	// firstLineIndentColumn cannot stand in for it: a header without a width leaves that 0, and the first content line
 	// then sets it.
-	indentIndicator                  int32
+	indentIndicator int32
+	// parentColumn is the column of whatever encloses the block, 0 at the root of a document, which nothing encloses.
+	// Content stands past it.
+	parentColumn                     int32
 	firstLineIndentColumn            int32
 	prevLineIndentColumn             int32
 	lineIndentColumn                 int32
@@ -588,9 +617,14 @@ func (s *MultiLineState) updateNewLineState() {
 	s.lineIndentColumn = 0
 }
 
+// isIndentColumn reports whether column, at the head of a line, stands inside the block's indentation.
+//
+// Before the first content line settles the indentation, the columns up to the parent's are. A root block scalar's
+// content may stand at column 1: s-l+block-node(-1, block-in) gives it n = -1, and s-indent(0) matches nothing, so "|"
+// over a tab and "x" reads "\tx\n". 6.1 keeps a tab out of the indentation, and this tab stands after it.
 func (s *MultiLineState) isIndentColumn(column int32) bool {
 	if s.firstLineIndentColumn == 0 {
-		return column == 1
+		return column <= s.parentColumn
 	}
 	return s.firstLineIndentColumn > column
 }
