@@ -4,7 +4,6 @@
 package conformance_test
 
 import (
-	"sort"
 	"strconv"
 	"testing"
 
@@ -15,11 +14,11 @@ import (
 	yamltestsuite "github.com/go-openapi/go-yaml/internal/yamltestsuite"
 )
 
-// jsonTokenLedger records every case whose tokens do not rebuild the JSON the
-// suite says, and carries the same two entries jsonLedger does.
+// jsonTokenLedger records the cases whose tokens rebuild JSON that departs from the fixture's on purpose, and carries
+// the same two settled entries jsonLedger does, for the reasons given there.
 //
-// It is a two-way ratchet, as jsonLedger is: a case that starts diverging fails
-// as a regression, and one that stops diverging fails too.
+// It is a two-way ratchet, as jsonLedger is: a case that starts departing fails as a regression, and one that stops
+// departing fails too.
 //
 // ⚠️ Both converters read one parse, so a third entry appearing here and not in
 // jsonLedger is the token converter's own -- which is the question this harness
@@ -79,17 +78,7 @@ func TestSuiteToJSONTokens(t *testing.T) {
 		})
 	}
 
-	t.Logf("YAML Test Suite through ToJSONTokens: %d cases scored, %d agree (%.1f%%), %d diverge; %d invalid documents refused",
-		scored, agreed, 100*float64(agreed)/float64(scored), len(diverged), refused)
-
-	names := make([]string, 0, len(diverged))
-	for name := range diverged {
-		names = append(names, name)
-	}
-	sort.Strings(names)
-	for _, name := range names {
-		t.Logf("  %s: %s", name, diverged[name])
-	}
+	reportJSON(t, "ToJSONTokens", scored, agreed, refused, diverged, jsonTokenLedger)
 }
 
 // jsonFromTokens converts src and writes the JSON its tokens stand for.

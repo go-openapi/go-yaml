@@ -15,16 +15,21 @@ import (
 	yamltestsuite "github.com/go-openapi/go-yaml/internal/yamltestsuite"
 )
 
-// jsonLedger records every case whose JSON does not match what the suite says.
+// jsonLedger records the cases whose JSON departs from the fixture's on purpose, with why.
 //
-// Both entries are the two the decoder harness at the repository root also
-// carries, for the same reasons, which is the useful part: two converters
-// sharing a parser and disagreeing with the suite in exactly the same two
-// places says the disagreement is the parser's reading and not a converter's.
+// Both are settled, not defects. The fixture's in.json ignores the tag, and ToJSON honours it:
 //
-// The ledger is a two-way ratchet, as the others in this package are. A case
-// that starts diverging fails as a regression, and one that stops diverging
-// fails too, so a fix is recorded by deleting its entry.
+//   - construct-binary: the fixture keeps the line breaks of a "!!binary" written as a literal block, and ToJSON writes
+//     the canonical base64 through [token.CanonicalBase64]. Both texts encode the same bytes.
+//   - spec-example-2-26-ordered-mappings: the fixture writes an "!!omap" as the array of one-entry objects the document
+//     spells it with, and ToJSON writes the ordered object the tag names. An "!!omap" holds no repeated key, so the
+//     object keeps everything the array held.
+//
+// The decoder answers both cases the same way (reasonBinaryCanonical and reasonOrderedMap in decode_test.go), and
+// jsonTokenLedger carries the same two for ToJSONTokens.
+//
+// The ledger is a two-way ratchet, as the others in this package are. A case that starts departing fails as a
+// regression, and one that stops departing fails too, so a change of answer is recorded by editing its entry.
 var jsonLedger = map[string]string{
 	"construct-binary": "!!binary resolves to the bytes it encodes, where the fixture records the text",
 
@@ -88,7 +93,7 @@ func TestSuiteToJSON(t *testing.T) {
 		})
 	}
 
-	reportJSON(t, scored, agreed, refused, diverged)
+	reportJSON(t, "ToJSON", scored, agreed, refused, diverged, jsonLedger)
 }
 
 // disagreement says how the JSON differs from the fixture's, or "" where it
@@ -134,11 +139,20 @@ func reencode(text []byte) (string, error) {
 	return string(out), err
 }
 
-func reportJSON(t *testing.T, scored, agreed, refused int, diverged map[string]string) {
+// reportJSON logs a JSON harness's score: the cases that agree with the fixture, the ones ledger records as answered
+// on purpose, and any other departure, which the harness has already failed on.
+func reportJSON(t *testing.T, harness string, scored, agreed, refused int, diverged, ledger map[string]string) {
 	t.Helper()
 
-	t.Logf("YAML Test Suite through ToJSON: %d cases scored, %d agree (%.1f%%), %d diverge; %d invalid documents refused",
-		scored, agreed, 100*float64(agreed)/float64(scored), len(diverged), refused)
+	var settled int
+	for name := range diverged {
+		if _, ok := ledger[name]; ok {
+			settled++
+		}
+	}
+	t.Logf("YAML Test Suite through %s: %d cases scored, %d agree, %d answered on purpose (a tag the fixture ignores), "+
+		"%d unexplained; %d invalid documents refused",
+		harness, scored, agreed, settled, len(diverged)-settled, refused)
 
 	names := make([]string, 0, len(diverged))
 	for name := range diverged {
