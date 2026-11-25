@@ -4,7 +4,7 @@ weight: 30
 description: "Serialization experts: anchors, block scalars, documents, tags and explicit keys."
 ---
 
-The features on this page take YAML past JSON: a value written once and named twice, text kept as it was typed,
+The features on this page take YAML past JSON: a value written once and reused later, text kept as it was typed,
 several documents in one file, and types written out instead of guessed.
 
 ## Anchors and aliases
@@ -70,8 +70,8 @@ types `tag:yaml.org,2002:str` and `tag:yaml.org,2002:int`. With a tag, `42` is a
 
 {{< code file="tutorial/intermediate/example_test.go" lang="json" output="Example_explicitKey" nolink="true" >}}
 
-A key written after `? `, with its value after `: ` on the next line, is an *explicit* key. Write one when a key runs
-over several lines or past 1,024 characters, which an implicit key cannot.
+A key written after `? `, with its value after `: ` on the next line, is an *explicit* key.
+You should use explicit keys when a key runs over several lines or past 1,024 characters.
 
 {{< code file="tutorial/intermediate/testdata/complex-key.yaml" lang="yaml" nolink="true" >}}
 

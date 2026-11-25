@@ -4,8 +4,8 @@ weight: 20
 description: "JSON for humans: mappings, sequences, scalars and comments, each beside the JSON go-yaml reads from it."
 ---
 
-Basic YAML writes the data JSON writes, with less punctuation: indentation instead of braces, line breaks instead of
-commas, and quotes only where a string needs them. Each snippet below sits beside the JSON go-yaml reads from it.
+Basic YAML writes data like JSON, with less punctuation: indentation instead of braces, line breaks instead of
+commas, and quotes only where a string needs them.
 
 ## Mappings
 
@@ -48,7 +48,7 @@ A value written without quotes is a *plain scalar*, and YAML reads its type from
 - `null`, `~` and an empty value are null.
 - Anything else is a string.
 
-Quote a string when its text would read as something else: `"42"`, `"true"`, `"null"`. A double-quoted string takes
+You only need to quote a string when its text would read as something else: `"42"`, `"true"`, `"null"`. A double-quoted string takes
 escapes such as `\n`. A single-quoted string takes none, and writes a quote as two: `'it''s'`.
 
 These rules are YAML 1.2's. YAML 1.1 reads more words as booleans, among them `yes`, `no`, `on` and `off`; see
