@@ -21,8 +21,8 @@ jobs:
       test-matrix: '{"os":["ubuntu-latest"],"go": ["oldstable","stable"]}'
     secrets: inherit
 
-  # The ledgers behind the yamlprobe build tag hold the scanner's internal state to a measured baseline. The shared
-  # test workflow passes no build tags, so they run here.
+  # The tests behind the yamlprobe build tag read the library's own counters: the ledgers, the grouper's work guard,
+  # the comment census and the poison checks. The shared test workflow passes no build tags, so they run here.
   ledgers:
     runs-on: ubuntu-latest
     steps:
@@ -36,5 +36,5 @@ jobs:
           cache: true
           cache-dependency-path: '**/go.sum'
       -
-        name: Run the yamlprobe ledgers
-        run: go test -count=1 -tags yamlprobe ./internal/ledgers/...
+        name: Run the yamlprobe tests
+        run: go test -count=1 -tags yamlprobe ./...
