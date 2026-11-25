@@ -608,33 +608,12 @@ func withFraction(digits string) string {
 // binaryToken used to write a sequence of the byte values: "!!binary aGVsbG8="
 // gave [104,101,108,108,111]. No other JSON writer produces that.
 func binaryToken(text string) JSONToken {
-	canonical := withoutBase64Breaks(text)
+	canonical := token.CanonicalBase64(text)
 	if _, err := base64.StdEncoding.DecodeString(canonical); err != nil {
 		return JSONToken{Kind: JSONString, Value: text}
 	}
 
 	return JSONToken{Kind: JSONString, Value: canonical}
-}
-
-// withoutBase64Breaks returns text without the line breaks and spacing that
-// RFC 2045 permits inside an encoded stream. The result is base64's canonical
-// form.
-func withoutBase64Breaks(text string) string {
-	if !strings.ContainsAny(text, " \t\r\n") {
-		return text
-	}
-
-	var b strings.Builder
-	b.Grow(len(text))
-	for i := range len(text) {
-		switch c := text[i]; c {
-		case ' ', '\t', '\r', '\n':
-		default:
-			b.WriteByte(c)
-		}
-	}
-
-	return b.String()
 }
 
 // appendJSONString writes s as a JSON string. A string that needs an escape goes
