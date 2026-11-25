@@ -329,12 +329,12 @@ func (s *Scanner) endMultiLine(ctx *Context, fell bool) error {
 	return nil
 }
 
-func (s *Scanner) scanMultiLineHeader(ctx *Context) (bool, error) {
-	if ctx.existsBuffer() || s.inAnchorName(ctx.currentChar()) {
+func (s *Scanner) scanMultiLineHeader(ctx *Context, header rune) (bool, error) {
+	if ctx.existsBuffer() || s.inAnchorName(header) {
 		return false, nil
 	}
 
-	if err := s.scanMultiLineHeaderOption(ctx); err != nil {
+	if err := s.scanMultiLineHeaderOption(ctx, header); err != nil {
 		return false, err
 	}
 	s.progressLine(ctx)
@@ -352,8 +352,7 @@ func (s *Scanner) scanMultiLineHeader(ctx *Context) (bool, error) {
 // What follows the "|" or ">" is the indicators, then optionally a comment.
 // [MultiLineState] documents the indicators.
 // The line holds nothing else, the content starting on the line below, so this reads to the break and stops there.
-func (s *Scanner) scanMultiLineHeaderOption(ctx *Context) error {
-	header := ctx.currentChar()
+func (s *Scanner) scanMultiLineHeaderOption(ctx *Context, header rune) error {
 	// headerIndex records the position of the indicator in the origin buffer, which also holds the indentation
 	// written before it.
 	// The comment's position counts from the indicator, so the two must be told apart.

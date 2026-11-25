@@ -404,7 +404,7 @@ func (s *Scanner) scan(ctx *Context) error {
 				continue
 			}
 		case '|', '>':
-			scanned, err := s.scanMultiLineHeader(ctx)
+			scanned, err := s.scanMultiLineHeader(ctx, c)
 			if err != nil {
 				return err
 			}
@@ -465,11 +465,16 @@ func (s *Scanner) scan(ctx *Context) error {
 			if err := s.scanCommentIndicator(ctx); err != nil {
 				return err
 			}
-		case '\'', '"':
-			// TODO(perf): why is this folded here just to leave scanQuote recheck?
-			// Split both cases in the switch and inline scanQuote here, with the
-			// addTokenValue / clear moved to the called methods.
-			scanned, err := s.scanQuote(ctx, c)
+		case '\'':
+			scanned, err := s.scanSingleQuoted(ctx)
+			if err != nil {
+				return err
+			}
+			if scanned {
+				continue
+			}
+		case '"':
+			scanned, err := s.scanDoubleQuoted(ctx)
 			if err != nil {
 				return err
 			}

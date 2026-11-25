@@ -11,30 +11,41 @@ import (
 	"github.com/go-openapi/go-yaml/token"
 )
 
-// TODO(perf): should be folded in the main loop as we are making a redundant byte compare here.
-func (s *Scanner) scanQuote(ctx *Context, ch rune) (bool, error) {
-	if ctx.existsBuffer() || s.inAnchorName(ch) {
+// scanSingleQuoted scans a single-quoted scalar from the opening quote, unless the quote belongs to a plain scalar or
+// an anchor name.
+func (s *Scanner) scanSingleQuoted(ctx *Context) (bool, error) {
+	if ctx.existsBuffer() || s.inAnchorName('\'') {
 		return false, nil
 	}
-
-	if ch == '\'' {
-		tk, err := s.scanSingleQuote(ctx)
-		if err != nil {
-			return false, err
-		}
-		ctx.addTokenValue(tk)
-	} else {
-		tk, err := s.scanDoubleQuote(ctx)
-		if err != nil {
-			return false, err
-		}
-		ctx.addTokenValue(tk)
+	tk, err := s.scanSingleQuote(ctx)
+	if err != nil {
+		return false, err
 	}
-
-	ctx.clear()
-	s.leaveQuotedLines(ctx)
+	s.endQuoted(ctx, tk)
 
 	return true, nil
+}
+
+// scanDoubleQuoted scans a double-quoted scalar from the opening quote, unless the quote belongs to a plain scalar or
+// an anchor name.
+func (s *Scanner) scanDoubleQuoted(ctx *Context) (bool, error) {
+	if ctx.existsBuffer() || s.inAnchorName('"') {
+		return false, nil
+	}
+	tk, err := s.scanDoubleQuote(ctx)
+	if err != nil {
+		return false, err
+	}
+	s.endQuoted(ctx, tk)
+
+	return true, nil
+}
+
+// endQuoted hands over a quoted scalar's token and settles the line state after it.
+func (s *Scanner) endQuoted(ctx *Context, tk token.Token) {
+	ctx.addTokenValue(tk)
+	ctx.clear()
+	s.leaveQuotedLines(ctx)
 }
 
 // leaveQuotedLines settles the line state after a quoted scalar that ran over more than one line.
