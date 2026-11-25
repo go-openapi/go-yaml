@@ -8,36 +8,40 @@ description: |
 
 ## The rule
 
-**A written tag is honoured at any version. Only resolution by scalar shape is
-version-gated.**
+**A written tag is honoured at any version. Only the reading of a plain scalar by its shape depends on the version.**
 
-YAML 1.2 did not un-define the tags 1.1 named — it gave an open tag namespace
-with a set already in it. It dropped the automatic reading of a plain scalar by
-the shape of its text. So `!!bool yes` is a bool everywhere, and plain `yes` is a
-bool only under 1.1.
+YAML 1.2 kept the tags that YAML 1.1 named, such as `!!timestamp` and `!!merge`. It removed the rule that reads a
+plain scalar as one of those types because of how its text looks. So `!!bool yes` is `true` under both versions, and a
+plain `yes` is `true` only under 1.1.
 
 ## Measured
 
-| written | 1.2 (the default) | 1.1 |
-|---|---|---|
-| `yes` | `"yes"`, a string | `true` |
-| `!!bool yes` | `true` | `true` |
-| `0777` | `777` | `511`, read as octal |
-| `<<: *d` | not merged, unless `parser.WithMergeKeys` | merged |
-| `!!merge <<: *d` | merged | merged |
-| `2001-12-14` | `"2001-12-14"` | `"2001-12-14"` |
-| `!!timestamp 2001-12-14` | `time.Time` | `time.Time` |
+Each value below is decoded into an `any`, once under YAML 1.2, the default, and once under YAML 1.1:
 
-{{% notice style="note" title="A plain date is never a timestamp" %}}
-1.1 lists the timestamp among the types every reader resolves, and this library
-does not resolve it — under either version. Write `!!timestamp` to get a
-`time.Time`. That gap is known and recorded; the rest of the 1.1 schema, its
-numbers and its booleans, does resolve.
-{{% /notice %}}
+{{< code file="decoding/versions/example_test.go" lang="go" region="table" >}}
+
+{{< code file="decoding/versions/example_test.go" lang="text" output="Example" >}}
+
+- YAML 1.1 reads a leading `0` as octal, digits split by `:` as base 60, and skips `_` in a number. It has no `0o`
+  prefix, and it wants a dot in a float, so `1e3` is a string.
+- YAML 1.1 reads a plain date as a timestamp. YAML 1.2 has no timestamp type in its core schema, so the date is a
+  string, unless a `!!timestamp` tag asks for one.
+- A tag decides the type under both versions: `!!str 0777` is a string.
+
+### Merge keys
+
+The merge key `<<` is a YAML 1.1 type. Under YAML 1.2 it is an ordinary key, unless the key carries the `!!merge` tag:
+
+{{< code file="decoding/versions/example_test.go" lang="go" region="merge" >}}
+
+{{< code file="decoding/versions/example_test.go" lang="text" output="Example_mergeKey" >}}
+
+`parser.WithMergeKeys` merges a plain `<<` under every version. See
+[Reading a merge key](../anchors-and-aliases/#reading-a-merge-key).
 
 ## Choosing the version
 
-Per document, from its own directive:
+A document chooses its own version with a `%YAML` directive:
 
 ```yaml
 %YAML 1.1
@@ -45,29 +49,38 @@ Per document, from its own directive:
 a: yes    # true
 ```
 
-Or for the decode, as a fallback where the document declares nothing:
+`parser.WithYAMLVersion` sets the version for a document that declares none. `parser.YAML10`, `parser.YAML11` and
+`parser.YAML12` are the three values. A codec caller passes the option through `codec.WithParserOptions`:
 
 ```go
 codec.Unmarshal(src, &v,
 	codec.WithParserOptions(parser.WithYAMLVersion(parser.YAML11)))
 ```
 
-`parser.YAML10`, `YAML11` and `YAML12` are the three. The directive in the
-document wins over the option.
+The directive wins over the option. Here the option asks for YAML 1.2, and the document reads as 1.1:
 
-{{% notice style="warning" %}}
-The version is a `parser.Option`, so a codec caller reaches it through
-`WithParserOptions` — two hops for something a document declares about itself.
-{{% /notice %}}
+{{< code file="decoding/versions/example_test.go" lang="go" region="directive" >}}
+
+{{< code file="decoding/versions/example_test.go" lang="text" output="Example_directive" >}}
+
+A version go-yaml does not know, such as `%YAML 1.9`, is an error: `unknown YAML version "1.9"`.
 
 ## When a tag and the value disagree
 
-`!!int abc` is an assertion that does not hold, and by default it is an error
-naming both the text and the tag. `parser.WithLaxTags` reads the scalar as the
-text it was written with instead of refusing the document.
+`!!int abc` asserts something that does not hold. By default it is an error that names the text and the tag.
+`parser.WithLaxTags` reads the scalar as the text it was written with:
 
-## Tags this library does not act on
+{{< code file="decoding/versions/example_test.go" lang="go" region="lax" >}}
 
-`!!pair` and `!!value` are carried and inert. That is deliberate and it is the
-reversible choice: implementing a tag later changes a value, refusing one changes
-whether a document reads at all.
+{{< code file="decoding/versions/example_test.go" lang="text" output="Example_laxTags" >}}
+
+`!!bool`, `!!float`, `!!null`, `!!timestamp` and `!!binary` are checked the same way. A collection tag must match its
+node: `!!seq` and `!!omap` want a sequence, `!!map` and `!!set` a mapping.
+
+## Tags go-yaml does not act on
+
+`!!pairs`, `!!value` and `!!yaml` are read and ignored: the node decodes as if it had no tag. go-yaml does not check
+that a `!!pairs` node is a sequence of one-pair mappings.
+
+A tag go-yaml has no type for, such as a local tag `!point` or a tag named through `%TAG`, also leaves the node as
+written. See [Tags beyond the standard ones](../../../tutorial/advanced/#tags-beyond-the-standard-ones).
