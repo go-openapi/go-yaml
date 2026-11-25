@@ -186,6 +186,20 @@ func (p *Parser) parseSequenceValue(ctx context, seqTk *group.TapeToken) (ast.No
 		return anchor, nil
 	}
 
+	if next := ctx.afterProperties(); tk.Line() == seqLine && carriesProperty(tk) && next != nil &&
+		next.Line() != seqLine && next.Column() <= seqCol && !isMapToken(next) &&
+		next.Type() != token.SequenceEntryType && next.Type() != token.DocumentHeaderType &&
+		next.Type() != token.DocumentEndType {
+		// - !!int
+		// 1
+		// ^
+		//
+		// The properties stand on the entry's line, so their node is a block node and must be indented past the '-'.
+		// At the column of the '-' a token can only open the next entry, as the anchor above does: "- &a" over "1" is
+		// refused there, and a tag took the "1" as its node.
+		return nil, yamlerrors.NewSyntax("value is not indented past its '-'", next.RawToken())
+	}
+
 	if tk.Column() <= seqCol && tk.GroupType() == group.TokenGroupAnchorName {
 		// An anchor at or before the column of the '-' is outside the entry, which has no value.
 		return nil, yamlerrors.NewSyntax("anchor is not allowed in this sequence context", tk.RawToken())

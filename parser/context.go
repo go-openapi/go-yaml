@@ -165,6 +165,17 @@ func (c context) nextNotCommentToken() *group.TapeToken {
 	return nil
 }
 
+// afterProperties returns the first token past the run of properties starting at the current token, comments skipped,
+// or nil at the end.
+func (c context) afterProperties() *group.TapeToken {
+	for i := c.tokenRef.idx; ; i++ {
+		tk := c.tokenRef.at(i)
+		if tk == nil || (tk.Type() != token.CommentType && !carriesProperty(tk)) {
+			return tk
+		}
+	}
+}
+
 func (c context) isTokenNotFound() bool {
 	return c.currentToken() == nil
 }

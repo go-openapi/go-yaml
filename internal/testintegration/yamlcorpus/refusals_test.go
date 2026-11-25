@@ -286,5 +286,6 @@ var parserComplaints = []string{
 	"value cannot be placed after document separator",
 	"value is not allowed in this context",
 	"value is not allowed in this context. map key-value is pre-defined",
+	"value is not indented past its _",
 	"value is not indented past its key",
 }
