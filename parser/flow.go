@@ -59,6 +59,10 @@ func (p *Parser) parseFlowMap(ctx context) (*ast.MappingNode, error) {
 
 		var entryTk *group.TapeToken
 		if tk.Type() == token.CollectEntryType {
+			// ns-s-flow-map-entries opens on an entry, so a ',' cannot stand first: "{,}" is not a mapping.
+			if isFirst {
+				return nil, yamlerrors.NewSyntax("expected mapping entry, but found ','", tk.RawToken())
+			}
 			entryTk = tk
 			entered := make([]ast.Node, 0, len(node.Values))
 			for _, value := range node.Values {

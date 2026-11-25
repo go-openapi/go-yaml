@@ -242,6 +242,7 @@ var parserComplaints = []string{
 	"could not find flow mapping end token _",
 	"could not find map value",
 	"could not find merge key",
+	"expected mapping entry, but found _",
 	"expected sequence element, but found _",
 	"explicit keys are not allowed after a tag on the same line",
 	"explicit keys are not allowed after anchor on the same line",
