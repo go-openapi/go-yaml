@@ -11,7 +11,7 @@ heap it holds at once, and not only the total it allocates. A decode into Go
 values builds the value as the parser reads the document, and holds little
 besides the result.
 
-Every figure below was measured on 2026-11-24, on an AMD Ryzen 7 5800X, with
+Every figure below was measured on 2026-11-25, on an AMD Ryzen 7 5800X, with
 go1.27.3, go.yaml.in/yaml/v3 v3.0.6 and github.com/goccy/go-yaml v1.19.2. The
 workloads are in [`internal/analysis/workloads`](https://github.com/go-openapi/go-yaml/tree/master/internal/analysis/workloads).
 
@@ -30,26 +30,28 @@ unmarshals each workload into an `any` with each library. Times are the median o
 
 | workload | source | go-openapi | v3 | goccy |
 |---|---:|---:|---:|---:|
-| azure_swagger | 0.52 MiB | 24 ms | 33 ms | 54 ms |
-| canada_geometry | 0.38 MiB | 18 ms | 46 ms | 40 ms |
-| citm_catalog | 0.56 MiB | 55 ms | 57 ms | 95 ms |
-| commented_swagger | 0.57 MiB | 25 ms | 35 ms | 50 ms |
-| golang_source | 3.61 MiB | 156 ms | 190 ms | 290 ms |
-| twitter_status | 0.48 MiB | 25 ms | 34 ms | 56 ms |
+| azure_swagger | 0.52 MiB | 28 ms | 34 ms | 55 ms |
+| canada_geometry | 0.38 MiB | 19 ms | 45 ms | 43 ms |
+| citm_catalog | 0.56 MiB | 63 ms | 61 ms | 115 ms |
+| commented_swagger | 0.57 MiB | 27 ms | 38 ms | 57 ms |
+| golang_source | 3.61 MiB | 158 ms | 190 ms | 304 ms |
+| twitter_status | 0.48 MiB | 27 ms | 34 ms | 50 ms |
 
-citm_catalog is the least favourable workload against v3: 55 ms against 57 ms,
-with runs spreading by up to 8% on either side.
+citm_catalog is the least favourable workload against v3: 63 ms against 61 ms,
+which is within the spread of the runs. These runs use all 16 threads of the
+machine. Pinned to two, v3 passes us on citm_catalog and twitter_status; the
+benchmarks README has both tables.
 
 The bytes each decode allocates, from the same benchmark:
 
 | workload | go-openapi | v3 | goccy |
 |---|---:|---:|---:|
-| azure_swagger | 2.9 MiB | 9.6 MiB | 36.8 MiB |
+| azure_swagger | 2.9 MiB | 9.6 MiB | 37.1 MiB |
 | canada_geometry | 1.1 MiB | 10.0 MiB | 27.1 MiB |
-| citm_catalog | 5.7 MiB | 19.5 MiB | 81.9 MiB |
-| commented_swagger | 2.9 MiB | 10.3 MiB | 37.8 MiB |
-| golang_source | 9.0 MiB | 56.2 MiB | 249.4 MiB |
-| twitter_status | 2.6 MiB | 9.0 MiB | 35.6 MiB |
+| citm_catalog | 5.7 MiB | 19.5 MiB | 82.3 MiB |
+| commented_swagger | 2.9 MiB | 10.3 MiB | 38.0 MiB |
+| golang_source | 9.0 MiB | 56.2 MiB | 251.7 MiB |
+| twitter_status | 2.6 MiB | 9.0 MiB | 36.0 MiB |
 
 The peak live heap during the same decode, from `TestWorkloadPeaks` in
 [`internal/analysis`](https://github.com/go-openapi/go-yaml/tree/master/internal/analysis),
@@ -57,12 +59,12 @@ beside the size of the value the decode returns:
 
 | workload | value | go-openapi | v3 | goccy |
 |---|---:|---:|---:|---:|
-| azure_swagger | 2.52 MiB | 2.37 MiB | 6.16 MiB | 17.08 MiB |
-| canada_geometry | 0.68 MiB | 0.56 MiB | 4.56 MiB | 12.71 MiB |
-| citm_catalog | 5.08 MiB | 4.76 MiB | 15.04 MiB | 35.78 MiB |
-| commented_swagger | 2.56 MiB | 2.38 MiB | 6.52 MiB | 17.53 MiB |
-| golang_source | 8.23 MiB | 8.47 MiB | 38.04 MiB | 116.79 MiB |
-| twitter_status | 1.78 MiB | 1.77 MiB | 5.72 MiB | 14.98 MiB |
+| azure_swagger | 2.52 MiB | 2.40 MiB | 6.38 MiB | 17.13 MiB |
+| canada_geometry | 0.68 MiB | 0.56 MiB | 4.53 MiB | 12.54 MiB |
+| citm_catalog | 5.08 MiB | 4.90 MiB | 14.70 MiB | 38.04 MiB |
+| commented_swagger | 2.56 MiB | 2.48 MiB | 7.17 MiB | 18.16 MiB |
+| golang_source | 8.23 MiB | 8.64 MiB | 38.56 MiB | 117.12 MiB |
+| twitter_status | 1.78 MiB | 1.84 MiB | 6.08 MiB | 14.85 MiB |
 
 Our peak can read below the value's size because the probe samples the live heap
 after each garbage collection and can miss the highest point.
@@ -75,12 +77,12 @@ peak.
 
 | | go-openapi | v3 | goccy |
 |---|---:|---:|---:|
-| time | 73 ms | 63 ms | 128 ms |
-| allocations | 92.8k | 335k | 1.38M |
-| bytes allocated | 3.0 MiB | 15.1 MiB | 82.7 MiB |
-| peak | 0.68 MiB | 11.3 MiB | 35.4 MiB |
+| time | 80 ms | 66 ms | 135 ms |
+| allocations | 92.8k | 335k | 1.40M |
+| bytes allocated | 3.0 MiB | 15.1 MiB | 85.5 MiB |
+| peak | 0.69 MiB | 11.3 MiB | 35.3 MiB |
 
-Into Go types, v3 takes 14% less time on this workload. It is the only workload
+Into Go types, v3 takes 18% less time on this workload. It is the only workload
 the benchmarks decode into a struct.
 
 ## What sends a decode to the tree
@@ -133,14 +135,17 @@ key.
 holds the same comparison for `ToJSON`, `FromJSON` and encoding, with the
 command that reproduces every figure on this page. In short:
 
-- `ToJSON` takes 37% to 72% of the time of v3's route (`Unmarshal`, then
+- `ToJSON` takes 32% to 72% of the time of v3's route (`Unmarshal`, then
   `json.Marshal`), and allocates 95 to 3,263 times per document, where v3's
   route allocates 175k to 1.40M times.
-- `FromJSON` is slower than v3's route (`json.Unmarshal`, then `Marshal`) on
-  three of the five workloads v3 can convert, up to 1.48x on golang_source, and
-  allocates under a fifth of its bytes.
-- `Marshal` takes 71% to 89% of v3's time, and allocates about a quarter of
-  v3's bytes.
+- `FromJSON` reads the JSON with the lexer of
+  [go-openapi/core/json](https://github.com/go-openapi/core). It takes 22% to
+  34% of the time of v3's route (`json.Unmarshal`, then `Marshal`), and
+  allocates 3% to 6% of its bytes.
+- `Marshal` writes the document as it walks the value. It takes 42% to 55% of
+  v3's time on an `any` and 55% on citm_catalog's Go types, allocates 7% to 9%
+  of v3's bytes, and peaks at a twelfth to a twenty-eighth of v3's live heap:
+  6.1 MiB against 117 MiB on golang_source.
 
 Parsing alone has benchmarks in `internal/analysis`, `BenchmarkWorkloadParse`
 and `BenchmarkWorkloadParseWithComments`, with no comparison yet.
