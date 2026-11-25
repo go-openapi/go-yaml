@@ -882,7 +882,8 @@ func blankOrComment(line string) bool {
 	return trimmed == "" || strings.HasPrefix(trimmed, "#")
 }
 
-func newLineCount(src []byte) int32 { // TODO: challenge with swar
+// newLineCount counts the line breaks in src, a "\r\n" pair counting as one.
+func newLineCount(src []byte) int32 {
 	size := len(src)
 	var cnt int32
 	for i := 0; i < size; i++ {

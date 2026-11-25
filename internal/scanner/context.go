@@ -760,7 +760,7 @@ func firstLineIndentColumnByOpt(opt string) int32 {
 }
 
 // leadingSpace counts the whitespace bytes buf opens with.
-func leadingSpace(buf string) int32 { // TODO: challenge with SWAR
+func leadingSpace(buf string) int32 {
 	var i int32
 	for i < int32(len(buf)) {
 		switch buf[i] {

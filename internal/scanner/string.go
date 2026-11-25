@@ -72,8 +72,7 @@ func (s *Scanner) leaveQuotedLines(ctx *Context) {
 	s.indentNum = indent
 }
 
-// TODO(perf): rechallenge with SVAR - we discarded it only because our current corpus doesn't quote.
-// produce a micro-benchmark with quoted scalars and compare.
+// scanSingleQuote reads a single-quoted scalar from the opening quote to the closing one, and returns its token.
 func (s *Scanner) scanSingleQuote(ctx *Context) (token.Token, error) {
 	ctx.addOriginBuf('\'')
 	baseIndent := s.contentIndent()
@@ -191,7 +190,7 @@ func (s *Scanner) foldQuotedLineBreak(ctx *Context, value []byte, emptyLine bool
 	return value, nil
 }
 
-// TODO(perf): same remark as above.
+// scanDoubleQuote reads a double-quoted scalar from the opening quote to the closing one, and returns its token.
 //
 //nolint:mnd,gocyclo,cyclop,maintidx,gocognit // a case per rune to check and per escape sequence; named constants would not read better
 func (s *Scanner) scanDoubleQuote(ctx *Context) (token.Token, error) {
