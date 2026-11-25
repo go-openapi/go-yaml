@@ -39,8 +39,11 @@ indicator.
 
 {{< code file="tutorial/intermediate/example_test.go" lang="json" output="Example_chomping" nolink="true" >}}
 
-The chomping indicator decides what happens to the line breaks at the end of the text. `-` strips them all. With no
-indicator, one is kept. `+` keeps them all, blank lines included.
+The chomping indicator decides what happens to the line breaks at the end of the text:
+
+- `-` *strips* them all.
+- No indicator *clips* them to one. Clip is the default.
+- `+` *keeps* them all, blank lines included.
 
 ## Several documents
 
@@ -105,4 +108,32 @@ A `-` with nothing after it is an entry with no value, which is null.
 
 A folded scalar does not fold a line indented further than the others. The breaks around it are kept, and its extra
 indentation stays in the text.
+{{% /expand %}}
+
+{{< code file="tutorial/intermediate/testdata/core-tags.yaml" lang="yaml" nolink="true" >}}
+
+{{% expand title="What does it hold?" %}}
+{{< code file="tutorial/intermediate/example_test.go" lang="json" output="Example_coreTags" nolink="true" >}}
+
+A core tag sets the type whatever the text looks like. `!!str` makes `true` a string, `!!float` makes `1` the float
+`1.0`, `!!bool` reads the quoted `"false"` as a boolean, and `!!null` makes the empty string a null.
+{{% /expand %}}
+
+{{< code file="tutorial/intermediate/testdata/sequence-key.yaml" lang="yaml" nolink="true" >}}
+
+{{% expand title="What does it hold?" %}}
+{{< code file="tutorial/intermediate/example_test.go" lang="text" output="Example_sequenceKey" nolink="true" >}}
+
+A mapping whose one key is the sequence `[a, b]`. A flow collection may stand as an implicit key, with no `?` in front
+of it. The YAML is valid, but JSON has only string keys, so `ToJSON` stops at the key.
+{{% /expand %}}
+
+{{< code file="tutorial/intermediate/testdata/non-specific-list.yaml" lang="yaml" nolink="true" >}}
+
+{{% expand title="What does it hold?" %}}
+{{< code file="tutorial/intermediate/example_test.go" lang="json" output="Example_nonSpecificList" nolink="true" >}}
+
+The non-specific tag `!` tells the reader not to guess a plain scalar's type from its text, so `42`, `true` and `null`
+are all strings. On a collection it applies to the collection, not to its entries: `[1, 2]` stays a sequence of
+numbers.
 {{% /expand %}}

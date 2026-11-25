@@ -157,3 +157,44 @@ func Example_documentsAll() {
 	//   "list"
 	// ]
 }
+
+// Example_coreTags reads core tags that force a type against the text: a string from true, a float from 1, a boolean
+// from a quoted "false", a null from an empty string.
+func Example_coreTags() {
+	answer.Print("testdata/core-tags.yaml")
+
+	// Output:
+	// {
+	//   "a": "true",
+	//   "b": 1.0,
+	//   "c": false,
+	//   "d": null
+	// }
+}
+
+// Example_sequenceKey reads a flow sequence used as an implicit key, which YAML allows and JSON cannot write.
+func Example_sequenceKey() {
+	answer.Print("testdata/sequence-key.yaml")
+
+	// Output:
+	// [1:1] a sequence cannot be a JSON key
+	// >  1 | [a, b]: pair
+	//        ^
+}
+
+// Example_nonSpecificList reads the non-specific tag "!" on plain scalars, which makes each a string, and on a flow
+// sequence, whose entries resolve as usual.
+func Example_nonSpecificList() {
+	answer.Print("testdata/non-specific-list.yaml")
+
+	// Output:
+	// [
+	//   "42",
+	//   "true",
+	//   "null",
+	//   [
+	//     1,
+	//     2
+	//   ]
+	// ]
+}

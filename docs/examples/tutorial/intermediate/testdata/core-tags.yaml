@@ -1,0 +1,4 @@
+a: !!str true
+b: !!float 1
+c: !!bool "false"
+d: !!null ""
