@@ -1010,7 +1010,7 @@ func (d *Decoder) binaryBytes(node ast.Node) ([]byte, bool) {
 			// tagZero writes that default as an empty []byte.
 			return []byte{}, true
 		}
-		b, err := base64.StdEncoding.DecodeString(res.Text)
+		b, err := base64.StdEncoding.DecodeString(token.CanonicalBase64(res.Text))
 
 		return b, err == nil
 	default:

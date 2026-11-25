@@ -197,7 +197,8 @@ func readsAs(tag token.ReservedTagKeyword, text string, schema token.Schema) boo
 	case token.FloatTag:
 		return readsAsFloat(text, schema)
 	case token.BinaryTag:
-		_, err := base64.StdEncoding.DecodeString(text)
+		// The binary type allows spaces, tabs and line breaks inside the base64.
+		_, err := base64.StdEncoding.DecodeString(token.CanonicalBase64(text))
 
 		return err == nil
 	case token.TimestampTag:

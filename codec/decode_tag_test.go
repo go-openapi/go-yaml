@@ -6,6 +6,7 @@ package codec_test
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"iter"
 	"slices"
 	"testing"
@@ -1233,5 +1234,68 @@ merge:
 				"merge": mapSliceOf(item("foo", 1), item("bar", 2)),
 			},
 		},
+	})
+}
+
+// TestABinaryTagTakesWhiteSpaceInsideItsBase64 covers a "!!binary" whose base64 holds a space or a tab.
+//
+// The yaml.org binary type allows white space and line breaks inside the encoded text. A "!!binary" written over two
+// plain lines folds into "aGVs bG8=", and the tag check refused it with `cannot read "aGVs bG8=" as !!binary`: it
+// handed the text to encoding/base64, which skips "\r" and "\n" but not a space or a tab. The block form "!!binary |"
+// read, because its lines end on line breaks.
+func TestABinaryTagTakesWhiteSpaceInsideItsBase64(t *testing.T) {
+	for tc := range aBinaryTagTakesWhiteSpaceInsideItsBase64Cases() {
+		t.Run(tc.name, func(t *testing.T) {
+			var got any
+			require.NoError(t, codec.Unmarshal([]byte(tc.src), &got))
+			b, ok := got.(map[string]any)["a"].(codec.Base64)
+			require.True(t, ok)
+			assert.Equal(t, codec.Base64(tc.text), b, "the text as the document wrote it")
+			raw, err := b.Bytes()
+			require.NoError(t, err)
+			assert.Equal(t, []byte("hello"), raw)
+
+			var into struct {
+				A []byte `yaml:"a"`
+			}
+			require.NoError(t, codec.Unmarshal([]byte(tc.src), &into))
+			assert.Equal(t, []byte("hello"), into.A)
+
+			out, err := codec.ToJSON([]byte(tc.src))
+			require.NoError(t, err)
+			assert.Equal(t, `{"a":"aGVsbG8="}`, string(out))
+
+			s := codec.ToJSONTokens([]byte(tc.src))
+			var tokens []string
+			for tk := range s.Tokens() {
+				tokens = append(tokens, fmt.Sprintf("%v:%s", tk.Kind, tk.Value))
+			}
+			require.NoError(t, s.Err())
+			assert.Contains(t, tokens, "string:aGVsbG8=")
+		})
+	}
+
+	t.Run("a key spelled with a space repeats the key spelled without", func(t *testing.T) {
+		var got map[any]any
+		err := codec.Unmarshal([]byte("? !!binary aGVsbG8=\n: x\n? !!binary aGVs bG8=\n: y\n"), &got)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "already defined")
+	})
+}
+
+// aBinaryTagTakesWhiteSpaceInsideItsBase64Case holds a "!!binary" document and the text its value keeps.
+type aBinaryTagTakesWhiteSpaceInsideItsBase64Case struct {
+	name string
+	src  string
+	text string
+}
+
+func aBinaryTagTakesWhiteSpaceInsideItsBase64Cases() iter.Seq[aBinaryTagTakesWhiteSpaceInsideItsBase64Case] {
+	return slices.Values([]aBinaryTagTakesWhiteSpaceInsideItsBase64Case{
+		{name: "plain over two lines", src: "a: !!binary aGVs\n  bG8=\n", text: "aGVs bG8="},
+		{name: "a space in a single-quoted scalar", src: "a: !!binary 'aGVs bG8='\n", text: "aGVs bG8="},
+		{name: "a tab escaped in a double-quoted scalar", src: "a: !!binary \"aGVs\\tbG8=\"\n", text: "aGVs\tbG8="},
+		{name: "a tab inside a plain scalar", src: "a: !!binary aGVs\tbG8=\n", text: "aGVs\tbG8="},
+		{name: "spaces and a line break in a literal block", src: "a: !!binary |\n  aGVs bG8=\n", text: "aGVs bG8=\n"},
 	})
 }
