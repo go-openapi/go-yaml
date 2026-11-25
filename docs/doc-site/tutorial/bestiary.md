@@ -10,23 +10,6 @@ Quizz: test your YAML knowledge (impossible level).
 
 ## Words and numbers
 
-### The Norway problem
-
-{{< code file="tutorial/bestiary/testdata/norway.yaml" lang="yaml" nolink="true" >}}
-
-{{% expand title="What does it hold?" %}}
-{{< code file="tutorial/bestiary/example_test.go" lang="json" output="Example_norway" nolink="true" >}}
-
-Under YAML 1.2 the only booleans are `true` and `false`, so `NO` and `yes` are strings. `1.10` is a number, and go-yaml
-keeps its text instead of rounding it to `1.1`.
-
-The same document read as YAML 1.1, where `NO`, `yes`, `on` and their kin are booleans:
-
-{{< code file="tutorial/bestiary/example_test.go" lang="json" output="Example_norway11" nolink="true" >}}
-
-The country code for Norway reads as `false`.
-{{% /expand %}}
-
 ### Case counts, partly
 
 {{< code file="tutorial/bestiary/testdata/spellings.yaml" lang="yaml" nolink="true" >}}
@@ -352,3 +335,4 @@ Three documents, each one scalar. A document may start its content on the `---` 
 
 The root collection need not start in the first column. Its entries only have to line up with each other.
 {{% /expand %}}
+

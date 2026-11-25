@@ -5,6 +5,7 @@ package intermediate_test
 
 import (
 	"github.com/go-openapi/go-yaml/docs/examples/tutorial/internal/answer"
+	"github.com/go-openapi/go-yaml/parser"
 )
 
 // Example_anchors reads an anchor, "&defaults", and an alias, "*defaults", that writes the anchored mapping again.
@@ -197,4 +198,28 @@ func Example_nonSpecificList() {
 	//     2
 	//   ]
 	// ]
+}
+
+// Example_norway reads the Norway problem under YAML 1.2: "NO" and "yes" are strings, and 1.10 keeps its text.
+func Example_norway() {
+	answer.Print("testdata/norway.yaml")
+
+	// Output:
+	// {
+	//   "country": "NO",
+	//   "answer": "yes",
+	//   "version": 1.10
+	// }
+}
+
+// Example_norway11 reads the same entry under YAML 1.1, where "NO" and "yes" are booleans.
+func Example_norway11() {
+	answer.Print("testdata/norway.yaml", parser.WithYAMLVersion(parser.YAML11))
+
+	// Output:
+	// {
+	//   "country": false,
+	//   "answer": true,
+	//   "version": 1.10
+	// }
 }

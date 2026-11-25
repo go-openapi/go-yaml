@@ -85,6 +85,21 @@ the conversion stops there. go-yaml reads the document, and `ToJSON` returns an 
 
 ## Quizz: test your YAML knowledge (expert level)
 
+{{< code file="tutorial/intermediate/testdata/norway.yaml" lang="yaml" nolink="true" >}}
+
+{{% expand title="What does it hold?" %}}
+{{< code file="tutorial/intermediate/example_test.go" lang="json" output="Example_norway" nolink="true" >}}
+
+Under YAML 1.2 the only booleans are `true` and `false`, so `NO` and `yes` are strings. `1.10` is a number, and go-yaml
+keeps its text instead of rounding it to `1.1`.
+
+The same document read as YAML 1.1, where `NO`, `yes`, `on` and their kin are booleans:
+
+{{< code file="tutorial/intermediate/example_test.go" lang="json" output="Example_norway11" nolink="true" >}}
+
+The country code for Norway reads as `false`, and this is known as the *Norway problem*.
+{{% /expand %}}
+
 {{< code file="tutorial/intermediate/testdata/anchor-again.yaml" lang="yaml" nolink="true" >}}
 
 {{% expand title="What does it hold?" %}}

@@ -40,7 +40,7 @@ Second, the types of the 1.1 repository leave the core: timestamps, binary data,
 document still gets them by writing their tag, such as `!!timestamp` or `!!merge`, and a parser may still support them.
 
 Many tools never moved to 1.2. libyaml, a C library that PyYAML and many other bindings use, implements YAML 1.1. A
-file that reads one way in one tool can read another way in the next, and the [Norway problem](../bestiary/) is the
+file that reads one way in one tool can read another way in the next, and the [Norway problem](../intermediate/#quizz-test-your-yaml-knowledge-expert-level) is the
 best-known case.
 
 go-yaml reads YAML 1.2 by default, and YAML 1.1 on request or where a document opens with `%YAML 1.1`. See
