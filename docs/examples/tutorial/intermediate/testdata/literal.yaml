@@ -1,0 +1,3 @@
+script: |
+  echo one
+  echo two

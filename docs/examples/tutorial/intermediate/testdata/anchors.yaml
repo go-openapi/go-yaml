@@ -1,0 +1,5 @@
+defaults: &defaults
+  retries: 3
+  timeout: 10s
+service:
+  settings: *defaults

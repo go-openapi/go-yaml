@@ -15,7 +15,7 @@ import (
 )
 
 // Print reads the YAML file at path, converts it with [codec.ToJSON] and prints the JSON indented by two spaces, or the
-// error that stopped the conversion.
+// error that stopped the conversion. ToJSON converts the first document of a stream; see [PrintDocuments].
 func Print(path string, opts ...parser.Option) {
 	src, err := os.ReadFile(path)
 	if err != nil {
@@ -23,6 +23,30 @@ func Print(path string, opts ...parser.Option) {
 
 		return
 	}
+	printJSON(src, opts...)
+}
+
+// PrintDocuments reads the YAML stream at path and prints each document's JSON in turn, under a "# document N" line.
+func PrintDocuments(path string, opts ...parser.Option) {
+	src, err := os.ReadFile(path)
+	if err != nil {
+		fmt.Fprintln(os.Stdout, err)
+
+		return
+	}
+	file, err := parser.ParseBytes(src, opts...)
+	if err != nil {
+		fmt.Fprintln(os.Stdout, err)
+
+		return
+	}
+	for i, doc := range file.Docs {
+		fmt.Fprintf(os.Stdout, "# document %d\n", i+1)
+		printJSON([]byte(doc.String()), opts...)
+	}
+}
+
+func printJSON(src []byte, opts ...parser.Option) {
 	j, err := codec.ToJSON(src, opts...)
 	if err != nil {
 		fmt.Fprintln(os.Stdout, err)
