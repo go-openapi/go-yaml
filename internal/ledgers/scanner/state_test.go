@@ -112,12 +112,17 @@ var stateLedger = map[string]disagreement{ //nolint:gochecknoglobals // ok to st
 	// Still all at 0 when a quoted scalar began to hold DEL, the C1 controls, U+FFFE and U+FFFF raw: +209 / +209 / 0 /
 	// +8 / +55. A seed holding one between quotes now scans to its end, and a seed holding one elsewhere scans up to
 	// it, where before the stream was refused ahead of its first token.
-	"buf.notSpaceCharPos==trimmed/plain": {0, 756141},
-	"buf.notSpaceCharPos==trimmed/block": {0, 3795},
+	//
+	// Re-baselined 2026-11-26, still all at 0, after two scanner fixes found by bisecting from 71a1b1e4:
+	//
+	//   - 925f98fd, a leading tab in a block scalar read as content: +1 / +2 / +1 / 0 / 0;
+	//   - b026af07, a tab in front of a quoted or flow key in an entry rejected: -31 / -31 / 0 / -5 / -3.
+	"buf.notSpaceCharPos==trimmed/plain": {0, 756111},
+	"buf.notSpaceCharPos==trimmed/block": {0, 3796},
 
 	// A mark past the end of the buffer made bufferedSrc slice a byte the last token wrote.
 	// Fixed; nothing may raise this.
-	"buf.notSpaceCharPos<=len(buf)": {0, 759936},
+	"buf.notSpaceCharPos<=len(buf)": {0, 759907},
 
 	// Both entries count a space opening a line where indentNum has stopped tracking the column, the second where a
 	// tab stands in the run before it. Nothing may raise either.
@@ -130,13 +135,13 @@ var stateLedger = map[string]disagreement{ //nolint:gochecknoglobals // ok to st
 	// marked as opening: past the closing quote, the space before "# lala" in "a: \"double" over "  quotes\" # lala"
 	// counted as indentation.
 	"indent.indentNum==column-1/tab":    {0, 8},
-	"indent.indentNum==column-1/spaces": {0, 99960},
+	"indent.indentNum==column-1/spaces": {0, 99955},
 
 	// bufferedToken assembles a token's extent from what the scanner already holds: where the origin began, how long
 	// it is, and the line the text ends on. It does not read the origin back to work the extent out.
 	// This compares that extent against token.MeasureOrigin's, which token.Make used.
 	// Nothing may raise it: a disagreement is a token pointing at the wrong stretch of source.
-	"token.extentMatchesTheOrigin": {0, 116456},
+	"token.extentMatchesTheOrigin": {0, 116453},
 }
 
 // TestStateLedger holds the scanner's state pairs to what they were measured at.
