@@ -79,6 +79,9 @@ func Strict() DecodeOption {
 
 // DisallowUnknownField returns an error for a mapping key that names no exported field of the struct it decodes into.
 // A field tagged "-" names nothing. Use [AllowFieldPrefixes] to let some keys through.
+//
+// Under [UseJSONTags], a name that two embedded structs offer at the same depth, and that neither tag settles, reaches
+// no field. Its key is then unknown and fails the decode, as with encoding/json/v2's RejectUnknownMembers.
 func DisallowUnknownField() DecodeOption {
 	return func(d *Decoder) error {
 		d.disallowUnknownField = true
@@ -212,6 +215,9 @@ func UseStringKeys() DecodeOption {
 // The option does not make the decoder call UnmarshalJSON: [UseJSONUnmarshaler] does that, after converting the
 // document to JSON. UseJSONTags fills the fields directly, so a type whose UnmarshalJSON does more than assign them
 // misses that work. spec.Swagger, for one, gathers its "x-" keys into its extensions.
+//
+// [ToJSON] reads no Go type at all, so no tag option applies to it. To decode a document into a type through its
+// UnmarshalJSON, convert it with [ToJSON] and pass the result to encoding/json.
 //
 // A mapping key matches a field name exactly where it can, and otherwise matches a name that differs only in case,
 // which is the order encoding/json tries. Without the option, a key matches a name exactly or matches nothing, as in
