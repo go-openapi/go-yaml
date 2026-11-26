@@ -13,6 +13,7 @@ import (
 	"slices"
 	"testing"
 
+	"github.com/go-openapi/testify/v2/assert"
 	"github.com/go-openapi/testify/v2/require"
 
 	"github.com/go-openapi/go-yaml/internal/fuzzseeds"
@@ -20,29 +21,6 @@ import (
 	"github.com/go-openapi/go-yaml/internal/probe"
 	"github.com/go-openapi/go-yaml/internal/scanner"
 )
-
-// disagreement is how often a pair disagreed and how often it was checked.
-//
-// Both are recorded because they answer different questions. A count moves when the corpus moves; a ratio moves when
-// the scanner moves. Comparing counts alone reports a regenerated corpus as a scanner regression, which is what this
-// ledger did between 2026-09-07 and 2026-09-08.
-type disagreement struct {
-	Failed int64
-	Tested int64
-}
-
-// corpusFingerprint names the seed corpus the counts below were measured over: the SHA-256 of every seed
-// [fuzzseeds.All] returns, in order, each prefixed by its length.
-//
-// The seeds come from three sources and any of them moves the counts. yamlcorpus/testdata/yaml-compact.jsonl.gz is
-// generated in another module and was regenerated five times on 2026-09-07, so a baseline measured in the morning was
-// stale by the evening. Nothing tied the two together, and the ledger went red carrying numbers that had never
-// matched the tree they shipped in.
-//
-// TestStateLedger checks this before it compares anything, so a regenerated corpus fails saying to re-baseline
-// instead of accusing the scanner. It earned that on 2026-09-10: 014db89 regenerated the corpus for two 1.1
-// number spellings, seven counts moved at once, and the check named the corpus instead of the scanner.
-const corpusFingerprint = "04efa7cbc5970dff"
 
 // stateLedger records how often two pieces of the scanner's state that look like the same number disagree, over the
 // fuzz corpus.
@@ -59,9 +37,15 @@ const corpusFingerprint = "04efa7cbc5970dff"
 // A pair that starts disagreeing more has lost an invariant; one that starts disagreeing less may have become
 // removable, and the entry comes down to say so.
 //
-// Each entry carries the denominator it was measured over, so the ratio is on the page next to the count. The counts
-// follow the corpus and the ratios follow the scanner, and an entry recording only a count cannot tell those apart.
-var stateLedger = map[string]disagreement{ //nolint:gochecknoglobals // ok to store and immutable map as a global
+// An entry records the number of disagreements, and nothing else fails the test. The number of checks moves with the
+// corpus and with every scanner fix that changes what gets scanned, so it is logged next to the count and not compared.
+// Comparing the checks too made it red on 2026-11-25 for two scanner fixes, 925f98fd and b026af07, with every
+// disagreement count at 0.
+// A check the ledger names that ran zero times fails: the probe stopped being reached.
+//
+// The "+1 / +2 / ..." notes below are moves in the number of checks, kept as the history of each re-baseline. They
+// read plain / whole buffer / block / spaces / extents.
+var stateLedger = map[string]int64{ //nolint:gochecknoglobals // ok to store an immutable map as a global
 	// Outside a block scalar the mark is the buffer's length less the whitespace and the fold break it ends with,
 	// exactly, over every read.
 	// It was three until bufferedToken stopped clearing the value buffer and leaving the mark past the end of it.
@@ -120,12 +104,12 @@ var stateLedger = map[string]disagreement{ //nolint:gochecknoglobals // ok to st
 	//
 	// Re-measured the same day over conformance-suites v0.0.3, still all at 0: -221 / -216 / +5 / +1 / -101. The new
 	// corpus holds 210 fewer cases, most of them mutants that begin with a byte order mark.
-	"buf.notSpaceCharPos==trimmed/plain": {0, 755890},
-	"buf.notSpaceCharPos==trimmed/block": {0, 3801},
+	"buf.notSpaceCharPos==trimmed/plain": 0,
+	"buf.notSpaceCharPos==trimmed/block": 0,
 
 	// A mark past the end of the buffer made bufferedSrc slice a byte the last token wrote.
 	// Fixed; nothing may raise this.
-	"buf.notSpaceCharPos<=len(buf)": {0, 759691},
+	"buf.notSpaceCharPos<=len(buf)": 0,
 
 	// Both entries count a space opening a line where indentNum has stopped tracking the column, the second where a
 	// tab stands in the run before it. Nothing may raise either.
@@ -137,19 +121,19 @@ var stateLedger = map[string]disagreement{ //nolint:gochecknoglobals // ok to st
 	// The /spaces bucket read 8 of 100,143 until a quoted scalar running over several lines stopped leaving the line
 	// marked as opening: past the closing quote, the space before "# lala" in "a: \"double" over "  quotes\" # lala"
 	// counted as indentation.
-	"indent.indentNum==column-1/tab":    {0, 8},
-	"indent.indentNum==column-1/spaces": {0, 99956},
+	"indent.indentNum==column-1/tab":    0,
+	"indent.indentNum==column-1/spaces": 0,
 
 	// bufferedToken assembles a token's extent from what the scanner already holds: where the origin began, how long
 	// it is, and the line the text ends on. It does not read the origin back to work the extent out.
 	// This compares that extent against token.MeasureOrigin's, which token.Make used.
 	// Nothing may raise it: a disagreement is a token pointing at the wrong stretch of source.
-	"token.extentMatchesTheOrigin": {0, 116352},
+	"token.extentMatchesTheOrigin": 0,
 }
 
 // TestStateLedger holds the scanner's state pairs to what they were measured at.
 //
-//	go test -tags yamlprobe -run TestStateLedger ./internal/scanner/
+//	go test -tags yamlprobe -run TestStateLedger ./internal/ledgers/scanner/
 func TestStateLedger(t *testing.T) {
 	seeds, err := fuzzseeds.All()
 	require.NoError(t, err)
@@ -173,15 +157,16 @@ func TestStateLedger(t *testing.T) {
 	// A clean invariant the ledger does name is measured too, at 0. Those entries are the ones recording that a pair
 	// must never disagree, and dropping them would read as a defect that had gone away.
 	checks := probe.Checks()
-	measured := make(map[string]disagreement, len(checks))
+	measured := make(map[string]int64, len(checks))
 	for name, inv := range checks {
 		if _, recorded := stateLedger[name]; inv.Failed > 0 || recorded {
-			measured[name] = disagreement{Failed: inv.Failed, Tested: inv.Tested}
+			measured[name] = inv.Failed
 		}
 	}
 
-	// The counts move with the corpus, so a failure is only readable next to what each was measured over. Compare
-	// reports the count; these lines carry the denominator and the ratio.
+	// The number of checks moves with the corpus, so a count is only readable next to it. Compare reports the count;
+	// these lines carry the number of checks and the ratio.
+	t.Logf("seed corpus %s, %d seeds", fingerprintOf(seeds), len(seeds))
 	for _, name := range slices.Sorted(maps.Keys(measured)) {
 		inv := checks[name]
 		var ratio float64
@@ -191,24 +176,16 @@ func TestStateLedger(t *testing.T) {
 		t.Logf("%s: %d of %d (%.2f%%)", name, inv.Failed, inv.Tested, ratio)
 	}
 
-	// The corpus is checked before the counts. A seed corpus that has moved makes every count below wrong at once,
-	// and reporting that as seven scanner regressions buries the one fact that explains them.
-	if got := fingerprintOf(seeds); got != corpusFingerprint {
-		t.Fatalf("the seed corpus has moved: measured %s, and the ledger records %s.\n"+
-			"The counts above were taken over a different corpus, so nothing here says whether the scanner changed.\n"+
-			"Re-baseline: set corpusFingerprint to %s and copy the counts logged above into stateLedger.",
-			got, corpusFingerprint, got)
-	}
-
 	ledgers.Compare(t, "disagreements", measured, stateLedger)
 
-	for name := range stateLedger {
-		require.Containsf(t, checks, name, "%s is in the ledger and nothing checks it", name)
+	for _, name := range slices.Sorted(maps.Keys(stateLedger)) {
+		assert.Positivef(t, checks[name].Tested, "%s is in the ledger and nothing checked it", name)
 	}
 }
 
 // fingerprintOf hashes the seeds in the order they were scanned, each prefixed by its length so that two corpora
-// cannot collide by splitting the same bytes differently.
+// cannot collide by splitting the same bytes differently. The log carries it, so two runs show whether they read the
+// same corpus.
 func fingerprintOf(seeds []string) string {
 	h := sha256.New()
 	var size [8]byte
