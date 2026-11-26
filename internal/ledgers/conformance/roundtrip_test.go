@@ -7,9 +7,9 @@ import (
 	"sort"
 	"testing"
 
-	"github.com/go-openapi/testify/v2/assert"
 	"github.com/go-openapi/testify/v2/require"
 
+	"github.com/go-openapi/go-yaml/internal/ledgers"
 	yamltestsuite "github.com/go-openapi/go-yaml/internal/yamltestsuite"
 	"github.com/go-openapi/go-yaml/parser"
 )
@@ -54,9 +54,10 @@ func (o outcome) String() string {
 // indentation and no document ever settled. Laying documents out by depth
 // removed that cause and everything that followed from it.
 //
-// The ratchet runs both ways: a document that stops surviving fails because it
-// is missing from here, and one that starts surviving fails because it is still
-// listed. An empty ledger is re-earned on every run.
+// TestSuiteRoundTrip checks the outcomes with [ledgers.Compare], both ways: a
+// document that stops surviving fails because it is missing from here, one that
+// starts surviving fails because it is still listed, and one that fails
+// differently than recorded fails too. An empty ledger is re-earned on every run.
 var roundTripLedger = map[string]struct {
 	outcome outcome
 	reason  string
@@ -81,34 +82,29 @@ func TestSuiteRoundTrip(t *testing.T) {
 		}
 		accepted++
 
-		t.Run(test.Name, func(t *testing.T) {
-			got := stable
-			rendered := file.String()
+		got := stable
+		rendered := file.String()
 
-			reread, err := parser.ParseBytes([]byte(rendered), parser.WithComments())
-			switch {
-			case err != nil:
-				got = unreadable
-			case reread.String() != rendered:
-				got = drifting
-			}
+		reread, err := parser.ParseBytes([]byte(rendered), parser.WithComments())
+		switch {
+		case err != nil:
+			got = unreadable
+		case reread.String() != rendered:
+			got = drifting
+		}
 
-			counts[got]++
-			if got == stable {
-				assert.NotContainsf(t, roundTripLedger, test.Name,
-					"%s: now round trips -- if that is a fix, delete the ledger entry", test.Name)
-
-				return
-			}
-
+		counts[got]++
+		if got != stable {
 			failed[test.Name] = got
-			known, listed := roundTripLedger[test.Name]
-			if !assert.Truef(t, listed, "%s: %s, and not in the ledger: %v", test.Name, got, err) {
-				return
-			}
-			assert.Equalf(t, known.outcome, got, "%s: fails differently than recorded", test.Name)
-		})
+		}
 	}
+
+	// The ledger's outcomes are the measurement; its reasons are for the reader.
+	recorded := make(map[string]outcome, len(roundTripLedger))
+	for name, entry := range roundTripLedger {
+		recorded[name] = entry.outcome
+	}
+	ledgers.Compare(t, "outcome", failed, recorded)
 
 	reportRoundTrip(t, accepted, counts, failed)
 }
