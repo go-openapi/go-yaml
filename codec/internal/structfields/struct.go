@@ -8,7 +8,6 @@ import (
 	"reflect"
 	"slices"
 	"strings"
-	"unicode"
 )
 
 const (
@@ -360,10 +359,6 @@ type Fields struct {
 	// Both decode paths read it, so both place an entry in the same field.
 	// It is nil where the type embeds nothing.
 	flat map[string]Flat
-	// folded maps a case-folded name to its field.
-	// encoding/json accepts a key that differs from a name only in case, once an exact match has failed.
-	// It is nil outside [github.com/go-openapi/go-yaml/codec.UseJSONTags], where a key must match a name exactly.
-	folded map[string]Flat
 	// dropped holds the names that reach no field, because the conflict rule picked none.
 	// flat cannot record them by leaving them out:
 	// a name missing from flat may also be a name no field declares,
@@ -403,8 +398,7 @@ func Of(structType reflect.Type, mode Mode) (*Fields, error) {
 
 // Lookup finds the field a mapping key names.
 //
-// Lookup tries an exact match first. Under [github.com/go-openapi/go-yaml/codec.UseJSONTags], it then tries a match that differs only in case,
-// in the order encoding/json uses.
+// A key matches a name exactly or matches nothing, in every mode, as in go.yaml.in/yaml/v3 and encoding/json/v2.
 // The result's At is nil where the field is in the type itself and there is no index path to walk.
 func (r *Fields) Lookup(name string) (Flat, bool) {
 	if r.flat == nil {
@@ -415,12 +409,7 @@ func (r *Fields) Lookup(name string) (Flat, bool) {
 		return ff, true
 	}
 
-	if r.folded == nil {
-		return Flat{}, false
-	}
-	ff, named := r.folded[foldName(name)]
-
-	return ff, named
+	return Flat{}, false
 }
 
 // Claims reports whether some field of the type answers to name.
@@ -447,67 +436,6 @@ func (r *Fields) WritesPromoted(name string, index int) bool {
 	_, gone := r.dropped[name]
 
 	return !gone
-}
-
-// foldedNames keys every key name of the type by its folded form.
-//
-// When two names fold alike, foldedNames keeps the first in sorted order, so every read of the type agrees.
-// A decode tries an exact match first, and uses this map only for a key that matched no name exactly.
-func foldedNames(r *Fields) map[string]Flat {
-	names := make([]string, 0, max(len(r.byRenderName), len(r.flat)))
-	if r.flat == nil {
-		for name := range r.byRenderName {
-			names = append(names, name)
-		}
-	} else {
-		for name := range r.flat {
-			names = append(names, name)
-		}
-	}
-	slices.Sort(names)
-
-	out := make(map[string]Flat, len(names))
-	for _, name := range names {
-		folded := foldName(name)
-		if _, taken := out[folded]; taken {
-			continue
-		}
-		if r.flat == nil {
-			sf := r.byRenderName[name]
-			out[folded] = Flat{SF: sf, Ord: sf.Index}
-
-			continue
-		}
-		out[folded] = r.flat[name]
-	}
-
-	return out
-}
-
-// foldName returns the key a case-insensitive lookup compares on: every rune
-// folded to the smallest of those unicode.SimpleFold walks it through.
-//
-// A letter folds to its upper case. The Kelvin sign also folds to K, and the long s to S, as in encoding/json.
-// strings.ToUpper leaves both signs unchanged, so a document writing "K" would miss a field called "k".
-func foldName(name string) string {
-	var b strings.Builder
-	b.Grow(len(name))
-	for _, r := range name {
-		b.WriteRune(foldRune(r))
-	}
-
-	return b.String()
-}
-
-// foldRune returns the smallest rune in r's simple-fold cycle. A rune that
-// folds to nothing else is its own cycle and comes back unchanged.
-func foldRune(r rune) rune {
-	lowest := r
-	for folded := unicode.SimpleFold(r); folded != r; folded = unicode.SimpleFold(folded) {
-		lowest = min(lowest, folded)
-	}
-
-	return lowest
 }
 
 // RenderNameOf returns the name a mapping key writes for the Go field called
@@ -561,10 +489,6 @@ func readType(structType reflect.Type, mode Mode) *Fields {
 		}
 		r.flat, r.dropped = flat, dropped
 	}
-	if mode.readsJSONTags() {
-		r.folded = foldedNames(r)
-	}
-
 	return r
 }
 

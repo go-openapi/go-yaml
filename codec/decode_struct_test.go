@@ -834,40 +834,34 @@ func theTwoDecodeOptionsAreIndependentCases() iter.Seq[theTwoDecodeOptionsAreInd
 	})
 }
 
-// TestUnderJSONTagsBothSpellingsOfAGoNameRead records what case-insensitive
-// matching costs UseInferredNames.
-//
-// An exported Go name and its lowercased form fold to the same key, so with
-// UseJSONTags on, a field no tag names answers to both. UseInferredNames still
-// decides which of the two is the exact match -- and so which one an encoder
-// writes -- but on a decode it stops being the difference between reading the
-// field and missing it.
-func TestUnderJSONTagsBothSpellingsOfAGoNameRead(t *testing.T) {
-	for _, inferred := range []bool{false, true} {
-		t.Run("inferred names "+map[bool]string{false: "off", true: "on"}[inferred], func(t *testing.T) {
+// TestUseInferredNamesDecidesWhichSpellingReads holds that a field no tag names
+// answers to one spelling of its Go name: the verbatim one under UseInferredNames,
+// the lowercased one otherwise. UseJSONTags matches a key exactly, as
+// encoding/json/v2 does, so it changes neither.
+func TestUseInferredNamesDecidesWhichSpellingReads(t *testing.T) {
+	for _, jsonTags := range []bool{false, true} {
+		for _, inferred := range []bool{false, true} {
+			reads := map[bool]string{false: "unnamed", true: "Unnamed"}[inferred]
 			for _, spelling := range []string{"unnamed", "Unnamed", "UNNAMED"} {
 				var v jsonAndUntagged
 				require.NoError(t, codec.Unmarshal(
 					[]byte(spelling+": V\n"), &v,
-					codec.UseJSONTags(true), codec.UseInferredNames(inferred)))
-				assert.Equal(t, "V", v.Unnamed, "%q reaches the field", spelling)
+					codec.UseJSONTags(jsonTags), codec.UseInferredNames(inferred)))
+				if spelling == reads {
+					assert.Equal(t, "V", v.Unnamed, "json tags %v, inferred %v: %q reaches the field", jsonTags, inferred, spelling)
+				} else {
+					assert.Empty(t, v.Unnamed, "json tags %v, inferred %v: %q reaches nothing", jsonTags, inferred, spelling)
+				}
 			}
-		})
+		}
 	}
-
-	t.Run("and without the option only one does", func(t *testing.T) {
-		var v jsonAndUntagged
-		require.NoError(t, codec.Unmarshal([]byte("Unnamed: V\n"), &v))
-		assert.Empty(t, v.Unnamed, "no folding, so the lowercased name alone reads")
-	})
 }
 
 // TestEachModeKeepsItsOwnFieldCache reads one type under all four modes.
 //
 // The fields of a type are read once and handed out again, keyed by the mode
 // that read them. Four modes means four caches, and a type read under one must
-// not come back under another. The json tag is what tells the modes apart on a
-// decode: the other field answers to both spellings wherever folding is on.
+// not come back under another. The json tag tells the modes apart on a decode.
 func TestEachModeKeepsItsOwnFieldCache(t *testing.T) {
 	const src = "named_field: J\nnamed: G\n"
 
@@ -1574,142 +1568,6 @@ func TestAnUnknownFlagInAJSONTagIsIgnored(t *testing.T) {
 	require.NoError(t, codec.Unmarshal(
 		[]byte("a: v\n"), &v, codec.UseJSONTags(true)))
 	assert.Equal(t, "v", v.A)
-}
-
-type (
-	// foldedTarget is named by its tag, and a document may spell that name in
-	// any case.
-	foldedTarget struct {
-		Field string `json:"fieldName"`
-	}
-
-	// foldedPromoted puts the name one embedding down, so the fallback has to
-	// reach through the index path too.
-	foldedInner struct {
-		Deep string `json:"deepField"`
-	}
-	foldedPromoted struct {
-		foldedInner
-
-		Tail string `json:"tail"`
-	}
-
-	// foldedExactWins declares both spellings, so an exact match has something
-	// to prefer.
-	foldedExactWins struct {
-		Lower string `json:"name"`
-		Upper string `json:"NAME"`
-	}
-)
-
-// TestAKeyMatchesButForCaseUnderJSONTags covers the last of encoding/json's
-// rules: a mapping key is matched exactly where it can be, and otherwise
-// against the field names folded.
-//
-// Only [codec.UseJSONTags] turns it on. go.yaml.in/yaml/v3 matches a key
-// exactly or not at all, so the default mode does too.
-func TestAKeyMatchesButForCaseUnderJSONTags(t *testing.T) {
-	for _, spelling := range []string{"fieldName", "fieldname", "FIELDNAME", "FieldName", "fIELDnAME"} {
-		t.Run(spelling, func(t *testing.T) {
-			var ours, theirs foldedTarget
-			require.NoError(t, codec.Unmarshal(
-				[]byte(spelling+": V\n"), &ours, codec.UseJSONTags(true)))
-			require.NoError(t, json.Unmarshal(
-				[]byte(`{"`+spelling+`":"V"}`), &theirs))
-
-			assert.Equal(t, theirs, ours)
-			assert.Equal(t, "V", ours.Field)
-		})
-	}
-
-	t.Run("and the default mode matches exactly or not at all", func(t *testing.T) {
-		var v foldedTarget
-		require.NoError(t, codec.Unmarshal([]byte("FIELDNAME: V\n"), &v))
-		assert.Empty(t, v.Field, "v3 folds nothing")
-	})
-}
-
-// TestAFoldedMatchReachesAPromotedField holds that the fallback follows the
-// same index path an exact match does.
-func TestAFoldedMatchReachesAPromotedField(t *testing.T) {
-	var ours, theirs foldedPromoted
-	require.NoError(t, codec.Unmarshal(
-		[]byte("DEEPFIELD: D\nTAIL: T\n"), &ours, codec.UseJSONTags(true)))
-	require.NoError(t, json.Unmarshal(
-		[]byte(`{"DEEPFIELD":"D","TAIL":"T"}`), &theirs))
-
-	assert.Equal(t, theirs, ours)
-	assert.Equal(t, "D", ours.Deep)
-	assert.Equal(t, "T", ours.Tail)
-}
-
-// TestAnExactMatchBeatsAFoldedOne holds the order the two are tried in.
-func TestAnExactMatchBeatsAFoldedOne(t *testing.T) {
-	var ours, theirs foldedExactWins
-	require.NoError(t, codec.Unmarshal(
-		[]byte("name: L\nNAME: U\n"), &ours, codec.UseJSONTags(true)))
-	require.NoError(t, json.Unmarshal(
-		[]byte(`{"name":"L","NAME":"U"}`), &theirs))
-
-	assert.Equal(t, theirs, ours)
-	assert.Equal(t, "L", ours.Lower)
-	assert.Equal(t, "U", ours.Upper)
-}
-
-// TestAFoldedKeyIsNotUnknown holds that a key reaching a field by the fallback
-// is a key the struct knows.
-func TestAFoldedKeyIsNotUnknown(t *testing.T) {
-	var v foldedTarget
-	require.NoError(t, codec.Unmarshal([]byte("FIELDNAME: V\n"), &v,
-		codec.UseJSONTags(true), codec.DisallowUnknownField()))
-	assert.Equal(t, "V", v.Field)
-}
-
-// TestTheFoldMatchesEncodingJSONsOwn covers the two runes that make folding
-// more than upper-casing.
-//
-// The Kelvin sign folds onto K and the long s onto S, so a document writing
-// either reaches a field called "k" or "s". strings.ToUpper leaves the Kelvin
-// sign standing on its own, so it would miss the field encoding/json finds.
-func TestTheFoldMatchesEncodingJSONsOwn(t *testing.T) {
-	const (
-		kelvin  = "\u212a" // KELVIN SIGN
-		longEss = "\u017f" // LATIN SMALL LETTER LONG S
-	)
-
-	require.Equal(t, kelvin, strings.ToUpper(kelvin), "ToUpper leaves the Kelvin sign alone")
-
-	for c := range theFoldMatchesEncodingJSONsOwnCases(kelvin, longEss) {
-		t.Run(c.name, func(t *testing.T) {
-			var ours, theirs foldTarget
-			require.NoError(t, codec.Unmarshal(
-				[]byte(c.key+": V\n"), &ours, codec.UseJSONTags(true)))
-			require.NoError(t, json.Unmarshal([]byte(`{"`+c.key+`":"V"}`), &theirs))
-
-			assert.Equal(t, theirs, ours)
-			assert.Equal(t, "V", c.reaches(ours))
-		})
-	}
-}
-
-// foldTarget is the target of TestTheFoldMatchesEncodingJSONsOwn.
-type foldTarget struct {
-	K string `json:"k"`
-	S string `json:"s"`
-}
-
-// theFoldMatchesEncodingJSONsOwnCase holds a key that folds to a field name only under Unicode case folding, and the field it reaches.
-type theFoldMatchesEncodingJSONsOwnCase struct {
-	name    string
-	key     string
-	reaches func(foldTarget) string
-}
-
-func theFoldMatchesEncodingJSONsOwnCases(kelvin, longEss string) iter.Seq[theFoldMatchesEncodingJSONsOwnCase] {
-	return slices.Values([]theFoldMatchesEncodingJSONsOwnCase{
-		{"the Kelvin sign reaches k", kelvin, func(v foldTarget) string { return v.K }},
-		{"the long s reaches s", longEss, func(v foldTarget) string { return v.S }},
-	})
 }
 
 // decodeStructCases covers structs and ordered maps as targets, field tags, and anchors and aliases.

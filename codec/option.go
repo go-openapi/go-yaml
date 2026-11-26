@@ -219,13 +219,10 @@ func UseStringKeys() DecodeOption {
 // [ToJSON] reads no Go type at all, so no tag option applies to it. To decode a document into a type through its
 // UnmarshalJSON, convert it with [ToJSON] and pass the result to encoding/json.
 //
-// A mapping key matches a field name exactly where it can, and otherwise matches a name that differs only in case,
-// which is the order encoding/json tries. Without the option, a key matches a name exactly or matches nothing, as in
-// go.yaml.in/yaml/v3.
+// A mapping key matches a field name exactly or matches nothing, in every mode, as in go.yaml.in/yaml/v3 and
+// encoding/json/v2. encoding/json's v1 also accepted a key that differs from a name only in case; this codec does not.
 //
-// A field that neither tag names keeps its lowercased Go name. [UseInferredNames] changes that name. Because a key
-// that differs only in case also matches, both spellings of a Go name reach the field either way, and
-// [UseInferredNames] decides which spelling an encoder writes.
+// A field that neither tag names keeps its lowercased Go name. [UseInferredNames] changes that name.
 //
 // [WriteJSONTags] does the same for the encoder. Pass both, and a value read from a document is written back under
 // the names it was read from.
@@ -245,10 +242,6 @@ func UseJSONTags(use bool) DecodeOption {
 // The option changes names and nothing else. [UseJSONTags] decides which fields a decode considers, how an anonymous
 // embedded struct is read, and how a repeated name is resolved. The two options are independent: a struct with no
 // tags at all needs only UseInferredNames.
-//
-// With [UseJSONTags] set, a mapping key also matches a field name that differs only in case, so both spellings of a Go
-// name reach the field whether UseInferredNames is set or not. UseInferredNames then decides which spelling is the
-// exact match, and so which one [WriteInferredNames] writes.
 func UseInferredNames(use bool) DecodeOption {
 	return func(d *Decoder) error {
 		d.useInferredNames = use

@@ -143,28 +143,19 @@ func TestLookupThroughAnInlinedStruct(t *testing.T) {
 	assert.Equal(t, "x", name)
 }
 
-func TestLookupFoldsCaseOnlyUnderJSONTags(t *testing.T) {
+func TestLookupMatchesExactlyInEveryMode(t *testing.T) {
 	type cased struct {
 		Name string `json:"Name" yaml:"Name"`
 	}
 
-	_, ok := fieldsOf[cased](t, YAMLTags).Lookup("NAME")
-	assert.False(t, ok, "yaml tags match a key exactly")
+	for _, mode := range []Mode{YAMLTags, JSONTags} {
+		_, ok := fieldsOf[cased](t, mode).Lookup("NAME")
+		assert.False(t, ok, "mode %d matches a key exactly", mode)
 
-	ff, ok := fieldsOf[cased](t, JSONTags).Lookup("NAME")
-	require.True(t, ok, "json tags accept a key that differs only in case")
-	assert.Equal(t, "Name", ff.SF.FieldName)
-}
-
-func TestFoldedLookupMatchesTheKelvinSign(t *testing.T) {
-	type kelvin struct {
-		K int `json:"k"`
+		ff, ok := fieldsOf[cased](t, mode).Lookup("Name")
+		require.True(t, ok)
+		assert.Equal(t, "Name", ff.SF.FieldName)
 	}
-
-	// The Kelvin sign folds to K, as in encoding/json, and strings.ToUpper leaves it alone.
-	ff, ok := fieldsOf[kelvin](t, JSONTags).Lookup("\u212A")
-	require.True(t, ok)
-	assert.Equal(t, "K", ff.SF.FieldName)
 }
 
 func TestConflictRuleUnderJSONTags(t *testing.T) {
