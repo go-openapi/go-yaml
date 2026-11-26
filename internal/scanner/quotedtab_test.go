@@ -52,3 +52,35 @@ func TestATabInADoubleQuotedScalarLeavesTheNextLineWhereItIs(t *testing.T) {
 		})
 	}
 }
+
+// TestATabAfterAFlowContinuationsIndentationSeparates covers a quoted scalar inside a flow collection that runs onto a
+// line opening with a tab.
+//
+// s-flow-line-prefix(n) is the enclosing block's indentation and then any white space, so a tab past that indentation
+// separates. The tab check in scanSingleQuote and scanDoubleQuote compared the tab's column with lastDelimColumn,
+// which in a flow collection is the column of its last '{' or ':', and refused "{k: \"a\" over \"\tb\"}" for a tab in
+// the indentation. checkContinuationIndent still holds the line to the block's indentation, so "k: {j: \"a\" over
+// \"\tb\"}" stays refused. yaml/yaml-reference-parser and libfyaml read and refuse the same documents.
+func TestATabAfterAFlowContinuationsIndentationSeparates(t *testing.T) {
+	t.Parallel()
+
+	for src, want := range map[string]any{
+		"{k: \"a\n\tb\"}\n":      map[string]any{"k": "a b"},
+		"{k: 'a\n\tb'}\n":        map[string]any{"k": "a b"},
+		"{k: \"a\n\t b\"}\n":     map[string]any{"k": "a b"},
+		"[{k: \"a\n\tb\"}]\n":    []any{map[string]any{"k": "a b"}},
+		"k: {j: \"a\n \tb\"}\n":  map[string]any{"k": map[string]any{"j": "a b"}},
+		"k:\n  {j: 'a\n \tb'}\n": map[string]any{"k": map[string]any{"j": "a b"}},
+		"- [\"a\n \tb\"]\n":      []any{[]any{"a b"}},
+	} {
+		var got any
+		require.NoErrorf(t, codec.Unmarshal([]byte(src), &got), "%q", src)
+		assert.Equalf(t, want, got, "%q", src)
+	}
+
+	for _, src := range []string{"k: {j: \"a\n\tb\"}\n", "k: {j: 'a\n\tb'}\n", "- [\"a\n\tb\"]\n"} {
+		_, err := parser.ParseBytes([]byte(src))
+		require.Errorf(t, err, "%q", src)
+		assert.Containsf(t, err.Error(), "not indented past", "%q", src)
+	}
+}

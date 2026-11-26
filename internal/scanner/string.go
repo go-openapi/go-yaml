@@ -131,7 +131,7 @@ func (s *Scanner) scanSingleQuote(ctx *Context) (token.Token, error) {
 		case isFirstLineChar && c == ' ':
 			continue
 		case isFirstLineChar && c == '\t':
-			if s.lastDelimColumn >= s.column {
+			if s.lastDelimColumn >= s.column && !s.isFlowMode() {
 				return token.Token{}, ErrInvalidToken("tab character cannot be used for indentation in single-quoted text", token.Invalid(ctx.origin(), s.pos()))
 			}
 
@@ -253,7 +253,7 @@ func (s *Scanner) scanDoubleQuote(ctx *Context) (token.Token, error) {
 		case isFirstLineChar && c == ' ':
 			continue
 		case isFirstLineChar && c == '\t':
-			if s.lastDelimColumn >= s.column {
+			if s.lastDelimColumn >= s.column && !s.isFlowMode() {
 				return token.Token{}, ErrInvalidToken("tab character cannot be used for indentation in double-quoted text", token.Invalid(ctx.origin(), s.pos()))
 			}
 			continue
