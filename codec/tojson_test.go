@@ -11,7 +11,6 @@ import (
 	"iter"
 	"math"
 	"math/big"
-	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -47,60 +46,14 @@ func toJSONViaValues(src []byte) ([]byte, error) {
 // converter writes compactly and the value converter wrote a space after every
 // ':' and ',', which is a difference in spelling and not in content.
 //
-// A document the value converter cannot write as JSON at all is skipped, named
-// in intendedJSONDivergence with what the folding converter does instead.
-//
-//nolint:gocognit // converts each corpus document both ways and compares them, minus the excused divergences
+// A document the value converter cannot write as JSON at all is skipped, and so
+// is a difference knownJSONDivergence names as one the folding converter makes
+// on purpose.
 func TestToJSONMatchesTheValueConverter(t *testing.T) {
 	t.Parallel()
 
 	var compared, skipped, refused int
 	for _, src := range jsonSources(t) {
-		if directiveNamedLikeAnAnchorInText(src.text) {
-			// "%&AML 1.2" is a directive named "&AML", and the walk reads the
-			// "&AML" as an anchor and hands the "1.2" back as the whole
-			// document. ToJSON walks, so it converts the 1.2; the value
-			// converter reads the document under the directive.
-			// codec.TestDefectADirectiveNamedLikeAPropertyIsReadAsOne pins it.
-			skipped++
-
-			continue
-		}
-		if strings.Contains(src.text, "? <<") {
-			// A merge key written the long way. In flow the tree merges it and
-			// the walk does not, and ToJSON -- which walks -- writes a key with
-			// no value for it: `{? <<: {x: 1}, ...}` comes out as `{"",...`,
-			// which is not JSON at all. That is sharper than the value
-			// disagreement and is recorded on the pin,
-			// yamlgen_test.TestDefectAMergeKeyWrittenTheLongWayDoesNotMerge.
-			skipped++
-
-			continue
-		}
-		if strings.Contains(src.text, "<<") && (strings.Contains(src.text, ",-") || strings.Contains(src.text, ", -")) {
-			// A "-" inside a flow merge sequence. The value converter reads the
-			// element as a sequence and refuses the document; the folding one
-			// reads it as the mapping and merges. Held by the last subtest of
-			// yamlgen_test.TestDefectMergingNullIsReadByTheWalkAndRefusedByTheTree,
-			// and held out here for the same reason
-			// codec.TestWalkMatchesTheStream holds it out: the two paths
-			// disagree before either converter is reached.
-			skipped++
-
-			continue
-		}
-		if strings.Contains(src.text, "&!") {
-			// The parse reads "&!a1" as an anchor with no name followed by the
-			// tag "!a1", rather than as an anchor named "!a1" -- ns-anchor-name
-			// excludes the flow indicators and nothing else, so "!" belongs in
-			// a name. The tree the two converters read is the same; they make
-			// different nonsense of it, and neither is right. Held out here
-			// until the parser is fixed.
-			skipped++
-
-			continue
-		}
-
 		want, wantErr := toJSONViaValues([]byte(src.text))
 		got, gotErr := codec.ToJSON([]byte(src.text))
 
@@ -133,16 +86,6 @@ func TestToJSONMatchesTheValueConverter(t *testing.T) {
 
 			continue
 		}
-		if gotErr != nil && wantErr == nil && losesATaggedFlowKeyAlonesAnchor(src.text, gotErr) {
-			// A recorded defect: ToJSON loses an anchor declared on a flow
-			// entry written as a key alone whose tag stands before it. Pinned
-			// in TestDefectToJSONLosesAnAnchorOnATaggedFlowKeyAlone.
-			t.Logf("%s: a tagged flow key written alone loses its anchor", src.name)
-			skipped++
-
-			continue
-		}
-
 		if wantErr != nil || gotErr != nil {
 			// Both must refuse, and for the same reason: a converter that
 			// accepts what the other refuses is a different converter.
@@ -167,27 +110,7 @@ func TestToJSONMatchesTheValueConverter(t *testing.T) {
 		}
 
 		gotValue, err := readJSON(got)
-		if err != nil && mergesAValueWrittenInPlace(src.text) {
-			// A recorded defect: ToJSON performs the merge and writes the "<<"
-			// entry's own slot as well, so the output carries a member with no
-			// key. Pinned in TestDefectAMergeWrittenInPlaceMakesToJSONWriteBrokenJSON.
-			t.Logf("%s: a merge written in place makes ToJSON write JSON that will not parse", src.name)
-			skipped++
-
-			continue
-		}
 		require.NoErrorf(t, err, "%s: folding converter wrote %q, which is not JSON", src.name, got)
-
-		if directiveNamedLikeAProperty(src.text) {
-			// A recorded defect: a directive whose name begins with "&" is
-			// read as an anchor, and ToJSON writes the node it names as the
-			// whole document. Pinned in
-			// TestDefectADirectiveNamedLikeAPropertyIsReadAsOne.
-			t.Logf("%s: a directive named like an anchor is read as one", src.name)
-			skipped++
-
-			continue
-		}
 
 		var excused []string
 		if !sameJSON(wantValue, gotValue, &excused) {
@@ -198,36 +121,6 @@ func TestToJSONMatchesTheValueConverter(t *testing.T) {
 				continue
 			}
 
-			if opensWithAnEmptyDocument(src.text) {
-				// A recorded defect: ToJSON skips an empty first document and
-				// the decoder keeps it, so "---" over "---" over "b: 2"
-				// converts to {"b":2} one way and null the other. Pinned in
-				// TestDefectToJSONSkipsAnEmptyFirstDocument. They agree on
-				// every stream whose first document has content.
-				t.Logf("%s: ToJSON skips an empty first document", src.name)
-				skipped++
-
-				continue
-			}
-
-			if carriesATimestampOrBinaryTag(src.text) {
-				// A recorded defect: ToJSON writes a !!timestamp as the
-				// scalar's source text and the value converter writes the
-				// time.Time the decoder resolved, so "2001-12-14t21:59:43.1Z"
-				// and "2001-12-14T21:59:43.1Z" convert two ways. As a key both
-				// tags diverge too -- the decoder names one by Go's %v and
-				// ToJSON by the text. Pinned in
-				// TestDefectToJSONWritesATimestampAsItWasSpelled; the key half
-				// is yamlcorpus.Departures' "a key tagged !!timestamp".
-				//
-				// Asked only once the two have disagreed, so a document
-				// carrying one of these tags that converts the same way both
-				// ways is still compared. construct-binary is one.
-				t.Logf("%s: a timestamp or a binary is written two ways", src.name)
-				skipped++
-
-				continue
-			}
 			assert.Failf(t, "converters disagree",
 				"%s\nvalue converter: %s\nfolding converter: %s", src.name, want, got)
 		}
@@ -312,54 +205,6 @@ func keyNamingTheSameNumber(g map[string]any, k string) (any, bool) {
 	}
 
 	return nil, false
-}
-
-// opensWithAnEmptyDocument reports whether src's first document holds nothing,
-// which is the shape the two converters disagree about.
-//
-// A crude scan and deliberately so: the first line that is not a directive, a
-// comment or blank has to be a "---", and the line after it has to be another
-// "---" or a "...". Anything else means the first document has content and the
-// two converters agree.
-//
-// Split on either break character. Style.Break writes a lone "\r" for a third
-// of the corpus, and a scan that only knows "\n" reads such a document as one
-// line -- which is how this missed fuzzseed/3226 on its first try.
-func opensWithAnEmptyDocument(src string) bool {
-	var seen int
-
-	for line := range strings.FieldsFuncSeq(src, func(r rune) bool { return r == '\n' || r == '\r' }) {
-		// Trimmed before the prefixes are read: a comment may be indented, and
-		// " # c" is as empty a document body as "" is.
-		line = strings.TrimSpace(line)
-		if line == "" || strings.HasPrefix(line, "%") || strings.HasPrefix(line, "#") {
-			continue
-		}
-
-		seen++
-		if seen == 1 {
-			if !strings.HasPrefix(line, "---") || strings.TrimSpace(line) != "---" {
-				return false
-			}
-
-			continue
-		}
-
-		return strings.HasPrefix(line, "---") || strings.HasPrefix(line, "...")
-	}
-
-	return false
-}
-
-// carriesATimestampOrBinaryTag reports whether src tags a node !!timestamp or
-// !!binary, in any of the three spellings a tag has.
-//
-// Matched on the suffix rather than on "!!timestamp", so the verbatim
-// "!<tag:yaml.org,2002:timestamp>" and a handle declared by a %TAG line are
-// caught too. It is wider than the defect -- a local tag named "!timestamp"
-// would match and resolves to nothing -- and being wider only skips documents.
-func carriesATimestampOrBinaryTag(src string) bool {
-	return strings.Contains(src, "timestamp") || strings.Contains(src, "binary")
 }
 
 // numberBeyondBigFloat is the recorded defect, and it is the decoder's rather
@@ -607,36 +452,6 @@ func jsonSourceGeneratorCases() iter.Seq[jsonSourceGeneratorCase] {
 
 // firstLine keeps a log line to the parser's own words, since an error here
 // carries the offending source and a caret under it.
-// losesATaggedFlowKeyAlonesAnchor reports whether ToJSON refused src for the
-// anchor it dropped from a flow entry written as a key alone.
-//
-// Both halves are required: the complaint, and a tag standing before an anchor
-// inside a flow collection. The complaint on its own is one the parser makes
-// about genuinely undefined aliases.
-func losesATaggedFlowKeyAlonesAnchor(text string, err error) bool {
-	return strings.Contains(err.Error(), "could not find alias") && taggedAnchorInFlow.MatchString(text)
-}
-
-var taggedAnchorInFlow = regexp.MustCompile(`[\[{][^\]}]*![^\s\[{]*\s+&`)
-
-// directiveNamedLikeAProperty reports whether src opens with a directive whose
-// name begins with the anchor or alias indicator.
-func directiveNamedLikeAProperty(text string) bool {
-	return strings.HasPrefix(text, "%&") || strings.HasPrefix(text, "%*")
-}
-
-// mergesAValueWrittenInPlace reports whether src gives a "<<" key a collection
-// written where it stands rather than an alias to one.
-//
-// Deliberately crude, and it only ever runs on a document whose JSON already
-// failed to parse: a false positive costs one excused case, where reproducing
-// the parser here to be exact would cost a second parser to keep in step.
-func mergesAValueWrittenInPlace(src string) bool {
-	return mergeInPlace.MatchString(src)
-}
-
-var mergeInPlace = regexp.MustCompile(`(^|[\s{,])<<\s*:\s*[\[{]`)
-
 func firstLine(text string) string {
 	for i := range len(text) {
 		if text[i] == '\n' {
@@ -645,23 +460,6 @@ func firstLine(text string) string {
 	}
 
 	return text
-}
-
-// directiveNamedLikeAnAnchorInText reports whether src opens a line with a
-// directive whose name begins with "&". 6.8 puts "&" in ns-char, so the name is
-// well-formed and the directive is one an implementation ignores.
-//
-// A byte order mark stands before the directives and a lone "\r" is a line
-// break (5.2, 5.4), so neither a split on "\n" nor a prefix test on the whole
-// text finds the line.
-func directiveNamedLikeAnAnchorInText(src string) bool {
-	for line := range strings.FieldsFuncSeq(src, func(r rune) bool { return r == '\n' || r == '\r' }) {
-		if strings.HasPrefix(strings.TrimPrefix(line, "\ufeff"), "%&") {
-			return true
-		}
-	}
-
-	return false
 }
 
 // TestToJSONSpelling checks the text ToJSON writes, not the value it stands for.
