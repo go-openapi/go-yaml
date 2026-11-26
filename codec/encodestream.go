@@ -257,7 +257,7 @@ func (e *Encoder) streamStruct(s *ast.Stream, value reflect.Value, column int) e
 		if e.omitsField(fp.info, fieldValue) {
 			continue
 		}
-		if fp.streamed {
+		if fp.streamed && !fp.info.OmitsEmptyEncoded(e.omitEmpty) {
 			e.scratch = e.keyScratchAt(depth)
 			key := e.fieldKey(fp, column)
 			e.scratch = nil

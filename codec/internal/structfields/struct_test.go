@@ -118,8 +118,8 @@ func TestJSONFlagsIgnoreAnUnknownFlag(t *testing.T) {
 	sf := fieldsOf[jsonFlagged](t, JSONTags).ByGoName["A"]
 
 	assert.Equal(t, "a", sf.RenderName)
-	assert.True(t, sf.IsOmitEmptyJSON)
-	assert.False(t, sf.IsOmitEmpty, "the yaml flag follows v3 and is set by a yaml tag alone")
+	assert.True(t, sf.IsOmitEmpty)
+	assert.True(t, sf.IsJSONTag, "the flags follow encoding/json/v2")
 	assert.True(t, sf.IsString)
 }
 

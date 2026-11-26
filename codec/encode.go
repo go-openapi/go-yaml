@@ -1239,11 +1239,16 @@ func (e *Encoder) tagMode() structfields.Mode {
 }
 
 // omitsField reports whether the omitzero and omitempty tags, or the OmitZero and OmitEmpty options, leave a field
-// out.
+// out before it is encoded.
+//
+// A field with a `json` tag follows encoding/json/v2 for omitempty, flag and option alike, and v2 decides from the
+// encoded value: encodeFieldValue drops it.
 func (e *Encoder) omitsField(sf *structfields.Info, fieldValue reflect.Value) bool {
 	switch {
 	case (e.omitZero || sf.IsOmitZero) && e.isOmittedByOmitZero(fieldValue):
 		return true
+	case sf.IsJSONTag:
+		return false
 	case e.omitEmpty && e.isOmittedByOmitEmptyOption(fieldValue):
 		return true
 	case sf.IsOmitEmpty && e.isOmittedByOmitEmptyTag(fieldValue):
@@ -1254,7 +1259,7 @@ func (e *Encoder) omitsField(sf *structfields.Info, fieldValue reflect.Value) bo
 }
 
 // encodeFieldValue encodes the value of the field sf, through the `json` tag's `,string` option where it is set. It
-// returns a nil node for a field that `json:",omitempty"` drops.
+// returns a nil node for a field with a `json` tag that `,omitempty` or the OmitEmpty option drops.
 func (e *Encoder) encodeFieldValue(sf *structfields.Info, fieldValue reflect.Value, column int) (ast.Node, error) {
 	var (
 		encoded ast.Node
@@ -1268,7 +1273,7 @@ func (e *Encoder) encodeFieldValue(sf *structfields.Info, fieldValue reflect.Val
 	if err != nil {
 		return nil, err
 	}
-	if sf.IsOmitEmptyJSON && !sf.IsInline && encodesEmpty(encoded) {
+	if sf.OmitsEmptyEncoded(e.omitEmpty) && !sf.IsInline && encodesEmpty(encoded) {
 		return nil, nil
 	}
 

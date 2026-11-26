@@ -87,18 +87,24 @@ type Info struct {
 	IsAutoAnchor bool
 	IsAutoAlias  bool
 	IsOmitEmpty  bool
-	// IsOmitEmptyJSON records `json:",omitempty"`, which follows encoding/json/v2: the encoder drops the field when it
-	// encodes as null, an empty string, an empty mapping or an empty sequence. IsOmitEmpty records the `yaml` flag,
-	// which follows go.yaml.in/yaml/v3.
-	IsOmitEmptyJSON bool
-	IsOmitZero      bool
-	IsFlow          bool
-	IsInline        bool
+	IsOmitZero   bool
+	// IsJSONTag records that the field's tag is a `json` tag, so its flags follow encoding/json/v2.
+	// `json:",omitempty"`, and the OmitEmpty encode option on such a field, drop the field when it encodes as null,
+	// an empty string, an empty mapping or an empty sequence.
+	IsJSONTag bool
+	IsFlow    bool
+	IsInline  bool
 	// IsString records `json:",string"`: the field's number is written inside a string, as encoding/json/v2 writes it.
 	// Only a `json` tag sets it. [StringTakesNumber] tells whether the field's type allows it.
 	IsString bool
 	// namedBy records which tag wrote RenderName, for the conflict rule.
 	namedBy tagSource
+}
+
+// OmitsEmptyEncoded reports whether the encoder decides omitempty on sf from its encoded value, as encoding/json/v2
+// does: sf has a `json` tag, and either the tag carries `,omitempty` or the OmitEmpty option is set.
+func (sf *Info) OmitsEmptyEncoded(omitEmptyOption bool) bool {
+	return sf.IsJSONTag && (sf.IsOmitEmpty || omitEmptyOption)
 }
 
 // getTag returns the tag naming field under mode, and whether it came from the
@@ -217,7 +223,7 @@ const (
 //
 // Each tag keeps its own vocabulary.
 // A `yaml` tag takes v3's flags and the five this library adds, and any other flag is an error.
-// A `json` tag takes the two flags encoding/json defines, and ignores any other.
+// A `json` tag takes the three flags encoding/json defines, and ignores any other.
 //
 // `json:",inline"` therefore inlines nothing, because encoding/json has no such option.
 // Under [github.com/go-openapi/go-yaml/codec.UseJSONTags], promotesUntaggedEmbedded promotes an anonymous struct without a flag.
@@ -242,6 +248,7 @@ func structField(field reflect.StructField, index int, mode Mode) (*Info, error)
 	}
 
 	if !fromYAML {
+		sf.IsJSONTag = tag != ""
 		readJSONFlags(sf, options[1:])
 
 		return sf, nil
@@ -307,7 +314,7 @@ func readJSONFlags(sf *Info, flags []string) {
 	for _, opt := range flags {
 		switch opt {
 		case "omitempty":
-			sf.IsOmitEmptyJSON = true
+			sf.IsOmitEmpty = true
 		case "omitzero":
 			sf.IsOmitZero = true
 		case "string":

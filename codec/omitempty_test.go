@@ -103,3 +103,24 @@ func TestAJSONOmitEmptyNeedsTheJSONTagsOption(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "str: \"\"\n", string(out))
 }
+
+// TestTheOmitEmptyOptionFollowsTheTag holds that the OmitEmpty option takes encoding/json/v2's rule on a field with a
+// `json` tag under WriteJSONTags, and keeps its own rule on any other field.
+func TestTheOmitEmptyOptionFollowsTheTag(t *testing.T) {
+	type mixed struct {
+		JSONFalse bool   `json:"json_false"`
+		JSONEmpty string `json:"json_empty"`
+		YAMLFalse bool   `yaml:"yaml_false"`
+		Untagged  bool
+		Kept      string `yaml:"kept"`
+	}
+	in := mixed{Kept: "k"}
+
+	out, err := codec.Marshal(in, codec.OmitEmpty(), codec.WriteJSONTags(true))
+	require.NoError(t, err)
+	assert.Equal(t, "json_false: false\nkept: k\n", string(out), "v2 keeps false and drops \"\"")
+
+	out, err = codec.Marshal(in, codec.OmitEmpty())
+	require.NoError(t, err)
+	assert.Equal(t, "kept: k\n", string(out), "without WriteJSONTags no json tag is read, so every field takes v1's rule")
+}

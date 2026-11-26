@@ -429,11 +429,15 @@ func AutoInt() EncodeOption {
 	}
 }
 
-// OmitEmpty skips every struct field that encoding/json's omitempty would skip: a false bool, a zero number, an empty
-// string, a nil pointer or interface, and an empty slice or map.
+// OmitEmpty skips every struct field that encoding/json v1's omitempty would skip: a false bool, a zero number, an
+// empty string, a nil pointer or interface, and an empty slice or map.
 //
-// It applies to every field, tagged or not. Use it where you expect encoding/json's rule: this package's omitempty tag
-// also skips a value whose IsZero method returns true, and a struct whose fields would all be skipped (see [Marshal]).
+// It applies to every field, tagged or not. This package's omitempty tag also skips a value whose IsZero method
+// returns true, and a struct whose fields would all be skipped (see [Marshal]).
+//
+// Under [WriteJSONTags], a field with a `json` tag follows encoding/json/v2's omitempty instead, as its own
+// `,omitempty` flag does: it is skipped when it encodes as null, an empty string, an empty mapping or an empty
+// sequence, and a false bool or a zero number is written.
 func OmitEmpty() EncodeOption {
 	return func(e *Encoder) error {
 		e.omitEmpty = true
