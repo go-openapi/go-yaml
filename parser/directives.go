@@ -109,9 +109,11 @@ func (p *Parser) parseBareDirective(ctx context) (*ast.DirectiveNode, error) {
 		return nil, err
 	}
 
-	switch name := directiveNameOf(directive); name {
-	case "YAML", "TAG":
-		return nil, yamlerrors.NewSyntax(fmt.Sprintf("unexpected format %s directive", name), directive.GetToken())
+	switch directiveNameOf(directive) {
+	case "YAML":
+		return nil, yamlerrors.NewSyntax("unexpected format YAML directive", directive.GetToken())
+	case "TAG":
+		return nil, yamlerrors.NewSyntax("unexpected format TAG directive", directive.GetToken())
 	default:
 		return directive, nil
 	}
