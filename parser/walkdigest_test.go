@@ -138,7 +138,9 @@ func TestTheWalkHandsOverTheSameTree(t *testing.T) {
 // Re-baselined on 2026-11-26 when the parser and scanner messages were reworded. The digest writes each refusal's
 // message, and only those moved: with "refused" written in place of the message, the digest is the same before and
 // after.
-const fixedWalkDigest = "5dc43e1d22015e381f66d77cdb3f80ad3cb2ac5009d9280347b4a40b5a125e01"
+//
+// Again the same day, when a property in front of an alias got its own message: the same check holds.
+const fixedWalkDigest = "20397638065182378746d3693285ea7cedb45b740450937fdca01b23c09be3aa"
 
 // digestVisitor writes each node it is handed, so a node the walk reads from a reused cell changes the digest.
 type digestVisitor struct {

@@ -207,3 +207,18 @@ func TestParseAnchorNamesTakeEveryAnchorChar(t *testing.T) {
 		}
 	})
 }
+
+// TestParseRefusesAPropertyOnAnAlias covers an anchor or a tag written in front of an alias.
+//
+// c-ns-alias-node is the '*' and its name and nothing else, so an alias takes no property. parseScalarValue met the
+// '*' in its catch-all arm and refused it as "unexpected scalar value type". yaml/yaml-reference-parser refuses each
+// of these, and libfyaml with "unexpected alias".
+func TestParseRefusesAPropertyOnAnAlias(t *testing.T) {
+	for _, source := range []string{
+		"&a *b\n", "!!bool *TRUE\n", "!x *b\n", "a: &x *y\n", "a: !t *b\n", "- &a *b\n", "[&a *b]\n",
+	} {
+		_, err := parser.ParseBytes([]byte(source))
+		require.Errorf(t, err, "%q", source)
+		assert.Containsf(t, err.Error(), "an alias cannot carry an anchor or a tag", "%q", source)
+	}
+}

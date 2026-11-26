@@ -139,6 +139,10 @@ func (p *Parser) parseScalarValue(ctx context, tk *group.TapeToken) (ast.ScalarN
 	case token.TagType:
 		// A scalar tag with no value, as in "key: !!str," or "!!str : value".
 		return p.parseScalarTag(ctx)
+	case token.AliasType:
+		// The grouper joins a '*' to its name only where no property stands in front of it, so a '*' reaching here
+		// follows an anchor or a tag. c-ns-alias-node takes neither: "&a *b" and "!!bool *TRUE" are refused.
+		return nil, yamlerrors.NewSyntax("an alias cannot carry an anchor or a tag", tk.RawToken())
 	default:
 		// nothing to do
 	}

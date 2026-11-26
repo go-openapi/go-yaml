@@ -211,7 +211,9 @@ func TestARefusalSignatureKeepsTheParserAndDropsTheDocument(t *testing.T) {
 //
 // Re-baselined on 2026-11-26 when the parser and scanner messages were reworded
 // to the spec's nouns. The corpus refuses the same 9,414 cases; 79 signatures
-// became 76, mostly because the length and the digit escapes merged.
+// became 76, mostly because the length and the digit escapes merged. The same
+// day "an alias cannot carry an anchor or a tag" split from "found _ where a
+// scalar is expected".
 var parserComplaints = []string{
 	"\\U takes eight hexadecimal digits",
 	"\\u takes four hexadecimal digits",
@@ -257,6 +259,7 @@ var parserComplaints = []string{
 	"a tag handle takes letters, digits and _ between its _ characters",
 	"a tag must name a suffix after its handle",
 	"a verbatim tag must end with _",
+	"an alias cannot carry an anchor or a tag",
 	"an alias must be followed by a name",
 	"an alias must be separated from the node that follows it",
 	"an anchor must be followed by a name",
