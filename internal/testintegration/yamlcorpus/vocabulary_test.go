@@ -159,6 +159,12 @@ func TestTheParserVocabularyGapIsMeasured(t *testing.T) {
 		}
 	}
 
+	for _, pin := range messagePins {
+		if _, perr := yamlparser.ParseBytes([]byte(pin.src), pin.opts...); perr != nil {
+			drawn[yamlbuild.RefusalSignature(perr)] = true
+		}
+	}
+
 	var unreached []string
 
 	for sig, tmpl := range signature {
@@ -234,7 +240,14 @@ func TestTheParserVocabularyGapIsMeasured(t *testing.T) {
 	// parseDirectiveName dropped their `... name is not scalar value` checks:
 	// parseScalarValue returns a node or an error, so none of the three could
 	// fire.
-	const ceiling = 22
+	//
+	// messagePins and the bare-directive literals brought it to 16, with
+	// documents for the high surrogate, the tab in a block quoted scalar's
+	// indentation, the content after "...", and the raw control character
+	// WithJSONSyntax refuses. Of the 16, eight are
+	// guards between two layers, two are kept on purpose (the source bound and
+	// the merge key's ':'), and fuzzing found no route to the other six.
+	const ceiling = 16
 
 	if len(unreached) > ceiling {
 		t.Errorf("%d templates unreached, and the ceiling is %d: either a new message arrived with no "+
