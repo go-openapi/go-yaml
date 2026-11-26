@@ -1022,7 +1022,7 @@ func (g *Grouper) keyBefore(w *keyWindow, tk *TapeToken) bool {
 		// ends it.
 		start := flowCollectionStart(w.held[:last+1])
 		if start < 0 {
-			g.fail(yamlerrors.NewSyntax(w.whyNoKey(), tk.RawToken()))
+			g.fail(w.noKeyError(key, tk))
 
 			return false
 		}
@@ -1080,12 +1080,26 @@ func (g *Grouper) keyBefore(w *keyWindow, tk *TapeToken) bool {
 	return true
 }
 
-// whyNoKey names the rule that took the key this ':' is reaching back for.
+// noKeyError refuses the ':' colon, whose key would be the flow collection closer ends, for the reason whyNoKey gives.
+//
+// Where nothing was let go the closer stands alone, and the error points at it. Otherwise it points at the ':'.
+func (w *keyWindow) noKeyError(closer, colon *TapeToken) error {
+	at := colon
+	if w.letGo == heldOn {
+		at = closer
+	}
+
+	return yamlerrors.NewSyntax(w.whyNoKey(closer), at.RawToken())
+}
+
+// whyNoKey names the rule that took the key this ':' is reaching back for, and closer is the ']' or '}' that ends it.
 //
 // The window hands a collection on once it cannot be an implicit key, so the
 // tokens are gone by the time a ':' claims them. Reporting only that the key
 // cannot be found would name the symptom.
-func (w *keyWindow) whyNoKey() string {
+//
+// Where the window let nothing go, no collection opened before the closer: "]: 1" holds a ']' with no '['.
+func (w *keyWindow) whyNoKey(closer *TapeToken) string {
 	switch w.letGo {
 	case spanningLines:
 		return "an implicit key must stand on one line"
@@ -1094,7 +1108,11 @@ func (w *keyWindow) whyNoKey() string {
 			"a non-scalar key written without %q is limited to %d characters -- announce it with %q if it must be longer",
 			"?", implicitKeyLimit, "?")
 	default:
-		return "found a ':' with no mapping key before it"
+		if closer.Type() == token.MappingEndType {
+			return "found '}' with no '{' to close"
+		}
+
+		return "found ']' with no '[' to close"
 	}
 }
 

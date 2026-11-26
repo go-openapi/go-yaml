@@ -376,6 +376,15 @@ func TestAReleasedKeyNamesTheRuleThatTookIt(t *testing.T) {
 			source: longFlowSeq(1200) + ": v\n",
 			want:   `a non-scalar key written without "?" is limited to 1024 characters`,
 		},
+		// Nothing was let go: the ']' before the ':' closes no '['. It read "found an invalid key for this map".
+		"a closer with nothing open": {
+			source: "]: 1\n",
+			want:   "[1:1] found ']' with no '[' to close",
+		},
+		"a closer with nothing open, below an entry": {
+			source: "a: 1\n]: 2\n",
+			want:   "[2:1] found ']' with no '[' to close",
+		},
 	} {
 		t.Run(name, func(t *testing.T) {
 			_, err := parser.ParseBytes([]byte(test.source))
