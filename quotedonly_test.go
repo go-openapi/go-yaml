@@ -64,6 +64,10 @@ func TestAQuotedScalarMayHoldAnyNonC0Character(t *testing.T) {
 			"k: \"x\x7f\" # c\x7f\n",
 			"--- a\n--- b\u0080\n",
 			"%TAG !e\x7f! tag:e,2000:\n--- !e\x7f!x \"v\"\n",
+			// A root block scalar holding one, ended by a less indented line: the dropped content left the header as the
+			// last token, and the block was refused as having no content.
+			">\n \x7f\n0\n",
+			"|\n a\x7fb\n0\n",
 			// C0 stays refused, quoted or not.
 			"k: \"a\x01b\"\n",
 		} {

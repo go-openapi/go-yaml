@@ -328,6 +328,12 @@ func (s *Scanner) refuseMultiLine(ctx *Context, msg string) error {
 // Empty literal/folded content adds no string token, so an empty one is
 // added; but a literal/folded indicator at column 1 is invalid at the drop.
 func (s *Scanner) endMultiLine(ctx *Context, fell bool) error {
+	if ctx.strayQuotedOnly {
+		// addTokenValue dropped the content for holding a character only a quoted scalar may hold, so the header
+		// stands as the last token. Refuse the character: ">" over " \x7f" over "0" was refused as a block with no
+		// content.
+		return unprintableErr(ctx.src, int(ctx.quotedOnly[0]))
+	}
 	if tk := ctx.lastToken(); tk != nil {
 		// Only the header is asked about its column. A keep scalar holding nothing but empty lines, "keep: |+" over
 		// a blank line, has handed its content over already, and that token stands at column 1 of the blank line.
