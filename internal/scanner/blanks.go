@@ -65,7 +65,7 @@ func (s *Scanner) scanWhiteSpace(ctx *Context) bool {
 // A flow indicator ends a name as a blank does, and the flow scans close the
 // property here as well. They cut the token alone before, and isAlias outlived
 // the ',' of "[*m,b: c]": the ':' after the "b" read as a character of a name,
-// and the pair was refused with "',' or ']' must be specified".
+// and the pair was refused with "a flow sequence needs ',' or ']' after an entry".
 func (s *Scanner) endsProperty(ctx *Context) {
 	s.addBufferedTokenIfExists(ctx)
 	s.isAnchor = false

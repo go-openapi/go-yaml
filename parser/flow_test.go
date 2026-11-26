@@ -285,11 +285,11 @@ func TestAnUnclosedFlowNamesTheReasonItEnded(t *testing.T) {
 		},
 		"sequence that simply ends": {
 			source: "[a, b\n",
-			want:   "sequence end token ']' not found",
+			want:   "a flow sequence is not closed by ']'",
 		},
 		"mapping that simply ends": {
 			source: "{a: 1\n",
-			want:   "could not find flow mapping end token '}'",
+			want:   "a flow mapping is not closed by '}'",
 		},
 	} {
 		t.Run(name, func(t *testing.T) {
@@ -366,11 +366,11 @@ func TestAReleasedKeyNamesTheRuleThatTookIt(t *testing.T) {
 	for name, test := range map[string]struct{ source, want string }{
 		"across lines at the document level": {
 			source: "[a,\n b]: v\n",
-			want:   "map key definition includes an implicit line break",
+			want:   "an implicit key must stand on one line",
 		},
 		"across lines inside a flow sequence": {
 			source: "[[a,\n  b]: c]\n",
-			want:   "map key definition includes an implicit line break",
+			want:   "an implicit key must stand on one line",
 		},
 		"past the bound at the document level": {
 			source: longFlowSeq(1200) + ": v\n",

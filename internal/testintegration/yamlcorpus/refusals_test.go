@@ -47,7 +47,7 @@ func TestEveryRefusalSaysWhy(t *testing.T) {
 // parser says while refusing a document in the stored corpus.
 //
 // Asserted as a set rather than as a count, and the difference is not academic.
-// Replacing `'@' is a reserved character` with `found an invalid token` in
+// Replacing `'@' is a reserved character` with `found text the scanner could not read as a token` in
 // scanner.go -- the regression this exists for, reproduced to check the test
 // catches it -- left the count at 54, because one complaint went and one
 // arrived. The set reports `gone: [_ is a reserved character]` and names it.
@@ -178,16 +178,16 @@ func TestARefusalSignatureKeepsTheParserAndDropsTheDocument(t *testing.T) {
 // "a node takes at most one tag" arrived on 2026-09-11, when the parser began
 // refusing a second tag on one node. 8 documents of the corpus draw it, and the
 // grammar refuses all 8. 4 of them were read before, and the other 4 were
-// refused with "value is not allowed in this context".
+// refused with "a document holds one root node, and this stands past it".
 //
-// "map key definition includes an implicit line break" arrived on 2026-11-18,
+// "an implicit key must stand on one line" arrived on 2026-11-18,
 // when a pair inside a flow sequence began to be refused for a key that starts
 // on a line above its ':', as in "[a" over " b: c]". The check read only the
 // line the key ends on, so such a key was read as "a b".
 //
 // "a directive must be named right after its _" arrived on 2026-11-18, when the
 // scanner began refusing a "%" with nothing but a blank, a break or the end of
-// the stream after it, and "undefined directive value" left with it: the
+// the stream after it, and "a directive must be named right after its '%'" left with it: the
 // grouping still refuses a "%" that never got a name, and no document reaches it
 // now that the scanner refuses the same "%" first.
 //
@@ -195,32 +195,65 @@ func TestARefusalSignatureKeepsTheParserAndDropsTheDocument(t *testing.T) {
 // comment holding U+FEFF began to be refused: c-nb-comment-text is '#'
 // nb-char*, and nb-char leaves the mark out.
 //
-// "explicit keys are not allowed after a tag on the same line" and its anchor
+// "a block mapping cannot start on the line of its tag" and its anchor
 // twin arrived the same day, when a node property standing before a "?" on its
 // line began to be refused as one before a "-" was: "!!null ?" was read as a
 // tagged mapping, and "k: &m ? a" as {k: {a: null}}.
 //
 // Three arrived on 2026-11-23, when conformance-suites' generator began drawing
 // properties on the "<<", "!!omap" families and tagged keys, and nothing about
-// the parser changed. "could not find merge key" is drawn by mutants alone,
+// the parser changed. "a !!merge tag must stand on '<<'" is drawn by mutants alone,
 // each "!!merge" left standing on something that is not a "<<"; the same draws
 // found "? !!merge <<" refused with it, which is now fixed.
-// "expected sequence element, but found _" and "a leading empty line of a block
+// "a flow sequence entry is missing before _" and "a leading empty line of a block
 // scalar holds more spaces than its first content line" come from the
 // reshuffled seeds.
+//
+// Re-baselined on 2026-11-26 when the parser and scanner messages were reworded
+// to the spec's nouns. The corpus refuses the same 9,414 cases; 79 signatures
+// became 76, mostly because the length and the digit escapes merged.
 var parserComplaints = []string{
-	"YAML version has already been specified",
+	"\\U takes eight hexadecimal digits",
+	"\\u takes four hexadecimal digits",
+	"\\x takes two hexadecimal digits",
 	"_ is a reserved character",
 	"_ is not a scalar, and a flow collection has no sequence entries",
-	"_ or _ must be specified",
 	"a _ in a tag must be followed by two hexadecimal digits",
+	"a _ tag must stand on _",
+	"a block mapping cannot start on the _ line",
+	"a block mapping cannot start on the line of its anchor",
+	"a block mapping cannot start on the line of its tag",
+	"a block scalar header cannot take this option",
+	"a block sequence cannot start on the line of its anchor",
+	"a block sequence cannot start on the line of its key",
+	"a block sequence cannot start on the line of its tag",
 	"a comment must be preceded by a space, and a scalar cannot begin with _",
+	"a comment must be separated from a block scalar header by a space",
+	"a directive must be followed by a _ line",
 	"a directive must be named right after its _",
+	"a document holds one root node, and this stands past it",
+	"a document takes at most one YAML directive",
+	"a double-quoted scalar is not closed by _",
 	"a flow collection continues on a line that is not indented past the one it started on",
+	"a flow mapping entry is missing before _",
+	"a flow mapping entry must be followed by _ _ or _",
+	"a flow mapping is not closed by _",
+	"a flow mapping needs _ or _ after an entry",
+	"a flow sequence entry is missing before _",
+	"a flow sequence is not closed by _",
+	"a flow sequence needs _ or _ after an entry",
 	"a leading empty line of a block scalar holds more spaces than its first content line",
+	"a line at the column of a mapping must open an entry",
+	"a mapping value cannot open a mapping on the line of its key",
+	"a node takes at most one anchor",
 	"a node takes at most one tag",
 	"a plain scalar cannot begin with _",
+	"a quoted scalar cannot hold a _ or _ line",
 	"a scalar continues on a line that is not indented past the one it started on",
+	"a single-quoted scalar is not closed by a single quote",
+	"a tab cannot stand for the indentation a mapping entry needs",
+	"a tab cannot stand for the indentation a sequence entry needs",
+	"a tag cannot hold _",
 	"a tag handle takes letters, digits and _ between its _ characters",
 	"a tag must name a suffix after its handle",
 	"a verbatim tag must end with _",
@@ -229,62 +262,30 @@ var parserComplaints = []string{
 	"an anchor must be followed by a name",
 	"an anchor must be separated from the node that follows it",
 	"an explicit key names one node, and this stands past it",
-	"anchor is not allowed in this context",
-	"anchor is not allowed in this sequence context",
-	"anchors cannot be used consecutively",
-	"block sequence entries are not allowed in this context",
-	"comment must be separated from the block scalar header by a space",
-	"could not find _ character corresponding to _",
+	"an implicit key must stand on one line",
+	"anchor is not indented past its _",
+	"anchor is not indented past its key",
 	"could not find alias _",
-	"could not find end character of double-quoted text",
-	"could not find end character of single-quoted text",
-	"could not find flow map content",
-	"could not find flow mapping end token _",
-	"could not find map value",
-	"could not find merge key",
-	"expected mapping entry, but found _",
-	"expected sequence element, but found _",
-	"explicit keys are not allowed after a tag on the same line",
-	"explicit keys are not allowed after anchor on the same line",
+	"found _ where a mapping key is expected",
+	"found _ where a scalar is expected",
+	"found _ with no _ to close",
+	"found a _ with no mapping key before it",
 	"found a byte order mark inside a comment",
 	"found a byte order mark inside a line, where a node may not hold one",
 	"found a byte that is part of no character",
-	"found a character that is not a hexadecimal digit in escaped N-bit character",
-	"found a character that is not a hexadecimal digit in escaped UTF-N character",
 	"found a tab character where an indentation space is expected",
 	"found an escaped code point that is not a character",
-	"found an invalid key for this map",
 	"found character _ that a YAML stream may not hold",
 	"found character _ that cannot start any token",
-	"found invalid tag character _",
-	"found unexpected document separator",
 	"found unknown escape character _",
-	"invalid header option",
-	"map key definition includes an implicit line break",
-	"mapping value is not allowed in this context",
-	"non-map value is specified",
-	"not enough length for escaped N-bit character",
-	"not enough length for escaped UTF-N character",
-	"sequence end token _ not found",
-	"sequence entries are not allowed after a tag on the same line",
-	"sequence entries are not allowed after anchor on the same line",
-	"tab character cannot stand for the indentation a mapping entry needs",
-	"tab character cannot use as a sequence delimiter",
 	"tag handle _ has already been declared by a TAG directive",
 	"tag handle _ is not defined by a TAG directive",
-	"tag is not allowed in this context",
-	"tag is not allowed in this sequence context",
+	"tag is not indented past its _",
+	"tag is not indented past its key",
+	"the TAG directive takes a handle and a prefix",
+	"the YAML directive takes one version number",
 	"the content of a block scalar is indented less than the indicator in its header states",
-	"unexpected directive value. document not started",
-	"unexpected format TAG directive",
-	"unexpected format YAML directive",
-	"unexpected key name",
-	"unexpected map key",
-	"unexpected scalar value",
-	"unexpected scalar value type",
 	"unknown YAML version _",
-	"value cannot be placed after document separator",
-	"value is not allowed in this context",
 	"value is not allowed in this context. map key-value is pre-defined",
 	"value is not indented past its _",
 	"value is not indented past its key",

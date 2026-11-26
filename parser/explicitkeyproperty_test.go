@@ -29,16 +29,16 @@ func TestAPropertyKeepsAnExplicitKeyOffItsLine(t *testing.T) {
 		src  string
 		want string
 	}{
-		{"tag-then-an-empty-key", "!!null ?\n", "[1:8] explicit keys are not allowed after a tag on the same line"},
-		{"anchor-then-an-empty-key", "&m ?\n", "[1:4] explicit keys are not allowed after anchor on the same line"},
-		{"anchor-under-a-key", "k: &m ? a\n", "[1:7] explicit keys are not allowed after anchor on the same line"},
-		{"tag-under-a-key", "k: !!map ? a\n", "[1:10] explicit keys are not allowed after a tag on the same line"},
-		{"anchor-in-a-sequence-entry", "- &m ? a\n", "[1:6] explicit keys are not allowed after anchor on the same line"},
-		{"anchor-on-the-line-below-its-key", "k:\n  &m ? a\n", "[2:6] explicit keys are not allowed after anchor on the same line"},
-		{"anchor-then-a-tag", "k: &m !!map ? a\n", "[1:13] explicit keys are not allowed after a tag on the same line"},
-		{"tag-then-an-anchor", "k: !!map &m ? a\n", "[1:13] explicit keys are not allowed after anchor on the same line"},
-		{"anchor-in-a-flow-sequence", "[&m ? a]", "[1:5] explicit keys are not allowed after anchor on the same line"},
-		{"anchor-in-a-flow-mapping", "{&m ? a : b}", "[1:5] explicit keys are not allowed after anchor on the same line"},
+		{"tag-then-an-empty-key", "!!null ?\n", "[1:8] a block mapping cannot start on the line of its tag"},
+		{"anchor-then-an-empty-key", "&m ?\n", "[1:4] a block mapping cannot start on the line of its anchor"},
+		{"anchor-under-a-key", "k: &m ? a\n", "[1:7] a block mapping cannot start on the line of its anchor"},
+		{"tag-under-a-key", "k: !!map ? a\n", "[1:10] a block mapping cannot start on the line of its tag"},
+		{"anchor-in-a-sequence-entry", "- &m ? a\n", "[1:6] a block mapping cannot start on the line of its anchor"},
+		{"anchor-on-the-line-below-its-key", "k:\n  &m ? a\n", "[2:6] a block mapping cannot start on the line of its anchor"},
+		{"anchor-then-a-tag", "k: &m !!map ? a\n", "[1:13] a block mapping cannot start on the line of its tag"},
+		{"tag-then-an-anchor", "k: !!map &m ? a\n", "[1:13] a block mapping cannot start on the line of its anchor"},
+		{"anchor-in-a-flow-sequence", "[&m ? a]", "[1:5] a block mapping cannot start on the line of its anchor"},
+		{"anchor-in-a-flow-mapping", "{&m ? a : b}", "[1:5] a block mapping cannot start on the line of its anchor"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()

@@ -106,7 +106,7 @@ func TestParseEmptyKeysCarryingProperties(t *testing.T) {
 // above it, where that key has no value: the key opens the next entry of the enclosing mapping.
 //
 // The value check read the key group by its first token, the tag, and refused it as a tag standing below a key with
-// "tag is not allowed in this context". An untagged key and an anchor-led one read fine in the same place.
+// "tag is not indented past its key". An untagged key and an anchor-led one read fine in the same place.
 // yaml/yaml-reference-parser, libfyaml and go.yaml.in/yaml/v3 read each document below.
 func TestATagLedKeyBelowAnEmptyNestedValueOpensAnOuterEntry(t *testing.T) {
 	for source, want := range map[string]any{
@@ -129,7 +129,7 @@ func TestATagLedKeyBelowAnEmptyNestedValueOpensAnOuterEntry(t *testing.T) {
 		for _, source := range []string{"a:\n b:\n!t\n", "a:\n!!str x\n"} {
 			_, err := parser.ParseBytes([]byte(source))
 			require.Errorf(t, err, "%q", source)
-			assert.Contains(t, err.Error(), "tag is not allowed in this context")
+			assert.Contains(t, err.Error(), "tag is not indented past its key")
 		}
 	})
 }
@@ -254,7 +254,7 @@ func TestParseRefusesATagTheGrammarRefuses(t *testing.T) {
 		"k: !<%4> x\n":  "two hexadecimal digits",
 		"k: !<%zz> x\n": "two hexadecimal digits",
 		"k: !<a x\n":    "must end with '>'",
-		"k: !!<x> y\n":  "invalid tag character",
+		"k: !!<x> y\n":  "a tag cannot hold",
 		"k: !!\n":       "must name a suffix",
 		"k: !a!\n":      "must name a suffix",
 	} {
@@ -388,8 +388,8 @@ func TestParseRefusesASecondTagOrAnchorOnANode(t *testing.T) {
 		"!a &x !b y\n":  "a node takes at most one tag",
 
 		// Nor does a tag between two anchors.
-		"&x\n&y y\n":    "anchors cannot be used consecutively",
-		"&x !a\n&y y\n": "anchors cannot be used consecutively",
+		"&x\n&y y\n":    "a node takes at most one anchor",
+		"&x !a\n&y y\n": "a node takes at most one anchor",
 	} {
 		t.Run(source, func(t *testing.T) {
 			_, err := parser.ParseBytes([]byte(source))
@@ -458,7 +458,7 @@ func TestParseKeepsTheTagOnAnEmptyCollection(t *testing.T) {
 //
 // The scalar under such a tag keeps the text it was written with, so "!thing 1" holds the string "1".
 // The test catches parseTagValue leaving the cursor on the scalar it built,
-// which makes the parse reject the document with "value is not allowed in this context".
+// which makes the parse reject the document with "a document holds one root node, and this stands past it".
 //
 // A "%TAG !!" line repoints the secondary handle, so "!!seq" names !local-seq,
 // which resolves to nothing while the grouping still joins it to its scalar.

@@ -1201,7 +1201,7 @@ a:
   e: f
   g: h`,
 			`
-[3:3] unexpected key name
+[3:3] an implicit key must stand on one line
    2 | a:
 >  3 | - b
    4 |   c: d
@@ -1214,7 +1214,7 @@ a:
 a
 - b: c`,
 			`
-[2:1] unexpected key name
+[2:1] an implicit key must stand on one line
 >  2 | a
    3 | - b: c
        ^
@@ -1223,7 +1223,7 @@ a
 		{
 			`%YAML 1.1 {}`,
 			`
-[1:1] unexpected directive value. document not started
+[1:1] a directive must be followed by a '---' line
 >  1 | %YAML 1.1 {}
        ^
 `,
@@ -1231,7 +1231,7 @@ a
 		{
 			`{invalid`,
 			`
-[1:2] could not find flow map content
+[1:2] a flow mapping entry must be followed by ':', ',' or '}'
 >  1 | {invalid
         ^
 `,
@@ -1239,7 +1239,7 @@ a
 		{
 			`{ "key": "value" `,
 			`
-[1:1] could not find flow mapping end token '}'
+[1:1] a flow mapping is not closed by '}'
 >  1 | { "key": "value"
        ^
 `,
@@ -1250,7 +1250,7 @@ a: |invalidopt
   foo
 `,
 			`
-[2:4] invalid header option: "invalidopt"
+[2:4] a block scalar header cannot take this option: "invalidopt"
 >  2 | a: |invalidopt
           ^
    3 |   foo`,
@@ -1261,7 +1261,7 @@ a: 1
 b
 `,
 			`
-[3:1] non-map value is specified
+[3:1] a line at the column of a mapping must open an entry: a key and its ':'
    2 | a: 1
 >  3 | b
        ^
@@ -1312,7 +1312,7 @@ b
 - c
 `,
 			`
-[3:1] non-map value is specified
+[3:1] a line at the column of a mapping must open an entry: a key and its ':'
    2 | a: 1
 >  3 | b
        ^
@@ -1321,7 +1321,7 @@ b
 		{
 			`a: [`,
 			`
-[1:4] sequence end token ']' not found
+[1:4] a flow sequence is not closed by ']'
 >  1 | a: [
           ^
 `,
@@ -1329,7 +1329,7 @@ b
 		{
 			`a: ]`,
 			`
-[1:4] could not find '[' character corresponding to ']'
+[1:4] found ']' with no '[' to close
 >  1 | a: ]
           ^
 `,
@@ -1337,7 +1337,7 @@ b
 		{
 			`a: [ [1] [2] [3] ]`,
 			`
-[1:10] ',' or ']' must be specified
+[1:10] a flow sequence needs ',' or ']' after an entry
 >  1 | a: [ [1] [2] [3] ]
                 ^
 `,
@@ -1348,7 +1348,7 @@ a: -
 b: -
 `,
 			`
-[2:4] block sequence entries are not allowed in this context
+[2:4] a block sequence cannot start on the line of its key
 >  2 | a: -
           ^
    3 | b: -`,
@@ -1359,7 +1359,7 @@ a: - 1
 b: - 2
 `,
 			`
-[2:4] block sequence entries are not allowed in this context
+[2:4] a block sequence cannot start on the line of its key
 >  2 | a: - 1
           ^
    3 | b: - 2`,
@@ -1367,7 +1367,7 @@ b: - 2
 		{
 			`a: 'foobarbaz`,
 			`
-[1:4] could not find end character of single-quoted text
+[1:4] a single-quoted scalar is not closed by a single quote
 >  1 | a: 'foobarbaz
           ^
 `,
@@ -1375,7 +1375,7 @@ b: - 2
 		{
 			`a: "\"key\": \"value:\"`,
 			`
-[1:4] could not find end character of double-quoted text
+[1:4] a double-quoted scalar is not closed by '"'
 >  1 | a: "\"key\": \"value:\"
           ^
 `,
@@ -1383,7 +1383,7 @@ b: - 2
 		{
 			`foo: [${should not be allowed}]`,
 			`
-[1:8] ',' or ']' must be specified
+[1:8] a flow sequence needs ',' or ']' after an entry
 >  1 | foo: [${should not be allowed}]
               ^
 `,
@@ -1391,7 +1391,7 @@ b: - 2
 		{
 			`foo: [$[should not be allowed]]`,
 			`
-[1:8] ',' or ']' must be specified
+[1:8] a flow sequence needs ',' or ']' after an entry
 >  1 | foo: [$[should not be allowed]]
               ^
 `,
@@ -1413,7 +1413,7 @@ a:
     c: d
 `,
 			`
-[5:5] value is not allowed in this context
+[5:5] a document holds one root node, and this stands past it
    2 | a:
    3 |   - |
    4 |         b
@@ -1430,7 +1430,7 @@ a:
       d: e
 `,
 			`
-[5:5] value is not allowed in this context
+[5:5] a document holds one root node, and this stands past it
    2 | a:
    3 |   - |
    4 |         b
@@ -1455,7 +1455,7 @@ a:
 		{
 			`{"000":0000A,`,
 			`
-[1:13] could not find flow map content
+[1:13] a flow mapping entry must be followed by ':', ',' or '}'
 >  1 | {"000":0000A,
                    ^
 `,

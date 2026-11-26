@@ -85,7 +85,7 @@ func (s *Scanner) scanTag(ctx *Context) (bool, error) {
 			ctx.addOriginBuf(c)
 			s.progressColumn(ctx, progress)
 
-			return false, ErrInvalidToken(fmt.Sprintf("found invalid tag character %q", c), token.Invalid(ctx.origin(), s.pos()))
+			return false, ErrInvalidToken(fmt.Sprintf("a tag cannot hold %q", c), token.Invalid(ctx.origin(), s.pos()))
 		case '\n', '\r':
 			ctx.addOriginBuf(c)
 			value := ctx.source(ctx.idx-1, ctx.idx+int32(idx))
@@ -112,14 +112,14 @@ func (s *Scanner) scanTag(ctx *Context) (bool, error) {
 
 			ctx.addOriginBuf(c)
 			s.progressColumn(ctx, progress)
-			invalidMsg := fmt.Sprintf("found invalid tag character %q", c)
+			invalidMsg := fmt.Sprintf("a tag cannot hold %q", c)
 			invalidTk := token.Invalid(ctx.origin(), s.pos())
 
 			return false, ErrInvalidToken(invalidMsg, invalidTk)
 		case '{':
 			ctx.addOriginBuf(c)
 			s.progressColumn(ctx, progress)
-			invalidMsg := fmt.Sprintf("found invalid tag character %q", c)
+			invalidMsg := fmt.Sprintf("a tag cannot hold %q", c)
 			invalidTk := token.Invalid(ctx.origin(), s.pos())
 
 			return false, ErrInvalidToken(invalidMsg, invalidTk)

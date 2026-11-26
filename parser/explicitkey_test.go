@@ -50,7 +50,7 @@ func TestAZeroIndentedSequenceIsAnExplicitKeysBody(t *testing.T) {
 
 	// s-l+block-collection opens with the node's properties, so a tag or an anchor in front of the sequence, on the
 	// '?'s line or on its own, still leaves the body to the sequence. libfyaml and yaml.v3 parse every one of these;
-	// go-yaml refused them as "non-map value is specified".
+	// go-yaml refused them as "a line at the column of a mapping must open an entry: a key and its ':'".
 	t.Run("the sequence's properties stand in front of it", func(t *testing.T) {
 		for _, tc := range []struct{ src, want string }{
 			{"?\n !!seq\n- a\n: x\n", "? !!seq\n  - a\n: x\n"},
@@ -116,7 +116,7 @@ func TestAnExplicitEntrysColonStandsAtItsQuestionMarksColumn(t *testing.T) {
 	t.Run("a ':' left of its '?' is not that entry's", func(t *testing.T) {
 		_, err := parser.ParseBytes([]byte(" ? a\n: b\n"))
 		require.Error(t, err)
-		assert.Contains(t, err.Error(), "value is not allowed in this context")
+		assert.Contains(t, err.Error(), "a document holds one root node, and this stands past it")
 	})
 
 	// grammar.NewRecognizer accepts both.
@@ -202,7 +202,7 @@ func TestAnExplicitKeyWithNoColonHasNoValue(t *testing.T) {
 		} {
 			_, err := parser.ParseBytes([]byte(src))
 			require.Errorf(t, err, "%q", src)
-			assert.Containsf(t, err.Error(), "non-map value is specified", "%q", src)
+			assert.Containsf(t, err.Error(), "a line at the column of a mapping must open an entry: a key and its ':'", "%q", src)
 		}
 	})
 

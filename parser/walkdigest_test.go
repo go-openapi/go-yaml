@@ -127,14 +127,18 @@ func TestTheWalkHandsOverTheSameTree(t *testing.T) {
 // Re-baselined on 2026-11-18 when a plain scalar inside a flow collection began to run onto a line left of the
 // last ':', and a flow mapping entry stopped taking a second pair as its value. One source moved,
 // suite/flow-mapping-missing-a-separating-comma, which is still refused: the scalar now folds "1" and "bar" into
-// one value, and the complaint "',' or '}' must be specified" moved from "bar" at [4:2] to the ':' after it at
+// one value, and the complaint "a flow mapping needs ',' or '}' after an entry" moved from "bar" at [4:2] to the ':' after it at
 // [4:5], where the entry ends. No other source walks differently.
 //
 // Re-baselined on 2026-11-24 when a plain scalar continued by a '-' on a deeper line stopped being scanned as a block
 // scalar. One source moved, suite/sequence-entry-that-looks-like-two-with-wrong-indentation: its scalar's span ended at
 // byte 37, past the line break closing the 37-byte source, and now ends at 36, before it. The value is unchanged, and
 // no other source walks differently.
-const fixedWalkDigest = "e065fe7fd8ae2c274ff1ee167cbcbdeadec486c5b9ca88dac2dde052a7170728"
+//
+// Re-baselined on 2026-11-26 when the parser and scanner messages were reworded. The digest writes each refusal's
+// message, and only those moved: with "refused" written in place of the message, the digest is the same before and
+// after.
+const fixedWalkDigest = "5dc43e1d22015e381f66d77cdb3f80ad3cb2ac5009d9280347b4a40b5a125e01"
 
 // digestVisitor writes each node it is handed, so a node the walk reads from a reused cell changes the digest.
 type digestVisitor struct {

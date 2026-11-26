@@ -61,7 +61,7 @@ func (p *Parser) parseFlowMap(ctx context) (*ast.MappingNode, error) {
 		if tk.Type() == token.CollectEntryType {
 			// ns-s-flow-map-entries opens on an entry, so a ',' cannot stand first: "{,}" is not a mapping.
 			if isFirst {
-				return nil, yamlerrors.NewSyntax("expected mapping entry, but found ','", tk.RawToken())
+				return nil, yamlerrors.NewSyntax("a flow mapping entry is missing before ','", tk.RawToken())
 			}
 			entryTk = tk
 			if err := attachTrailingComment(ctx, entryTk, lastOf(node.Values)); err != nil {
@@ -72,7 +72,7 @@ func (p *Parser) parseFlowMap(ctx context) (*ast.MappingNode, error) {
 				headComment = mergeComments(headComment, next)
 			}
 		} else if !isFirst {
-			return nil, yamlerrors.NewSyntax("',' or '}' must be specified", tk.RawToken())
+			return nil, yamlerrors.NewSyntax("a flow mapping needs ',' or '}' after an entry", tk.RawToken())
 		}
 
 		if tk := ctx.currentToken(); tk.Type() == token.MappingEndType {
@@ -98,7 +98,7 @@ func (p *Parser) parseFlowMap(ctx context) (*ast.MappingNode, error) {
 		isFirst = false
 	}
 	if node.End == nil {
-		return nil, p.unclosed("could not find flow mapping end token '}'", node.Start)
+		return nil, p.unclosed("a flow mapping is not closed by '}'", node.Start)
 	}
 
 	// The comment closing the "}" line, as in "} # comment".
@@ -189,7 +189,7 @@ func (p *Parser) parseFlowMapBareKey(ctx context, tk, mapKeyTk, entryTk *group.T
 		if errTk == nil {
 			errTk = tk
 		}
-		return nil, yamlerrors.NewSyntax("could not find flow map content", errTk.RawToken())
+		return nil, yamlerrors.NewSyntax("a flow mapping entry must be followed by ':', ',' or '}'", errTk.RawToken())
 	}
 	// The key is read under quiet, because parseScalarValue would hand a property group,
 	// the "&a" of "{&a}", over as a value. handKey then hands it over as a key.
@@ -265,7 +265,7 @@ func (p *Parser) flowMapValue(ctx context, colonTk *group.TapeToken, omitted boo
 	}
 	ctx.goNext()
 	if ctx.isTokenNotFound() {
-		return nil, yamlerrors.NewSyntax("could not find map value", colonTk.RawToken())
+		return nil, yamlerrors.NewSyntax("a flow mapping is not closed by '}'", colonTk.RawToken())
 	}
 	if tk := ctx.currentToken(); tk.GroupType() == group.TokenGroupMapKey || tk.GroupType() == group.TokenGroupMapKeyValue {
 		// "{a: b: c}": a flow mapping entry holds one pair, and its value is a node, not another pair.
@@ -275,7 +275,7 @@ func (p *Parser) flowMapValue(ctx context, colonTk *group.TapeToken, omitted boo
 		// The entry ends where the second ':' stands, and a comma left out between two entries is the usual cause:
 		// "foo: 1" over "bar: 2" reads "1 bar" as foo's value. The message is the one the loop gives for a missing
 		// comma, and the caret goes on that ':'.
-		return nil, yamlerrors.NewSyntax("',' or '}' must be specified", pairColon(tk).RawToken())
+		return nil, yamlerrors.NewSyntax("a flow mapping needs ',' or '}' after an entry", pairColon(tk).RawToken())
 	}
 
 	return p.parseToken(ctx, ctx.currentToken())
@@ -336,7 +336,7 @@ func (p *Parser) flowCollectionKeyAlone(ctx context, keyTk, entryTk *group.TapeT
 
 	key, ok := collection.(ast.MapKeyNode)
 	if !ok {
-		return nil, yamlerrors.NewSyntax("found an invalid key for this map", keyTk.RawToken())
+		return nil, yamlerrors.NewSyntax("this node cannot be a mapping key", keyTk.RawToken())
 	}
 	p.handKey(ctx, key)
 
@@ -452,7 +452,7 @@ func (p *Parser) parseFlowSequence(ctx context) (*ast.SequenceNode, error) {
 		var entryTk *group.TapeToken
 		if tk.Type() == token.CollectEntryType {
 			if isFirst {
-				return nil, yamlerrors.NewSyntax("expected sequence element, but found ','", tk.RawToken())
+				return nil, yamlerrors.NewSyntax("a flow sequence entry is missing before ','", tk.RawToken())
 			}
 			entryTk = tk
 			if err := attachTrailingComment(ctx, entryTk, lastOf(node.Values)); err != nil {
@@ -463,7 +463,7 @@ func (p *Parser) parseFlowSequence(ctx context) (*ast.SequenceNode, error) {
 				headComment = mergeComments(headComment, next)
 			}
 		} else if !isFirst {
-			return nil, yamlerrors.NewSyntax("',' or ']' must be specified", tk.RawToken())
+			return nil, yamlerrors.NewSyntax("a flow sequence needs ',' or ']' after an entry", tk.RawToken())
 		}
 
 		if tk := ctx.currentToken(); tk.Type() == token.SequenceEndType {
@@ -488,7 +488,7 @@ func (p *Parser) parseFlowSequence(ctx context) (*ast.SequenceNode, error) {
 		isFirst = false
 	}
 	if node.End == nil {
-		return nil, p.unclosed("sequence end token ']' not found", node.Start)
+		return nil, p.unclosed("a flow sequence is not closed by ']'", node.Start)
 	}
 
 	// The comment closing the "]" line, as in "] # comment".

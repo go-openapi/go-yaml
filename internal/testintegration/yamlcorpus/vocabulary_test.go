@@ -193,16 +193,16 @@ func TestTheParserVocabularyGapIsMeasured(t *testing.T) {
 	// and 28 -> 32 when BigInt and BigFloat took a draw slot each -- that one
 	// was a real loss, and folding them into the integer and float slots at one
 	// in eight put all of it back. Style.TagSpelling then took it to 25:
-	// mutating a "%TAG" line reaches `unexpected format TAG directive`, and the
-	// longer tags reach `found unexpected document separator` and
+	// mutating a "%TAG" line reaches `the TAG directive takes a handle and a prefix`, and the
+	// longer tags reach `a quoted scalar cannot hold a '---' or '...' line` and
 	// `unexpected scalar value`. Weighting the drawn mappings towards one pair
 	// lost `unexpected scalar value` again, and a Refusals entry for an anchor
-	// standing alone put `anchor is not allowed in this context` back.
+	// standing alone put `anchor is not indented past its key` back.
 	//
 	// Three of them look unreachable rather than untested. `unexpected scalar
 	// value` has one document behind it -- "a:" over ": 2" -- and that is the
 	// empty-key defect, so a Refusals entry for it would pin a bug. Nothing at
-	// all provokes `specified not scalar tag`: parseScalarTag reports it when a
+	// all provokes `a scalar tag stands on a node that is not a scalar`: parseScalarTag reports it when a
 	// scalar tag stands on a node that is not a scalar, and every such document
 	// is caught earlier. Both were hunted on 2026-09-11 without success and are
 	// recorded in stream 8.
@@ -218,22 +218,22 @@ func TestTheParserVocabularyGapIsMeasured(t *testing.T) {
 	// mapping key written the long way is the only key that may hold one.
 	// Style.Version took it to 24 by reaching two more: `unexpected format YAML
 	// directive`, from a mutation of the "%YAML" line the axis writes, and
-	// `unexpected token. required string token`, which was the one document
+	// `the content of a block scalar must be a string`, which was the one document
 	// that provoked it and was a bug. So one of the two was coverage and the
 	// other was a defect that happened to reach a message.
 	//
 	// It went back to 25 on 2026-09-12, when that defect was fixed: a "%YAML"
 	// directive no longer resolves the block scalar it opens, so nothing writes
-	// a document that reaches `unexpected token. required string token` any
+	// a document that reaches `the content of a block scalar must be a string` any
 	// more. A message a defect was the only route to joins `unexpected scalar
-	// value` and `specified not scalar tag` in stream 8 -- reachable in
+	// value` and `a scalar tag stands on a node that is not a scalar` in stream 8 -- reachable in
 	// principle, and reached by nothing anybody should write.
 	//
 	// It went to 28 on 2026-11-24, with no message lost: the walk used to read
 	// parser/ alone and missed the packages under it. parser/internal/group adds six
-	// templates, and three of them are unreached: `undefined alias name` and
-	// `undefined anchor name`, which flushProperties raises when the stream ends
-	// on an '&' or a '*' with no name, and `undefined directive value`.
+	// templates, and three of them are unreached: `an alias must be followed by a name` and
+	// `an anchor must be followed by a name`, which flushProperties raises when the stream ends
+	// on an '&' or a '*' with no name, and `a directive must be named right after its '%'`.
 	//
 	// It came down to 25 on 2026-11-26, over the conformance-suites v0.0.3
 	// corpus, and to 22 the same day when parseAnchorName, parseAlias and
@@ -247,7 +247,11 @@ func TestTheParserVocabularyGapIsMeasured(t *testing.T) {
 	// WithJSONSyntax refuses. Of the 16, eight are
 	// guards between two layers, two are kept on purpose (the source bound and
 	// the merge key's ':'), and fuzzing found no route to the other six.
-	const ceiling = 16
+	//
+	// The rewording of 2026-11-26 brought it to 9 without a new document: six
+	// guards now share the message the scanner gives for the same fault, such
+	// as "an anchor must be followed by a name", and the corpus reaches those.
+	const ceiling = 9
 
 	if len(unreached) > ceiling {
 		t.Errorf("%d templates unreached, and the ceiling is %d: either a new message arrived with no "+

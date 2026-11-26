@@ -98,7 +98,7 @@ func TestATabIsSeparationAndNotIndentation(t *testing.T) {
 			_, err := parser.ParseBytes([]byte(src))
 			require.Errorf(t, err, "%q", src)
 			assert.Containsf(t, err.Error(),
-				"tab character cannot stand for the indentation a mapping entry needs", "%q", src)
+				"a tab cannot stand for the indentation a mapping entry needs", "%q", src)
 		}
 	})
 
@@ -106,7 +106,7 @@ func TestATabIsSeparationAndNotIndentation(t *testing.T) {
 		for _, src := range []string{"\t- 1\n", " \t- 1\n", "  \t- 1\n", "- \t- 1\n"} {
 			_, err := parser.ParseBytes([]byte(src))
 			require.Errorf(t, err, "%q", src)
-			assert.Containsf(t, err.Error(), "tab character cannot use as a sequence delimiter", "%q", src)
+			assert.Containsf(t, err.Error(), "a tab cannot stand for the indentation a sequence entry needs", "%q", src)
 		}
 	})
 

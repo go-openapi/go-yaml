@@ -69,7 +69,7 @@ func TestABlockScalarUnderAnEmptyKeyIsMeasuredFromItsColon(t *testing.T) {
 		// "- - : |1" is not YAML 1.2, and the grammar rejects it.
 		_, err := parser.ParseBytes([]byte("- - : |1\n    x\n"))
 		require.Error(t, err)
-		assert.Contains(t, err.Error(), "non-map value is specified")
+		assert.Contains(t, err.Error(), "a line at the column of a mapping must open an entry: a key and its ':'")
 	})
 }
 

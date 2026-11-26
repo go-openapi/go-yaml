@@ -287,7 +287,7 @@ func (c *cursor) resetBuffer() {
 //
 // Only the first ':' is asked. A ':' followed by anything else is a character of a plain scalar, ns-plain-char, so
 // "<<:: y" is the key "<<:". The scan read on to the second ':' and cut a merge key, leaving the first ':' for a
-// value indicator with nothing after it: "[<<:: y]" was refused with "',' or ']' must be specified".
+// value indicator with nothing after it: "[<<:: y]" was refused with "a flow sequence needs ',' or ']' after an entry".
 func (c *cursor) isMergeKey() bool {
 	if c.repeatNum('<') != 2 {
 		return false

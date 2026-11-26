@@ -27,7 +27,7 @@ func TestATabCannotIndentAnExplicitKey(t *testing.T) {
 
 			_, err := parser.ParseBytes([]byte(src))
 			require.Error(t, err)
-			assert.Contains(t, err.Error(), "tab character cannot stand for the indentation a mapping entry needs")
+			assert.Contains(t, err.Error(), "a tab cannot stand for the indentation a mapping entry needs")
 		})
 	}
 

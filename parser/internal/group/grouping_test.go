@@ -227,7 +227,7 @@ func TestADirectiveIsRefusedWhereNoDocumentFollows(t *testing.T) {
 	)
 
 	require.Error(t, g.Err)
-	assert.Contains(t, g.Err.Error(), "document not started")
+	assert.Contains(t, g.Err.Error(), "must be followed by a '---' line")
 }
 
 // TestADirectiveWithNoNameIsRefused checks the other refusal: a "%" that never
@@ -238,7 +238,7 @@ func TestADirectiveWithNoNameIsRefused(t *testing.T) {
 	g, _ := feed(t, fed{token.DirectiveType, "%", 1})
 
 	require.Error(t, g.Err)
-	assert.Contains(t, g.Err.Error(), "undefined directive value")
+	assert.Contains(t, g.Err.Error(), "a directive must be named right after its '%'")
 }
 
 // TestAKeyJoinsTheColonAfterIt checks the group a mapping entry's key becomes.

@@ -4,6 +4,7 @@
 package parser
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/go-openapi/go-yaml/ast"
@@ -56,12 +57,12 @@ func (p *Parser) parseTokenNode(ctx context, tk *group.TapeToken) (ast.Node, err
 		return p.parseSequence(ctx)
 	case token.SequenceEndType:
 		// parseFlowSequence consumes every ']' that closes a '[', so one found here has no '[' to close.
-		return nil, yamlerrors.NewSyntax("could not find '[' character corresponding to ']'", tk.RawToken())
+		return nil, yamlerrors.NewSyntax("found ']' with no '[' to close", tk.RawToken())
 	case token.MappingEndType:
 		// parseFlowMap consumes every '}' that closes a '{', so one found here has no '{' to close.
-		return nil, yamlerrors.NewSyntax("could not find '{' character corresponding to '}'", tk.RawToken())
+		return nil, yamlerrors.NewSyntax("found '}' with no '{' to close", tk.RawToken())
 	case token.MappingValueType:
-		return nil, yamlerrors.NewSyntax("found an invalid key for this map", tk.RawToken())
+		return nil, yamlerrors.NewSyntax("found a ':' with no mapping key before it", tk.RawToken())
 	default:
 		// nothing to do
 	}
@@ -101,7 +102,7 @@ func (p *Parser) parseScalarValue(ctx context, tk *group.TapeToken) (ast.ScalarN
 		case group.TokenGroupScalarTag:
 			return p.parseTag(ctx.withGroup(p, tk.Group))
 		default:
-			return nil, yamlerrors.NewSyntax("unexpected scalar value", tk.RawToken())
+			return nil, yamlerrors.NewSyntax(fmt.Sprintf("found %q where a scalar is expected", tk.RawToken().Value), tk.RawToken())
 		}
 	}
 	switch tk.Type() {
@@ -141,7 +142,7 @@ func (p *Parser) parseScalarValue(ctx context, tk *group.TapeToken) (ast.ScalarN
 	default:
 		// nothing to do
 	}
-	return nil, yamlerrors.NewSyntax("unexpected scalar value type", tk.RawToken())
+	return nil, yamlerrors.NewSyntax(fmt.Sprintf("found %q where a scalar is expected", tk.RawToken().Value), tk.RawToken())
 }
 
 // resolveTimestamp tags a plain scalar as a timestamp where YAML 1.1 resolves one, and returns node otherwise.
@@ -224,7 +225,7 @@ func (p *Parser) parseLiteral(ctx context) (*ast.LiteralNode, error) {
 	if !ok {
 		// A sanity guard between the scanner and the parser, normally unreachable: the scanner cuts a block scalar's
 		// content as a string, and the version pass in version.go leaves that token's type alone.
-		return nil, yamlerrors.NewSyntax("unexpected token. required string token", value.GetToken())
+		return nil, yamlerrors.NewSyntax("the content of a block scalar must be a string", value.GetToken())
 	}
 	node.Value = str
 	node.Source = ast.BlockSource(p.src, node.Start, str.GetToken())

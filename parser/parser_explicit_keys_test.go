@@ -131,7 +131,7 @@ func TestParseExplicitKeyWithNothingInIt(t *testing.T) {
 func TestParseIndicatorWhereAValueGoes(t *testing.T) {
 	_, err := parser.ParseBytes([]byte("k: ?\n"))
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "mapping value is not allowed in this context")
+	assert.Contains(t, err.Error(), "a mapping value cannot open a mapping on the line of its key")
 
 	// The same characters with anything after the indicator are a plain scalar
 	// and stay one.

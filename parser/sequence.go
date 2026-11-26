@@ -203,11 +203,11 @@ func (p *Parser) parseSequenceValue(ctx context, seqTk *group.TapeToken) (ast.No
 
 	if tk.Column() <= seqCol && tk.GroupType() == group.TokenGroupAnchorName {
 		// An anchor at or before the column of the '-' is outside the entry, which has no value.
-		return nil, yamlerrors.NewSyntax("anchor is not allowed in this sequence context", tk.RawToken())
+		return nil, yamlerrors.NewSyntax("anchor is not indented past its '-'", tk.RawToken())
 	}
 	if tk.Column() <= seqCol && tk.Type() == token.TagType {
 		// A tag at or before the column of the '-' is outside the entry, which has no value.
-		return nil, yamlerrors.NewSyntax("tag is not allowed in this sequence context", tk.RawToken())
+		return nil, yamlerrors.NewSyntax("tag is not indented past its '-'", tk.RawToken())
 	}
 
 	if tk.Column() < seqCol || (tk.Column() == seqCol && tk.Line() != seqLine) {

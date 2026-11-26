@@ -289,17 +289,17 @@ func (r *reader) judgeNext() error {
 	case r.afterHeader != nil && r.afterHeader.Line() == tk.Line():
 		switch tk.GroupType() {
 		case group.TokenGroupMapKey, group.TokenGroupMapKeyValue:
-			return yamlerrors.NewSyntax("value cannot be placed after document separator", tk.RawToken())
+			return yamlerrors.NewSyntax("a block mapping cannot start on the '---' line", tk.RawToken())
 		default:
 			// nothing to do
 		}
 		if tk.Type() == token.SequenceEntryType {
-			return yamlerrors.NewSyntax("value cannot be placed after document separator", tk.RawToken())
+			return yamlerrors.NewSyntax("a block mapping cannot start on the '---' line", tk.RawToken())
 		}
 	case r.afterEnd != nil && r.afterEnd.Line() == tk.Line():
 		// "..." ends the document and the rest of its line: only a comment may follow it there.
 		// On the next line a new document begins, and it may be a bare one.
-		return yamlerrors.NewSyntax("unexpected end content", tk.RawToken())
+		return yamlerrors.NewSyntax("a '...' line must hold nothing after the marker", tk.RawToken())
 	}
 	r.afterHeader, r.afterEnd = nil, nil
 
@@ -385,7 +385,7 @@ func (r *reader) fill() error {
 
 			// A sanity guard between the scanner and the parser, normally unreachable: an invalid token enters the
 			// stream only through Scanner.stop, which sets Scanner.Err first.
-			return yamlerrors.NewSyntax("found an invalid token", held.RawToken())
+			return yamlerrors.NewSyntax("found text the scanner could not read as a token", held.RawToken())
 		}
 
 		r.out = r.g.Feed(held, r.out)

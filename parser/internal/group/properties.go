@@ -160,8 +160,8 @@ func (g *Grouper) property(at int, tk *TapeToken, out []*TapeToken) ([]*TapeToke
 // The complaints for an explicit key's "?" written on the line of a node's properties, which 8.2.2 keeps off it as
 // 8.2.1 keeps a sequence entry's "-": the properties of a block mapping stand on a line of their own.
 const (
-	explicitKeyAfterTag    = "explicit keys are not allowed after a tag on the same line"
-	explicitKeyAfterAnchor = "explicit keys are not allowed after anchor on the same line"
+	explicitKeyAfterTag    = "a block mapping cannot start on the line of its tag"
+	explicitKeyAfterAnchor = "a block mapping cannot start on the line of its anchor"
 )
 
 // tagOrLetGo joins a tag with what it tags, or hands the tag on where it tags
@@ -173,7 +173,7 @@ func (g *Grouper) tagOrLetGo(at int, tk *TapeToken, out []*TapeToken) ([]*TapeTo
 		// the parser instead, and only the tags the core schema resolves were
 		// caught there: "!!int - 8" was refused as `value is not allowed in
 		// this context` and "!foo - 1" was read as [1].
-		g.fail(yamlerrors.NewSyntax("sequence entries are not allowed after a tag on the same line", tk.RawToken()))
+		g.fail(yamlerrors.NewSyntax("a block sequence cannot start on the line of its tag", tk.RawToken()))
 
 		return out, false
 	}
@@ -218,7 +218,7 @@ func (g *Grouper) anchorNames(at int, tk *TapeToken, out []*TapeToken) ([]*TapeT
 
 	switch {
 	case sameLine && tk.Type() == token.SequenceEntryType:
-		g.fail(yamlerrors.NewSyntax("sequence entries are not allowed after anchor on the same line", tk.RawToken()))
+		g.fail(yamlerrors.NewSyntax("a block sequence cannot start on the line of its anchor", tk.RawToken()))
 
 		return out, false
 
@@ -289,7 +289,7 @@ func (g *Grouper) taggedAnchorNames(at int, tk *TapeToken, out []*TapeToken) ([]
 		// As when no tag stands before the anchor: what follows an anchor on
 		// its own line is what the anchor names, and a '-' opens an entry
 		// rather than naming anything.
-		g.fail(yamlerrors.NewSyntax("sequence entries are not allowed after anchor on the same line", tk.RawToken()))
+		g.fail(yamlerrors.NewSyntax("a block sequence cannot start on the line of its anchor", tk.RawToken()))
 
 		return out, false
 	}
@@ -342,9 +342,9 @@ func (g *Grouper) taggedAnchorNames(at int, tk *TapeToken, out []*TapeToken) ([]
 func flushProperties(g *Grouper, at int, out []*TapeToken) []*TapeToken {
 	switch g.prop {
 	case propSawAnchor:
-		g.fail(yamlerrors.NewSyntax("undefined anchor name", g.anchor.RawToken()))
+		g.fail(yamlerrors.NewSyntax("an anchor must be followed by a name", g.anchor.RawToken()))
 	case propSawAlias:
-		g.fail(yamlerrors.NewSyntax("undefined alias name", g.alias.RawToken()))
+		g.fail(yamlerrors.NewSyntax("an alias must be followed by a name", g.alias.RawToken()))
 	case propHaveAnchor:
 		// An anchor with nothing after it names the empty node. The parser
 		// supplies that null; there is nothing to group here.
@@ -366,7 +366,7 @@ func flushProperties(g *Grouper, at int, out []*TapeToken) []*TapeToken {
 		out = g.pass(at, g.name, out)
 		g.tag, g.name = nil, nil
 	case propTagSawAnchor:
-		g.fail(yamlerrors.NewSyntax("undefined anchor name", g.anchor.RawToken()))
+		g.fail(yamlerrors.NewSyntax("an anchor must be followed by a name", g.anchor.RawToken()))
 	default:
 		// nothing to do
 	}

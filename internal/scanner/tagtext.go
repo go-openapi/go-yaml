@@ -129,7 +129,7 @@ func checkURI(text string, admits func(byte) bool) string {
 		if !admits(c) {
 			// Spelled as the scanner spells the same complaint elsewhere, so the two make one entry in the refusal
 			// vocabulary and not two.
-			return fmt.Sprintf("found invalid tag character %q", string(c))
+			return fmt.Sprintf("a tag cannot hold %q", string(c))
 		}
 	}
 
@@ -149,7 +149,7 @@ func CheckTagPrefix(prefix string) string {
 		return checkURI(prefix[1:], isURIChar)
 	}
 	if prefix != "" && prefix[0] != '%' && !isTagChar(prefix[0]) {
-		return fmt.Sprintf("found invalid tag character %q", string(prefix[0]))
+		return fmt.Sprintf("a tag cannot hold %q", string(prefix[0]))
 	}
 
 	return checkURI(prefix, isURIChar)

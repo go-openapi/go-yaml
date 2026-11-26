@@ -31,7 +31,7 @@ func (p *Parser) parseDirective(ctx context, g *group.TokenGroup) (*ast.Directiv
 	switch directiveNameOf(directive) {
 	case "YAML":
 		if g.Len() != 2 {
-			return nil, yamlerrors.NewSyntax("unexpected format YAML directive", g.First().RawToken())
+			return nil, yamlerrors.NewSyntax("the YAML directive takes one version number", g.First().RawToken())
 		}
 		valueTk := g.At(1)
 		valueRawTk := valueTk.RawToken()
@@ -41,7 +41,7 @@ func (p *Parser) parseDirective(ctx context, g *group.TokenGroup) (*ast.Directiv
 			return nil, yamlerrors.NewSyntax(fmt.Sprintf("unknown YAML version %q", value), valueRawTk)
 		}
 		if p.yamlVersion != "" {
-			return nil, yamlerrors.NewSyntax("YAML version has already been specified", valueRawTk)
+			return nil, yamlerrors.NewSyntax("a document takes at most one YAML directive", valueRawTk)
 		}
 		p.yamlVersion = ver
 
@@ -58,7 +58,7 @@ func (p *Parser) parseDirective(ctx context, g *group.TokenGroup) (*ast.Directiv
 		directive.Values = append(directive.Values, versionNode)
 	case "TAG":
 		if g.Len() != tagDirectiveLen {
-			return nil, yamlerrors.NewSyntax("unexpected format TAG directive", g.First().RawToken())
+			return nil, yamlerrors.NewSyntax("the TAG directive takes a handle and a prefix", g.First().RawToken())
 		}
 		tagKey, err := newStringNode(ctx, g.At(1))
 		if err != nil {
@@ -111,9 +111,9 @@ func (p *Parser) parseBareDirective(ctx context) (*ast.DirectiveNode, error) {
 
 	switch directiveNameOf(directive) {
 	case "YAML":
-		return nil, yamlerrors.NewSyntax("unexpected format YAML directive", directive.GetToken())
+		return nil, yamlerrors.NewSyntax("the YAML directive takes one version number", directive.GetToken())
 	case "TAG":
-		return nil, yamlerrors.NewSyntax("unexpected format TAG directive", directive.GetToken())
+		return nil, yamlerrors.NewSyntax("the TAG directive takes a handle and a prefix", directive.GetToken())
 	default:
 		return directive, nil
 	}
@@ -147,7 +147,7 @@ func (p *Parser) parseDirectiveName(ctx context) (*ast.DirectiveNode, error) {
 	if ctx.isTokenNotFound() {
 		// A sanity guard between the grouper and the parser, normally unreachable: group2 pairs the '%' with its name,
 		// and the scanner refuses a '%' with no name.
-		return nil, yamlerrors.NewSyntax("could not find directive value", directive.GetToken())
+		return nil, yamlerrors.NewSyntax("a directive must be named right after its '%'", directive.GetToken())
 	}
 
 	directiveName, err := p.parseScalarValue(ctx, ctx.currentToken())

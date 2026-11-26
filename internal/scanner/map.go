@@ -31,7 +31,7 @@ func (s *Scanner) scanMapDelim(ctx *Context) (bool, error) {
 		// A tab counts as separation and not as indentation, so it is allowed in front of a flow node or a scalar in
 		// the same place: "\t{}" is a document and "\tfoo: 1" is not, and it is allowed inside a flow collection,
 		// which is what the flow test is for: "{\ta: 1}" is read by every oracle.
-		invalidMsg := "tab character cannot stand for the indentation a mapping entry needs"
+		invalidMsg := "a tab cannot stand for the indentation a mapping entry needs"
 		invalidTk := token.Invalid(ctx.origin(), s.pos())
 		s.progressColumn(ctx, 1)
 
@@ -112,7 +112,7 @@ func (s *Scanner) scanMapKey(ctx *Context) (bool, error) {
 		invalidTk := token.Invalid(ctx.origin(), s.pos())
 		s.progressColumn(ctx, 1)
 
-		return false, ErrInvalidToken("tab character cannot stand for the indentation a mapping entry needs", invalidTk)
+		return false, ErrInvalidToken("a tab cannot stand for the indentation a mapping entry needs", invalidTk)
 	}
 
 	tk := token.MakeMappingKey(s.pos())

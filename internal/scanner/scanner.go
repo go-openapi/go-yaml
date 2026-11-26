@@ -814,7 +814,7 @@ func (s *Scanner) scanSequence(ctx *Context) (bool, error) {
 	}
 
 	if s.tabStandsWhereAnEntryNeedsIndent(ctx) {
-		invalidMsg := "tab character cannot use as a sequence delimiter"
+		invalidMsg := "a tab cannot stand for the indentation a sequence entry needs"
 		invalidTk := token.Invalid(ctx.origin(), s.pos())
 		s.progressColumn(ctx, 1)
 		return false, ErrInvalidToken(invalidMsg, invalidTk)

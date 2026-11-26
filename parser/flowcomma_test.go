@@ -21,7 +21,7 @@ func TestAFlowMappingCannotOpenOnAComma(t *testing.T) {
 	for _, src := range []string{"{,}", "{ , a: 1}", "&a {,}\n", "\ufeff---\r\n&a1 {,}\r\n"} {
 		_, err := parser.ParseBytes([]byte(src))
 		require.Errorf(t, err, "%q", src)
-		assert.Containsf(t, err.Error(), "expected mapping entry, but found ','", "%q", src)
+		assert.Containsf(t, err.Error(), "a flow mapping entry is missing before ','", "%q", src)
 	}
 
 	// A ',' after the last entry closes nothing and is allowed.

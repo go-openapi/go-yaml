@@ -132,7 +132,7 @@ func (s *Scanner) scanSingleQuote(ctx *Context) (token.Token, error) {
 			continue
 		case isFirstLineChar && c == '\t':
 			if s.lastDelimColumn >= s.column && !s.isFlowMode() {
-				return token.Token{}, ErrInvalidToken("tab character cannot be used for indentation in single-quoted text", token.Invalid(ctx.origin(), s.pos()))
+				return token.Token{}, ErrInvalidToken("a tab cannot stand for the indentation of a line in a single-quoted scalar", token.Invalid(ctx.origin(), s.pos()))
 			}
 
 			continue
@@ -170,7 +170,7 @@ func (s *Scanner) scanSingleQuote(ctx *Context) (token.Token, error) {
 
 	s.progressColumn(ctx, 1)
 
-	return token.Token{}, ErrInvalidToken("could not find end character of single-quoted text", token.Invalid(ctx.origin(), srcpos))
+	return token.Token{}, ErrInvalidToken("a single-quoted scalar is not closed by a single quote", token.Invalid(ctx.origin(), srcpos))
 }
 
 // foldQuotedLineBreak folds the line break a quoted scalar reads into value: it drops the spaces ending the line,
@@ -254,7 +254,7 @@ func (s *Scanner) scanDoubleQuote(ctx *Context) (token.Token, error) {
 			continue
 		case isFirstLineChar && c == '\t':
 			if s.lastDelimColumn >= s.column && !s.isFlowMode() {
-				return token.Token{}, ErrInvalidToken("tab character cannot be used for indentation in double-quoted text", token.Invalid(ctx.origin(), s.pos()))
+				return token.Token{}, ErrInvalidToken("a tab cannot stand for the indentation of a line in a double-quoted scalar", token.Invalid(ctx.origin(), s.pos()))
 			}
 			continue
 		case c == '\\':
@@ -347,24 +347,24 @@ func (s *Scanner) scanDoubleQuote(ctx *Context) (token.Token, error) {
 			case 'x':
 				// \x00 style must have 3 characters at least.
 				if idx+3 >= size {
-					return token.Token{}, ErrInvalidToken("not enough length for escaped 8-bit character", token.Invalid(ctx.origin(), s.pos()))
+					return token.Token{}, ErrInvalidToken("\\x takes two hexadecimal digits", token.Invalid(ctx.origin(), s.pos()))
 				}
 				progress = 3
 				codeNum, isHex := hexDigitsToInt(src[idx+2 : idx+progress+1])
 				if !isHex {
-					return token.Token{}, ErrInvalidToken("found a character that is not a hexadecimal digit in escaped 8-bit character", token.Invalid(ctx.origin(), s.pos()))
+					return token.Token{}, ErrInvalidToken("\\x takes two hexadecimal digits", token.Invalid(ctx.origin(), s.pos()))
 				}
 				// Two hex digits, so codeNum is at most 0xFF and the narrowing cannot wrap.
 				value = utf8.AppendRune(value, rune(codeNum))
 			case 'u':
 				// \u0000 style must have 5 characters at least.
 				if idx+5 >= size {
-					return token.Token{}, ErrInvalidToken("not enough length for escaped UTF-16 character", token.Invalid(ctx.origin(), s.pos()))
+					return token.Token{}, ErrInvalidToken("\\u takes four hexadecimal digits", token.Invalid(ctx.origin(), s.pos()))
 				}
 				progress = 5
 				codeNum, isHex := hexDigitsToInt(src[idx+2 : idx+6])
 				if !isHex {
-					return token.Token{}, ErrInvalidToken("found a character that is not a hexadecimal digit in escaped UTF-16 character", token.Invalid(ctx.origin(), s.pos()))
+					return token.Token{}, ErrInvalidToken("\\u takes four hexadecimal digits", token.Invalid(ctx.origin(), s.pos()))
 				}
 
 				// handle surrogate pairs.
@@ -373,19 +373,19 @@ func (s *Scanner) scanDoubleQuote(ctx *Context) (token.Token, error) {
 
 					// \u0000\u0000 style must have 11 characters at least.
 					if idx+11 >= size {
-						return token.Token{}, ErrInvalidToken("not enough length for escaped UTF-16 surrogate pair", token.Invalid(ctx.origin(), s.pos()))
+						return token.Token{}, ErrInvalidToken("a high surrogate must be followed by a \\u low surrogate", token.Invalid(ctx.origin(), s.pos()))
 					}
 
 					if src[idx+6] != '\\' || src[idx+7] != 'u' {
-						return token.Token{}, ErrInvalidToken("found unexpected character after high surrogate for UTF-16 surrogate pair", token.Invalid(ctx.origin(), s.pos()))
+						return token.Token{}, ErrInvalidToken("a high surrogate must be followed by a \\u low surrogate", token.Invalid(ctx.origin(), s.pos()))
 					}
 
 					low, isHex := hexDigitsToInt(src[idx+8 : idx+12])
 					if !isHex {
-						return token.Token{}, ErrInvalidToken("found a character that is not a hexadecimal digit in the low surrogate", token.Invalid(ctx.origin(), s.pos()))
+						return token.Token{}, ErrInvalidToken("\\u takes four hexadecimal digits", token.Invalid(ctx.origin(), s.pos()))
 					}
 					if low < 0xDC00 || low > 0xDFFF {
-						return token.Token{}, ErrInvalidToken("found unexpected low surrogate after high surrogate", token.Invalid(ctx.origin(), s.pos()))
+						return token.Token{}, ErrInvalidToken("a high surrogate must be followed by a \\u low surrogate", token.Invalid(ctx.origin(), s.pos()))
 					}
 					codeNum = ((high - 0xD800) * 0x400) + (low - 0xDC00) + 0x10000
 					progress += 6
@@ -398,12 +398,12 @@ func (s *Scanner) scanDoubleQuote(ctx *Context) (token.Token, error) {
 			case 'U':
 				// \U00000000 style must have 9 characters at least.
 				if idx+9 >= size {
-					return token.Token{}, ErrInvalidToken("not enough length for escaped UTF-32 character", token.Invalid(ctx.origin(), s.pos()))
+					return token.Token{}, ErrInvalidToken("\\U takes eight hexadecimal digits", token.Invalid(ctx.origin(), s.pos()))
 				}
 				progress = 9
 				codeNum, isHex := hexDigitsToInt(src[idx+2 : idx+10])
 				if !isHex {
-					return token.Token{}, ErrInvalidToken("found a character that is not a hexadecimal digit in escaped UTF-32 character", token.Invalid(ctx.origin(), s.pos()))
+					return token.Token{}, ErrInvalidToken("\\U takes eight hexadecimal digits", token.Invalid(ctx.origin(), s.pos()))
 				}
 				escaped, isChar := escapedRune(codeNum)
 				if !isChar {
@@ -507,7 +507,7 @@ func (s *Scanner) scanDoubleQuote(ctx *Context) (token.Token, error) {
 	}
 	s.progressColumn(ctx, 1)
 
-	return token.Token{}, ErrInvalidToken("could not find end character of double-quoted text", token.Invalid(ctx.origin(), srcpos))
+	return token.Token{}, ErrInvalidToken("a double-quoted scalar is not closed by '\"'", token.Invalid(ctx.origin(), srcpos))
 }
 
 // isCodePointEscape reports whether an escape names a code point by its digits, and so consumes more of the source than

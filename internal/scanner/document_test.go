@@ -20,7 +20,7 @@ import (
 // "---:".
 //
 // Recognizing a marker is where "---" and "..." are alike; what may follow one on the line is not. Both cases below
-// scan to a marker and a string, and the parser then refuses "... x" with "unexpected end content" while "--- x"
+// scan to a marker and a string, and the parser then refuses "... x" with "a '...' line must hold nothing after the marker" while "--- x"
 // reads as the document "x". The scanner has no document-level state, so it draws no such line.
 //
 // Before this test the package asserted token.DocumentEndType nowhere and token.DocumentHeaderType once, in a

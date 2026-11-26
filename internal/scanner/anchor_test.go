@@ -85,7 +85,7 @@ func TestValueAliasesTheSource(t *testing.T) {
 // TestAFlowIndicatorClosesAnAlias checks that a ',' or a bracket ending an alias's name ends the alias.
 //
 // The flow scans cut the name and left isAlias set, and inAnchorName then read a ':' two characters on as part of a
-// name: in "[*m,b: c]" the ':' after the "b", so the pair was refused with "',' or ']' must be specified".
+// name: in "[*m,b: c]" the ':' after the "b", so the pair was refused with "a flow sequence needs ',' or ']' after an entry".
 // "[*m, b: c]" read, the blank having closed the alias first.
 func TestAFlowIndicatorClosesAnAlias(t *testing.T) {
 	for _, src := range []string{"[*m,b: c]", "{a: *m,b: c}", "[b: *m,c: d]", "[*m,'b': c]", "[&a x,b: c]", "[[*m],b: c]"} {

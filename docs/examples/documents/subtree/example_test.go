@@ -111,7 +111,7 @@ func Example_parse() {
 
 	// Output:
 	// true
-	// [17:9] sequence end token ']' not found
+	// [17:9] a flow sequence is not closed by ']'
 	//   14 |     Error:
 	//   15 |       type: object
 	//   16 | ---

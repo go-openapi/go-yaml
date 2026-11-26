@@ -530,7 +530,7 @@ func (g *Grouper) taggedScalar(tag, next *TapeToken, explicitKey bool) (*TapeTok
 			typeMergeKey(next)
 		}
 		if next.Type() != token.MergeKeyType && !anchoredMergeKey(next) {
-			g.fail(yamlerrors.NewSyntax("could not find merge key", next.RawToken()))
+			g.fail(yamlerrors.NewSyntax("a !!merge tag must stand on '<<'", next.RawToken()))
 
 			return nil, false
 		}
@@ -594,7 +594,7 @@ type explicitKey struct {
 // line of their own: s-l+block-collection opens with the node's properties. So
 // a body holding properties only is still empty here. Without that, "?" over
 // " !!seq" over "- a" ended the key at the '-', and the parser refused the
-// sequence as "non-map value is specified".
+// sequence as "a line at the column of a mapping must open an entry: a key and its ':'".
 func opensZeroIndentedSeq(body []*TapeToken, keyColumn int) bool {
 	for len(body) > 0 && isProperty(body[0]) {
 		body = body[1:]
@@ -1032,7 +1032,7 @@ func (g *Grouper) keyBefore(w *keyWindow, tk *TapeToken) bool {
 			// spanning lines cannot be one. An entry of a flow mapping is a key
 			// whatever follows it, so it needs no lookahead and carries no such
 			// restriction: the reference parser reads "{[a," over " b]: v}".
-			g.fail(yamlerrors.NewSyntax("map key definition includes an implicit line break", tk.RawToken()))
+			g.fail(yamlerrors.NewSyntax("an implicit key must stand on one line", tk.RawToken()))
 
 			return false
 		}
@@ -1040,7 +1040,7 @@ func (g *Grouper) keyBefore(w *keyWindow, tk *TapeToken) bool {
 			// Directly inside a sequence the ':' is part of that one line too.
 			// Inside a mapping it is separation like any other, and may follow
 			// on the next line.
-			g.fail(yamlerrors.NewSyntax("map key definition includes an implicit line break", tk.RawToken()))
+			g.fail(yamlerrors.NewSyntax("an implicit key must stand on one line", tk.RawToken()))
 
 			return false
 		}
@@ -1052,7 +1052,7 @@ func (g *Grouper) keyBefore(w *keyWindow, tk *TapeToken) bool {
 	}
 
 	if isNotMapKeyType(key) {
-		g.fail(yamlerrors.NewSyntax("found an invalid key for this map", tk.RawToken()))
+		g.fail(yamlerrors.NewSyntax(fmt.Sprintf("found %q where a mapping key is expected", key.RawToken().Value), key.RawToken()))
 
 		return false
 	}
@@ -1088,13 +1088,13 @@ func (g *Grouper) keyBefore(w *keyWindow, tk *TapeToken) bool {
 func (w *keyWindow) whyNoKey() string {
 	switch w.letGo {
 	case spanningLines:
-		return "map key definition includes an implicit line break"
+		return "an implicit key must stand on one line"
 	case pastTheBound:
 		return fmt.Sprintf(
 			"a non-scalar key written without %q is limited to %d characters -- announce it with %q if it must be longer",
 			"?", implicitKeyLimit, "?")
 	default:
-		return "found an invalid key for this map"
+		return "found a ':' with no mapping key before it"
 	}
 }
 
@@ -1126,7 +1126,7 @@ func (w *keyWindow) hasNoKey(last int, tk *TapeToken, inFlow bool) bool {
 		// group as the key skipped this test: "a:" over ": 2" read the first
 		// entry's own key group as the second entry's key and reported "unexpected
 		// scalar value", and "k: &a1 x" over ": 1" took the anchor group the same
-		// way and reported "mapping value is not allowed in this context", both
+		// way and reported "a mapping value cannot open a mapping on the line of its key", both
 		// naming the line above the empty key.
 		return keyEndLine(candidate) != tk.Line()
 	}

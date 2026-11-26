@@ -15,7 +15,7 @@ import (
 // TestAnAnchoredKeyTakesABlockScalarValue covers an anchor on an implicit
 // mapping key whose value is a literal or folded scalar.
 //
-// The entry was refused with "value is not allowed in this context. map
+// The entry was refused with "a document holds one root node, and this stands past it. map
 // key-value is pre-defined": the check that nothing may stand indented under a
 // settled entry ran against the block scalar's own content. An anchor is what
 // reached it -- without one the entry is grouped whole and the check sees the

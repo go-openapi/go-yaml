@@ -119,7 +119,7 @@ var decodeLedger = map[string]string{
 	// in.yaml and nothing else. The decoder refuses the first of these --
 	// ": a\n: b\n" holds one null key twice, which the load reports -- and
 	// reads the other eight. It refused the zero-indented sequence too, with
-	// "[5:1] value is not allowed in this context", until 8.2.2's seq-space was
+	// "[5:1] a document holds one root node, and this stands past it", until 8.2.2's seq-space was
 	// admitted as an explicit key's body.
 	//
 	// syntax-character-edge-cases/02 is "!", the non-specific tag on the empty

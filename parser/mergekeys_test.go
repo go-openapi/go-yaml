@@ -45,7 +45,7 @@ func TestMergeKeysFoldWithoutTheRestOf11(t *testing.T) {
 // TestAKeyEndingInAMergeKeyIsAnOrdinaryKey checks that "<<" after the text of a key belongs to that key.
 //
 // go.yaml.in/yaml/v3 reads "a<<: 1" as {"a<<": 1}. The scanner cut the "<<" out as a merge key and the parse read
-// {"<<": 1}, so the "a" was lost; "x <<: {a: 1}" over "b: 2" was refused as "value is not allowed in this context".
+// {"<<": 1}, so the "a" was lost; "x <<: {a: 1}" over "b: 2" was refused as "a document holds one root node, and this stands past it".
 func TestAKeyEndingInAMergeKeyIsAnOrdinaryKey(t *testing.T) {
 	for _, tc := range []struct{ src, key string }{
 		{"a<<: 1\n", "a<<"},

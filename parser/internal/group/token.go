@@ -92,8 +92,8 @@ func isProperty(tk *TapeToken) bool {
 // The exclusion of '}' and ']' is the point of this being separate from
 // isNotMapKeyType: a ':' after them has a key -- the collection that just
 // closed -- which is a different feature, and still unsupported. Treating those
-// as absent keys would turn a clear "found an invalid key for this map" into a
-// null key and a misleading error further on.
+// as absent keys would turn a clear "found %q where a mapping key is expected"
+// into a null key and a misleading error further on.
 func precedesAbsentKey(tk *TapeToken) bool {
 	switch tk.Type() {
 	case token.CollectEntryType,

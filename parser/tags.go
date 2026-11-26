@@ -19,10 +19,10 @@ func (p *Parser) parseScalarTag(ctx context) (*ast.TagNode, error) {
 		return nil, err
 	}
 	if tag.Value == nil {
-		return nil, yamlerrors.NewSyntax("specified not scalar tag", tag.GetToken())
+		return nil, yamlerrors.NewSyntax("a scalar tag stands on a node that is not a scalar", tag.GetToken())
 	}
 	if _, ok := tag.Value.(ast.ScalarNode); !ok {
-		return nil, yamlerrors.NewSyntax("specified not scalar tag", tag.GetToken())
+		return nil, yamlerrors.NewSyntax("a scalar tag stands on a node that is not a scalar", tag.GetToken())
 	}
 	return tag, nil
 }
@@ -79,7 +79,7 @@ func (p *Parser) parseTag(ctx context) (*ast.TagNode, error) {
 		// tag:yaml.org,2002:merge has one value, "<<". The grouper refuses "!!merge" over any other scalar it sees,
 		// and this refuses the rest: the empty node, as in "a: !!merge", a collection, and the spellings the
 		// grouper cannot resolve without the TAG directives, "!<tag:yaml.org,2002:merge>" and a declared handle.
-		return nil, yamlerrors.NewSyntax("could not find merge key", tagRawTk)
+		return nil, yamlerrors.NewSyntax("a !!merge tag must stand on '<<'", tagRawTk)
 	}
 	if p.opts.jsonCompatible {
 		if err := jsonNumberless(node); err != nil {
@@ -245,7 +245,7 @@ func (p *Parser) tagPrefix(handle, fallback string) string {
 //
 // parseToken, parseMap, parseSequence and the two flow readers settle the cursor themselves.
 // A branch that leaves tk unread makes the document fail in parseDocumentBody,
-// with the error "value is not allowed in this context" at a position away from the tag.
+// with the error "a document holds one root node, and this stands past it" at a position away from the tag.
 func (p *Parser) parseTagValue(ctx context, uri string, tagRawTk *token.Token, tk *group.TapeToken) (ast.Node, error) {
 	if tk == nil {
 		return p.handNull(ctx, ctx.createImplicitNullToken(group.NewSynthetic(tagRawTk)))
@@ -329,7 +329,7 @@ func (p *Parser) parseScalarTagValue(ctx context, uri string, tagRawTk *token.To
 	}
 	if tk.Type() == token.TagType {
 		// No entry began since the tag, so this second one tags the same node. Left to parseScalarValue, a second tag
-		// over a collection was refused as "specified not scalar tag": "!!str !a [b]", "!!int !a" over "? x".
+		// over a collection was refused as "a scalar tag stands on a node that is not a scalar": "!!str !a [b]", "!!int !a" over "? x".
 		return nil, yamlerrors.NewSyntax("a node takes at most one tag", tk.RawToken())
 	}
 

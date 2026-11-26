@@ -206,7 +206,7 @@ func (p *Parser) parseDocumentBody(ctx context) (ast.Node, error) {
 		}
 	}
 	if ctx.next() {
-		return nil, yamlerrors.NewSyntax("value is not allowed in this context", ctx.currentToken().RawToken())
+		return nil, yamlerrors.NewSyntax("a document holds one root node, and this stands past it", ctx.currentToken().RawToken())
 	}
 	return node, nil
 }

@@ -19,7 +19,7 @@ const (
 
 func (s *Scanner) validateDocumentSeparatorMarker(ctx *Context, src string) error {
 	if foundDocumentSeparatorMarker(src) {
-		return ErrInvalidToken("found unexpected document separator", token.Invalid(ctx.origin(), s.pos()))
+		return ErrInvalidToken("a quoted scalar cannot hold a '---' or '...' line", token.Invalid(ctx.origin(), s.pos()))
 	}
 
 	return nil
@@ -82,7 +82,7 @@ func (s *Scanner) scanDocumentStart(ctx *Context) bool {
 //
 // Recognizing the marker is where the two are alike. What may follow it on the line is not: "--- x" opens a document
 // whose content is "x", and "... x" is refused, because 9.1.2 allows only comments after a suffix. The scanner reads
-// both as a marker and a string, and the parser refuses the second with "unexpected end content".
+// both as a marker and a string, and the parser refuses the second with "a '...' line must hold nothing after the marker".
 func (s *Scanner) scanDocumentEnd(ctx *Context) bool {
 	if s.indentNum != 0 {
 		return false

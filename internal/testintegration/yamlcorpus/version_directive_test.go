@@ -158,7 +158,7 @@ func equalAny(a, b any) bool {
 //
 // §6.8 puts no limit on how many directives a document may carry, and a "%YAML"
 // beside a "%TAG" is the ordinary prelude. Every document with two was refused,
-// whatever the two were: "unexpected directive value. document not started".
+// whatever the two were: "a directive must be followed by a '---' line".
 //
 // The grouping read the '%' of the second one as a value belonging to the
 // first, and the reader then handed both to one document body, which holds a
@@ -203,7 +203,7 @@ func TestFixedADocumentCarriesMoreThanOneDirective(t *testing.T) {
 // document.".
 func TestADirectiveIsStillDeclaredOnce(t *testing.T) {
 	for _, tc := range []struct{ src, want string }{
-		{src: "%YAML 1.2\n%YAML 1.1\n---\nk: 1\n", want: "YAML version has already been specified"},
+		{src: "%YAML 1.2\n%YAML 1.1\n---\nk: 1\n", want: "a document takes at most one YAML directive"},
 		{
 			src:  "%TAG !e! tag:a,2011:\n%TAG !e! tag:b,2011:\n---\na: 1\n",
 			want: "tag handle !e! has already been declared",

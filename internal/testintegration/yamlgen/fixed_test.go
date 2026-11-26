@@ -1549,7 +1549,7 @@ func TestFixedABinaryTagReadsIntoAGoByteSlice(t *testing.T) {
 // block scalar's content is cut as a plain String -- the one string a schema
 // must not touch. "%YAML 1.1" over "---" over ">-" over " null" had the content
 // retyped as a null, and parseLiteral then refused the document with
-// "unexpected token. required string token".
+// "the content of a block scalar must be a string".
 //
 // The tape is not grouped when retypeAhead runs, so the header and its content
 // are still two tokens and the content is whatever follows the header -- which
@@ -1609,7 +1609,7 @@ func TestFixedAVersionDirectiveLeavesTheRootBlockScalarAlone(t *testing.T) {
 //
 // 6.9.1 and 8.1 allow both: a node's properties may stand on a line of their
 // own, and the node under them may be a block scalar. "!!null" over ">" was
-// refused with "value is not allowed in this context", where "!!null >" on one
+// refused with "a document holds one root node, and this stands past it", where "!!null >" on one
 // line read and so did "!foo" over ">".
 //
 // The tag was what decided it, because of where the grouping puts the two. A
@@ -1678,7 +1678,7 @@ func TestFixedATagOnItsOwnLineTakesTheBlockScalarUnderIt(t *testing.T) {
 // Three shapes were refused with two messages, both naming the line above the
 // key: "a:" over ": 2" reported `unexpected scalar value`, and "k: &a1" over
 // ": 1" and "false: !!bool false" over ": &a1 !!null" both reported
-// `mapping value is not allowed in this context`.
+// `a mapping value cannot open a mapping on the line of its key`.
 //
 // keyWindow.hasNoKey took any candidate the grouping had already made
 // something of as the key of the ':' that followed, whatever line it stood on.
@@ -1791,7 +1791,7 @@ func TestFixedABlockSequenceOnItsTagsLineIsRefused(t *testing.T) {
 			err := yaml.Unmarshal([]byte(src), &got)
 			require.Errorf(t, err, "%q", src)
 			assert.Contains(t, err.Error(),
-				"sequence entries are not allowed after a tag on the same line", "%q", src)
+				"a block sequence cannot start on the line of its tag", "%q", src)
 		}
 	})
 
@@ -2132,7 +2132,7 @@ func TestFixedAMergeKeyResolvesUnderYAML11(t *testing.T) {
 			var got any
 			err := codec.Unmarshal([]byte(src), &got)
 			require.Errorf(t, err, "%q", src)
-			assert.Containsf(t, err.Error(), "could not find merge key", "%q", src)
+			assert.Containsf(t, err.Error(), "a !!merge tag must stand on '<<'", "%q", src)
 		}
 	})
 
@@ -2175,7 +2175,7 @@ func TestFixedAMergeKeyResolvesUnderYAML11(t *testing.T) {
 //
 // 6.1 puts a tab in s-white and s-separate-in-line is s-white+, so a tab ends an
 // anchor, an alias and a tag shorthand. Only the space did until `a0182a6`:
-// `a: !!str<TAB>x` was refused as `found invalid tag character`, and
+// `a: !!str<TAB>x` was refused as `a tag cannot hold`, and
 // `a: &n<TAB>x` cut the anchor as "nx" on the empty node, so the value was gone
 // and a later `*n` named nothing.
 //
@@ -3474,7 +3474,7 @@ func TestFixedAMergeKeyWrittenTheLongWayMergesUnderItsProperties(t *testing.T) {
 		var got any
 		err := codec.Unmarshal([]byte("a: !!merge <<\n"), &got)
 		require.Error(t, err)
-		assert.Contains(t, err.Error(), "could not find merge key")
+		assert.Contains(t, err.Error(), "a !!merge tag must stand on '<<'")
 	})
 }
 
@@ -3502,7 +3502,7 @@ func TestFixedAMergeTagOnAnEmptyValueIsNoMergeKey(t *testing.T) {
 		var walked any
 		err := codec.Unmarshal([]byte(src), &walked)
 		require.Errorf(t, err, "the walk: %q", src)
-		assert.Containsf(t, err.Error(), "could not find merge key", "the walk: %q", src)
+		assert.Containsf(t, err.Error(), "a !!merge tag must stand on '<<'", "the walk: %q", src)
 
 		var tree map[string]any
 		require.Errorf(t, codec.Unmarshal([]byte(src), &tree), "the tree: %q", src)
@@ -3566,7 +3566,7 @@ func TestFixedACollectionKeyWrittenAloneInFlow(t *testing.T) {
 // TestFixedPropertiedKeyOverABlockScalar holds the entry whose key carries an
 // anchor or a tag and whose value is a block scalar.
 //
-// It was refused with "value is not allowed in this context. map key-value is
+// It was refused with "a document holds one root node, and this stands past it. map key-value is
 // pre-defined" from 2026-09-08, when the tagger and the aliaser began walking
 // keys and a document could carry a propertied key for the first time. The
 // scanner measured the entry from the key and not from the property in front of
@@ -3761,7 +3761,7 @@ func TestFixedAVerbatimTagOnAnEmptyKeyKeepsTheMapping(t *testing.T) {
 //
 // The properties stage hands an anchor and a tag over apart when no scalar follows them, and the key window kept
 // only the last token for a ':' to come, so the ':' found the last property alone. "!!null &a1 : 1" was refused with
-// "!!null does not support this kind of node", "a: 1" over "&a1 !!null : 2" with "non-map value is specified", and
+// "!!null does not support this kind of node", "a: 1" over "&a1 !!null : 2" with "a line at the column of a mapping must open an entry: a key and its ':'", and
 // "&a1 !!null : 1" put the anchor on the mapping, so "b: *a1" below it was refused. The window now keeps the run of
 // properties in front of an empty node, and keyBefore takes the run as the key. yaml/yaml-reference-parser, libfyaml
 // and go.yaml.in/yaml/v3 read each as a mapping keyed by the empty node, and "*a1" as that key.

@@ -33,7 +33,7 @@ func TestATabCannotLeadAQuotedOrFlowKey(t *testing.T) {
 			_, err := parser.ParseBytes([]byte(src))
 			require.Errorf(t, err, "%q", src)
 			assert.Containsf(t, err.Error(),
-				"tab character cannot stand for the indentation a mapping entry needs", "%q", src)
+				"a tab cannot stand for the indentation a mapping entry needs", "%q", src)
 		}
 	})
 

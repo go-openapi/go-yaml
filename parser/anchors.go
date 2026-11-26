@@ -322,7 +322,7 @@ func (p *Parser) validateAnchorValueInMapOrSeq(value ast.Node, col int) error {
 		//
 		// - &anchor
 		// !!tag
-		return yamlerrors.NewSyntax("tag is not allowed in this context", tagTk)
+		return yamlerrors.NewSyntax("tag is not indented past its key", tagTk)
 	}
 	return nil
 }
@@ -395,7 +395,7 @@ func (p *Parser) readAnchorValue(ctx context, anchor *ast.AnchorNode) (ast.Node,
 		return nil, err
 	}
 	if second := secondAnchor(value); second != nil {
-		return nil, yamlerrors.NewSyntax("anchors cannot be used consecutively", second.GetToken())
+		return nil, yamlerrors.NewSyntax("a node takes at most one anchor", second.GetToken())
 	}
 	// Set here as well as in parseAnchor, which runs after this returns:
 	// the Leave deferred above fires first, and the visitor must see the anchor holding its value.
@@ -430,7 +430,7 @@ func (p *Parser) parseAnchorName(ctx context) (*ast.AnchorNode, error) {
 	if ctx.isTokenNotFound() {
 		// A sanity guard between the grouper and the parser, normally unreachable: group2 pairs the '&' with its name,
 		// and the scanner refuses a '&' with no name.
-		return nil, yamlerrors.NewSyntax("could not find anchor value", anchor.GetToken())
+		return nil, yamlerrors.NewSyntax("an anchor must be followed by a name", anchor.GetToken())
 	}
 
 	anchorName, err := p.parseScalarValue(ctx, ctx.currentToken())
@@ -453,7 +453,7 @@ func (p *Parser) parseAlias(ctx context) (*ast.AliasNode, error) {
 	if ctx.isTokenNotFound() {
 		// A sanity guard between the grouper and the parser, normally unreachable: group2 pairs the '*' with its name,
 		// and the scanner refuses a '*' with no name.
-		return nil, yamlerrors.NewSyntax("could not find alias value", alias.GetToken())
+		return nil, yamlerrors.NewSyntax("an alias must be followed by a name", alias.GetToken())
 	}
 
 	aliasName, err := p.parseScalarValue(ctx, ctx.currentToken())

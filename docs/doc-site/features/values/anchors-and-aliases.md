@@ -63,7 +63,7 @@ is honoured at every version:
 | `<<: *d` | not merged | merged |
 | `!!merge <<: *d` | merged | merged |
 
-`!!merge` on any key other than `<<` is refused: `could not find merge key`.
+`!!merge` on any key other than `<<` is refused: `a !!merge tag must stand on '<<'`.
 
 Decode the document above, exactly as `Marshal` wrote it:
 

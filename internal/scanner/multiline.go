@@ -342,7 +342,7 @@ func (s *Scanner) endMultiLine(ctx *Context, fell bool) error {
 		// "|" over "b: c", leaves its value nothing to stand on. A block a trailing comment ended stands at the root
 		// when its header is at column 1, and "|2-" over "#c" is an empty scalar.
 		if fell && tk.Position.Column == 1 && (tk.Type == token.LiteralType || tk.Type == token.FoldedType) {
-			return ErrInvalidToken("could not find multi-line content", token.Invalid(ctx.origin(), s.pos()))
+			return ErrInvalidToken("a block scalar header at column 1 has no content below it", token.Invalid(ctx.origin(), s.pos()))
 		}
 		if tk.Type != token.StringType {
 			ctx.addTokenValue(token.MakeString("", "", s.pos()))
@@ -431,7 +431,7 @@ func (s *Scanner) scanMultiLineHeaderOption(ctx *Context, header rune) error {
 		// s-b-comment puts s-separate-in-line in front of c-nb-comment-text, so a '#' pressed up against the indicators
 		// starts no comment and is just a character the header may not hold.
 		if prev := value[commentValueIndex-1]; prev != ' ' && prev != '\t' {
-			invalidMsg := "comment must be separated from the block scalar header by a space"
+			invalidMsg := "a comment must be separated from a block scalar header by a space"
 			// headerPos, as for the option below: s.pos() has the offset past the indicator and the column on it.
 			invalidTk := token.Invalid(ctx.origin(), headerPos)
 			s.progressColumn(ctx, progress)
@@ -802,17 +802,17 @@ func validateMultiLineHeaderOption(opt string) error {
 		switch {
 		case c == '-' || c == '+':
 			if chomping {
-				return fmt.Errorf("invalid header option: %q", opt)
+				return fmt.Errorf("a block scalar header cannot take this option: %q", opt)
 			}
 			chomping = true
 		case c >= '1' && c <= '9':
 			// c-indentation-indicator is ns-dec-digit less '0': a block cannot be introduced by no indentation at all.
 			if indentation {
-				return fmt.Errorf("invalid header option: %q", opt)
+				return fmt.Errorf("a block scalar header cannot take this option: %q", opt)
 			}
 			indentation = true
 		default:
-			return fmt.Errorf("invalid header option: %q", opt)
+			return fmt.Errorf("a block scalar header cannot take this option: %q", opt)
 		}
 	}
 

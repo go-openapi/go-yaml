@@ -583,7 +583,7 @@ func stageDirectives(g *Grouper, at int, tk *TapeToken, out []*TapeToken) []*Tap
 
 			return out
 		case tk.Type() != token.DocumentHeaderType && tk.Type() != token.DirectiveType:
-			g.fail(yamlerrors.NewSyntax("unexpected directive value. document not started", d.head.RawToken()))
+			g.fail(yamlerrors.NewSyntax("a directive must be followed by a '---' line", d.head.RawToken()))
 
 			return out
 		}
@@ -631,9 +631,9 @@ func flushDirectives(g *Grouper, _ int, out []*TapeToken) []*TapeToken {
 	case d.head != nil && d.name == nil:
 		// A sanity guard between the scanner and the grouper, normally unreachable: the scanner refuses a '%' with no
 		// name. TestADirectiveWithNoNameIsRefused feeds the grouper its tokens by hand.
-		g.fail(yamlerrors.NewSyntax("undefined directive value", d.head.RawToken()))
+		g.fail(yamlerrors.NewSyntax("a directive must be named right after its '%'", d.head.RawToken()))
 	case d.head != nil:
-		g.fail(yamlerrors.NewSyntax("unexpected directive value. document not started", d.head.RawToken()))
+		g.fail(yamlerrors.NewSyntax("a directive must be followed by a '---' line", d.head.RawToken()))
 	}
 
 	return out

@@ -28,8 +28,8 @@ func TestATabSeparatesADirectivesParameters(t *testing.T) {
 		{src: "%YAML\t1.1\n---\nk: 010\n", want: uint64(8)},
 		{src: "%YAML 1.1\t# c\n---\nk: 010\n", want: uint64(8)},
 		{src: "%TAG\t!e!\ttag:yaml.org,2002:\n---\nk: !e!str x\n"},
-		{src: "%YAML 1\t.1\n---\nk: 010\n", refused: "unexpected format YAML directive"},
-		{src: "%TAG !e! t\tg:yaml.org,2002:\n---\nk: 1\n", refused: "unexpected format TAG directive"},
+		{src: "%YAML 1\t.1\n---\nk: 010\n", refused: "the YAML directive takes one version number"},
+		{src: "%TAG !e! t\tg:yaml.org,2002:\n---\nk: 1\n", refused: "the TAG directive takes a handle and a prefix"},
 	} {
 		for _, src := range []string{tc.src, strings.ReplaceAll(tc.src, "\t", " ")} {
 			_, err := parser.ParseBytes([]byte(src))
@@ -144,13 +144,13 @@ func TestADirectiveIsHeldToItsProductions(t *testing.T) {
 		{"percent-alone", "%\n---\n", "[1:1] a directive must be named right after its '%'"},
 		{"mark-before-the-document-start", "%1\n\xef\xbb\xbf---\n", "[2:1] found a byte order mark where no document begins"},
 		{"marks-before-and-after-the-directive", "\xef\xbb\xbf%1\n\xef\xbb\xbf---\n", "[2:1] found a byte order mark where no document begins"},
-		{"bar-in-a-local-prefix", "%TAG ! t|\n---\n", `[1:8] found invalid tag character "|"`},
-		{"bar-in-a-global-prefix", "%TAG !e! tag:x,2000:|\n---\n", `[1:10] found invalid tag character "|"`},
-		{"bar-after-a-local-bang", "%TAG !e! !lo|cal\n---\n", `[1:10] found invalid tag character "|"`},
-		{"yaml-with-no-version", "%YAML\n---\n", "[1:1] unexpected format YAML directive"},
-		{"yaml-with-a-comment-for-a-version", "%YAML # c\n---\n", "[1:1] unexpected format YAML directive"},
-		{"tag-with-no-handle", "%TAG \n---\n", "[1:1] unexpected format TAG directive"},
-		{"tag-with-a-comment-for-a-handle", "%TAG #x\n---\n", "[1:1] unexpected format TAG directive"},
+		{"bar-in-a-local-prefix", "%TAG ! t|\n---\n", `[1:8] a tag cannot hold "|"`},
+		{"bar-in-a-global-prefix", "%TAG !e! tag:x,2000:|\n---\n", `[1:10] a tag cannot hold "|"`},
+		{"bar-after-a-local-bang", "%TAG !e! !lo|cal\n---\n", `[1:10] a tag cannot hold "|"`},
+		{"yaml-with-no-version", "%YAML\n---\n", "[1:1] the YAML directive takes one version number"},
+		{"yaml-with-a-comment-for-a-version", "%YAML # c\n---\n", "[1:1] the YAML directive takes one version number"},
+		{"tag-with-no-handle", "%TAG \n---\n", "[1:1] the TAG directive takes a handle and a prefix"},
+		{"tag-with-a-comment-for-a-handle", "%TAG #x\n---\n", "[1:1] the TAG directive takes a handle and a prefix"},
 	} {
 		t.Run("refused/"+tc.name, func(t *testing.T) {
 			t.Parallel()

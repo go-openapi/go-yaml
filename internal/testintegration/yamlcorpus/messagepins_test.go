@@ -26,13 +26,13 @@ type messagePin struct {
 // document to its message.
 var messagePins = []messagePin{ //nolint:gochecknoglobals // a fixed table shared by two tests
 	// A '\uD800' high surrogate needs a '\u' low surrogate after it, and there is room for one.
-	{src: "\"\\uD800abcdefgh\"\n", says: "found unexpected character after high surrogate for UTF-16 surrogate pair"},
+	{src: "\"\\uD800abcdefgh\"\n", says: "a high surrogate must be followed by a \\u low surrogate"},
 	// A line of a quoted scalar holding only a tab, in block context: the entry's content needs a space of
 	// indentation before any tab. yaml/yaml-reference-parser and libfyaml refuse both.
-	{src: "- \"a\n\t\n\"\n", says: "tab character cannot be used for indentation in double-quoted text"},
-	{src: "- 'a\n\t\n'\n", says: "tab character cannot be used for indentation in single-quoted text"},
+	{src: "- \"a\n\t\n\"\n", says: "a tab cannot stand for the indentation of a line in a double-quoted scalar"},
+	{src: "- 'a\n\t\n'\n", says: "a tab cannot stand for the indentation of a line in a single-quoted scalar"},
 	// Content after "..." on its line: the marker ends the document, and nothing may follow it there.
-	{src: "a\n... x\n", says: "unexpected end content"},
+	{src: "a\n... x\n", says: "a '...' line must hold nothing after the marker"},
 	// WithJSONSyntax holds the source to RFC 8259, which admits no raw control character.
 	{
 		src: "{\"a\": \"\x01\"}", opts: []yamlparser.Option{yamlparser.WithJSONSyntax()},

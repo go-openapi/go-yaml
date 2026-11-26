@@ -102,7 +102,7 @@ func TestAFlowEntryHoldsOnePair(t *testing.T) {
 // TestAMissingCommaNamesTheColonThatEndsTheEntry covers the complaint for a ": " after a flow mapping's value.
 //
 // The usual cause is a comma left out between two entries, and the entry ends where the second ':' stands, so the
-// complaint asks for a ',' or a '}' there. It was "mapping value is not allowed in this context", at the value.
+// complaint asks for a ',' or a '}' there. It was "a mapping value cannot open a mapping on the line of its key", at the value.
 func TestAMissingCommaNamesTheColonThatEndsTheEntry(t *testing.T) {
 	t.Parallel()
 
@@ -122,7 +122,7 @@ func TestAMissingCommaNamesTheColonThatEndsTheEntry(t *testing.T) {
 			var got any
 			err := codec.Unmarshal([]byte(tc.src), &got)
 			require.Error(t, err)
-			assert.Contains(t, err.Error(), tc.at+" ',' or '}' must be specified")
+			assert.Contains(t, err.Error(), tc.at+" a flow mapping needs ',' or '}' after an entry")
 		})
 	}
 }

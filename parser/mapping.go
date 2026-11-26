@@ -4,6 +4,8 @@
 package parser
 
 import (
+	"fmt"
+
 	"github.com/go-openapi/go-yaml/ast"
 	yamlerrors "github.com/go-openapi/go-yaml/errors"
 	"github.com/go-openapi/go-yaml/parser/internal/group"
@@ -193,7 +195,7 @@ func (p *Parser) refuseMergeKeyAlone(key ast.MapKeyNode) error {
 // parseMap calls it once per entry, in a loop.
 func (p *Parser) parseMapEntry(ctx context, keyTk *group.TapeToken) (*ast.MappingValueNode, error) {
 	if keyTk.Group == nil {
-		return nil, yamlerrors.NewSyntax("unexpected map key", keyTk.RawToken())
+		return nil, yamlerrors.NewSyntax(fmt.Sprintf("found %q where a mapping key is expected", keyTk.RawToken().Value), keyTk.RawToken())
 	}
 
 	// holdRun keeps the entry's own tokens, which are read again once the value under it is parsed.
@@ -226,7 +228,7 @@ func (p *Parser) parseMapEntry(ctx context, keyTk *group.TapeToken) (*ast.Mappin
 	valueTk := ctx.currentToken()
 	sameLine := valueTk != nil && keyTk.Line() == valueTk.Line()
 	if sameLine && valueTk.Type() == token.SequenceEntryType {
-		return nil, yamlerrors.NewSyntax("block sequence entries are not allowed in this context", valueTk.RawToken())
+		return nil, yamlerrors.NewSyntax("a block sequence cannot start on the line of its key", valueTk.RawToken())
 	}
 	childCtx := p.valueContext(ctx, key)
 	value, err := p.explicitKeyValue(childCtx, keyTk, key)
@@ -330,7 +332,7 @@ func (p *Parser) parseMap(ctx context) (*ast.MappingNode, error) {
 			break
 		}
 		if !isMapToken(tk) {
-			return nil, yamlerrors.NewSyntax("non-map value is specified", tk.RawToken())
+			return nil, yamlerrors.NewSyntax("a line at the column of a mapping must open an entry: a key and its ':'", tk.RawToken())
 		}
 		cm := p.parseHeadComment(ctx)
 		if typ == token.MappingEndType {
@@ -408,7 +410,7 @@ func isMapToken(tk *group.TapeToken) bool {
 // Both callers check the group type before calling.
 func (p *Parser) parseMapKeyValue(ctx context, g *group.TokenGroup, entryTk *group.TapeToken) (*ast.MappingValueNode, error) {
 	if g.First().Group == nil {
-		return nil, yamlerrors.NewSyntax("unexpected map key", g.RawToken())
+		return nil, yamlerrors.NewSyntax(fmt.Sprintf("found %q where a mapping key is expected", g.RawToken().Value), g.RawToken())
 	}
 	keyGroup := g.First().Group
 	p.markKey()
@@ -471,13 +473,13 @@ func unreadInGroup(ctx context) *group.TapeToken {
 
 func (p *Parser) parseMapKey(ctx context, g *group.TokenGroup) (ast.MapKeyNode, error) {
 	if g.Type != group.TokenGroupMapKey {
-		return nil, yamlerrors.NewSyntax("unexpected map key", g.RawToken())
+		return nil, yamlerrors.NewSyntax(fmt.Sprintf("found %q where a mapping key is expected", g.RawToken().Value), g.RawToken())
 	}
 	if g.First().Type() == token.MappingKeyType {
 		return p.parseExplicitMapKey(ctx, g)
 	}
 	if g.Last().Type() != token.MappingValueType {
-		return nil, yamlerrors.NewSyntax("expected map key-value delimiter ':'", g.Last().RawToken())
+		return nil, yamlerrors.NewSyntax("a mapping key needs a ':' after it", g.Last().RawToken())
 	}
 
 	doneKey := p.descent.enterKey()
@@ -488,7 +490,7 @@ func (p *Parser) parseMapKey(ctx context, g *group.TokenGroup) (ast.MapKeyNode, 
 	}
 	key, ok := scalar.(ast.MapKeyNode)
 	if !ok {
-		return nil, yamlerrors.NewSyntax("cannot take map-key node", scalar.GetToken())
+		return nil, yamlerrors.NewSyntax("this node cannot be a mapping key", scalar.GetToken())
 	}
 	keyText := p.mapKeyText(key)
 	key.SetPathNode(ctx.withChild(p, keyText).path)
@@ -532,7 +534,7 @@ func (p *Parser) parseExplicitMapKey(ctx context, g *group.TokenGroup) (ast.MapK
 
 	ctx.goNext() // Skip the '?'.
 	if ctx.isTokenNotFound() {
-		return nil, yamlerrors.NewSyntax("could not find value for mapping key", mapKeyTk.RawToken())
+		return nil, yamlerrors.NewSyntax("the '?' of an explicit key has no node after it", mapKeyTk.RawToken())
 	}
 
 	doneKey := p.descent.enterKey()
@@ -549,7 +551,7 @@ func (p *Parser) parseExplicitMapKey(ctx context, g *group.TokenGroup) (ast.MapK
 	}
 	scalar, ok := value.(ast.MapKeyNode)
 	if !ok {
-		return nil, yamlerrors.NewSyntax("cannot use this node as a map key", value.GetToken())
+		return nil, yamlerrors.NewSyntax("this node cannot be a mapping key", value.GetToken())
 	}
 	// A comment closing the line of the '?' belongs to the key, and the renderer writes it on the key's node,
 	// as it does for "? a # note". Left on the MappingKeyNode, no renderer writes it,
@@ -600,7 +602,7 @@ func (p *Parser) validateMapKey(ctx context, key ast.MapKeyNode, colonTk *group.
 			// ':' line and starts it on the line above. The key starts at its first property and ends on its scalar,
 			// so "[&a b" over ": c]" breaks the rule too.
 			if int(tk.Position.Line) != colonTk.Line() || int(scalar.EndLine()) != colonTk.Line() {
-				return yamlerrors.NewSyntax("map key definition includes an implicit line break", tk)
+				return yamlerrors.NewSyntax("an implicit key must stand on one line", tk)
 			}
 		}
 		return nil
@@ -609,7 +611,7 @@ func (p *Parser) validateMapKey(ctx context, key ast.MapKeyNode, colonTk *group.
 		return nil
 	}
 	if tk.BreaksAfterLeading() > 0 {
-		return yamlerrors.NewSyntax("unexpected key name", tk)
+		return yamlerrors.NewSyntax("an implicit key must stand on one line", tk)
 	}
 	return nil
 }
@@ -666,9 +668,9 @@ func refusePropertyBelowKey(tk *group.TapeToken, keyCol int) error {
 
 	switch {
 	case tk.GroupType() == group.TokenGroupAnchorName:
-		return yamlerrors.NewSyntax("anchor is not allowed in this context", tk.RawToken())
+		return yamlerrors.NewSyntax("anchor is not indented past its key", tk.RawToken())
 	case tk.Type() == token.TagType:
-		return yamlerrors.NewSyntax("tag is not allowed in this context", tk.RawToken())
+		return yamlerrors.NewSyntax("tag is not indented past its key", tk.RawToken())
 	default:
 		return nil
 	}
@@ -694,7 +696,7 @@ func (p *Parser) parseMapValue(ctx context, key ast.MapKeyNode, colonTk *group.T
 		//
 		// a: b: c
 		//    ^
-		return nil, yamlerrors.NewSyntax("mapping value is not allowed in this context", tk.RawToken())
+		return nil, yamlerrors.NewSyntax("a mapping value cannot open a mapping on the line of its key", tk.RawToken())
 	}
 
 	if tk.Column() == keyCol && isMapToken(tk) {

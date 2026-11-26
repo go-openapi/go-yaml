@@ -70,7 +70,7 @@ func ExampleUnmarshal_syntaxError() {
 	}
 
 	// Output:
-	// line 1, column 7: sequence end token ']' not found
+	// line 1, column 7: a flow sequence is not closed by ']'
 }
 
 func ExampleToJSON() {
