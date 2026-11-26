@@ -13,30 +13,38 @@ import "fmt"
 // Offset can start earlier than the token's text for two kinds of token: block scalar content, and the Invalid
 // token an error carries. README.md in this directory gives the counts.
 //
-// The four numbers are int32. A token holds its Position by value, so the width of each number adds to the
+// Line and Column are int32. Offset takes 40 bits and IndentNum 24, packed in one word, so Offset reaches 1 TiB
+// and IndentNum 16 M columns. A token holds its Position by value, so the width of each number adds to the
 // token's width.
 type Position struct {
 	Line   int32
 	Column int32
-	// where packs Offset in its low 32 bits and IndentNum in its high 32, so the two take one register where two
+	// where packs Offset in its low 40 bits and IndentNum in its high 24, so the two take one register where two
 	// fields would take two. See README.md in this directory.
 	//
 	// Read them with [Position.Offset] and [Position.IndentNum].
 	where uint64
 }
 
-// offsetMask selects the low 32 bits of Position.where, which hold Offset.
-const offsetMask = 1<<32 - 1
+const (
+	// OffsetBits is the width of Position.Offset. A source must be shorter than 1<<OffsetBits bytes.
+	OffsetBits = 40
+	// IndentBits is the width of Position.IndentNum. A line must be indented by fewer than 1<<IndentBits columns.
+	IndentBits = 64 - OffsetBits
+
+	// offsetMask selects the low OffsetBits of Position.where, which hold Offset.
+	offsetMask = 1<<OffsetBits - 1
+)
 
 // Offset returns the byte the token starts at, counting from 0.
 func (p Position) Offset() int32 { return int32(p.where & offsetMask) }
 
 // IndentNum returns the number of spaces the token's line is indented by.
-func (p Position) IndentNum() int32 { return int32(p.where >> 32) }
+func (p Position) IndentNum() int32 { return int32(p.where >> OffsetBits) }
 
 // SetOffset records the byte the token starts at.
 func (p *Position) SetOffset(offset int32) {
-	p.where = p.where&^offsetMask | uint64(uint32(offset))
+	p.where = p.where&^offsetMask | uint64(offset)&offsetMask
 }
 
 // At returns the position at line, column, offset and indentNum. A composite literal cannot set Offset and
@@ -45,7 +53,7 @@ func At(line, column, offset, indentNum int32) Position {
 	return Position{
 		Line:   line,
 		Column: column,
-		where:  uint64(uint32(offset)) | uint64(uint32(indentNum))<<32,
+		where:  uint64(offset)&offsetMask | uint64(indentNum)<<OffsetBits,
 	}
 }
 
