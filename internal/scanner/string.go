@@ -113,6 +113,13 @@ func (s *Scanner) scanSingleQuote(ctx *Context) (token.Token, error) {
 		switch {
 		case isNewLineChar(c):
 			keep(idx)
+			if c == '\r' && idx+1 < size && src[idx+1] == '\n' {
+				// A "\r\n" is one line break. Read as two, it folded to "\n" for the " " a "\n" folds to, and every token
+				// after the scalar stood one line too low.
+				ctx.addOriginBuf('\n')
+				s.progress(ctx, 1)
+				width++
+			}
 			var err error
 			if value, err = s.foldQuotedLineBreak(ctx, value, isFirstLineChar, src[idx+int32(width):], baseIndent); err != nil {
 				return token.Token{}, err
@@ -228,6 +235,13 @@ func (s *Scanner) scanDoubleQuote(ctx *Context) (token.Token, error) {
 		switch {
 		case isNewLineChar(c):
 			keep(idx)
+			if c == '\r' && idx+1 < size && src[idx+1] == '\n' {
+				// A "\r\n" is one line break, as the escaped break below reads it. Read as two, it folded to "\n" for the
+				// " " a "\n" folds to, and every token after the scalar stood one line too low.
+				ctx.addOriginBuf('\n')
+				s.progress(ctx, 1)
+				width++
+			}
 			var err error
 			if value, err = s.foldQuotedLineBreak(ctx, value, isFirstLineChar, src[idx+int32(width):], baseIndent); err != nil {
 				return token.Token{}, err
