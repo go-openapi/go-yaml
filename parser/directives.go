@@ -143,6 +143,8 @@ func (p *Parser) parseDirectiveName(ctx context) (*ast.DirectiveNode, error) {
 	}
 	ctx.goNext()
 	if ctx.isTokenNotFound() {
+		// A sanity guard between the grouper and the parser, normally unreachable: group2 pairs the '%' with its name,
+		// and the scanner refuses a '%' with no name.
 		return nil, yamlerrors.NewSyntax("could not find directive value", directive.GetToken())
 	}
 

@@ -336,6 +336,9 @@ func (g *Grouper) taggedAnchorNames(at int, tk *TapeToken, out []*TapeToken) ([]
 }
 
 // flushProperties hands on what the stream ended in the middle of.
+//
+// Its three refusals of a '&' or a '*' with no name are sanity guards between the scanner and the grouper, normally
+// unreachable: the scanner refuses such a property before the stream can end on it.
 func flushProperties(g *Grouper, at int, out []*TapeToken) []*TapeToken {
 	switch g.prop {
 	case propSawAnchor:

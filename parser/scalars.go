@@ -222,6 +222,8 @@ func (p *Parser) parseLiteral(ctx context) (*ast.LiteralNode, error) {
 	}
 	str, ok := value.(*ast.StringNode)
 	if !ok {
+		// A sanity guard between the scanner and the parser, normally unreachable: the scanner cuts a block scalar's
+		// content as a string, and the version pass in version.go leaves that token's type alone.
 		return nil, yamlerrors.NewSyntax("unexpected token. required string token", value.GetToken())
 	}
 	node.Value = str

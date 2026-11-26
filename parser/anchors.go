@@ -428,6 +428,8 @@ func (p *Parser) parseAnchorName(ctx context) (*ast.AnchorNode, error) {
 	}
 	ctx.goNext()
 	if ctx.isTokenNotFound() {
+		// A sanity guard between the grouper and the parser, normally unreachable: group2 pairs the '&' with its name,
+		// and the scanner refuses a '&' with no name.
 		return nil, yamlerrors.NewSyntax("could not find anchor value", anchor.GetToken())
 	}
 
@@ -449,6 +451,8 @@ func (p *Parser) parseAlias(ctx context) (*ast.AliasNode, error) {
 	}
 	ctx.goNext()
 	if ctx.isTokenNotFound() {
+		// A sanity guard between the grouper and the parser, normally unreachable: group2 pairs the '*' with its name,
+		// and the scanner refuses a '*' with no name.
 		return nil, yamlerrors.NewSyntax("could not find alias value", alias.GetToken())
 	}
 

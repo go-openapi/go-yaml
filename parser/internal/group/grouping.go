@@ -629,6 +629,8 @@ func (g *Grouper) emitDirective(at int, out []*TapeToken) []*TapeToken {
 func flushDirectives(g *Grouper, _ int, out []*TapeToken) []*TapeToken {
 	switch d := &g.directive; {
 	case d.head != nil && d.name == nil:
+		// A sanity guard between the scanner and the grouper, normally unreachable: the scanner refuses a '%' with no
+		// name. TestADirectiveWithNoNameIsRefused feeds the grouper its tokens by hand.
 		g.fail(yamlerrors.NewSyntax("undefined directive value", d.head.RawToken()))
 	case d.head != nil:
 		g.fail(yamlerrors.NewSyntax("unexpected directive value. document not started", d.head.RawToken()))

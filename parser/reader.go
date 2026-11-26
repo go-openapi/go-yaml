@@ -383,6 +383,8 @@ func (r *reader) fill() error {
 				return scanErr
 			}
 
+			// A sanity guard between the scanner and the parser, normally unreachable: an invalid token enters the
+			// stream only through Scanner.stop, which sets Scanner.Err first.
 			return yamlerrors.NewSyntax("found an invalid token", held.RawToken())
 		}
 
