@@ -72,13 +72,22 @@ func TestABlockOfEmptyLinesCoversThem(t *testing.T) {
 		{src: "a: |+\r\n\r\n\r\nb: 1\n", value: "\n\n", offset: 7, end: 11, line: 2, column: 1},
 		{src: "a: |+\r\rb: 1\r", value: "\n", offset: 6, end: 7, line: 2, column: 1},
 		{src: "x:\n  a: |+\n\n  b: 1\n", value: "\n", offset: 11, end: 12, line: 3, column: 1},
+		// A tab at column 1 is content of a root block scalar, and a blank one begins at it as at a space. Where no break
+		// ends the source, the token runs to its end: "|" over an empty line and "\t " ended at offset 3 and began at 4,
+		// and slicing its extent panicked. With no space, or with a break ending the source, the token begins at the
+		// first byte after the header's line.
+		{src: "|\n\n\t ", value: "\n\t \n", offset: 3, end: 5, line: 3, column: 1},
+		{src: ">\n\n\t ", value: "\n\t \n", offset: 3, end: 5, line: 3, column: 1},
+		{src: "|\n\n\t", value: "\n\t\n", offset: 2, end: 4, line: 2, column: 1},
+		{src: "|\n\t ", value: "\t \n", offset: 2, end: 4, line: 2, column: 1},
+		{src: "|\n\n\t \n", value: "\n\t \n", offset: 2, end: 6, line: 2, column: 1},
 	} {
 		tokens, err := scanTokens(tc.src)
 		require.NoErrorf(t, err, "%q", tc.src)
 
 		var content *token.Token
 		for i := 1; i < len(tokens); i++ {
-			if tokens[i].Type == token.StringType && tokens[i-1].Type == token.LiteralType {
+			if header := tokens[i-1].Type; tokens[i].Type == token.StringType && (header == token.LiteralType || header == token.FoldedType) {
 				content = &tokens[i]
 
 				break

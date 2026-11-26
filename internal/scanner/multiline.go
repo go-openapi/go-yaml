@@ -63,6 +63,9 @@ func (s *Scanner) scanMultiLine(ctx *Context, c rune) error {
 		// Past the indentation, so the tab is content and is kept as written.
 		ctx.addBufWithTab(c)
 		if s.isFirstCharAtLine {
+			// A content tab among the line's leading whitespace opens a blank block's content, as a space past the
+			// indentation does: "|" over an empty line and "\t " started at the space, past the tab.
+			state.beganSpace(s.pos())
 			// Among the line's leading whitespace, the tab counts one column of it, as the scan loop's tab arm
 			// counts one: indentNum and the column moved apart at it, and "  \t bar" under ">" read indentNum 2
 			// at column 4.
@@ -270,6 +273,11 @@ func (s *Scanner) emptyLinesToken(ctx *Context, value, origin string, originStar
 		pos = space
 	}
 	switch last := strings.LastIndexAny(origin, "\r\n"); {
+	case strings.HasSuffix(value, "\n") && lastLineHoldsContent(value, origin):
+		// The source ends on a line of blank content and no break: the value's final break is the one chomping adds,
+		// and the token runs to the end of that line. "|" over an empty line and "\t " ended before the tab, ahead of
+		// its own start.
+		end = start + int32(len(origin))
 	case strings.HasSuffix(value, "\n") && last >= 0:
 		end = start + int32(last) + 1
 	case !strings.HasSuffix(value, "\n"):
@@ -280,6 +288,16 @@ func (s *Scanner) emptyLinesToken(ctx *Context, value, origin string, originStar
 	return token.Assemble(token.StringType, value, pos, token.Extent{
 		End: end, EndLine: pos.Line, Trailing: lineBreaksIn(ctx.src[pos.Offset():end]),
 	}), true
+}
+
+// lastLineHoldsContent reports whether the last line of origin, the text read since a block scalar's header, holds
+// content of value.
+//
+// Below its trailing breaks, value has one line break for each break of origin when the last line holds content: the
+// value "\n\t \n" ends with the break that clip chomping adds and origin "\n\t " has no break after the tab. Where
+// origin ends on a break or on a line of indentation, it holds one break more.
+func lastLineHoldsContent(value, origin string) bool {
+	return lineBreaksIn(strings.TrimRight(value, "\n")) == lineBreaksIn(origin)
 }
 
 // lineBreaksIn counts the line breaks of src, a "\r\n" as one.
