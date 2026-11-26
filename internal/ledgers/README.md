@@ -1,5 +1,7 @@
 # ledgers
 
+One place for the defect ledgers.
+
 A ledger records what a package is known to get wrong, keyed by the case or the invariant that shows it. It is a
 measurement with a name attached, not an excuse. It fails in both directions: a defect that is not recorded fails,
 and a recorded defect that stops showing fails too. Record a fix by deleting the entry.
@@ -73,6 +75,9 @@ rewrites every SHA.
 
 ## Running them
 
+A directory here holds test files only, and nothing in the library imports it.
+The tree runs under `go test ./...` like everything else, and a change that breaks a ledger breaks it locally.
+
 ```sh
 go test -count=1 ./internal/ledgers/...                    # all but the two probe ledgers
 go test -count=1 -tags yamlprobe ./internal/ledgers/...    # all of them
@@ -84,7 +89,6 @@ CI runs both: the shared test job, and the `ledgers` job in `.github/workflows/g
 ## Adding a ledger here
 
 1. Make a directory named after the package under measurement, holding test files only, in `package <name>_test`.
-   Nothing in the library imports this tree.
 2. Copy the ledger variable and the test that measures it, with the comment that says what each entry is for. Leave
    behind the tests that are not ledgers.
 3. Replace the comparison loop with `Compare` or `CompareNames`.
