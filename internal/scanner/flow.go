@@ -35,6 +35,28 @@ func (s *Scanner) scanFlowDash(ctx *Context) error {
 	return s.refuse(ctx, '-', "'-' is not a scalar, and a flow collection has no sequence entries")
 }
 
+// scanFlowQuestion refuses a '?' inside a flow collection that a flow indicator follows.
+//
+// ns-plain-first [126] opens a plain scalar with a '?' only before an ns-plain-safe character, which leaves out the
+// flow indicators [129]. An explicit key's '?' needs a separation after it ([142], [150]). So nothing reads the '?' of
+// "[?]", "{?}", "[?, a]" or "{a: ?}", and each was read as the scalar "?". "[? ]", "[?" over "]" and "[?x]" stay as
+// they were: an empty pair, an empty pair, and the scalar "?x".
+//
+// A '?' inside an anchor or alias name is the name's: "[&? x, *?]" reads ["x", "x"].
+func (s *Scanner) scanFlowQuestion(ctx *Context) error {
+	if ctx.existsBuffer() || !s.isFlowMode() || s.inAnchorName('?') {
+		return nil
+	}
+
+	switch ctx.nextChar() {
+	case ',', '[', ']', '{', '}':
+	default:
+		return nil
+	}
+
+	return s.refuse(ctx, '?', "'?' is not a scalar, and an explicit key needs a space after it")
+}
+
 // enterFlow records what a flow collection's continuation lines must clear.
 //
 // Only the outermost one matters: a collection nested inside another is already past the indentation its parent required.

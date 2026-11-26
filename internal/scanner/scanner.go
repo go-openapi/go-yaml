@@ -442,6 +442,9 @@ func (s *Scanner) scan(ctx *Context) error {
 				return err
 			}
 		case '?':
+			if err := s.scanFlowQuestion(ctx); err != nil {
+				return err
+			}
 			scanned, err := s.scanMapKey(ctx)
 			if err != nil {
 				return err

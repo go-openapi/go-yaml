@@ -215,12 +215,17 @@ func TestARefusalSignatureKeepsTheParserAndDropsTheDocument(t *testing.T) {
 // day "an alias cannot carry an anchor or a tag" split from "found _ where a
 // scalar is expected", and the two mismatched-closer messages from the scanner's
 // new check, which refuses "[{]}" at the ']'.
+//
+// "_ is not a scalar, and an explicit key needs a space after it" arrived the
+// same evening, when a '?' a flow indicator follows began to be refused: the
+// corpus holds one "{?}".
 var parserComplaints = []string{
 	"\\U takes eight hexadecimal digits",
 	"\\u takes four hexadecimal digits",
 	"\\x takes two hexadecimal digits",
 	"_ is a reserved character",
 	"_ is not a scalar, and a flow collection has no sequence entries",
+	"_ is not a scalar, and an explicit key needs a space after it",
 	"a _ in a tag must be followed by two hexadecimal digits",
 	"a _ tag must stand on _",
 	"a block mapping cannot start on the _ line",

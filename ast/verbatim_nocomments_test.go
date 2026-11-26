@@ -58,7 +58,10 @@ import (
 // tag-led key after an empty nested value had kept out.
 //
 // 16615 -> 16591 on 2026-11-26 with conformance-suites v0.0.3, whose corpus holds 210 fewer cases. None differs.
-const withoutCommentsDocuments = 16591
+//
+// 16591 -> 16590 the same day, when a '?' a flow indicator follows began to be refused: the corpus holds one "{?}",
+// which yaml/yaml-reference-parser refuses.
+const withoutCommentsDocuments = 16590
 
 func TestVerbatimRebuildsTheCorpusParsedWithoutComments(t *testing.T) {
 	t.Parallel()
