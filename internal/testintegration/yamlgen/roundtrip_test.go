@@ -109,7 +109,7 @@ func TestRenderWritesValidYAML(t *testing.T) {
 // offering reversible transformation: reading a document and writing it back
 // must not change what it means.
 //
-// internal/conformance/roundtrip_test.go asks a related question of the YAML Test Suite,
+// internal/ledgers/conformance/roundtrip_test.go asks a related question of the YAML Test Suite,
 // but it compares text to text. This compares meaning, over documents nobody
 // wrote by hand.
 func TestRenderPreservesValue(t *testing.T) {

@@ -4,7 +4,7 @@
 # does, re-run the tests below before changing a number.
 #
 # Verified 2026-11-23 against master, with
-#   go test -v ./internal/conformance/
+#   go test -v ./internal/ledgers/conformance/
 #
 #   acceptance_*  TestSuiteAcceptance
 #   decoder_*     TestYAMLTestSuite

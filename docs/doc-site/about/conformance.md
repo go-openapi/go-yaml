@@ -19,7 +19,7 @@ All four measurements run on the [YAML Test Suite][officialtestsuite], a vendore
 Run them with:
 
 ```cmd
-go test -v ./internal/conformance/
+go test -v ./internal/ledgers/conformance/
 ```
 
 Each test prints its counts.

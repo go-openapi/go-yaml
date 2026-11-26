@@ -14,7 +14,7 @@ import (
 	"github.com/go-openapi/go-yaml/parser"
 )
 
-// TestRendererRoundTrip measures ast.Renderer the way roundtrip_test.go
+// TestRendererRoundTrip measures ast.Renderer the way internal/ledgers/conformance.TestSuiteRoundTrip
 // measures rendering through String, so the two numbers mean the same thing.
 func TestRendererRoundTrip(t *testing.T) {
 	tests, err := yamltestsuite.TestSuites()
