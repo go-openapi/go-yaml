@@ -228,7 +228,10 @@ func TestTheParserVocabularyGapIsMeasured(t *testing.T) {
 	// templates, and three of them are unreached: `undefined alias name` and
 	// `undefined anchor name`, which flushProperties raises when the stream ends
 	// on an '&' or a '*' with no name, and `undefined directive value`.
-	const ceiling = 28
+	//
+	// It came down to 25 on 2026-11-26, over the conformance-suites v0.0.3
+	// corpus.
+	const ceiling = 25
 
 	if len(unreached) > ceiling {
 		t.Errorf("%d templates unreached, and the ceiling is %d: either a new message arrived with no "+
