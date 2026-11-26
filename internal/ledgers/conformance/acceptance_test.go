@@ -7,9 +7,9 @@ import (
 	"sort"
 	"testing"
 
-	"github.com/go-openapi/testify/v2/assert"
 	"github.com/go-openapi/testify/v2/require"
 
+	"github.com/go-openapi/go-yaml/internal/ledgers"
 	yamltestsuite "github.com/go-openapi/go-yaml/internal/yamltestsuite"
 	"github.com/go-openapi/go-yaml/parser"
 )
@@ -55,10 +55,10 @@ func (v verdict) diverges() bool { return v == wronglyAccepted || v == wronglyRe
 // Test Suite about whether a document is valid.
 //
 // It is empty: the parser agrees with the suite on all 393 cases that state an
-// expectation. Every entry is a two-way ratchet -- a new disagreement fails
-// because it is missing from here, and a fixed one fails because it is still
-// listed -- so an empty ledger is a claim that has to be re-earned on every
-// run, not a note about how things once stood.
+// expectation. TestSuiteAcceptance checks the verdicts with [ledgers.Compare],
+// both ways -- a new disagreement fails because it is missing from here, and a
+// fixed one fails because it is still listed -- so an empty ledger is a claim
+// that has to be re-earned on every run, not a note about how things once stood.
 //
 // An entry records the verdict and a reason, and a reason is worth only what it
 // was measured at: each one written from what a fixture looked like rather than
@@ -83,68 +83,42 @@ func TestSuiteAcceptance(t *testing.T) {
 	diverged := make(map[string]verdict)
 
 	for _, test := range tests {
+		_, err := parser.ParseBytes(test.InYAML, parser.WithComments())
+
+		if !test.HasExpectation() {
+			// Parsed anyway, so a panic here still fails the run.
+			counts[unstated]++
+
+			continue
+		}
+
 		var got verdict
+		switch {
+		case test.Error && err == nil:
+			got = wronglyAccepted
+		case test.Error:
+			got = rejected
+		case err == nil:
+			got = accepted
+		default:
+			got = wronglyRejected
+		}
 
-		t.Run(test.Name, func(t *testing.T) {
-			_, err := parser.ParseBytes(test.InYAML, parser.WithComments())
-
-			if !test.HasExpectation() {
-				// Parsed anyway, so a panic here still fails the run.
-				counts[unstated]++
-
-				return
-			}
-
-			switch {
-			case test.Error && err == nil:
-				got = wronglyAccepted
-			case test.Error:
-				got = rejected
-			case err == nil:
-				got = accepted
-			default:
-				got = wronglyRejected
-			}
-
-			counts[got]++
-			if !got.diverges() {
-				assert.NotContainsf(t, acceptanceLedger, test.Name,
-					"%s: now %s -- if that is a fix, delete the ledger entry", test.Name, got)
-
-				return
-			}
-
+		counts[got]++
+		if got.diverges() {
 			diverged[test.Name] = got
-			known, listed := acceptanceLedger[test.Name]
-			if !assert.Truef(t, listed, "%s: %s, and not in the ledger: %v", test.Name, got, err) {
-				return
-			}
-			assert.Equalf(t, known.verdict, got, "%s: diverges differently than recorded", test.Name)
-		})
-	}
-
-	assertLedgerIsExercised(t, tests)
-	reportAcceptance(t, len(tests), counts, diverged)
-}
-
-// assertLedgerIsExercised guards a hole in the ratchet: a ledger entry naming a
-// case that states no expectation is never consulted, so it can go stale
-// unnoticed -- which is exactly what happened to the entries for the empty-key
-// fixtures.
-func assertLedgerIsExercised(t *testing.T, tests []*yamltestsuite.TestSuite) {
-	t.Helper()
-
-	scored := make(map[string]struct{}, len(tests))
-	for _, test := range tests {
-		if test.HasExpectation() {
-			scored[test.Name] = struct{}{}
 		}
 	}
 
-	for name := range acceptanceLedger {
-		_, ok := scored[name]
-		assert.Truef(t, ok, "%s: ledger entry for a case that is never scored -- delete it", name)
+	// The ledger's verdicts are the measurement; its reasons are for the reader. An entry naming a case that states no
+	// expectation is never measured, so it fails as stale: the entries for the empty-key fixtures once went stale
+	// unnoticed that way.
+	recorded := make(map[string]verdict, len(acceptanceLedger))
+	for name, entry := range acceptanceLedger {
+		recorded[name] = entry.verdict
 	}
+	ledgers.Compare(t, "verdict", diverged, recorded)
+	reportAcceptance(t, len(tests), counts, diverged)
 }
 
 // reportAcceptance logs the headline numbers, so that a run says where
