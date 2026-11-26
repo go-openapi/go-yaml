@@ -37,6 +37,9 @@ type Scanner struct {
 	indentNum              int32
 	startedFlowSequenceNum int32
 	startedFlowMapNum      int32
+	// flowOpen holds the indicator that opened each flow collection still open, '[' or '{', the innermost last.
+	// A closer that does not match the innermost one is refused: "[{]}" closes a mapping with a ']'.
+	flowOpen []byte
 	// flowIndent holds the indentation of the line that opened the outermost flow collection.
 	// Every further line of that collection must be indented past it.
 	flowIndent int32
@@ -261,7 +264,7 @@ func (s *Scanner) NextToken() (token.Token, bool) {
 // and keeps the room its buffers have grown. It scans nothing until [Scanner.Init] gives it a source.
 func (s *Scanner) Reset() {
 	s.ctx.Reset()
-	*s = Scanner{quoted: s.quoted[:0], ctx: s.ctx}
+	*s = Scanner{quoted: s.quoted[:0], flowOpen: s.flowOpen[:0], ctx: s.ctx}
 }
 
 // scan reads the source until it has a token, and returns with that token buffered in ctx.
@@ -347,7 +350,11 @@ func (s *Scanner) scan(ctx *Context) error {
 				continue
 			}
 		case '}':
-			if s.scanFlowMapEnd(ctx) {
+			scanned, err := s.scanFlowMapEnd(ctx)
+			if err != nil {
+				return err
+			}
+			if scanned {
 				continue
 			}
 			if err := s.scanPlainFirst(ctx, c); err != nil {
@@ -382,7 +389,11 @@ func (s *Scanner) scan(ctx *Context) error {
 				continue
 			}
 		case ']':
-			if s.scanFlowArrayEnd(ctx) {
+			scanned, err := s.scanFlowArrayEnd(ctx)
+			if err != nil {
+				return err
+			}
+			if scanned {
 				continue
 			}
 			if err := s.scanPlainFirst(ctx, c); err != nil {

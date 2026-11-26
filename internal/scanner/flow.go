@@ -61,6 +61,7 @@ func (s *Scanner) scanFlowMapStart(ctx *Context) bool {
 	ctx.addTokenValue(token.MakeMappingStart(ctx.origin(), s.pos()))
 	s.enterFlow(ctx)
 	s.startedFlowMapNum++
+	s.flowOpen = append(s.flowOpen, '{')
 	s.progressColumn(ctx, 1)
 	ctx.clear()
 
@@ -72,9 +73,18 @@ func (s *Scanner) scanFlowMapStart(ctx *Context) bool {
 // A plain scalar inside a flow collection holds no flow indicator (ns-plain-safe(c) in YAML 1.2), so a '}' ends it
 // even where no flow mapping is open. Kept as text, "[b}]" read as the sequence ["b}"] where yaml.v3 and the spec
 // refuse it. The parser rejects the '}' that closes no mapping.
-func (s *Scanner) scanFlowMapEnd(ctx *Context) bool {
+//
+// A '}' while a flow sequence is the innermost collection open is refused here: "[{a]}" and "[}]" close the wrong
+// collection.
+func (s *Scanner) scanFlowMapEnd(ctx *Context) (bool, error) {
 	if !s.isFlowMode() {
-		return false
+		return false, nil
+	}
+	if !s.closesInnermostFlow('{') {
+		// The closer ends a plain scalar under way, as it does where it may stand, so the scalar goes over first.
+		s.addBufferedTokenIfExists(ctx)
+
+		return false, s.refuse(ctx, '}', "found '}' where ']' closes a flow sequence")
 	}
 
 	s.endsProperty(ctx)
@@ -86,7 +96,7 @@ func (s *Scanner) scanFlowMapEnd(ctx *Context) bool {
 	s.progressColumn(ctx, 1)
 	ctx.clear()
 
-	return true
+	return true, nil
 }
 
 func (s *Scanner) scanFlowArrayStart(ctx *Context) bool {
@@ -99,6 +109,7 @@ func (s *Scanner) scanFlowArrayStart(ctx *Context) bool {
 	ctx.addTokenValue(token.MakeSequenceStart(ctx.origin(), s.pos()))
 	s.enterFlow(ctx)
 	s.startedFlowSequenceNum++
+	s.flowOpen = append(s.flowOpen, '[')
 	s.progressColumn(ctx, 1)
 	ctx.clear()
 
@@ -107,9 +118,17 @@ func (s *Scanner) scanFlowArrayStart(ctx *Context) bool {
 
 // scanFlowArrayEnd hands a ']' over as a token, as [Scanner.scanFlowMapEnd] does a '}': "{a: b]}" read the value
 // "b]". Outside a flow collection a ']' continues a plain scalar under way, and opens nothing otherwise.
-func (s *Scanner) scanFlowArrayEnd(ctx *Context) bool {
+//
+// A ']' while a flow mapping is the innermost collection open is refused here: "[{]}" closes the wrong collection.
+func (s *Scanner) scanFlowArrayEnd(ctx *Context) (bool, error) {
 	if ctx.existsBuffer() && !s.isFlowMode() {
-		return false
+		return false, nil
+	}
+	if !s.closesInnermostFlow('[') {
+		// The closer ends a plain scalar under way, as it does where it may stand, so the scalar goes over first.
+		s.addBufferedTokenIfExists(ctx)
+
+		return false, s.refuse(ctx, ']', "found ']' where '}' closes a flow mapping")
 	}
 
 	s.endsProperty(ctx)
@@ -120,6 +139,24 @@ func (s *Scanner) scanFlowArrayEnd(ctx *Context) bool {
 	}
 	s.progressColumn(ctx, 1)
 	ctx.clear()
+
+	return true, nil
+}
+
+// closesInnermostFlow reports whether a closer for the collection opened by opener may stand here, and pops that
+// collection when it may.
+//
+// With no flow collection open the closer stands outside every one, and the parser refuses the closer that closes
+// nothing. Otherwise it must close the innermost collection.
+func (s *Scanner) closesInnermostFlow(opener byte) bool {
+	n := len(s.flowOpen)
+	if n == 0 {
+		return true
+	}
+	if s.flowOpen[n-1] != opener {
+		return false
+	}
+	s.flowOpen = s.flowOpen[:n-1]
 
 	return true
 }

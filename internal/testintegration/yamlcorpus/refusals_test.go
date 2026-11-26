@@ -213,7 +213,8 @@ func TestARefusalSignatureKeepsTheParserAndDropsTheDocument(t *testing.T) {
 // to the spec's nouns. The corpus refuses the same 9,414 cases; 79 signatures
 // became 76, mostly because the length and the digit escapes merged. The same
 // day "an alias cannot carry an anchor or a tag" split from "found _ where a
-// scalar is expected".
+// scalar is expected", and the two mismatched-closer messages from the scanner's
+// new check, which refuses "[{]}" at the ']'.
 var parserComplaints = []string{
 	"\\U takes eight hexadecimal digits",
 	"\\u takes four hexadecimal digits",
@@ -269,6 +270,8 @@ var parserComplaints = []string{
 	"anchor is not indented past its _",
 	"anchor is not indented past its key",
 	"could not find alias _",
+	"found _ where _ closes a flow mapping",
+	"found _ where _ closes a flow sequence",
 	"found _ where a mapping key is expected",
 	"found _ where a scalar is expected",
 	"found _ with no _ to close",
