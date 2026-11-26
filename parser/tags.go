@@ -327,6 +327,11 @@ func (p *Parser) parseScalarTagValue(ctx context, uri string, tagRawTk *token.To
 	if opensCollection(tk) || isMapToken(tk) {
 		return p.parseTaggedOtherKind(ctx, uri, tagRawTk, tk)
 	}
+	if tk.Type() == token.TagType {
+		// No entry began since the tag, so this second one tags the same node. Left to parseScalarValue, a second tag
+		// over a collection was refused as "specified not scalar tag": "!!str !a [b]", "!!int !a" over "? x".
+		return nil, yamlerrors.NewSyntax("a node takes at most one tag", tk.RawToken())
+	}
 
 	return ctx.passed(p.parseScalarValue(ctx, tk))
 }

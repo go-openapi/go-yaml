@@ -379,6 +379,10 @@ func TestParseRefusesASecondTagOrAnchorOnANode(t *testing.T) {
 		"? !a\n  !b x\n":    "a node takes at most one tag",
 		"[!a\n !b x]\n":     "a node takes at most one tag",
 
+		// A second tag over a collection, behind a tag the core schema resolves to a scalar kind.
+		"!!int !a\n? x\n": "a node takes at most one tag",
+		"!!str !a [b]\n":  "a node takes at most one tag",
+
 		// An anchor between the two tags does not part them.
 		"!a &x\n!b y\n": "a node takes at most one tag",
 		"!a &x !b y\n":  "a node takes at most one tag",
