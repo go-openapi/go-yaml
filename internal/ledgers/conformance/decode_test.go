@@ -16,15 +16,15 @@ import (
 	"testing"
 
 	"github.com/go-openapi/go-yaml/codec"
+	"github.com/go-openapi/go-yaml/internal/ledgers"
 	yamltestsuite "github.com/go-openapi/go-yaml/internal/yamltestsuite"
-	"github.com/go-openapi/testify/v2/assert"
 	"github.com/go-openapi/testify/v2/require"
 )
 
 // Why a case of the YAML Test Suite does not decode to its expected JSON.
 //
-// This measures the decoder. The parser is measured separately, in the
-// conformance package, which is at 100% on the same fixtures -- so nothing
+// This measures the decoder. The parser is measured separately, by
+// TestSuiteAcceptance in acceptance_test.go, which is at 100% on the same fixtures -- so nothing
 // below is a document the parser refuses, and the two lists no longer overlap
 // at all.
 //
@@ -72,8 +72,8 @@ const (
 )
 
 // The two fixtures the decoder does not match, neither of them a defect. ToJSON
-// and ToJSONTokens diverge on the same two, scored in the conformance
-// package by jsonLedger and jsonTokenLedger.
+// and ToJSONTokens diverge on the same two, scored by jsonLedger and
+// jsonTokenLedger.
 //
 //  1. construct-binary. A "!!binary" reads into a [codec.Base64] -- the
 //     encoded text, canonical -- where the fixture's in.json keeps the line
@@ -89,9 +89,9 @@ const (
 // decodeLedger records every case that does not decode to its expected JSON,
 // with why.
 //
-// TestYAMLTestSuite ratchets it in both directions: a case that starts failing
-// fails because it is missing from here, and one that starts passing fails
-// because it is still listed.
+// TestYAMLTestSuite checks it with [ledgers.CompareNames], in both directions: a case
+// that starts failing fails because it is missing from here, and one that starts
+// passing fails because it is still listed.
 var decodeLedger = map[string]string{
 	// A key JSON cannot spell. The suite states what these should compose to
 	// in out.yaml and records no in.json at all.
@@ -164,23 +164,17 @@ func TestYAMLTestSuite(t *testing.T) {
 	require.NoError(t, err)
 	require.NotEmpty(t, tests)
 
-	failed := make(map[string]struct{}, len(decodeLedger))
+	failed := make(map[string]error, len(decodeLedger))
 
 	for _, test := range tests {
 		t.Run(test.Name, func(t *testing.T) {
 			if err := decodeAsExpected(t, test); err != nil {
-				failed[test.Name] = struct{}{}
-				_, known := decodeLedger[test.Name]
-				assert.Truef(t, known, "%s: not in the ledger: %v", test.Name, err)
-
-				return
+				failed[test.Name] = err
 			}
-
-			assert.NotContainsf(t, decodeLedger, test.Name,
-				"%s: now decodes as expected -- if that is a fix, delete the ledger entry", test.Name)
 		})
 	}
 
+	ledgers.CompareNames(t, "decode failure", failed, decodeLedger)
 	reportDecode(t, len(tests), failed)
 }
 
@@ -235,7 +229,7 @@ func decodeAsExpected(t *testing.T, test *yamltestsuite.TestSuite) (err error) {
 	}
 }
 
-func reportDecode(t *testing.T, total int, failed map[string]struct{}) {
+func reportDecode(t *testing.T, total int, failed map[string]error) {
 	t.Helper()
 
 	passed := total - len(failed)
