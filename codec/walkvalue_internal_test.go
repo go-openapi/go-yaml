@@ -15,6 +15,7 @@ import (
 	"github.com/go-openapi/testify/v2/require"
 
 	"github.com/go-openapi/go-yaml/internal/fuzzseeds"
+	"github.com/go-openapi/go-yaml/internal/ledgers"
 	"github.com/go-openapi/go-yaml/internal/yamltestsuite"
 )
 
@@ -111,7 +112,8 @@ func corpusSources() []corpusSource {
 func TestWalkMatchesTheStream(t *testing.T) {
 	srcs := corpusSources()
 
-	var same, differ, bothErr, oneErr, heldOut int
+	var same, bothErr, oneErr int
+	differing := make(map[string]string)
 	for _, src := range srcs {
 		want, wantErr := decodedStream(src.text)
 		got, gotErr := walkedStream(src.text)
@@ -126,21 +128,12 @@ func TestWalkMatchesTheStream(t *testing.T) {
 			}
 		case sameDecoded(want, got):
 			same++
-		case walkStreamHoldOuts[src.text] != "":
-			heldOut++
 		default:
-			differ++
-			if differ <= 5 {
-				t.Logf("%s:\n  src  %q\n  want %#v\n  got  %#v", src.name, src.text, want, got)
-			}
-		}
-		if reason, held := walkStreamHoldOuts[src.text]; held {
-			assert.Falsef(t, sameDecoded(want, got),
-				"%s: %q agrees now, so %s has closed: delete the hold-out", src.name, src.text, reason)
+			differing[src.text] = fmt.Sprintf("%s: the tree decodes %#v, the walk %#v", src.name, want, got)
 		}
 	}
-	t.Logf("same=%d differ=%d bothErr=%d oneErr=%d heldOut=%d", same, differ, bothErr, oneErr, heldOut)
-	assert.Zero(t, differ, "documents the walk and the tree decode differently")
+	t.Logf("same=%d differ=%d bothErr=%d oneErr=%d", same, len(differing), bothErr, oneErr)
+	ledgers.CompareNames(t, "walk and tree difference", differing, walkStreamHoldOuts)
 	assert.Zero(t, oneErr, "documents only one of the walk and the tree refuses")
 }
 
@@ -188,8 +181,10 @@ func TestStreamSwitchesFromWalkToTree(t *testing.T) {
 // with the defect that explains each.
 //
 // Keyed on the source text and not on the corpus name, because a regeneration
-// renames every seed. A held-out document that starts agreeing fails, so the
-// entry reports the fix instead of outliving it.
+// renames every seed. TestWalkMatchesTheStream checks it with
+// [ledgers.CompareNames]: a document that starts differing fails, and a
+// held-out document that starts agreeing fails too, so the entry reports the fix
+// instead of outliving it.
 //
 // Empty since defect 109 closed: the walk kept a key's text where the tree kept
 // what it resolved to, and the two now build the same mapping. Kept for the
