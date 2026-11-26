@@ -73,10 +73,10 @@ func TestOffsetsCountAByteOrderMark(t *testing.T) {
 					continue
 				}
 				seen[tk.Value] = true
-				assert.Equalf(t, want, int(tk.Position.Offset()), "%q", tk.Value)
+				assert.Equalf(t, want, tk.Position.Offset(), "%q", tk.Value)
 
 				// The offset addresses the source as it was handed in.
-				require.LessOrEqual(t, int(tk.Position.Offset()), len(test.src))
+				require.LessOrEqual(t, tk.Position.Offset(), len(test.src))
 				assert.Truef(t, strings.HasPrefix(test.src[tk.Position.Offset():], tk.Value),
 					"offset %d does not address %q", tk.Position.Offset(), tk.Value)
 			}

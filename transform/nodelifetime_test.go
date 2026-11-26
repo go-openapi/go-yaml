@@ -42,7 +42,7 @@ func TestANodeStillPointsWhereTheWalkNamedIt(t *testing.T) {
 			case tk == nil:
 				missing++
 				t.Errorf("%s: the node on the piece at %d has no token", src.name, p.At)
-			case int(tk.Position.Offset()) != p.At:
+			case tk.Position.Offset() != p.At:
 				moved++
 				t.Errorf("%s: the piece at %d carries a %T now standing at %d, with the text %q",
 					src.name, p.At, p.Node, tk.Position.Offset(), tk.Value)

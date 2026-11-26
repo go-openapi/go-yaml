@@ -612,7 +612,7 @@ func (e *Encoder) encodePtrAnchor(v reflect.Value, column int) ast.Node {
 }
 
 func (e *Encoder) pos(column int) token.Position {
-	return token.At(int32(e.line), int32(column), int32(e.offset), int32(e.indentNum))
+	return token.At(e.line, column, e.offset, e.indentNum)
 }
 
 func (e *Encoder) encodeNil() *ast.NullNode {

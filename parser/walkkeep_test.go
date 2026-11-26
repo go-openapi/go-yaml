@@ -62,7 +62,7 @@ func (s *keepSpy) Leave(node ast.Node, at parser.Closing) error {
 
 	offset := -1
 	if tk := node.GetToken(); tk != nil {
-		offset = int(tk.Position.Offset())
+		offset = tk.Position.Offset()
 	}
 	s.kept = append(s.kept, keptNode{offset: offset, kind: node.Type(), text: ast.Clone(node).String()})
 
@@ -238,7 +238,7 @@ func renderedByToken(file *ast.File) map[string][]string {
 				return
 			}
 			if tk := n.GetToken(); tk != nil {
-				key := keptKey(int(tk.Position.Offset()), n.Type())
+				key := keptKey(tk.Position.Offset(), n.Type())
 				out[key] = append(out[key], ast.Clone(n).String())
 			}
 		}), doc)
@@ -309,7 +309,7 @@ func (r *keyRecorder) Enter(node ast.Node, at parser.Cursor) error {
 	if tk := node.GetToken(); tk != nil {
 		// The depth tells apart two nodes of one kind at one offset: "? : x" holds an empty key and an
 		// empty value, both nulls at the ":".
-		key := fmt.Sprintf("%s@%d", keptKey(int(tk.Position.Offset()), node.Type()), at.Depth())
+		key := fmt.Sprintf("%s@%d", keptKey(tk.Position.Offset(), node.Type()), at.Depth())
 		if _, seen := r.keys[key]; !seen {
 			r.keys[key] = at.IsKey()
 		}

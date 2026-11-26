@@ -260,13 +260,13 @@ func (s *Scanner) emitMultiLine(ctx *Context, state *MultiLineState) {
 // runs past the last line break, whatever the document breaks its lines with, or to the end of the last line's
 // blanks where the value keeps no final break. The breaks count as the token's trailing breaks, as they do
 // where the search finds them. origin is the text read since the header, which starts at originStart.
-func (s *Scanner) emptyLinesToken(ctx *Context, value, origin string, originStart int32) (token.Token, bool) {
+func (s *Scanner) emptyLinesToken(ctx *Context, value, origin string, originStart int) (token.Token, bool) {
 	if !ctx.isMultiLine() || value == "" || strings.Trim(value, " \t\r\n") != "" {
 		return token.Token{}, false
 	}
 
 	start := originStart
-	end := start + int32(len(origin))
+	end := start + len(origin)
 	line := 1 + lineBreaksIn(ctx.src[:start])
 	pos := token.At(line, 1, start, s.indentNum)
 	if space, ok := ctx.getMultiLineState().spaceOnlyStart(); ok && strings.Trim(value, "\r\n") != "" {
@@ -277,16 +277,16 @@ func (s *Scanner) emptyLinesToken(ctx *Context, value, origin string, originStar
 		// The source ends on a line of blank content and no break: the value's final break is the one chomping adds,
 		// and the token runs to the end of that line. "|" over an empty line and "\t " ended before the tab, ahead of
 		// its own start.
-		end = start + int32(len(origin))
+		end = start + len(origin)
 	case strings.HasSuffix(value, "\n") && last >= 0:
-		end = start + int32(last) + 1
+		end = start + last + 1
 	case !strings.HasSuffix(value, "\n"):
 		// The last line's blanks end the value: the break after them belongs to no token.
-		end = start + int32(len(strings.TrimRight(origin, "\r\n")))
+		end = start + len(strings.TrimRight(origin, "\r\n"))
 	}
 
 	return token.Assemble(token.StringType, value, pos, token.Extent{
-		End: end, EndLine: pos.Line, Trailing: lineBreaksIn(ctx.src[pos.Offset():end]),
+		End: end, EndLine: int(pos.Line), Trailing: lineBreaksIn(ctx.src[pos.Offset():end]),
 	}), true
 }
 
@@ -301,8 +301,8 @@ func lastLineHoldsContent(value, origin string) bool {
 }
 
 // lineBreaksIn counts the line breaks of src, a "\r\n" as one.
-func lineBreaksIn(src string) int32 {
-	var n int32
+func lineBreaksIn(src string) int {
+	var n int
 	for i := range len(src) {
 		if c := src[i]; c == '\n' || (c == '\r' && (i+1 >= len(src) || src[i+1] != '\n')) {
 			n++
@@ -332,7 +332,7 @@ func (s *Scanner) endMultiLine(ctx *Context, fell bool) error {
 		// addTokenValue dropped the content for holding a character only a quoted scalar may hold, so the header
 		// stands as the last token. Refuse the character: ">" over " \x7f" over "0" was refused as a block with no
 		// content.
-		return unprintableErr(ctx.src, int(ctx.quotedOnly[0]))
+		return unprintableErr(ctx.src, ctx.quotedOnly[0])
 	}
 	if tk := ctx.lastToken(); tk != nil {
 		// Only the header is asked about its column. A keep scalar holding nothing but empty lines, "keep: |+" over
@@ -390,20 +390,20 @@ func (s *Scanner) scanMultiLineHeaderOption(ctx *Context, header rune) error {
 	//
 	// The two diverge as soon as the header carries a comment holding anything but ASCII.
 	var (
-		bytesRead int32
-		progress  int32
-		chars     int32
+		bytesRead int
+		progress  int
+		chars     int
 		crlf      bool
 		endOfLine bool
 	)
 
 	for idx, c := range ctx.src[ctx.idx:] {
-		bytesRead, progress = int32(idx), chars
+		bytesRead, progress = idx, chars
 		chars++
 		ctx.addOriginBuf(c)
 		if isNewLineChar(c) {
-			nextIdx := ctx.idx + int32(idx) + 1
-			if c == '\r' && nextIdx < int32(len(ctx.src)) && ctx.src[nextIdx] == '\n' {
+			nextIdx := ctx.idx + idx + 1
+			if c == '\r' && nextIdx < len(ctx.src) && ctx.src[nextIdx] == '\n' {
 				crlf = true
 				continue // process \n in the next iteration
 			}
@@ -417,7 +417,7 @@ func (s *Scanner) scanMultiLineHeaderOption(ctx *Context, header rune) error {
 		// The header ends the source, not the line, so every character read belongs to it.
 		// Stopping at the last one instead dropped it: a header ending "1#" was read as "1", which lost the '#' that makes it
 		// malformed and made the comment out of what came before it.
-		bytesRead, progress = int32(len(ctx.src))-ctx.idx, chars
+		bytesRead, progress = len(ctx.src)-ctx.idx, chars
 	}
 	endPos := ctx.idx + bytesRead
 	if crlf {
@@ -493,7 +493,7 @@ func (s *Scanner) scanMultiLineHeaderOption(ctx *Context, header rune) error {
 		// progressColumn below advances past the whole line, header included, so a bump here would count twice.
 		pos := headerPos
 		fromHeader := headerBuf[headerIndex:]
-		pos.SetOffset(pos.Offset() + posInt(len(fromHeader)))
+		pos.SetOffset(pos.Offset() + len(fromHeader))
 		pos.Column += posInt(utf8.RuneCountInString(fromHeader))
 		ctx.addTokenValue(token.MakeComment(comment, ctx.origin()[len(headerBuf):], pos))
 	}
@@ -546,15 +546,15 @@ type MultiLineState struct {
 	// indentIndicator holds the width the header stated, 0 when it stated none.
 	// firstLineIndentColumn cannot stand in for it: a header without a width leaves that 0, and the first content line
 	// then sets it.
-	indentIndicator int32
+	indentIndicator int
 	// parentColumn is the column of whatever encloses the block, 0 at the root of a document, which nothing encloses.
 	// Content stands past it.
-	parentColumn                     int32
-	firstLineIndentColumn            int32
-	prevLineIndentColumn             int32
-	lineIndentColumn                 int32
-	lastNotSpaceOnlyLineIndentColumn int32
-	spaceOnlyIndentColumn            int32
+	parentColumn                     int
+	firstLineIndentColumn            int
+	prevLineIndentColumn             int
+	lineIndentColumn                 int
+	lastNotSpaceOnlyLineIndentColumn int
+	spaceOnlyIndentColumn            int
 	// start records where the block scalar's content begins in the source, taken when the first byte of it is read.
 	//
 	// The scan cuts the token at the end of the block, and by then the cursor no longer gives the content's start.
@@ -578,14 +578,14 @@ type MultiLineState struct {
 	isLiteral    bool
 }
 
-func (s *MultiLineState) lastDelimColumn() int32 {
+func (s *MultiLineState) lastDelimColumn() int {
 	if s.firstLineIndentColumn == 0 {
 		return 0
 	}
 	return s.firstLineIndentColumn - 1
 }
 
-func (s *MultiLineState) updateIndentColumn(column int32) {
+func (s *MultiLineState) updateIndentColumn(column int) {
 	if s.firstLineIndentColumn == 0 {
 		s.firstLineIndentColumn = column
 	}
@@ -594,7 +594,7 @@ func (s *MultiLineState) updateIndentColumn(column int32) {
 	}
 }
 
-func (s *MultiLineState) updateSpaceOnlyIndentColumn(column int32) {
+func (s *MultiLineState) updateSpaceOnlyIndentColumn(column int) {
 	if s.firstLineIndentColumn != 0 {
 		return
 	}
@@ -606,7 +606,7 @@ func (s *MultiLineState) updateSpaceOnlyIndentColumn(column int32) {
 // YAML 1.2 admits s-indent(<n) for l-empty, so an empty line may hold fewer spaces than the block. More is an error:
 // the block takes its indentation from the first non-empty line, and a deeper empty line above it would leave that
 // indentation ambiguous.
-func (s *MultiLineState) validateIndentAfterSpaceOnly(column int32) error {
+func (s *MultiLineState) validateIndentAfterSpaceOnly(column int) error {
 	if s.firstLineIndentColumn != 0 {
 		return nil
 	}
@@ -645,7 +645,7 @@ func (s *MultiLineState) updateNewLineState() {
 // Before the first content line settles the indentation, the columns up to the parent's are. A root block scalar's
 // content may stand at column 1: s-l+block-node(-1, block-in) gives it n = -1, and s-indent(0) matches nothing, so "|"
 // over a tab and "x" reads "\tx\n". 6.1 keeps a tab out of the indentation, and this tab stands after it.
-func (s *MultiLineState) isIndentColumn(column int32) bool {
+func (s *MultiLineState) isIndentColumn(column int) bool {
 	if s.firstLineIndentColumn == 0 {
 		return column <= s.parentColumn
 	}
@@ -655,7 +655,7 @@ func (s *MultiLineState) isIndentColumn(column int32) bool {
 // addIndent takes a space at the head of a line, and reports whether it keeps it
 // as content: a space past the width the block's first line settled is
 // content, and one inside it is indentation.
-func (s *MultiLineState) addIndent(ctx *Context, column int32) bool {
+func (s *MultiLineState) addIndent(ctx *Context, column int) bool {
 	if s.firstLineIndentColumn == 0 {
 		return false
 	}
@@ -672,14 +672,14 @@ func (s *MultiLineState) addIndent(ctx *Context, column int32) bool {
 	}
 	// addBuf drops a leading space, so this appends to the buffer directly.
 	ctx.buf = append(ctx.buf, ' ')
-	ctx.notSpaceCharPos = int32(len(ctx.buf))
+	ctx.notSpaceCharPos = len(ctx.buf)
 
 	return true
 }
 
 // updateNewLineInFolded folds the break above this line into a space, for a folded block whose content starts in the
 // same column as the line before it.
-func (s *MultiLineState) updateNewLineInFolded(ctx *Context, column int32) {
+func (s *MultiLineState) updateNewLineInFolded(ctx *Context, column int) {
 	if s.isLiteral {
 		return
 	}
@@ -715,7 +715,7 @@ func (s *MultiLineState) updateNewLineInFolded(ctx *Context, column int32) {
 		//  b
 		if lastChar == '\n' && prevLastChar == '\n' {
 			ctx.buf = ctx.buf[:len(ctx.buf)-1]
-			ctx.notSpaceCharPos = int32(len(ctx.buf))
+			ctx.notSpaceCharPos = len(ctx.buf)
 		}
 	}
 	s.foldedNewLine = false

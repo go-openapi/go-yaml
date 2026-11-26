@@ -50,16 +50,16 @@ func scanBoth(src string) (fast, slow []string, fastErr, slowErr error) {
 func renderToken(src string, tk *token.Token) string {
 	start, end := tk.Position.Offset(), tk.EndOffset()
 	origin := "<out of range>"
-	if start >= 0 && end >= start && int(end) <= len(src) {
+	if start >= 0 && end >= start && end <= len(src) {
 		origin = src[start:end]
 	}
 
 	return string(rune(tk.Type)) + "|" + tk.Value + "|" + origin + "|" +
-		itoa32(tk.Position.Line) + ":" + itoa32(tk.Position.Column) + ":" +
-		itoa32(start) + ":" + itoa32(end)
+		itoa(tk.Position.Line) + ":" + itoa(tk.Position.Column) + ":" +
+		itoa(start) + ":" + itoa(end)
 }
 
-func itoa32(i int32) string {
+func itoa[T int | int32](i T) string {
 	if i == 0 {
 		return "0"
 	}

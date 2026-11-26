@@ -53,7 +53,7 @@ func (s *Scanner) updateIndent(ctx *Context, c rune) {
 				// The source around the cursor, for the probe report.
 				const probeBytesBefore, probeBytesAfter = 24, 16
 				from := max(ctx.idx-probeBytesBefore, 0)
-				to := min(ctx.idx+probeBytesAfter, int32(len(ctx.src)))
+				to := min(ctx.idx+probeBytesAfter, len(ctx.src))
 
 				return fmt.Sprintf(
 					"indentNum=%d column=%d line=%d idx=%d flow=%d/%d anchor=%v alias=%v directive=%v tab=%v around=%q",
@@ -135,13 +135,13 @@ func (s *Scanner) tabStandsWhereAnEntryNeedsIndent(ctx *Context) bool {
 
 	last := ctx.lastToken()
 
-	return last == nil || last.Position.Line != s.line || isBlockIndicator(last.Type)
+	return last == nil || int(last.Position.Line) != s.line || isBlockIndicator(last.Type)
 }
 
 // flowKeyLedByATab reports whether the last token closes a flow collection opened on this line and led by a tab.
 func (s *Scanner) flowKeyLedByATab(ctx *Context) bool {
 	last := ctx.lastToken()
-	if last == nil || last.Position.Line != s.line || s.flowOpenLine != s.line || s.isFlowMode() ||
+	if last == nil || int(last.Position.Line) != s.line || s.flowOpenLine != s.line || s.isFlowMode() ||
 		(last.Type != token.SequenceEndType && last.Type != token.MappingEndType) {
 		return false
 	}
@@ -188,7 +188,7 @@ func (s *Scanner) checkFlowIndent(ctx *Context) error {
 }
 
 // contentIndent is the indentation a further line of the construct now being scanned has to clear.
-func (s *Scanner) contentIndent() int32 {
+func (s *Scanner) contentIndent() int {
 	if s.isFlowMode() {
 		return s.flowIndent
 	}
@@ -207,7 +207,7 @@ func (s *Scanner) contentIndent() int32 {
 // A scalar spanning lines is one value, and what marks its later lines as part of it is that they are indented under
 // it.
 // Without that, "quoted: \"a\nb\"" reads as a scalar and then a second, unrelated line.
-func (s *Scanner) checkContinuationIndent(ctx *Context, rest string, base int32) error {
+func (s *Scanner) checkContinuationIndent(ctx *Context, rest string, base int) error {
 	indent, blank := lineIndent(rest)
 	if blank || indent > base {
 		return nil
@@ -234,8 +234,8 @@ func opensComment(src string) bool {
 // lineIndent returns how many spaces begin the line, and whether the line holds nothing else.
 //
 // A blank line is part of no indentation.
-func lineIndent(src string) (int32, bool) {
-	var indent int32
+func lineIndent(src string) (int, bool) {
+	var indent int
 	for _, c := range src {
 		switch c {
 		case ' ':

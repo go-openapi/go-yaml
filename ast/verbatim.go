@@ -101,7 +101,7 @@ func WithSource(src []byte) RenderOption {
 // a block mapping's token is the ":" of its first entry, which stands after its
 // first key -- but the leaves have everything, so the extent is the union of
 // theirs.
-type extent struct{ from, to int32 }
+type extent struct{ from, to int }
 
 var noExtent = extent{from: -1, to: -1}
 
@@ -286,7 +286,7 @@ type verbatimWriter struct {
 	// text a removed node left; a rendering that removes nothing never builds it.
 	// See settleGap.
 	roots []Node
-	held  map[int32]bool
+	held  map[int]bool
 	// dashes records whether the tree holds a block sequence with no entries
 	// recorded: 1 where it does, -1 where it does not, 0 until untrackedDashes
 	// first runs. See verbatimWriter.holdsText.
@@ -384,17 +384,17 @@ LOOP:
 		case at == from && from > 0 && !isBreak(vw.src[from-1]):
 			// The rest of the line the last token written stands on.
 			if vw.holdsText(at, brk) {
-				drops = append(drops, extent{from: int32(at), to: int32(brk)})
+				drops = append(drops, extent{from: at, to: brk})
 			}
 			dropped = false
 		case isBlank(vw.src[at:brk]) || isDocumentEnd(vw.src[at:brk]):
 			// A "..." no node holds closes a stream with nothing in it, or the
 			// document before it; it goes with a removed document the same way.
 			if dropped {
-				drops = append(drops, extent{from: int32(at), to: int32(next)})
+				drops = append(drops, extent{from: at, to: next})
 			}
 		case vw.holdsText(at, brk) || !vw.holdsComment(at, brk):
-			drops = append(drops, extent{from: int32(at), to: int32(next)})
+			drops = append(drops, extent{from: at, to: next})
 			dropped = true
 		default:
 			dropped = false
@@ -403,8 +403,8 @@ LOOP:
 	}
 
 	for _, drop := range drops {
-		vw.upTo(int(drop.from))
-		vw.cursor = max(vw.cursor, int(drop.to))
+		vw.upTo(drop.from)
+		vw.cursor = max(vw.cursor, drop.to)
 	}
 }
 
@@ -420,13 +420,13 @@ LOOP:
 // value the tree also holds elsewhere has its key still ahead. refuseMoved
 // rejects that value when writeInPlaceOf reaches it.
 func (vw *verbatimWriter) refuseMoved(n Node, span extent) {
-	if vw.err != nil || int(span.to) > vw.cursor {
+	if vw.err != nil || span.to > vw.cursor {
 		return
 	}
 
-	var line int32
+	var line int
 	if tk := n.GetToken(); tk != nil {
-		line = tk.Position.Line
+		line = int(tk.Position.Line)
 	}
 	vw.err = fmt.Errorf("%w: the %T on line %d comes after text the document wrote below it",
 		ErrMove, n, line)
@@ -444,7 +444,7 @@ func (vw *verbatimWriter) holdsComment(from, to int) bool {
 	}
 
 	if vw.held == nil {
-		vw.held = make(map[int32]bool)
+		vw.held = make(map[int]bool)
 		for _, root := range vw.roots {
 			eachNode(root, func(n Node) {
 				eachCommentGroup(n, func(group *CommentGroupNode, _ bool) {
@@ -458,7 +458,7 @@ func (vw *verbatimWriter) holdsComment(from, to int) bool {
 		}
 	}
 
-	return vw.held[int32(at)]
+	return vw.held[at]
 }
 
 // holdsText reports whether src[from:to] holds anything but spacing, commas, a
@@ -650,7 +650,7 @@ func (vw *verbatimWriter) refuseUnwritten() {
 func (vw *verbatimWriter) applyEdits(end int) {
 	for len(vw.edits) > 0 && vw.err == nil {
 		pending := vw.edits[0]
-		at := int(pending.at)
+		at := pending.at
 		if at >= end {
 			return
 		}
@@ -740,7 +740,7 @@ func (vw *verbatimWriter) upToToken(tk *token.Token, n Node) {
 		return
 	}
 
-	at := min(max(int(tk.Position.Offset()), vw.cursor), len(vw.src))
+	at := min(max(tk.Position.Offset(), vw.cursor), len(vw.src))
 	end := max(vw.tokenEnd(tk), at)
 	if at > vw.cursor {
 		vw.hand(Written{Text: vw.take(at), FromSource: true})
@@ -771,8 +771,8 @@ func (vw *verbatimWriter) skipComment(tk *token.Token, whole bool) {
 		return
 	}
 
-	at := min(max(int(tk.Position.Offset()), 0), len(vw.src))
-	end := min(max(int(tk.EndOffset()), at), len(vw.src))
+	at := min(max(tk.Position.Offset(), 0), len(vw.src))
+	end := min(max(tk.EndOffset(), at), len(vw.src))
 	lineStart := vw.startOfLine(at)
 	alone := onlySpacing(vw.src[lineStart:at])
 
@@ -865,7 +865,7 @@ func (vw *verbatimWriter) writeAddedComment(comment *CommentNode, span extent, n
 	if vw.err != nil {
 		return
 	}
-	if !span.found() || !opensItsLine(vw.src, int(span.from)) {
+	if !span.found() || !opensItsLine(vw.src, span.from) {
 		// Nothing to hang it on, or the node begins partway along a line, where
 		// a comment above it would stand above whatever shares that line:
 		// "a: one" over "  two" with a comment on the scalar wrote "a: # c"
@@ -880,9 +880,9 @@ func (vw *verbatimWriter) writeAddedComment(comment *CommentNode, span extent, n
 	}
 
 	// The gap in front of the node: its line break and its indentation.
-	vw.settleGap(int(span.from))
-	vw.upTo(int(span.from))
-	vw.raw(comment.String() + vw.breakBefore(int(span.from)) + vw.lineIndent())
+	vw.settleGap(span.from)
+	vw.upTo(span.from)
+	vw.raw(comment.String() + vw.breakBefore(span.from) + vw.lineIndent())
 }
 
 // breakBefore is the line break the document uses, read off the one that opens
@@ -933,7 +933,7 @@ func (vw *verbatimWriter) removalAt(end int) bool {
 	}
 	next := vw.edits[0]
 
-	return !next.add && next.comment.edit == commentRemoved && int(next.at) == end
+	return !next.add && next.comment.edit == commentRemoved && next.at == end
 }
 
 // tokenEnd returns the offset where tk's text ends, less the spacing it carries
@@ -957,8 +957,8 @@ func (vw *verbatimWriter) removalAt(end int) bool {
 // out: "r:" over "  a: 1" over "  b: 2" with b taken out would come back as
 // "r:" over "  a: 1" over "  ".
 func (vw *verbatimWriter) tokenEnd(tk *token.Token) int {
-	end := min(int(tk.EndOffset()), len(vw.src))
-	start := min(max(int(tk.Position.Offset()), 0), end)
+	end := min(tk.EndOffset(), len(vw.src))
+	start := min(max(tk.Position.Offset(), 0), end)
 	text := end
 	for text > start && isSpacing(vw.src[text-1]) {
 		text--
@@ -1111,8 +1111,8 @@ func afterBreak(src []byte, i int) int {
 // It is the characters between the last line break and from, so a document
 // written with tabs gets tabs back and one indented three spaces gets three.
 // The depth renderer counts spaces from the tree's depth instead.
-func (vw *verbatimWriter) indentAt(from int32) string {
-	end := min(int(from), len(vw.src))
+func (vw *verbatimWriter) indentAt(from int) string {
+	end := min(from, len(vw.src))
 	if end < 0 {
 		return ""
 	}
@@ -1242,8 +1242,8 @@ func (r *Renderer) writeMapping(vw *verbatimWriter, v *MappingNode) {
 	if braced {
 		// The brace goes in front of the first entry the document holds, past the comma or the '[' before it.
 		if first, found := nextFlowFromSource(siblings, -1); found {
-			vw.settleGap(int(first.from))
-			vw.upTo(int(first.from))
+			vw.settleGap(first.from)
+			vw.upTo(first.from)
 		}
 		vw.raw("{")
 	}
@@ -1424,10 +1424,10 @@ func (r *Renderer) writeComments(vw *verbatimWriter, n Node, span extent, above 
 			// still takes the descent, since only the descent holds the node
 			// the comment belongs to.
 			if vw.fn != nil && comment.edit == commentAsWritten &&
-				int(tk.Position.Offset()) >= vw.cursor &&
+				tk.Position.Offset() >= vw.cursor &&
 				(!span.found() || (tk.Position.Offset() < span.from) == above) {
 				if !above {
-					r.writePendingBefore(vw, int(tk.Position.Offset()))
+					r.writePendingBefore(vw, tk.Position.Offset())
 				}
 				vw.upToToken(tk, comment)
 			}
@@ -1475,7 +1475,7 @@ func (r *Renderer) writePendingBefore(vw *verbatimWriter, at int) {
 	for {
 		next := -1
 		for i, p := range vw.pending {
-			if p.tk == nil || int(p.tk.Position.Offset()) >= at || int(p.tk.Position.Offset()) < vw.cursor {
+			if p.tk == nil || p.tk.Position.Offset() >= at || p.tk.Position.Offset() < vw.cursor {
 				continue
 			}
 			if next < 0 || p.tk.Position.Offset() < vw.pending[next].tk.Position.Offset() {
@@ -1508,7 +1508,7 @@ func collectEdits(n Node, src []byte) (edits []pendingComment, above map[*Commen
 	var out []pendingComment
 	above = make(map[*CommentNode]bool)
 	hoisted = make(map[Node][]*CommentNode)
-	beside := make(map[int32]bool)
+	beside := make(map[int]bool)
 	var node Node
 	onGroup := func(group *CommentGroupNode, head bool) {
 		var opener Node
@@ -1587,7 +1587,7 @@ func lineOpener(root Node, lit Node, src []byte) Node {
 		return nil
 	}
 	at := header.Position.Offset()
-	line := lineOf(src, int(at))
+	line := lineOf(src, at)
 
 	var onLine, around Node
 	var done bool
@@ -1595,9 +1595,9 @@ func lineOpener(root Node, lit Node, src []byte) Node {
 		if done {
 			return
 		}
-		if span := sourceExtent(current); span.found() && opensItsLine(src, int(span.from)) {
+		if span := sourceExtent(current); span.found() && opensItsLine(src, span.from) {
 			switch {
-			case lineOf(src, int(span.from)) == line:
+			case lineOf(src, span.from) == line:
 				onLine = current
 			case span.from <= at && at < span.to:
 				around = current
@@ -1638,7 +1638,7 @@ func settleAnchors(n Node, src []byte, out []pendingComment, above map[*CommentN
 	// scalar written across two lines, a quoted one broken by a "\".
 	var spans []extent
 	walkSourceTokens(n, func(tk *token.Token) {
-		spans = append(spans, extent{from: tk.Position.Offset(), to: int32(lastByteOf(src, int(tk.EndOffset())) + 1)})
+		spans = append(spans, extent{from: tk.Position.Offset(), to: lastByteOf(src, tk.EndOffset()) + 1})
 	})
 
 	kept := out[:0]
@@ -1657,7 +1657,7 @@ func settleAnchors(n Node, src []byte, out []pendingComment, above map[*CommentN
 
 // runsThrough reports whether a token's own text opens before at and carries on
 // past it.
-func runsThrough(spans []extent, at int32) bool {
+func runsThrough(spans []extent, at int) bool {
 	for _, span := range spans {
 		if span.from < at && span.to > at {
 			return true
@@ -1680,7 +1680,7 @@ func runsThrough(spans []extent, at int32) bool {
 //
 // It reports false where the line already ends on a comment: two comments on one
 // line come back as one, so the caller writes it above the node instead.
-func besideAnchor(n Node, src []byte) (int32, bool) {
+func besideAnchor(n Node, src []byte) (int, bool) {
 	span := sourceExtent(n)
 	if !span.found() {
 		return 0, false
@@ -1694,10 +1694,10 @@ func besideAnchor(n Node, src []byte) (int32, bool) {
 	// whose text is not theirs -- "&a" over a block mapping, "|" over its
 	// content -- and a comment goes after the marker, where the layout
 	// renderer also puts it.
-	at := int(span.to)
+	at := span.to
 	if tk := headerToken(n); tk != nil {
-		at = int(tk.EndOffset())
-	} else if lineOf(src, int(span.from)) != lineOf(src, lastByteOf(src, int(span.to))) {
+		at = tk.EndOffset()
+	} else if lineOf(src, span.from) != lineOf(src, lastByteOf(src, span.to)) {
 		// The node runs over more than one line, so there is no line of its own
 		// to close: a plain scalar written across two took the comment onto the
 		// first, where the second then ran on past it, and a property standing
@@ -1730,7 +1730,7 @@ func besideAnchor(n Node, src []byte) (int32, bool) {
 		at--
 	}
 
-	return int32(at), true
+	return at, true
 }
 
 // lineStartIn is the offset the line holding at opens on.
@@ -1787,7 +1787,7 @@ func literalUnder(n Node) *LiteralNode {
 // the document's own that a caller edited, or one a caller added beside a node.
 type pendingComment struct {
 	comment *CommentNode
-	at      int32
+	at      int
 	add     bool
 }
 
@@ -2092,7 +2092,7 @@ func (r *Renderer) writeComma(vw *verbatimWriter, tk *token.Token, n Node) {
 	if tk == nil || !tk.FromSource() {
 		return
 	}
-	if !vw.dropping && vw.holdsNodeText(vw.cursor, int(tk.Position.Offset())) {
+	if !vw.dropping && vw.holdsNodeText(vw.cursor, tk.Position.Offset()) {
 		return
 	}
 	r.writeTokenOf(vw, tk, n)
@@ -2103,7 +2103,7 @@ func (r *Renderer) writeTokenOf(vw *verbatimWriter, tk *token.Token, n Node) {
 	if tk == nil || !tk.FromSource() {
 		return
 	}
-	vw.settleGap(int(tk.Position.Offset()))
+	vw.settleGap(tk.Position.Offset())
 	// With no transform the two halves go to the same writer, so one copy up to
 	// the token's end serves for both -- unless a replaced node is being dropped:
 	// then the lead goes and the token stays.
@@ -2161,9 +2161,9 @@ func (r *Renderer) writeEntry(vw *verbatimWriter, entry Node, coll collection, i
 		// that entry's own are read for a removed node: the text in front of it
 		// on its line is its indentation, and a sequence entry's "-", which the
 		// tree holds and writes later.
-		brk := vw.breakNear(int(next.from))
-		vw.settleGap(lineStartIn(vw.src, int(next.from)))
-		vw.upTo(int(next.from))
+		brk := vw.breakNear(next.from)
+		vw.settleGap(lineStartIn(vw.src, next.from))
+		vw.upTo(next.from)
 		vw.raw(withBreak(text, brk))
 		vw.raw(brk + indent)
 
@@ -2178,7 +2178,7 @@ func (r *Renderer) writeEntry(vw *verbatimWriter, entry Node, coll collection, i
 	if !found {
 		return
 	}
-	brk := vw.breakNear(int(previous.from))
+	brk := vw.breakNear(previous.from)
 	vw.upTo(vw.restOfLine())
 	if endsOnBlockScalar(lastNodeFromSource(coll.siblings, i)) {
 		// The lines of blanks after a block scalar are the scalar's: content under "|+", and a line of spaces
@@ -2297,8 +2297,8 @@ func (r *Renderer) writeFlowEntry(vw *verbatimWriter, text string, coll collecti
 	}
 
 	if next, found := nextFlowFromSource(coll.siblings, i); found {
-		vw.settleGap(int(next.from))
-		vw.upTo(int(next.from))
+		vw.settleGap(next.from)
+		vw.upTo(next.from)
 		vw.raw(text + ", ")
 
 		return
@@ -2516,11 +2516,11 @@ func (r *Renderer) Verbatim(w io.Writer, n Node) error {
 
 	edits, above, hoisted := collectEdits(n, r.src)
 	vw := &verbatimWriter{
-		w: w, fn: r.transform, src: r.src, cursor: int(span.from),
+		w: w, fn: r.transform, src: r.src, cursor: span.from,
 		edits: edits, above: above, hoisted: hoisted, roots: []Node{n},
 	}
 	r.write(vw, n)
-	vw.upTo(int(span.to))
+	vw.upTo(span.to)
 	vw.flushEdits()
 
 	return vw.err

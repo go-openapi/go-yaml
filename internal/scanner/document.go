@@ -13,8 +13,8 @@ import (
 const (
 	startDocMarker    = "---"
 	endDocMarker      = "..."
-	startDocMarkerLen = int32(len(startDocMarker))
-	endDocMarkerLen   = int32(len(endDocMarker))
+	startDocMarkerLen = len(startDocMarker)
+	endDocMarkerLen   = len(endDocMarker)
 )
 
 func (s *Scanner) validateDocumentSeparatorMarker(ctx *Context, src string) error {

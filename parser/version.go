@@ -76,7 +76,7 @@ func (p *Parser) endVersionScope() {
 	schema := p.opts.version.Schema()
 	p.scan.SetSchema(schema)
 
-	from := int32(p.reader.seq) - 1
+	from := p.reader.seq - 1
 	if p.reader.at < len(p.reader.out) && p.reader.out[p.reader.at] != nil {
 		from = p.reader.out[p.reader.at].Seq() - 1
 	}
@@ -94,7 +94,7 @@ func (p *Parser) endVersionScope() {
 //
 // A quoted or folded scalar is a string whatever it spells.
 // The scanner gives it a type of its own, which resolvedByAnySchema excludes, so it keeps its type.
-func (p *Parser) retypeAhead(schema token.Schema, from int32) {
+func (p *Parser) retypeAhead(schema token.Schema, from int) {
 	if p.tokens == nil {
 		return
 	}
@@ -102,7 +102,7 @@ func (p *Parser) retypeAhead(schema token.Schema, from int32) {
 	// content marks the next token as a block scalar's content, because the token before it was a "|" or ">" header.
 	var content bool
 
-	for seq := int(from) + 1; seq < p.tokens.Len(); seq++ {
+	for seq := from + 1; seq < p.tokens.Len(); seq++ {
 		tk := p.tokens.At(seq)
 		if tk == nil {
 			continue

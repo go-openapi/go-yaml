@@ -25,7 +25,7 @@ import (
 func TestABlockOfSpacesStartsAtItsFirstContentSpace(t *testing.T) {
 	for _, tc := range []struct {
 		src  string
-		want int32
+		want int
 	}{
 		// The 13th space of line 3 stands at offset 27, past the 12 columns of
 		// indentation "- |6-" at column 7 asks for.
@@ -96,6 +96,6 @@ func TestABlockOfEmptyLinesCoversThem(t *testing.T) {
 		require.NotNilf(t, content, "%q holds a block scalar", tc.src)
 		assert.Equalf(t, tc.value, content.Value, "%q", tc.src)
 		assert.Equalf(t, []int32{tc.offset, tc.end, tc.line, tc.column},
-			[]int32{content.Position.Offset(), content.EndOffset(), content.Position.Line, content.Position.Column}, "%q", tc.src)
+			[]int32{int32(content.Position.Offset()), int32(content.EndOffset()), content.Position.Line, content.Position.Column}, "%q", tc.src)
 	}
 }

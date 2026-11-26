@@ -50,7 +50,7 @@ type Ledger struct {
 	// probeBases shadows keys.entries with the base each key was recorded
 	// under, for the probe that holds mapKeyRef.base redundant. It is appended
 	// to only where probe.Enabled, which is a constant false in a normal build.
-	probeBases []int32
+	probeBases []int
 
 	// openMaps holds the mapping node at each level of the descent, innermost
 	// last, so a repeated key is recorded on the mapping that holds it as it is
@@ -389,7 +389,7 @@ func (l *Ledger) checkStackTail(base int) {
 
 	held := true
 	for i := base; i < len(l.probeBases); i++ {
-		if int(l.probeBases[i]) == base {
+		if l.probeBases[i] == base {
 			continue
 		}
 		at, was, text := i, l.probeBases[i], l.keys.entries[i].text
@@ -405,5 +405,5 @@ func (l *Ledger) checkStackTail(base int) {
 		probe.Check("mapkey.stackTailIsOneMapping", true, nil)
 	}
 
-	l.probeBases = append(l.probeBases, int32(base))
+	l.probeBases = append(l.probeBases, base)
 }

@@ -12,7 +12,7 @@ import (
 
 // maxSourceLen is the longest source the scanner reads.
 //
-// [token.Position] stores lines, columns, offsets and indentation as int32, which keeps a token to 56 bytes.
+// [token.Position] stores lines and columns as int32, which keeps a token to 56 bytes.
 // The scan counts them in int and narrows at every position it builds.
 // The length of the source bounds all of them: an offset addresses a byte of it,
 // and a column stands at most one past the last byte of its line.
@@ -24,7 +24,7 @@ const maxSourceLen = math.MaxInt32 - 1
 
 // validateSource checks the source before the scan reads a byte of it, and returns the offsets of the characters only
 // a quoted scalar may hold.
-func validateSource(text string) ([]int32, error) {
+func validateSource(text string) ([]int, error) {
 	if sourceTooLong(len(text)) {
 		return nil, ErrInvalidToken(
 			fmt.Sprintf("a source must be under %d bytes, and this one is %d", maxSourceLen, len(text)),
@@ -53,11 +53,9 @@ func validateJSONSource(text string) error {
 // No test allocates two gigabytes to reach the refusal itself.
 func sourceTooLong(n int) bool { return n > maxSourceLen }
 
-// posInt narrows an int count to the int32 that [token.Position] stores.
+// posInt narrows an int count to the int32 that [token.Position] stores for a line or a column.
 //
-// The scanner's own counters are already int32.
-// This converts the counts the standard library returns as int, utf8.RuneCount and len,
-// on their way into a Position field.
+// The scanner counts in int, and only Line and Column are narrower.
 // See maxSourceLen for why the conversion cannot wrap.
 func posInt(n int) int32 {
 	return int32(n)

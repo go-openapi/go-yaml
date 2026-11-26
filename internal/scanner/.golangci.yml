@@ -51,9 +51,9 @@ linters:
   exclusions:
     generated: lax
     rules:
-      # G115, int -> int32, at every len() and utf8.RuneCount in the package.
+      # G115, int -> int, at every len() and utf8.RuneCount in the package.
       #
-      # The scanner holds its counters in int32, the type token.Position conveys, so nothing narrows on the way to a
+      # The scanner holds its counters in int, the type token.Position conveys, so nothing narrows on the way to a
       # token -- but everything the standard library hands back is int, so the narrowing moved to the 62 places that
       # read a length. Each is bounded by the length of the source, which Scanner.Init caps below math.MaxInt32.
       # See source.go.

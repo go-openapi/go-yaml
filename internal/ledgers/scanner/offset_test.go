@@ -82,7 +82,7 @@ func TestTokenOffsetsAddressTheSource(t *testing.T) {
 // measured otherwise.
 func addressesItself(src string, tokens []token.Token, i int, origin, want string) bool {
 	tk := tokens[i]
-	offset := int(tk.Position.Offset())
+	offset := tk.Position.Offset()
 
 	switch {
 	case tk.Type == token.InvalidType:
@@ -90,7 +90,7 @@ func addressesItself(src string, tokens []token.Token, i int, origin, want strin
 	case tk.Type == token.StringType && followsABlockHeader(tokens, i):
 		// On the line the content's text begins on, at its first character or on the spaces before it that the
 		// value keeps.
-		textStart := int(tk.EndOffset()) - len(origin) + (len(origin) - len(want))
+		textStart := tk.EndOffset() - len(origin) + (len(origin) - len(want))
 
 		return offset <= textStart && offset >= textStart-len(origin) &&
 			strings.Trim(src[min(offset, textStart):textStart], " \t") == ""
@@ -148,7 +148,7 @@ func originsOf(src string, tokens []token.Token) []string {
 	prev := 0
 
 	for i, tk := range tokens {
-		end := int(tk.EndOffset())
+		end := tk.EndOffset()
 		if end < prev || end > len(src) {
 			origins[i] = ""
 			prev = min(max(end, prev), len(src))

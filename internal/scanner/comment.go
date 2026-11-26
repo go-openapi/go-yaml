@@ -70,14 +70,14 @@ func (s *Scanner) scanComment(ctx *Context) (bool, error) {
 		if ctx.previousChar() == '\\' {
 			continue
 		}
-		value := ctx.source(ctx.idx, ctx.idx+int32(idx))
-		progress := int32(utf8.RuneCountInString(value))
+		value := ctx.source(ctx.idx, ctx.idx+idx)
+		progress := utf8.RuneCountInString(value)
 
 		// CRLF ends one line, and progressLine steps over a single character.
 		//
 		// Leaving the '\n' behind would give it to the next token, whose leading whitespace then reads as a second break.
 		// The next token would land two lines down, and writing the document back would open a blank line above the comment.
-		crlf := c == '\r' && ctx.idx+int32(idx)+1 < int32(len(ctx.src)) && ctx.src[ctx.idx+int32(idx)+1] == '\n'
+		crlf := c == '\r' && ctx.idx+idx+1 < len(ctx.src) && ctx.src[ctx.idx+idx+1] == '\n'
 		if crlf {
 			ctx.addOriginBuf('\n')
 		}
@@ -96,7 +96,7 @@ func (s *Scanner) scanComment(ctx *Context) (bool, error) {
 	// document ends with comment.
 	value := ctx.src[ctx.idx:]
 	ctx.addTokenValue(token.MakeComment(value, ctx.origin(), commentPos))
-	progress := int32(utf8.RuneCountInString(value))
+	progress := utf8.RuneCountInString(value)
 	s.progressColumn(ctx, progress)
 	s.progressLine(ctx)
 	ctx.clear()

@@ -81,7 +81,7 @@ func (s *Scanner) validateAnchorName(ctx *Context, what string) error {
 	switch {
 	case end == start:
 		return ErrInvalidToken(what+" must be followed by a name", token.Invalid(ctx.origin(), s.pos()))
-	case end < int32(len(ctx.src)) && (ctx.src[end] == '[' || ctx.src[end] == '{'):
+	case end < len(ctx.src) && (ctx.src[end] == '[' || ctx.src[end] == '{'):
 		return ErrInvalidToken(what+" must be separated from the node that follows it", token.Invalid(ctx.origin(), s.pos()))
 	default:
 		return nil
@@ -94,10 +94,10 @@ func (s *Scanner) validateAnchorName(ctx *Context, what string) error {
 // input, or one of ',', '[', ']', '{' or '}'.
 //
 // Example: a ':' is none of those and belongs to the name, so "{&a: b}" anchors a node named "a:".
-func anchorNameEnd(src string, start int32) int32 {
+func anchorNameEnd(src string, start int) int {
 	// Every character that ends a name is ASCII, so this can walk bytes: no byte of a multi-byte character is one of them.
 	end := start
-	for end < int32(len(src)) && !endsAnchorName(rune(src[end])) {
+	for end < len(src) && !endsAnchorName(rune(src[end])) {
 		end++
 	}
 

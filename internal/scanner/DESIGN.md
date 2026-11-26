@@ -65,7 +65,7 @@ window starts and ends, which is per-byte work. Section 4 is how that is paid fo
 ```
 
 `token` is the leaf everything returns: `token.Token` is a 56-byte value, and `token.Position` stores lines,
-columns, offsets and indentation as int32. That int32 is why the scanner counts in int32 too (section 6).
+columns, offsets and indentation as int. That int is why the scanner counts in int too (section 6).
 
 ---
 
@@ -141,15 +141,15 @@ block scalar whose content was whitespace.
 
 ---
 
-## 6. Positions, extents, and int32
+## 6. Positions, extents, and int
 
-`token.Position` counts lines and columns from 1, and offsets from 0. The scanner holds all of them in int32,
-the type the token conveys, so building a position converts nothing.
+`token.Position` counts lines and columns from 1, and offsets from 0. The scanner holds all of them in int, the
+type `len` and `utf8.RuneCount` return, so counting converts nothing.
 
-The narrowing did not disappear, it moved: `len` and `utf8.RuneCount` return int, so about 62 sites convert at
-that edge. The length of the source bounds every one of them, and `Init` refuses a source at or above
-`maxSourceLen` (`math.MaxInt32 - 1`, leaving room for the column that stands one past the last byte of its
-line). `.golangci.yml` excludes gosec's G115 for the package on that argument. See [`source.go`](source.go).
+`Position` stores `Line` and `Column` as int32, and packs `Offset` in 40 bits and `IndentNum` in 24. Lines and
+columns narrow in one place each: `posInt`, and `token.At`. The length of the source bounds both, and `Init`
+refuses a source at or above `maxSourceLen` (`math.MaxInt32 - 1`, leaving room for the column that stands one
+past the last byte of its line). `.golangci.yml` excludes gosec's G115 on that argument. See [`source.go`](source.go).
 
 Two things about a token's position are not obvious:
 

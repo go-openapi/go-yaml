@@ -308,7 +308,7 @@ type jsonTokener struct {
 	// lastEndFrom holds the start of the token whose text reaches furthest into the source, and lastEndOffset
 	// the offset just past that text. closeAt places a block collection's closer there.
 	lastEndFrom   token.Position
-	lastEndOffset int32
+	lastEndOffset int
 	// omaps holds the "!!omap" nodes being handed over, innermost last.
 	// foldOrderedMapTokens rewrites their tokens on the way out.
 	omaps []omapMark
@@ -852,7 +852,7 @@ func (t *jsonTokener) reach(tk *token.Token) {
 		return
 	}
 	end := tk.EndOffset()
-	if end <= t.lastEndOffset || end <= tk.Position.Offset() || int(end) > len(t.state.src) {
+	if end <= t.lastEndOffset || end <= tk.Position.Offset() || end > len(t.state.src) {
 		return
 	}
 
@@ -865,9 +865,9 @@ func (t *jsonTokener) reach(tk *token.Token) {
 // from the token's start on its own line, or from the last line break inside it.
 func (t *jsonTokener) endPosition() token.Position {
 	text := t.state.src[t.lastEndFrom.Offset():t.lastEndOffset]
-	line, column := t.lastEndFrom.Line, t.lastEndFrom.Column
+	line, column := int(t.lastEndFrom.Line), int(t.lastEndFrom.Column)
 	if i := bytes.LastIndexByte(text, '\n'); i >= 0 {
-		line += int32(bytes.Count(text, lineBreak))
+		line += bytes.Count(text, lineBreak)
 		column = 1
 		text = text[i+1:]
 	}

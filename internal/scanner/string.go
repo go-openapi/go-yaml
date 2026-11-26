@@ -65,7 +65,7 @@ func (s *Scanner) leaveQuotedLines(ctx *Context) {
 	for start > 0 && ctx.src[start-1] != '\n' && ctx.src[start-1] != '\r' {
 		start--
 	}
-	var indent int32
+	var indent int
 	for i := start; i < ctx.idx && ctx.src[i] == ' '; i++ {
 		indent++
 	}
@@ -79,7 +79,7 @@ func (s *Scanner) scanSingleQuote(ctx *Context) (token.Token, error) {
 	srcpos := s.pos()
 	startIndex := ctx.idx + 1
 	src := ctx.src
-	size := int32(len(src))
+	size := len(src)
 
 	// A single-quoted scalar reads back as the source between its quotes unless a line break is folded or
 	// a "''" stands for one quote.
@@ -89,7 +89,7 @@ func (s *Scanner) scanSingleQuote(ctx *Context) (token.Token, error) {
 	// The first rewrite copies what has been passed over so far, and the rest of the scalar is appended as before.
 	value := s.quoted[:0]
 	copied := false
-	keep := func(upto int32) {
+	keep := func(upto int) {
 		if !copied {
 			value = append(value, src[startIndex:upto]...)
 			copied = true
@@ -99,10 +99,10 @@ func (s *Scanner) scanSingleQuote(ctx *Context) (token.Token, error) {
 	isFirstLineChar := false
 	isNewLine := false
 
-	var width int // TODO: should be int32
-	for idx := startIndex; idx < size; idx += int32(width) {
+	var width int
+	for idx := startIndex; idx < size; idx += width {
 		var c rune
-		c, width = utf8.DecodeRuneInString(src[idx:]) // TODO: var w int ; width = int32(w)
+		c, width = utf8.DecodeRuneInString(src[idx:])
 		if !isNewLine {
 			s.progressColumn(ctx, 1)
 		} else {
@@ -121,7 +121,7 @@ func (s *Scanner) scanSingleQuote(ctx *Context) (token.Token, error) {
 				width++
 			}
 			var err error
-			if value, err = s.foldQuotedLineBreak(ctx, value, isFirstLineChar, src[idx+int32(width):], baseIndent); err != nil {
+			if value, err = s.foldQuotedLineBreak(ctx, value, isFirstLineChar, src[idx+width:], baseIndent); err != nil {
 				return token.Token{}, err
 			}
 			isFirstLineChar = true
@@ -143,7 +143,7 @@ func (s *Scanner) scanSingleQuote(ctx *Context) (token.Token, error) {
 			isFirstLineChar = false
 
 			continue
-		case idx+int32(width) < int32(len(ctx.src)) && ctx.src[idx+int32(width)] == '\'':
+		case idx+width < len(ctx.src) && ctx.src[idx+width] == '\'':
 			// '' handle as ' character
 			keep(idx)
 			value = utf8.AppendRune(value, c)
@@ -176,7 +176,7 @@ func (s *Scanner) scanSingleQuote(ctx *Context) (token.Token, error) {
 // foldQuotedLineBreak folds the line break a quoted scalar reads into value: it drops the spaces ending the line,
 // and appends a space, or a line feed where the line held nothing but the break. It then checks rest, the text after
 // the break, for a document marker and for a continuation line not indented past baseIndent.
-func (s *Scanner) foldQuotedLineBreak(ctx *Context, value []byte, emptyLine bool, rest string, baseIndent int32) ([]byte, error) {
+func (s *Scanner) foldQuotedLineBreak(ctx *Context, value []byte, emptyLine bool, rest string, baseIndent int) ([]byte, error) {
 	value = bytes.TrimRight(value, " ")
 	if emptyLine {
 		value = append(value, '\n')
@@ -206,14 +206,14 @@ func (s *Scanner) scanDoubleQuote(ctx *Context) (token.Token, error) {
 	srcpos := s.pos()
 	startIndex := ctx.idx + 1
 	src := ctx.src
-	size := int32(len(src))
+	size := len(src)
 	// As in scanSingleQuote: the value stays a window on src until a folded line break, an escape, or a tab dropped
 	// before one rewrites it.
 	// The first time that happens, keep copies everything passed over so far, and the rest appends as before.
 	// A scalar holding none of the three, which is most of them, is never built.
 	value := s.quoted[:0]
 	copied := false
-	keep := func(upto int32) {
+	keep := func(upto int) {
 		if !copied {
 			value = append(value, src[startIndex:upto]...)
 			copied = true
@@ -223,7 +223,7 @@ func (s *Scanner) scanDoubleQuote(ctx *Context) (token.Token, error) {
 	isNewLine := false
 
 	var width int
-	for idx := startIndex; idx < size; idx += int32(width) {
+	for idx := startIndex; idx < size; idx += width {
 		var c rune
 		c, width = utf8.DecodeRuneInString(src[idx:])
 		if !isNewLine {
@@ -243,7 +243,7 @@ func (s *Scanner) scanDoubleQuote(ctx *Context) (token.Token, error) {
 				width++
 			}
 			var err error
-			if value, err = s.foldQuotedLineBreak(ctx, value, isFirstLineChar, src[idx+int32(width):], baseIndent); err != nil {
+			if value, err = s.foldQuotedLineBreak(ctx, value, isFirstLineChar, src[idx+width:], baseIndent); err != nil {
 				return token.Token{}, err
 			}
 			isFirstLineChar = true
@@ -266,7 +266,7 @@ func (s *Scanner) scanDoubleQuote(ctx *Context) (token.Token, error) {
 				continue
 			}
 			nextChar, _ := utf8.DecodeRuneInString(src[idx+1:])
-			var progress int32
+			var progress int
 			// Each escape standing for one character repeats the same three statements. That reads badly, and it is the
 			// fastest shape measured: this switch compiles to a jump table whose constants sit in the instruction stream.
 			//
@@ -452,7 +452,7 @@ func (s *Scanner) scanDoubleQuote(ctx *Context) (token.Token, error) {
 		case c == '\t':
 			var (
 				foundNotSpaceChar bool
-				progress          int32
+				progress          int
 			)
 			for i := idx + 1; i < size; i++ {
 				if src[i] == ' ' || src[i] == '\t' {

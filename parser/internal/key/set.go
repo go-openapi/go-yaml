@@ -27,7 +27,7 @@ const spillAt = 64
 // first pair as two keys and the second as one, and read "1" and "\"1\"" as one
 // where they are a number and a string.
 type mapKeyRef struct {
-	base int32
+	base int
 	kind token.KeyKind
 	text string
 }
@@ -140,7 +140,7 @@ func (k *Set) Record(base int, text string, kind token.KeyKind, pos token.Positi
 // the scan answers, and entries holds every key whether or not the mapping has spilled.
 func (k *Set) Holds(base int, text string) bool {
 	if k.jsonNames && k.index != nil && len(k.entries)-base >= spillAt {
-		_, held := k.index[mapKeyRef{base: int32(base), kind: anyKind, text: text}]
+		_, held := k.index[mapKeyRef{base: base, kind: anyKind, text: text}]
 
 		return held
 	}
@@ -164,12 +164,12 @@ func (k *Set) Close(base int) {
 	if len(k.entries)-base >= spillAt {
 		for i := base; i < len(k.entries); i++ {
 			delete(k.index, mapKeyRef{
-				base: int32(base),
+				base: base,
 				kind: token.KeyKind(k.filter[i]),
 				text: k.entries[i].text,
 			})
 			if k.jsonNames {
-				delete(k.index, mapKeyRef{base: int32(base), kind: anyKind, text: k.entries[i].text})
+				delete(k.index, mapKeyRef{base: base, kind: anyKind, text: k.entries[i].text})
 			}
 		}
 	}
@@ -226,14 +226,14 @@ func (k *Set) recordIndexed(base int, text string, kind token.KeyKind, pos token
 		k.spill(base)
 	}
 
-	ref := mapKeyRef{base: int32(base), kind: kind, text: text}
+	ref := mapKeyRef{base: base, kind: kind, text: text}
 	if prev, defined := k.index[ref]; defined {
 		return prev, false, true
 	}
 	var nameAt token.Position
 	named := false
 	if k.jsonNames {
-		name := mapKeyRef{base: int32(base), kind: anyKind, text: text}
+		name := mapKeyRef{base: base, kind: anyKind, text: text}
 		if prev, defined := k.index[name]; defined {
 			nameAt, named = prev, true
 		} else {
@@ -256,14 +256,14 @@ func (k *Set) spill(base int) {
 		k.index = make(map[mapKeyRef]token.Position, spillAt*2)
 	}
 	for i := base; i < len(k.entries); i++ {
-		ref := mapKeyRef{base: int32(base), kind: token.KeyKind(k.filter[i]), text: k.entries[i].text}
+		ref := mapKeyRef{base: base, kind: token.KeyKind(k.filter[i]), text: k.entries[i].text}
 		if _, defined := k.index[ref]; !defined {
 			k.index[ref] = k.entries[i].at
 		}
 		if !k.jsonNames {
 			continue
 		}
-		name := mapKeyRef{base: int32(base), kind: anyKind, text: k.entries[i].text}
+		name := mapKeyRef{base: base, kind: anyKind, text: k.entries[i].text}
 		if _, defined := k.index[name]; !defined {
 			k.index[name] = k.entries[i].at
 		}

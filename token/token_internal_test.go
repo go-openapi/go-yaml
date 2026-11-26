@@ -76,13 +76,13 @@ func breaksInRaw[T Text](s T) int {
 	return n
 }
 
-func extentOfBlanks[T Text](org T, pos Position) int32 {
+func extentOfBlanks[T Text](org T, pos Position) int {
 	i := 0
 	for i < len(org) && (org[i] == ' ' || org[i] == '\t' || org[i] == '\n' || org[i] == '\r') {
 		i++
 	}
 
-	return pos.Offset() + int32(len(org)-i)
+	return pos.Offset() + len(org) - i
 }
 
 // TestMeasureOriginMatchesTheHelpersItReplaced runs MeasureOrigin against the

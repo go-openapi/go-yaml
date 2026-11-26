@@ -310,7 +310,7 @@ func (n *StringNode) plainString() string {
 		// It works mostly, but inconsistencies occur if line break characters are mixed.
 		lbc := token.DetectLineBreakCharacter(n.Value)
 		space := strings.Repeat(" ", int(n.Token.Position.Column)-1)
-		indent := strings.Repeat(" ", int(n.Token.Position.IndentNum()))
+		indent := strings.Repeat(" ", n.Token.Position.IndentNum())
 		values := []string{}
 		for v := range strings.SplitSeq(n.Value, lbc) {
 			values = append(values, fmt.Sprintf("%s%s%s", space, indent, v))
@@ -351,7 +351,7 @@ func (n *StringNode) stringWithoutComment() string {
 		// It works mostly, but inconsistencies occur if line break characters are mixed.
 		lbc := token.DetectLineBreakCharacter(n.Value)
 		space := strings.Repeat(" ", int(n.Token.Position.Column)-1)
-		indent := strings.Repeat(" ", int(n.Token.Position.IndentNum()))
+		indent := strings.Repeat(" ", n.Token.Position.IndentNum())
 		values := []string{}
 		for v := range strings.SplitSeq(n.Value, lbc) {
 			values = append(values, fmt.Sprintf("%s%s%s", space, indent, v))
@@ -578,7 +578,7 @@ func BlockSource(src string, header, content *token.Token) string {
 		return ""
 	}
 
-	start, end := int(header.EndOffset()), int(content.EndOffset())
+	start, end := header.EndOffset(), content.EndOffset()
 	if start < 0 || end > len(src) || start >= end {
 		return ""
 	}

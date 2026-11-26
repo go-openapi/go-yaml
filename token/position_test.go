@@ -15,14 +15,14 @@ import (
 func TestPositionKeepsItsPackedFieldsApart(t *testing.T) {
 	const maxIndent = 1<<token.IndentBits - 1
 
-	p := token.At(3, 7, 1<<31-1, maxIndent)
+	p := token.At(3, 7, 1<<token.OffsetBits-1, maxIndent)
 	assert.Equal(t, int32(3), p.Line)
 	assert.Equal(t, int32(7), p.Column)
-	assert.Equal(t, int32(1<<31-1), p.Offset())
-	assert.Equal(t, int32(maxIndent), p.IndentNum())
+	assert.Equal(t, 1<<token.OffsetBits-1, p.Offset())
+	assert.Equal(t, maxIndent, p.IndentNum())
 
 	p.SetOffset(42)
-	assert.Equal(t, int32(42), p.Offset())
-	assert.Equal(t, int32(maxIndent), p.IndentNum(), "SetOffset wrote over IndentNum")
+	assert.Equal(t, 42, p.Offset())
+	assert.Equal(t, maxIndent, p.IndentNum(), "SetOffset wrote over IndentNum")
 	assert.Equal(t, "[line:3,column:7,offset:42]", p.String())
 }

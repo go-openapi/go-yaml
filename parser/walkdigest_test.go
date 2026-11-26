@@ -161,7 +161,7 @@ func (d *digestVisitor) Leave(node ast.Node, at parser.Closing) error {
 func (d *digestVisitor) write(what string, node ast.Node, at parser.Cursor) {
 	tk := node.GetToken()
 	value := ""
-	var offset, end int32
+	var offset, end int
 	var line, column int32
 	if tk != nil {
 		value, offset, end = tk.Value, tk.Position.Offset(), tk.EndOffset()

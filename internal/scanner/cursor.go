@@ -22,16 +22,16 @@ type cursor struct {
 	// buf collects the value of the token being read, for a token whose value the scan must rewrite.
 	buf []byte
 	// idx is the byte of src the scan stands on.
-	idx  int32
-	size int32
+	idx  int
+	size int
 	// originStart and originEnd bracket the current token's text in src. See [cursor.origin].
-	originEnd int32
+	originEnd int
 	// notSpaceCharPos marks how much of buf belongs to the value, leaving out the whitespace it ends with.
-	notSpaceCharPos int32
-	originStart     int32
+	notSpaceCharPos int
+	originStart     int
 	// originTrimmed counts the bytes the cuts have taken off the end of originCopy. The token reaches
 	// originStart + len(originCopy) + originTrimmed, which is where the scan stands.
-	originTrimmed int32
+	originTrimmed int
 	// originCut records that originCopy is in use, the blanks a line ended with having been cut off the
 	// end of the text. The start is unaffected: nothing cuts from the middle.
 	originCut bool
@@ -50,7 +50,7 @@ func (c *cursor) next() bool {
 }
 
 // width is how many bytes the character at the cursor takes, or 0 at the end.
-func (c *cursor) width() int32 {
+func (c *cursor) width() int {
 	if c.idx >= c.size {
 		return 0
 	}
@@ -59,7 +59,7 @@ func (c *cursor) width() int32 {
 	}
 	_, w := utf8.DecodeRuneInString(c.src[c.idx:])
 
-	return int32(w)
+	return w
 }
 
 // isEOS reports that no character follows the one at the cursor.
@@ -101,22 +101,22 @@ func (c *cursor) previousChar() rune {
 		if r != byteOrderMark {
 			return r
 		}
-		end -= int32(w)
+		end -= w
 	}
 
 	return rune(0)
 }
 
 // repeatNum counts how many times r stands at the cursor, in a row.
-func (c *cursor) repeatNum(r rune) int32 {
-	var cnt int32
+func (c *cursor) repeatNum(r rune) int {
+	var cnt int
 	for i := c.idx; i < c.size; {
 		cur, w := utf8.DecodeRuneInString(c.src[i:])
 		if cur != r {
 			break
 		}
 		cnt++
-		i += int32(w)
+		i += w
 	}
 
 	return cnt
@@ -125,7 +125,7 @@ func (c *cursor) repeatNum(r rune) int32 {
 // progress advances the cursor by num characters and returns the number of bytes it crossed.
 //
 // Callers count columns in characters and offsets in bytes, so progress reports both.
-func (c *cursor) progress(num int32) int32 {
+func (c *cursor) progress(num int) int {
 	start := c.idx
 	for range num {
 		if c.idx >= c.size {
@@ -139,14 +139,14 @@ func (c *cursor) progress(num int32) int32 {
 			continue
 		}
 		_, w := utf8.DecodeRuneInString(c.src[c.idx:])
-		c.idx += int32(w)
+		c.idx += w
 	}
 
 	return c.idx - start
 }
 
 // source returns the bytes between two byte offsets of c.src.
-func (c *cursor) source(s, e int32) string {
+func (c *cursor) source(s, e int) string {
 	return c.src[s:e]
 }
 
@@ -162,11 +162,11 @@ func (c *cursor) source(s, e int32) string {
 // folding shortens the value below the source it came from.
 //
 // When the guess misses, the cursor gives the other end, and the token should carry whichever offset matched.
-func (c *cursor) textAt(buf []byte, start int32) (string, int32) {
+func (c *cursor) textAt(buf []byte, start int) (string, int) {
 	if span, ok := c.window(buf, start); ok {
 		return span, start
 	}
-	at := c.idx - int32(len(buf))
+	at := c.idx - len(buf)
 	if span, ok := c.window(buf, at); ok {
 		return span, at
 	}
@@ -175,9 +175,9 @@ func (c *cursor) textAt(buf []byte, start int32) (string, int32) {
 }
 
 // window returns the len(buf) bytes of the source at start, and reports whether they are buf's own.
-func (c *cursor) window(buf []byte, start int32) (string, bool) {
-	end := start + int32(len(buf))
-	if start < 0 || end > int32(len(c.src)) {
+func (c *cursor) window(buf []byte, start int) (string, bool) {
+	end := start + len(buf)
+	if start < 0 || end > len(c.src) {
 		return "", false
 	}
 
@@ -192,7 +192,7 @@ func (c *cursor) addBuf(r rune) {
 	}
 	c.buf = utf8.AppendRune(c.buf, r)
 	if r != ' ' && r != '\t' {
-		c.notSpaceCharPos = int32(len(c.buf))
+		c.notSpaceCharPos = len(c.buf)
 	}
 }
 
@@ -202,7 +202,7 @@ func (c *cursor) addBufWithTab(r rune) {
 	}
 	c.buf = utf8.AppendRune(c.buf, r)
 	if r != ' ' {
-		c.notSpaceCharPos = int32(len(c.buf))
+		c.notSpaceCharPos = len(c.buf)
 	}
 }
 
@@ -223,7 +223,7 @@ func (c *cursor) origin() string {
 		return string(c.originCopy)
 	}
 
-	return c.src[c.originStart:min(c.originEnd, int32(len(c.src)))]
+	return c.src[c.originStart:min(c.originEnd, len(c.src))]
 }
 
 // addOriginBuf records that r was read as part of the current token.
@@ -255,13 +255,13 @@ func (c *cursor) addOriginWide(r rune) {
 		return
 	}
 
-	c.originEnd += int32(utf8.RuneLen(r))
+	c.originEnd += utf8.RuneLen(r)
 }
 
 // skipOrigin records that the n bytes at the cursor were read, as n calls to [cursor.addOriginBuf] would.
 //
 // The caller has established they are ASCII, so each is one character and one byte.
-func (c *cursor) skipOrigin(n int32) {
+func (c *cursor) skipOrigin(n int) {
 	if c.originCut {
 		c.originCopy = append(c.originCopy, c.src[c.idx:c.idx+n]...)
 
@@ -293,7 +293,7 @@ func (c *cursor) isMergeKey() bool {
 		return false
 	}
 	src := c.src
-	size := int32(len(src))
+	size := len(src)
 	for idx := c.idx + 2; idx < size; idx++ {
 		char := src[idx]
 		if char == ' ' || char == '\t' {

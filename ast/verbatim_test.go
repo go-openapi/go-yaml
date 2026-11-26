@@ -169,7 +169,7 @@ func TestVerbatimRebuildsEveryDocument(t *testing.T) {
 		accepted++
 
 		var joined bytes.Buffer
-		var written []int32
+		var written []int
 		record := func(_ io.Writer, s ast.Written) error {
 			joined.Write(s.Text)
 			if s.Token != nil {
@@ -188,11 +188,11 @@ func TestVerbatimRebuildsEveryDocument(t *testing.T) {
 			differing = append(differing, src.name)
 		}
 
-		var held []int32
+		var held []int
 		for _, doc := range file.Docs {
 			held = append(held, ast.SourceTextEnds(doc)...)
 		}
-		missing := slices.ContainsFunc(held, func(end int32) bool {
+		missing := slices.ContainsFunc(held, func(end int) bool {
 			return !slices.Contains(written, end)
 		})
 

@@ -125,7 +125,7 @@ func TestAHandedOutCellStaysWhereItIs(t *testing.T) {
 	held := a.Take(1)
 	*held = cell{n: 42, text: "held"}
 
-	for seq := range int32(100) {
+	for seq := range int(100) {
 		a.Take(seq + 2)
 	}
 
@@ -152,7 +152,7 @@ func TestBlockSizeFallsBackToMinGroupBlock(t *testing.T) {
 			a := arena.Run[cell]{Size: size.set}
 			// One cell past a full chunk, so that chunk is retired and release
 			// may take it back. The chunk being filled never goes.
-			for seq := range int32(size.want + 1) {
+			for seq := range size.want + 1 {
 				a.Take(seq + 1)
 			}
 
@@ -172,12 +172,12 @@ func TestReleaseKeepsAChunkHoldingALiveCell(t *testing.T) {
 	t.Parallel()
 
 	a := arena.Run[cell]{Size: 4}
-	for seq := range int32(5) { // four in the chunk, one to retire it
+	for seq := range int(5) { // four in the chunk, one to retire it
 		a.Take(seq + 1)
 	}
 
 	// Everything is finished with except the cell taken first.
-	liveIsFirst := func(seq int32) bool { return seq != 1 }
+	liveIsFirst := func(seq int) bool { return seq != 1 }
 
 	var poisoned int
 	a.Release(liveIsFirst, func([]cell) { poisoned++ })
@@ -257,13 +257,13 @@ func TestAChunkIsWalkedOnceOverItsLife(t *testing.T) {
 	const cells = 8
 
 	a := arena.Run[cell]{Size: cells}
-	for seq := range int32(cells + 1) {
+	for seq := range int(cells + 1) {
 		a.Take(seq + 1)
 	}
 
 	var asked int
-	for youngest := range int32(cells) {
-		dead := func(seq int32) bool {
+	for youngest := range int(cells) {
+		dead := func(seq int) bool {
 			asked++
 
 			return seq <= youngest+1
@@ -277,4 +277,4 @@ func TestAChunkIsWalkedOnceOverItsLife(t *testing.T) {
 }
 
 // allDead reports every cell finished with.
-func allDead(int32) bool { return true }
+func allDead(int) bool { return true }

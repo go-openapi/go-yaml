@@ -108,7 +108,7 @@ func TestJSONTokensPositionsAddressTheSource(t *testing.T) {
 		if tk.Kind != codec.JSONKey && tk.Kind != codec.JSONString && tk.Kind != codec.JSONNumber {
 			continue
 		}
-		at := int(tk.At.Offset())
+		at := tk.At.Offset()
 		require.LessOrEqualf(t, at+len(tk.Value), len(src), "%v %q", tk.Kind, tk.Value)
 		assert.Equalf(t, tk.Value, src[at:at+len(tk.Value)], "%v at %d", tk.Kind, at)
 	}
@@ -452,7 +452,7 @@ func TestJSONTokensPointAKeyAtItsScalar(t *testing.T) {
 			require.NoError(t, s.Err())
 			assert.Equal(t, tc.key, found.Value)
 
-			at := int(found.At.Offset())
+			at := found.At.Offset()
 			require.Less(t, at, len(tc.src))
 			assert.Equal(t, tc.key, tc.src[at:at+len(tc.key)], "the offset must land on the key")
 		})

@@ -37,22 +37,24 @@ const (
 )
 
 // Offset returns the byte the token starts at, counting from 0.
-func (p Position) Offset() int32 { return int32(p.where & offsetMask) }
+func (p Position) Offset() int { return int(p.where & offsetMask) }
 
 // IndentNum returns the number of spaces the token's line is indented by.
-func (p Position) IndentNum() int32 { return int32(p.where >> OffsetBits) }
+func (p Position) IndentNum() int { return int(p.where >> OffsetBits) }
 
 // SetOffset records the byte the token starts at.
-func (p *Position) SetOffset(offset int32) {
+func (p *Position) SetOffset(offset int) {
 	p.where = p.where&^offsetMask | uint64(offset)&offsetMask
 }
 
 // At returns the position at line, column, offset and indentNum. A composite literal cannot set Offset and
 // IndentNum, which share a packed field.
-func At(line, column, offset, indentNum int32) Position {
+//
+// Line and Column narrow to int32. The scanner refuses a source with more lines than that holds.
+func At(line, column, offset, indentNum int) Position {
 	return Position{
-		Line:   line,
-		Column: column,
+		Line:   int32(line),
+		Column: int32(column),
 		where:  uint64(offset)&offsetMask | uint64(indentNum)<<OffsetBits,
 	}
 }

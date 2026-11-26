@@ -334,7 +334,7 @@ func (g *Grouper) Reset() {
 //
 // Only a walk calls it: a parse gathering a tree holds every node it builds,
 // and a key node built through keyBefore points into a leaf.
-func (g *Grouper) Release(released int, dead func(seq int32) bool) {
+func (g *Grouper) Release(released int, dead func(seq int) bool) {
 	if released == g.sweptAt {
 		// The tape has let go of nothing since the last sweep, so nothing the
 		// Grouper holds can have died either. A document the grouping cannot
@@ -402,7 +402,7 @@ func (g *Grouper) out(n int) []*TapeToken {
 }
 
 // token returns a cell for a token standing at seq in the stream.
-func (g *Grouper) token(seq int32) *TapeToken {
+func (g *Grouper) token(seq int) *TapeToken {
 	tk := g.leaves.Take(seq)
 	reviveLeaf(tk)
 
@@ -426,7 +426,7 @@ func (g *Grouper) newGroup2(typ TokenGroupType, a, b *TapeToken) *TokenGroup {
 }
 
 // nextGroup returns a cell for a group Ending at seq in the stream.
-func (g *Grouper) nextGroup(seq int32) *TokenGroup {
+func (g *Grouper) nextGroup(seq int) *TokenGroup {
 	grp := g.groups.Take(seq)
 	reviveGroup(grp)
 
@@ -449,7 +449,7 @@ func (g *Grouper) newGroup(typ TokenGroupType, tks []*TapeToken) *TokenGroup {
 // it, because parseMapEntry reads its key's group again once the value below it
 // is parsed. Keyed on the end, a group goes back while that read is still to
 // come -- 598 of them over the corpus, which is what the probe reported.
-func firstSeq(tks []*TapeToken) int32 {
+func firstSeq(tks []*TapeToken) int {
 	if len(tks) == 0 {
 		return 0
 	}

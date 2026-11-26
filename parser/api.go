@@ -61,7 +61,7 @@ type Parser struct {
 	walk *walkState
 
 	// anchorFrom holds the token sequence at which each open anchor begins, innermost last.
-	anchorFrom []int32
+	anchorFrom []int
 
 	// descent holds the collections the parse has open, the entry it is reading, and the two depths it counts.
 	// See descent.go.

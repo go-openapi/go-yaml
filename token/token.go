@@ -36,7 +36,7 @@ type Token struct {
 	Position Position
 	// end is the offset just past the token's text, so that src[Offset:end] is
 	// what the document wrote it as. Read it with [Token.EndOffset].
-	end int32
+	end int
 	// spans packs five facts in one word. Read them with [Token.EndLine], [Token.CommentBreaksAbove],
 	// [Token.TrailingBreaks], [Token.BlankLineAbove] and [Token.FromSource]. See the constants below.
 	spans uint64
@@ -246,9 +246,9 @@ func (t *Token) SetBlankLineAbove(blank bool) {
 // The run is taken from the end of the whole origin rather than from what a
 // leading walk left, so an origin that is nothing but blanks counts every break
 // in it as trailing.
-func trailingRun[T Text](org T) (int, int32) {
+func trailingRun[T Text](org T) (int, int) {
 	tail := len(org)
-	var trailing int32
+	var trailing int
 	for tail > 0 && isBlank(org[tail-1]) {
 		tail--
 		switch org[tail] {
@@ -273,7 +273,7 @@ func trailingRun[T Text](org T) (int, int32) {
 // token's text ends that many breaks above the cursor. Reading the whole
 // origin, as [MeasureOrigin] does, serves a caller with no cursor to count
 // back from.
-func TrailingBreaksIn[T Text](org T) int32 {
+func TrailingBreaksIn[T Text](org T) int {
 	_, trailing := trailingRun(org)
 
 	return trailing
@@ -287,13 +287,13 @@ func TrailingBreaksIn[T Text](org T) int32 {
 type Extent struct {
 	// End is the byte just past the token's text, so that src[Offset:End] is
 	// what the document wrote the token as.
-	End int32
+	End int
 	// EndLine is the line the token's text ends on. A token written on one
 	// line ends on the line it starts on.
-	EndLine int32
+	EndLine int
 	// Trailing counts the line breaks between the token's last line and
 	// whatever the scanner reads next.
-	Trailing int32
+	Trailing int
 }
 
 // spans packs the extent into the two fields a token keeps them in. The other
@@ -329,8 +329,8 @@ func MeasureOrigin[T Text](org T, pos Position) Extent {
 	}
 
 	return Extent{
-		End:      pos.Offset() + int32(len(org)-i),
-		EndLine:  pos.Line + int32(breaks),
+		End:      pos.Offset() + len(org) - i,
+		EndLine:  int(pos.Line) + breaks,
 		Trailing: trailing,
 	}
 }
@@ -353,16 +353,16 @@ func Assemble(typ Type, value string, pos Position, ext Extent) Token {
 // written as and where it starts.
 //
 // The whitespace an origin opens with belongs to the gap before the token, and pos.Offset already points past it.
-func extentOf[T Text](org T, pos Position) int32 {
+func extentOf[T Text](org T, pos Position) int {
 	i := 0
 	for i < len(org) && (org[i] == ' ' || org[i] == '\t' || org[i] == '\n' || org[i] == '\r') {
 		i++
 	}
 
-	return pos.Offset() + int32(len(org)-i)
+	return pos.Offset() + len(org) - i
 }
 
 // EndOffset returns the byte just past the token's text, so src[Offset:EndOffset] holds the text the document
 // wrote, without the whitespace before it. A token the parser builds for a value the document leaves out ends
 // where it starts.
-func (t Token) EndOffset() int32 { return t.end }
+func (t Token) EndOffset() int { return t.end }

@@ -84,7 +84,7 @@ func (s *Scanner) scanNewLine(ctx *Context, c rune) {
 		blanks := ctx.trailingBlankColumns()
 		s.savedPos = s.pos()
 		s.savedPos.Column -= posInt(utf8.RuneCount(buffered) + blanks)
-		s.savedPos.SetOffset(s.savedPos.Offset() - posInt(len(buffered)))
+		s.savedPos.SetOffset(s.savedPos.Offset() - len(buffered))
 		s.hasSavedPos = true
 	}
 
@@ -181,7 +181,7 @@ const (
 // Where they differ, a path that never reached updateIndent has already read characters on this line: a block
 // scalar's content, or a quoted scalar spanning a break.
 // The counts this advances in step have then diverged.
-func (s *Scanner) indentRun(ctx *Context) int32 {
+func (s *Scanner) indentRun(ctx *Context) int {
 	if s.indentNum != s.column {
 		return 0
 	}
@@ -189,7 +189,7 @@ func (s *Scanner) indentRun(ctx *Context) int32 {
 	raw := ctx.raw
 	i := ctx.idx
 	if !s.deepIndent {
-		probe := min(i+indentProbe, int32(len(raw)))
+		probe := min(i+indentProbe, len(raw))
 		for ; i < probe; i++ {
 			if raw[i] != ' ' {
 				return i - ctx.idx
@@ -199,15 +199,15 @@ func (s *Scanner) indentRun(ctx *Context) int32 {
 
 	// The scanner state is recognized has "deep indented" .
 	// Proceed height bytes at a time: the run outran the probe, or the document has already shown that its lines are indented.
-	for i+8 <= int32(len(raw)) {
+	for i+8 <= len(raw) {
 		w := binary.LittleEndian.Uint64(raw[i:])
 		if m := swar.SpaceMask(w); m != 0 {
-			return i + int32(swar.FirstByte(m)) - ctx.idx
+			return i + swar.FirstByte(m) - ctx.idx
 		}
 		i += 8
 	}
 
-	for i < int32(len(raw)) && raw[i] == ' ' {
+	for i < len(raw) && raw[i] == ' ' {
 		i++
 	}
 

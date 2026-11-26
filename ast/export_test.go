@@ -21,8 +21,8 @@ func (r *Renderer) RenderedFacts(n Node) (text string, spans, leads, empty bool)
 // Renderer.VerbatimFile cannot show: copying forward to a token's end writes the
 // whole source whatever order the tokens arrive in, so only the sequence says
 // whether the descent followed the document.
-func SourceTokenEnds(n Node) []int32 {
-	var ends []int32
+func SourceTokenEnds(n Node) []int {
+	var ends []int
 	walkSourceTokens(n, func(tk *token.Token) {
 		ends = append(ends, tk.EndOffset())
 	})
@@ -32,8 +32,8 @@ func SourceTokenEnds(n Node) []int32 {
 
 // SourceTextEnds returns SourceTokenEnds less the tokens of no width: a block scalar's empty content, which holds no
 // byte for a transform to label.
-func SourceTextEnds(n Node) []int32 {
-	var ends []int32
+func SourceTextEnds(n Node) []int {
+	var ends []int
 	walkSourceTokens(n, func(tk *token.Token) {
 		if tk.EndOffset() > tk.Position.Offset() {
 			ends = append(ends, tk.EndOffset())

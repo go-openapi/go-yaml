@@ -20,32 +20,32 @@ import (
 //
 // # Performance
 //
-// All offsets are measured as int32: this sets a ceiling on how large the input can be (20 GB).
-// This is a trade-off to produce more compact and thus faster cursors and tokens.
+// The scanner counts offsets, lines and columns in int. [token.Position] stores lines and columns as int32, which
+// caps a source below 2 GiB. See maxSourceLen.
 type Scanner struct {
 	// quoted holds a rewritten quoted scalar. It is kept between tokens.
 	quoted []byte
 	// current line of the cursor, counting from 1.
-	line int32
+	line int
 	// current column of the cursor, counting from 1.
-	column int32
+	column int
 	// lastDelimColumn is the column of whatever introduced the construct now being read:
 	// a "-", a "?", or the key of a mapping entry.
 	// Every further line of that construct must be indented past it.
-	lastDelimColumn int32
+	lastDelimColumn int
 	// indentNum counts the spaces this line opened with.
-	indentNum              int32
-	startedFlowSequenceNum int32
-	startedFlowMapNum      int32
+	indentNum              int
+	startedFlowSequenceNum int
+	startedFlowMapNum      int
 	// flowOpen holds the indicator that opened each flow collection still open, '[' or '{', the innermost last.
 	// A closer that does not match the innermost one is refused: "[{]}" closes a mapping with a ']'.
 	flowOpen []byte
 	// flowIndent holds the indentation of the line that opened the outermost flow collection.
 	// Every further line of that collection must be indented past it.
-	flowIndent int32
+	flowIndent int
 	// flowOpenOffset and flowOpenLine record where the outermost flow collection opened, for a key that is one.
-	flowOpenOffset int32
-	flowOpenLine   int32
+	flowOpenOffset int
+	flowOpenLine   int
 	indentState    IndentState
 	// savedPos holds the position a token started at. hasSavedPos records whether savedPos holds one.
 	savedPos token.Position
@@ -280,7 +280,7 @@ func (s *Scanner) scan(ctx *Context) error {
 
 	for ctx.next() {
 		if ctx.strayQuotedOnly {
-			return unprintableErr(ctx.src, int(ctx.quotedOnly[0]))
+			return unprintableErr(ctx.src, ctx.quotedOnly[0])
 		}
 		if ctx.stopped || ctx.buffered() > emitted {
 			return nil
@@ -588,7 +588,7 @@ func (s *Scanner) scan(ctx *Context) error {
 
 	// The source has ended, and a character only a quoted scalar may hold is still waiting for one.
 	if len(ctx.quotedOnly) > 0 {
-		return unprintableErr(ctx.src, int(ctx.quotedOnly[0]))
+		return unprintableErr(ctx.src, ctx.quotedOnly[0])
 	}
 
 	s.addBufferedTokenIfExists(ctx)
@@ -617,8 +617,8 @@ func (s *Scanner) bufferedToken(ctx *Context) (token.Token, bool) {
 		return tk, ok
 	}
 	line := s.line
-	column := s.column - int32(utf8.RuneCount(ctx.buf))
-	offset := ctx.idx - int32(len(ctx.buf))
+	column := s.column - utf8.RuneCount(ctx.buf)
+	offset := ctx.idx - len(ctx.buf)
 	if ctx.isMultiLine() {
 		line, column = s.multiLinePosition(ctx)
 		if start, ok := ctx.getMultiLineState().spaceOnlyStart(); ok {
@@ -661,18 +661,18 @@ func (s *Scanner) bufferedToken(ctx *Context) (token.Token, bool) {
 // source, so counting them back from the cursor comes up short, and the folded value is not a substring of the origin,
 // so searching for it fails and leaves the column at 0. Twelve cases of the YAML Test Suite reported a content token
 // at column 0 that way.
-func (s *Scanner) multiLinePosition(ctx *Context) (int32, int32) {
+func (s *Scanner) multiLinePosition(ctx *Context) (int, int) {
 	if state := ctx.getMultiLineState(); state != nil && state.hasStart {
-		return state.start.Line, state.start.Column
+		return int(state.start.Line), int(state.start.Column)
 	}
 
 	// The block read no content, so it recorded no start. The column counts, in characters, where the value begins
 	// inside the original text, and stays 0 when the value stands nowhere in it.
 	line := s.line - newLineCount(ctx.buf)
 
-	var column int32
+	var column int
 	if at := strings.Index(ctx.origin(), nocopy.String(ctx.buf)); at >= 0 {
-		column = int32(utf8.RuneCountInString(ctx.origin()[:at])) + 1
+		column = utf8.RuneCountInString(ctx.origin()[:at]) + 1
 	}
 
 	return line, column
@@ -762,12 +762,12 @@ func (s *Scanner) documentOpensAtMark(ctx *Context) bool {
 //
 // It is progressColumn without the loop: where every byte is a character, the column, the offset and the cursor advance
 // by the same count and none of them has to be worked out a character at a time.
-func (s *Scanner) progressASCII(ctx *Context, num int32) {
+func (s *Scanner) progressASCII(ctx *Context, num int) {
 	s.column += num
 	ctx.idx += num
 }
 
-func (s *Scanner) progressColumn(ctx *Context, num int32) {
+func (s *Scanner) progressColumn(ctx *Context, num int) {
 	s.column += num
 	s.progress(ctx, num)
 }
@@ -791,7 +791,7 @@ func (s *Scanner) progressLine(ctx *Context) {
 //
 // The scanner keeps no cursor of its own: [Context] holds the only one. See the README for the four fields that
 // shadowed it and what removing them was measured against.
-func (s *Scanner) progress(ctx *Context, num int32) {
+func (s *Scanner) progress(ctx *Context, num int) {
 	ctx.progress(num)
 
 	if probe.Enabled {
@@ -837,7 +837,7 @@ func (s *Scanner) scanSequence(ctx *Context) (bool, error) {
 	s.addBufferedTokenIfExists(ctx)
 	ctx.addOriginBuf('-')
 	tk := token.MakeSequenceEntry(ctx.origin(), s.pos())
-	s.lastDelimColumn = tk.Position.Column
+	s.lastDelimColumn = int(tk.Position.Column)
 	ctx.addTokenValue(tk)
 	s.progressColumn(ctx, 1)
 	ctx.clear()
@@ -899,9 +899,9 @@ func blankOrComment(line string) bool {
 }
 
 // newLineCount counts the line breaks in src, a "\r\n" pair counting as one.
-func newLineCount(src []byte) int32 {
+func newLineCount(src []byte) int {
 	size := len(src)
-	var cnt int32
+	var cnt int
 	for i := 0; i < size; i++ {
 		c := src[i]
 		switch c {

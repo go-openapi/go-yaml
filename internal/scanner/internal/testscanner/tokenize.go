@@ -124,7 +124,7 @@ func OriginsOf(src string, tokens []token.Token) []string {
 	prev := 0
 
 	for i, tk := range tokens {
-		end := int(tk.EndOffset())
+		end := tk.EndOffset()
 		if end < prev || end > len(src) {
 			origins[i] = ""
 			prev = min(max(end, prev), len(src))

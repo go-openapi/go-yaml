@@ -83,7 +83,7 @@ func firstExtentDefect(text string) string {
 		if !ok {
 			return ""
 		}
-		at, end := int(tk.Position.Offset()), int(tk.EndOffset())
+		at, end := tk.Position.Offset(), tk.EndOffset()
 		switch {
 		case end > len(text):
 			return fmt.Sprintf("a %s token ends %d bytes past the document", tk.Type, end-len(text))

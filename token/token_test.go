@@ -81,7 +81,7 @@ func TestEndLineMatchesCountingTheOrigin(t *testing.T) {
 		for tk := range s.Tokens() {
 			// The text the document wrote the token as: the tokens' extents
 			// tile the source, so it runs from the end of the one before.
-			end := min(max(int(tk.EndOffset()), prev), len(src))
+			end := min(max(tk.EndOffset(), prev), len(src))
 			origin := src[prev:end]
 			prev = end
 

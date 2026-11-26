@@ -250,7 +250,7 @@ func describeJSONToken(tk token.Token) string {
 // checkString checks the text of a double-quoted string as JSON writes one:
 // no raw control character, line break or tab, and only the escapes of RFC 8259 section 7.
 func (j *jsonSyntax) checkString(tk token.Token) error {
-	start, end := int(tk.Position.Offset()), int(tk.EndOffset())
+	start, end := tk.Position.Offset(), tk.EndOffset()
 	if start < 0 || end > len(j.src) || end-start < 2 {
 		// A string token from the source spans both its quotes. This guards the slice below if one ever does not.
 		return nil

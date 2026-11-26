@@ -380,7 +380,7 @@ func (p *Parser) openAnchor(ctx context) {
 		return
 	}
 
-	var from int32
+	var from int
 	if tk := ctx.currentToken(); tk != nil {
 		from = tk.Seq()
 	}
@@ -402,9 +402,9 @@ func (p *Parser) closeAnchor(ctx context) {
 
 	to := p.tokens.Len()
 	if tk := ctx.currentToken(); tk != nil {
-		to = int(tk.Seq())
+		to = tk.Seq()
 	}
-	p.tokens.Save(int(from), to)
+	p.tokens.Save(from, to)
 	p.tokens.Unpin()
 }
 
@@ -700,7 +700,7 @@ func (p *Parser) readTo(ctx context) {
 	if tk == nil {
 		return
 	}
-	p.tokens.SetTail(int(tk.Seq()))
+	p.tokens.SetTail(tk.Seq())
 
 	if p.reader != nil {
 		p.reader.g.Release(p.tokens.Released(), p.releasedByTape)
@@ -711,8 +711,8 @@ func (p *Parser) readTo(ctx context) {
 //
 // The group.Grouper calls it to test whether one of its cells is still live.
 // The tape records what it still holds: the tail it has been given, what holdRun saved and what an anchor pinned.
-func (p *Parser) releasedByTape(seq int32) bool {
-	_, held := p.tokens.Generation(int(seq))
+func (p *Parser) releasedByTape(seq int) bool {
+	_, held := p.tokens.Generation(seq)
 
 	return !held
 }
@@ -729,17 +729,17 @@ func (p *Parser) releasedByTape(seq int32) bool {
 //
 // The pair takes seq instead of holdRun returning an undo func,
 // because the closure would escape to the heap and this runs once per mapping and once per sequence.
-func (p *Parser) holdRun(seq int32) {
+func (p *Parser) holdRun(seq int) {
 	if p.walk == nil || p.tokens == nil {
 		return
 	}
-	p.tokens.Save(int(seq), int(seq))
+	p.tokens.Save(seq, seq)
 }
 
 // releaseRun releases the chunk holdRun kept.
-func (p *Parser) releaseRun(seq int32) {
+func (p *Parser) releaseRun(seq int) {
 	if p.walk == nil || p.tokens == nil {
 		return
 	}
-	p.tokens.Release(int(seq), int(seq))
+	p.tokens.Release(seq, seq)
 }

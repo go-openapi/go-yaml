@@ -164,7 +164,7 @@ func linesSpannedBy(tk *Token, isContent bool) int {
 		return lines
 	}
 
-	return lines + max(int(TrailingBreaksIn(tk.Value))-1, 0)
+	return lines + max(TrailingBreaksIn(tk.Value)-1, 0)
 }
 
 // originBreaksBefore counts the breaks in the whole of prev's source text. It reads the token before prev, where

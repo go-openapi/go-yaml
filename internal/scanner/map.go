@@ -48,14 +48,14 @@ func (s *Scanner) scanMapDelim(ctx *Context) (bool, error) {
 		// '&' or the '!' and not from the key behind it. Measured from the key, "&a a: >-" over " x" put the level
 		// at column 4 and the content in column 2 read as a dedent: the block scalar came back empty and its
 		// content was read as a node of its own, which the parser then refused.
-		col := tk.Position.Column
-		if start := ctx.keyPropertyColumnOn(tk.Position.Line); start != 0 && start < col {
+		col := int(tk.Position.Column)
+		if start := ctx.keyPropertyColumnOn(int(tk.Position.Line)); start != 0 && start < col {
 			col = start
 		}
 		s.lastDelimColumn = col
 		ctx.addTokenValue(tk)
 
-	case last == nil || last.Position.Line != s.line:
+	case last == nil || int(last.Position.Line) != s.line:
 		// Nothing precedes this ':' on its line, so the key was written above it after a '?'.
 		// The ':' is then where the entry sits, and the level its value is measured against.
 		// Left at the level of whatever the key held, most often a sequence entry, the value's own lines read as no
@@ -116,7 +116,7 @@ func (s *Scanner) scanMapKey(ctx *Context) (bool, error) {
 	}
 
 	tk := token.MakeMappingKey(s.pos())
-	s.lastDelimColumn = tk.Position.Column
+	s.lastDelimColumn = int(tk.Position.Column)
 	ctx.addTokenValue(tk)
 	s.progressColumn(ctx, 1)
 	ctx.clear()

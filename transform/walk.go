@@ -175,7 +175,7 @@ func (wk *walker) Enter(node ast.Node, at parser.Cursor) error {
 	if tk == nil {
 		return nil
 	}
-	from := int(tk.Position.Offset())
+	from := tk.Position.Offset()
 	if from < wk.prev {
 		// The parse reads a construct's own tokens again after everything
 		// under it, so a node may open behind where the output stands. It was
@@ -228,12 +228,12 @@ func (wk *walker) emitLabeled(node ast.Node) {
 	if tk == nil {
 		return
 	}
-	from := int(tk.Position.Offset())
+	from := tk.Position.Offset()
 	if _, named := wk.labels[from]; !named {
 		return
 	}
 	held, ok := wk.peek()
-	if !ok || int(held.Position.Offset()) != from {
+	if !ok || held.Position.Offset() != from {
 		return
 	}
 	wk.emit()
@@ -276,7 +276,7 @@ func (wk *walker) labelPart(part ast.Node, at parser.Cursor, role Role) {
 	if tk == nil {
 		return
 	}
-	from := int(tk.Position.Offset())
+	from := tk.Position.Offset()
 	if from < wk.prev {
 		return
 	}
@@ -297,7 +297,7 @@ func (wk *walker) labelPart(part ast.Node, at parser.Cursor, role Role) {
 func (wk *walker) emitThrough(upTo int) {
 	for wk.err == nil {
 		tk, ok := wk.peek()
-		if !ok || int(tk.Position.Offset()) > upTo {
+		if !ok || tk.Position.Offset() > upTo {
 			return
 		}
 		wk.emit()
@@ -308,7 +308,7 @@ func (wk *walker) emitThrough(upTo int) {
 func (wk *walker) flush(upTo int) {
 	for wk.err == nil {
 		tk, ok := wk.peek()
-		if !ok || int(tk.Position.Offset()) >= upTo {
+		if !ok || tk.Position.Offset() >= upTo {
 			return
 		}
 		wk.emit()
@@ -366,7 +366,7 @@ func implicitNull(n ast.Node, tk *token.Token) bool {
 // entry\n" is 37 bytes, and a scanner fault once had its scalar end at 56. extentLedger in
 // internal/ledgers/scanner/extent_test.go records any document that breaks the tiling.
 func (wk *walker) extent(tk *token.Token) (int, int, bool) {
-	from, end := int(tk.Position.Offset()), int(tk.EndOffset())
+	from, end := tk.Position.Offset(), tk.EndOffset()
 	if from < wk.prev || end < from || end > len(wk.src) {
 		wk.err = fmt.Errorf("the scanner placed %q at bytes %d to %d, outside the text from %d to %d still to write",
 			tk.Value, from, end, wk.prev, len(wk.src))

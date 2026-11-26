@@ -47,8 +47,8 @@ const byteOrderMarkText = string(byteOrderMark)
 // Converting the source to runes turns each such byte into U+FFFD, and by the time anything else looks, the byte has
 // gone unreported.
 // So this reads the string, where the rest of the scanner works on runes.
-func validateStream(text string) ([]int32, error) {
-	var held []int32
+func validateStream(text string) ([]int, error) {
+	var held []int
 	for from := 0; ; {
 		at := firstUnprintable(text[from:])
 		if at < 0 {
@@ -60,7 +60,7 @@ func validateStream(text string) ([]int32, error) {
 		if !quotedOnly(r) {
 			return nil, unprintableErr(text, at)
 		}
-		held = append(held, posInt(at))
+		held = append(held, at)
 		from = at + width
 	}
 }
@@ -233,7 +233,7 @@ func streamPosition(text string, i int) token.Position {
 		column++
 	}
 
-	return token.At(int32(line), int32(column), int32(offset), 0)
+	return token.At(line, column, offset, 0)
 }
 
 // printable is YAML 1.2's c-printable.

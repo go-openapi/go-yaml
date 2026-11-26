@@ -29,9 +29,9 @@ func isAlnum(b byte) bool {
 //
 // A word holding any byte over 0x7f ends the word-at-a-time part: the masks are only exact under 0x80, and a
 // multi-byte character is not a letter or a digit anyway, so the byte loop below finishes the run.
-func (s *Scanner) alnumRun(ctx *Context) int32 {
+func (s *Scanner) alnumRun(ctx *Context) int {
 	raw := ctx.raw
-	size := int32(len(raw))
+	size := len(raw)
 	i := ctx.idx
 
 	for i+8 <= size {
@@ -40,7 +40,7 @@ func (s *Scanner) alnumRun(ctx *Context) int32 {
 			break
 		}
 		if m := ^(swar.LetterMask(w) | swar.DigitMask(w)) & swar.HighBits; m != 0 {
-			return i + int32(swar.FirstByte(m)) - ctx.idx
+			return i + swar.FirstByte(m) - ctx.idx
 		}
 		i += 8
 	}
@@ -65,7 +65,7 @@ func (s *Scanner) alnumRun(ctx *Context) int32 {
 //   - updateIndent, reached with isFirstCharAtLine already false, sets the indent state to Keep and returns. Setting it
 //     once stands for setting it n times. The caller guarantees the flag is false: a tab in the leading whitespace
 //     falls to the default arm and leaves it standing, so after "\t" the run waits for the byte loop.
-func (s *Scanner) takeAlnumRun(ctx *Context, n int32) {
+func (s *Scanner) takeAlnumRun(ctx *Context, n int) {
 	if probe.Enabled {
 		probe.Count("scan.alnum.runs", 1)
 		probe.Count("scan.alnum.bytes", int64(n))
@@ -73,7 +73,7 @@ func (s *Scanner) takeAlnumRun(ctx *Context, n int32) {
 	}
 
 	ctx.buf = append(ctx.buf, ctx.raw[ctx.idx:ctx.idx+n]...)
-	ctx.notSpaceCharPos = int32(len(ctx.buf))
+	ctx.notSpaceCharPos = len(ctx.buf)
 	ctx.skipOrigin(n)
 	s.progressASCII(ctx, n)
 	s.indentState = IndentStateKeep

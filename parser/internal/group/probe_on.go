@@ -25,7 +25,7 @@ import (
 // No token the scanner reads has a negative sequence, and no group is built
 // with this type.
 const (
-	deadSeq   int32          = -0x0BAD
+	deadSeq   int            = -0x0BAD
 	deadGroup TokenGroupType = 0xFF
 )
 
@@ -87,7 +87,7 @@ func (g *TokenGroup) checkLive(at string) {
 		return
 	}
 	probe.Check("grouper.group.live", false, func() string {
-		var keyed int32
+		var keyed int
 		if g.a != nil {
 			keyed = g.a.seq
 		}

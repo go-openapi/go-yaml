@@ -17,7 +17,7 @@ to the stack and back on every call. At eleven registers, `NextToken` wrote 64 b
 |---|---|
 | `Value string` | 2 |
 | `Position` (`Line`, `Column`, and `where` packing `Offset` and `IndentNum`) | 3 |
-| `end int32` | 1 |
+| `end int` | 1 |
 | `spans uint64` | 1 |
 | `Type` | 1 |
 | total | 8 |

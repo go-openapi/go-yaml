@@ -23,7 +23,7 @@ type TapeToken struct {
 	// seq is where this token stands on the tape, counted from the first the
 	// scanner handed over. A walk tells the arena how far the descent has read
 	// with it, and the arena reclaims what is behind that.
-	seq int32
+	seq int
 }
 
 // NewSynthetic returns a token holding tk, for a token the parse makes rather
@@ -41,7 +41,7 @@ func NewSynthetic(tk *token.Token) *TapeToken {
 
 // Raw fills this token in from what the scanner read.
 func (t *TapeToken) Raw(tk token.Token, seq int) {
-	t.raw, t.Group, t.seq = tk, nil, int32(seq)
+	t.raw, t.Group, t.seq = tk, nil, seq
 }
 
 // Seq returns where this token stands on the tape.
@@ -51,7 +51,7 @@ func (t *TapeToken) Raw(tk token.Token, seq int) {
 // made from held -- which is where the group begins. Its own seq is therefore
 // the answer, and the group is only read where a token was made by the grouping
 // rather than drawn from the stream, which leaves seq at zero.
-func (t *TapeToken) Seq() int32 {
+func (t *TapeToken) Seq() int {
 	if t == nil {
 		return 0
 	}

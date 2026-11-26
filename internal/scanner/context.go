@@ -58,7 +58,7 @@ type Context struct {
 	lookback *token.Lookback
 	// quotedOnly holds the byte offsets, ascending, of the characters c-printable leaves out and a quoted scalar may
 	// hold, which validateStream found and no quoted scalar has claimed yet. See [Context.holdQuotedOnly].
-	quotedOnly []int32
+	quotedOnly []int
 
 	// The five fields below take one byte each and stand together, as in Scanner and MultiLineState. They cost the
 	// struct 32 bytes of padding scattered among the words above, and a Context lasts as long as its source.
@@ -115,17 +115,17 @@ func (c *Context) lastContentToken() *token.Token {
 // A quoted scalar is one token and starts where it stands.
 // An anchor, an alias or a tag may carry an empty scalar, and then the key is the run of them: the key of "&a : v"
 // begins at the '&', two tokens before the ':'.
-func (c *Context) keyStartColumn() int32 {
+func (c *Context) keyStartColumn() int {
 	if !c.hasLastTk {
 		return 0
 	}
 	last := &c.lastTk
 
-	column := last.Position.Column
+	column := int(last.Position.Column)
 	found := last.Type.Indicator() == token.QuotedScalarIndicator || isPropertyToken(last)
 
 	// The properties standing on the same line immediately before last are part of the same key.
-	if c.prevPropRun.length > 0 && c.prevPropRun.line == last.Position.Line {
+	if c.prevPropRun.length > 0 && c.prevPropRun.line == int(last.Position.Line) {
 		column = c.prevPropRun.startColumn
 		found = true
 	}
@@ -143,8 +143,8 @@ func (c *Context) keyStartColumn() int32 {
 // The line matters. A property on the line above belongs to the node under it and not to an entry further down:
 // "!<tag:clarkevans.com,2002:invoice>" over "  invoice: 34843" keys that entry at its own column, and measuring it
 // from the tag put every line of the document one level out.
-func (c *Context) keyPropertyColumnOn(line int32) int32 {
-	if !c.hasLastTk || c.lastTk.Position.Line != line {
+func (c *Context) keyPropertyColumnOn(line int) int {
+	if !c.hasLastTk || int(c.lastTk.Position.Line) != line {
 		return 0
 	}
 	// Both runs are read: the run ending at the token before the key holds an anchor and its name, and the run
@@ -161,7 +161,7 @@ func (c *Context) keyPropertyColumnOn(line int32) int32 {
 
 // reset points a context that Reset has cleared at src.
 func (c *Context) reset(src string) {
-	c.size = int32(len(src))
+	c.size = len(src)
 	c.src = src
 	// The bytes Init was handed, taken back out of the string it made of them. Neither hop copies, and both views stay
 	// valid for as long as the caller leaves src alone.
@@ -180,7 +180,7 @@ func (c *Context) getMultiLineState() *MultiLineState {
 //
 // lastDelimColumn holds the column of whatever encloses the block.
 // The header's indentation indicator counts from there: "|2" under a key at column 3 puts content at column 5.
-func (c *Context) setLiteral(lastDelimColumn int32, opt string) {
+func (c *Context) setLiteral(lastDelimColumn int, opt string) {
 	indent := firstLineIndentColumnByOpt(opt)
 	c.block = MultiLineState{
 		isLiteral:       true,
@@ -196,7 +196,7 @@ func (c *Context) setLiteral(lastDelimColumn int32, opt string) {
 
 // setFolded opens a block scalar that folds its line breaks into spaces, the ">" of [MultiLineState]. lastDelimColumn
 // is read as in setLiteral.
-func (c *Context) setFolded(lastDelimColumn int32, opt string) {
+func (c *Context) setFolded(lastDelimColumn int, opt string) {
 	indent := firstLineIndentColumnByOpt(opt)
 	c.block = MultiLineState{
 		opt:             opt,
@@ -253,7 +253,7 @@ func (c *Context) addTokenValue(tk token.Token) {
 // holdQuotedOnly drops from quotedOnly the offsets in [from, to), the text of the quoted scalar just read.
 //
 // An offset in front of from stands outside the scalar, and stays for addTokenValue to find.
-func (c *Context) holdQuotedOnly(from, to int32) {
+func (c *Context) holdQuotedOnly(from, to int) {
 	n := 0
 	for n < len(c.quotedOnly) && c.quotedOnly[n] < to {
 		if c.quotedOnly[n] < from {
@@ -270,11 +270,11 @@ func (c *Context) recordToken(tk *token.Token) {
 	switch {
 	case !isPropertyToken(tk) && !c.namesAnAnchor(tk):
 		c.propRun = propertyRun{}
-	case c.propRun.length > 0 && c.propRun.line == tk.Position.Line:
+	case c.propRun.length > 0 && c.propRun.line == int(tk.Position.Line):
 		c.propRun.length++
 	default:
 		c.propRun = propertyRun{
-			startColumn: tk.Position.Column, line: tk.Position.Line, length: 1, tabLed: c.tabLeadsAnEntryAt(tk),
+			startColumn: int(tk.Position.Column), line: int(tk.Position.Line), length: 1, tabLed: c.tabLeadsAnEntryAt(tk),
 		}
 	}
 
@@ -289,9 +289,9 @@ func (c *Context) recordToken(tk *token.Token) {
 // tabLed records a tab in the blanks before the run where a block entry needs indentation, as
 // [Context.tabLeadsAnEntryAt] reads them.
 type propertyRun struct {
-	startColumn int32
-	line        int32
-	length      int32
+	startColumn int
+	line        int
+	length      int
 	tabLed      bool
 }
 
@@ -300,7 +300,7 @@ type propertyRun struct {
 //
 // It runs before tk is recorded, so the last token is the one in front of tk.
 func (c *Context) tabLeadsAnEntryAt(tk *token.Token) bool {
-	from := int32(0)
+	from := int(0)
 	if c.hasLastTk && c.lastTk.Position.Line == tk.Position.Line {
 		if !isBlockIndicator(c.lastTk.Type) {
 			return false
@@ -324,8 +324,8 @@ func (c *Context) tabLeadsAnEntryAt(tk *token.Token) bool {
 // needs indentation.
 //
 // It reads the runs keyPropertyColumnOn reads, so it holds for an anchor followed by its name as for a lone tag.
-func (c *Context) keyPropertiesLedByATab(line int32) bool {
-	if !c.hasLastTk || c.lastTk.Position.Line != line {
+func (c *Context) keyPropertiesLedByATab(line int) bool {
+	if !c.hasLastTk || int(c.lastTk.Position.Line) != line {
 		return false
 	}
 	if c.prevPropRun.length > 0 && c.prevPropRun.line == line {
@@ -337,8 +337,8 @@ func (c *Context) keyPropertiesLedByATab(line int32) bool {
 
 // quotedKeyLedByATab reports whether the last token is a quoted scalar on line led by a tab, as [Context.ledByATab]
 // reads it.
-func (c *Context) quotedKeyLedByATab(line int32) bool {
-	if !c.hasLastTk || c.lastTk.Position.Line != line || c.lastTk.Type.Indicator() != token.QuotedScalarIndicator {
+func (c *Context) quotedKeyLedByATab(line int) bool {
+	if !c.hasLastTk || int(c.lastTk.Position.Line) != line || c.lastTk.Type.Indicator() != token.QuotedScalarIndicator {
 		return false
 	}
 
@@ -350,8 +350,8 @@ func (c *Context) quotedKeyLedByATab(line int32) bool {
 //
 // A tab after a property or after another node separates, so only a '-', a '?' or a ':' in front of the blanks counts:
 // "- &a\t'k' : 1" reads.
-func (c *Context) ledByATab(offset int32) bool {
-	i, tab := int(offset)-1, false
+func (c *Context) ledByATab(offset int) bool {
+	i, tab := offset-1, false
 	for ; i >= 0 && (c.src[i] == ' ' || c.src[i] == '\t'); i-- {
 		tab = tab || c.src[i] == '\t'
 	}
@@ -373,14 +373,14 @@ func (c *Context) removeRightSpaceFromBuf() {
 		if trimmed == len(c.originCopy) {
 			return
 		}
-		c.originTrimmed += int32(len(c.originCopy) - trimmed)
+		c.originTrimmed += len(c.originCopy) - trimmed
 		c.originCopy = c.originCopy[:trimmed]
 		c.buf = c.bufferedSrc()
 
 		return
 	}
 
-	end := min(c.originEnd, int32(len(c.src)))
+	end := min(c.originEnd, len(c.src))
 	for end > c.originStart && isOriginSpace(c.src[end-1]) {
 		end--
 	}
@@ -388,7 +388,7 @@ func (c *Context) removeRightSpaceFromBuf() {
 		return
 	}
 
-	c.originTrimmed = min(c.originEnd, int32(len(c.src))) - end
+	c.originTrimmed = min(c.originEnd, len(c.src)) - end
 	c.originCopy = append(c.originCopy[:0], c.src[c.originStart:end]...)
 	c.originCut = true
 	c.buf = c.bufferedSrc()
@@ -400,7 +400,7 @@ func (c *Context) removeRightSpaceFromBuf() {
 // scanNewLine calls it on the line a plain scalar starts on, with the cursor on the line break.
 // The scan loop puts a space or a tab that follows the scalar's text into the buffer and moves the column over it.
 func (c *Context) trailingBlankColumns() int {
-	return len(c.buf) - int(c.notSpaceCharPos)
+	return len(c.buf) - c.notSpaceCharPos
 }
 
 // isOriginSpace reports whether c is whitespace a line may end with.
@@ -421,11 +421,11 @@ func isOriginSpace(c byte) bool { return c == ' ' || c == '\t' }
 func (c *Context) opensADocumentPrefix() bool {
 	at := c.idx
 	for at > 0 && !isNewLineChar(rune(c.src[at-1])) {
-		if at < int32(len(byteOrderMarkText)) ||
-			c.src[at-int32(len(byteOrderMarkText)):at] != byteOrderMarkText {
+		if at < len(byteOrderMarkText) ||
+			c.src[at-len(byteOrderMarkText):at] != byteOrderMarkText {
 			return false
 		}
-		at -= int32(len(byteOrderMarkText))
+		at -= len(byteOrderMarkText)
 	}
 
 	return true
@@ -487,19 +487,19 @@ func (c *Context) bufferedSrc() []byte {
 			}
 		}
 		// The sharp one: a mark past the end of the buffer makes buf[:mark] a slice of what the last token left behind.
-		probe.Check("buf.notSpaceCharPos<=len(buf)", c.notSpaceCharPos <= int32(len(c.buf)), func() string {
+		probe.Check("buf.notSpaceCharPos<=len(buf)", c.notSpaceCharPos <= len(c.buf), func() string {
 			return fmt.Sprintf("mark=%d len(buf)=%d cap=%d multiline=%v origin=%q",
 				c.notSpaceCharPos, len(c.buf), cap(c.buf), c.isMultiLine(),
-				c.src[c.originStart:min(c.originEnd, int32(len(c.src)))])
+				c.src[c.originStart:min(c.originEnd, len(c.src))])
 		})
 
 		name := "buf.notSpaceCharPos==trimmed/plain"
 		if c.isMultiLine() {
 			name = "buf.notSpaceCharPos==trimmed/block"
 		}
-		probe.Check(name, c.notSpaceCharPos == int32(end), func() string {
+		probe.Check(name, c.notSpaceCharPos == end, func() string {
 			from := max(c.originStart-16, 0)
-			to := min(c.idx+16, int32(len(c.src)))
+			to := min(c.idx+16, len(c.src))
 			last := "none"
 			if c.hasLastTk {
 				last = c.lastTk.Type.String() + "=" + strconv.Quote(c.lastTk.Value)
@@ -508,7 +508,7 @@ func (c *Context) bufferedSrc() []byte {
 			return fmt.Sprintf(
 				"mark=%d trimmed=%d buf=%q multiline=%v lastTk=%s origin=%q around=%q",
 				c.notSpaceCharPos, end, string(c.buf), c.isMultiLine(), last,
-				c.src[c.originStart:min(c.originEnd, int32(len(c.src)))], c.src[from:to])
+				c.src[c.originStart:min(c.originEnd, len(c.src))], c.src[from:to])
 		})
 	}
 
@@ -552,7 +552,7 @@ func chomp(src []byte, mstate *MultiLineState) []byte {
 //
 // The token is returned by value: a caller that hands it straight to addToken keeps it off the heap, since neither
 // addToken nor setTokenTypeByPrevTag holds on to it.
-func (c *Context) bufferedToken(pos token.Position, endLine int32) (token.Token, bool) {
+func (c *Context) bufferedToken(pos token.Position, endLine int) (token.Token, bool) {
 	if c.idx == 0 {
 		return token.Token{}, false
 	}
@@ -617,7 +617,7 @@ func (c *Context) bufferedToken(pos token.Position, endLine int32) (token.Token,
 	//
 	// originTrimmed puts back the blanks the cuts took off the end: they were read, so the next token
 	// begins after them, and leaving them out opened a hole between the two extents.
-	ext.End = c.originStart + int32(len(origin)) + c.originTrimmed
+	ext.End = c.originStart + len(origin) + c.originTrimmed
 
 	// A quoted or folded scalar is a string whatever it spells.
 	// Only text written plainly is read for a keyword or a number.
@@ -631,7 +631,7 @@ func (c *Context) bufferedToken(pos token.Position, endLine int32) (token.Token,
 	if probe.Enabled {
 		// The extent the scanner worked out, against the one read back from the origin, which token.Make would have used.
 		want := token.MeasureOrigin(origin, pos)
-		want.End = c.originStart + int32(len(origin)) + c.originTrimmed
+		want.End = c.originStart + len(origin) + c.originTrimmed
 		probe.Check("token.extentMatchesTheOrigin", ext == want, func() string {
 			return fmt.Sprintf("%s %q: scanner gives %+v, the origin gives %+v", typ, value, ext, want)
 		})
@@ -749,10 +749,10 @@ func isPropertyToken(tk *token.Token) bool {
 // c-indentation-indicator is one digit, 1 to 9, and validateMultiLineHeaderOption has already refused an option holding
 // anything else or holding two of them.
 // So this scans for the digit rather than parsing the option. See the README for what strconv.ParseInt cost here.
-func firstLineIndentColumnByOpt(opt string) int32 {
+func firstLineIndentColumnByOpt(opt string) int {
 	for i := range len(opt) {
 		if c := opt[i]; c >= '1' && c <= '9' {
-			return int32(c - '0')
+			return int(c - '0')
 		}
 	}
 
@@ -760,9 +760,9 @@ func firstLineIndentColumnByOpt(opt string) int32 {
 }
 
 // leadingSpace counts the whitespace bytes buf opens with.
-func leadingSpace(buf string) int32 {
-	var i int32
-	for i < int32(len(buf)) {
+func leadingSpace(buf string) int {
+	var i int
+	for i < len(buf) {
 		switch buf[i] {
 		case ' ', '\t', '\r', '\n':
 			i++

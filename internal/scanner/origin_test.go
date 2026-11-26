@@ -93,7 +93,7 @@ func TestADoubleQuotedScalarReachesItsClosingQuote(t *testing.T) {
 					continue
 				}
 				found = true
-				from, to := int(tk.Position.Offset()), int(tk.EndOffset())
+				from, to := tk.Position.Offset(), tk.EndOffset()
 				require.LessOrEqualf(t, to, len(tc.src), "%q ends past the source", tc.src)
 				assert.Equalf(t, tc.quoted, tc.src[from:to], "%q", tc.src)
 			}
@@ -129,7 +129,7 @@ func TestAPlainScalarContinuedByADashStartsWhereItsTextDoes(t *testing.T) {
 					continue
 				}
 				found = true
-				from, to := int(tk.Position.Offset()), int(tk.EndOffset())
+				from, to := tk.Position.Offset(), tk.EndOffset()
 				require.LessOrEqualf(t, to, len(tc.src), "%q ends past the source", tc.src)
 				require.LessOrEqualf(t, from, to, "%q", tc.src)
 				assert.Equalf(t, tc.text, tc.src[from:to], "%q", tc.src)
@@ -158,7 +158,7 @@ func TestATokenCutAtACRLFEndsBeforeIt(t *testing.T) {
 			require.Len(t, cr, len(lf))
 			for i := range lf {
 				want := strings.ReplaceAll(src[lf[i].Position.Offset():lf[i].EndOffset()], "\n", "\r\n")
-				require.LessOrEqualf(t, int(cr[i].EndOffset()), len(crlf), "%v %q ends past the source", cr[i].Type, cr[i].Value)
+				require.LessOrEqualf(t, cr[i].EndOffset(), len(crlf), "%v %q ends past the source", cr[i].Type, cr[i].Value)
 				assert.Equalf(t, want, crlf[cr[i].Position.Offset():cr[i].EndOffset()], "%v %q", cr[i].Type, cr[i].Value)
 			}
 
@@ -186,7 +186,7 @@ func assertColumnsAddressTheToken(t *testing.T, src string) {
 	lineStart[len(src)] = start
 
 	for tk := range s.Tokens() {
-		at := int(tk.Position.Offset())
+		at := tk.Position.Offset()
 		if at < 0 || at > len(src) {
 			continue // an extent that leaves the source: extentLedger's ground, not this one
 		}
@@ -248,7 +248,7 @@ func assertOriginsTile(t *testing.T, src string) {
 
 	prev := 0
 	for tk := range s.Tokens() {
-		end := int(tk.EndOffset())
+		end := tk.EndOffset()
 		require.GreaterOrEqualf(t, end, prev,
 			"a %s token ends before the one before it, at %d after %d", tk.Type, end, prev)
 		require.LessOrEqualf(t, end, len(src),

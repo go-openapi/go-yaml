@@ -39,7 +39,7 @@ func TestTapeTokenAnswersOnANilReceiver(t *testing.T) {
 
 	var nilToken *group.TapeToken
 
-	assert.Equal(t, int32(0), nilToken.Seq())
+	assert.Equal(t, 0, nilToken.Seq())
 	assert.Nil(t, nilToken.RawToken())
 	assert.Equal(t, token.Type(0), nilToken.Type())
 	assert.Equal(t, group.TokenGroupNone, nilToken.GroupType())
@@ -54,7 +54,7 @@ func TestTapeTokenReadsWhatTheScannerRead(t *testing.T) {
 
 	tk := tapeToken("a", token.StringType, 3, 5, 7)
 
-	assert.Equal(t, int32(7), tk.Seq())
+	assert.Equal(t, 7, tk.Seq())
 	assert.Equal(t, token.StringType, tk.Type())
 	assert.Equal(t, group.TokenGroupNone, tk.GroupType())
 	assert.Equal(t, 3, tk.Line())
@@ -79,7 +79,7 @@ func TestNewSyntheticCopiesTheToken(t *testing.T) {
 	source.Value = "overwritten"
 
 	assert.Equal(t, "null", tk.RawToken().Value, "the token was copied, not pointed at")
-	assert.Equal(t, int32(0), tk.Seq(), "a synthetic token stands nowhere on the tape")
+	assert.Equal(t, 0, tk.Seq(), "a synthetic token stands nowhere on the tape")
 }
 
 // TestRawClearsTheGroup checks that filling a token in from the scanner drops
@@ -101,7 +101,7 @@ func TestRawClearsTheGroup(t *testing.T) {
 	assert.Nil(t, tk.Group)
 	assert.Equal(t, group.TokenGroupNone, tk.GroupType())
 	assert.Equal(t, token.IntegerType, tk.Type())
-	assert.Equal(t, int32(4), tk.Seq())
+	assert.Equal(t, 4, tk.Seq())
 }
 
 // TestAGroupAnswersBeforeTheRawToken checks the precedence [group.TapeToken]
@@ -134,11 +134,11 @@ func TestSeqOfAGroupTokenIsWhereTheGroupBegins(t *testing.T) {
 	made := new(group.TapeToken) // no Raw call, so seq stays 0
 	made.Group = group.NewTokenGroup(group.TokenGroupMapKey, []*group.TapeToken{first, second})
 
-	assert.Equal(t, int32(11), made.Seq())
+	assert.Equal(t, 11, made.Seq())
 
 	drawn := tapeToken("k", token.StringType, 1, 1, 3)
 	drawn.Group = made.Group
-	assert.Equal(t, int32(3), drawn.Seq(), "a token drawn from the stream keeps its own place")
+	assert.Equal(t, 3, drawn.Seq(), "a token drawn from the stream keeps its own place")
 }
 
 // TestSetGroupTypeNeedsAGroup checks that retyping a token that never became a

@@ -24,9 +24,9 @@ func TestRecycleTakesBackEveryChunk(t *testing.T) {
 	a := arena.Run[cell]{Size: 2}
 
 	held := make(map[*cell]bool, taken)
-	for seq := range int32(taken) {
+	for seq := range int(taken) {
 		c := a.Take(seq + 1)
-		*c = cell{n: int(seq), text: "stale"}
+		*c = cell{n: seq, text: "stale"}
 		held[c] = true
 	}
 
@@ -34,7 +34,7 @@ func TestRecycleTakesBackEveryChunk(t *testing.T) {
 	a.Recycle(func(cells []cell) { poisoned += len(cells) })
 	assert.Equal(t, taken, poisoned)
 
-	for seq := range int32(taken) {
+	for seq := range int(taken) {
 		c := a.Take(seq + 1)
 		assert.Equal(t, cell{}, *c)
 		if !probe.ReuseReleased {

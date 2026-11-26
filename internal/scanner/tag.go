@@ -44,7 +44,7 @@ func (s *Scanner) scanTag(ctx *Context) (bool, error) {
 
 	// idx counts bytes into the source; progress counts the characters the column has to advance by, which is not the same
 	// thing.
-	var progress int32
+	var progress int
 	for idx, c := range ctx.src[ctx.idx:] {
 		progress++
 		if verbatim {
@@ -63,20 +63,20 @@ func (s *Scanner) scanTag(ctx *Context) (bool, error) {
 			// refused as "found invalid tag character". The grammar reads it,
 			// and so do go.yaml.in/yaml/v3 v3.0.5 and libfyaml 1.0.0b1.
 			ctx.addOriginBuf(c)
-			value := ctx.source(ctx.idx-1, ctx.idx+int32(idx))
+			value := ctx.source(ctx.idx-1, ctx.idx+idx)
 			if err := s.addTag(ctx, value, tagPos); err != nil {
 				return false, err
 			}
-			s.progressColumn(ctx, int32(utf8.RuneCountInString(value)))
+			s.progressColumn(ctx, utf8.RuneCountInString(value))
 			ctx.clear()
 			return true, nil
 		case ',':
 			if s.startedFlowSequenceNum > 0 || s.startedFlowMapNum > 0 {
-				value := ctx.source(ctx.idx-1, ctx.idx+int32(idx))
+				value := ctx.source(ctx.idx-1, ctx.idx+idx)
 				if err := s.addTag(ctx, value, tagPos); err != nil {
 					return false, err
 				}
-				s.progressColumn(ctx, int32(utf8.RuneCountInString(value))-1) // progress column before collect-entry for scanning it at scanFlowEntry function.
+				s.progressColumn(ctx, utf8.RuneCountInString(value)-1) // progress column before collect-entry for scanning it at scanFlowEntry function.
 				ctx.clear()
 				return true, nil
 			}
@@ -88,22 +88,22 @@ func (s *Scanner) scanTag(ctx *Context) (bool, error) {
 			return false, ErrInvalidToken(fmt.Sprintf("a tag cannot hold %q", c), token.Invalid(ctx.origin(), s.pos()))
 		case '\n', '\r':
 			ctx.addOriginBuf(c)
-			value := ctx.source(ctx.idx-1, ctx.idx+int32(idx))
+			value := ctx.source(ctx.idx-1, ctx.idx+idx)
 			if err := s.addTag(ctx, value, tagPos); err != nil {
 				return false, err
 			}
-			s.progressColumn(ctx, int32(utf8.RuneCountInString(value))-1) // progress column before new-line-char for scanning new-line-char at scanNewLine function.
+			s.progressColumn(ctx, utf8.RuneCountInString(value)-1) // progress column before new-line-char for scanning new-line-char at scanNewLine function.
 			ctx.clear()
 			return true, nil
 		case '}', ']':
 			if s.startedFlowSequenceNum > 0 || s.startedFlowMapNum > 0 {
 				// The closer ends the collection the tag stands in, so it ends the tag: "[!]" is the non-specific tag on the empty
 				// node and not a tag whose name is "]".
-				value := ctx.source(ctx.idx-1, ctx.idx+int32(idx))
+				value := ctx.source(ctx.idx-1, ctx.idx+idx)
 				if err := s.addTag(ctx, value, tagPos); err != nil {
 					return false, err
 				}
-				s.progressColumn(ctx, int32(utf8.RuneCountInString(value))-1) // progress column before the closer so it is scanned on its own
+				s.progressColumn(ctx, utf8.RuneCountInString(value)-1) // progress column before the closer so it is scanned on its own
 
 				ctx.clear()
 
@@ -131,7 +131,7 @@ func (s *Scanner) scanTag(ctx *Context) (bool, error) {
 	// "k: !!str" with no closing break is a document, and the loop above only
 	// ever emits on the character that ends the tag, so falling out of it here
 	// dropped the token and the tag with it.
-	value := ctx.source(ctx.idx-1, int32(len(ctx.src)))
+	value := ctx.source(ctx.idx-1, len(ctx.src))
 	if err := s.addTag(ctx, value, tagPos); err != nil {
 		return false, err
 	}

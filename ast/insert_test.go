@@ -435,8 +435,8 @@ func firstPlainMapping(n ast.Node, src string) *ast.MappingNode {
 }
 
 // indentBefore is what stands between the last line break and at.
-func indentBefore(src string, at int32) string {
-	end := min(int(at), len(src))
+func indentBefore(src string, at int) string {
+	end := min(at, len(src))
 	for i := end - 1; i >= 0; i-- {
 		if src[i] == '\n' {
 			return src[i+1 : end]

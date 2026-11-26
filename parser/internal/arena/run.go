@@ -51,7 +51,7 @@ type runChunk[T any] struct {
 	//
 	// checked only moves forward, so the chunk costs one walk of its cells over
 	// its whole life rather than one per sweep.
-	seqs    []int32
+	seqs    []int
 	checked int
 	// unknown says a cell here stands for a token whose sequence could not be
 	// read. tapeToken.Seq answers 0 both for the first token of a document and
@@ -61,7 +61,7 @@ type runChunk[T any] struct {
 }
 
 // Take returns a cell for the token standing at seq.
-func (a *Run[T]) Take(seq int32) *T {
+func (a *Run[T]) Take(seq int) *T {
 	if a.filling == nil || a.filling.used == len(a.filling.cells) {
 		a.advance()
 	}
@@ -101,7 +101,7 @@ func (a *Run[T]) advance() {
 
 	a.filling = &runChunk[T]{
 		cells: make([]T, a.blockSize()),
-		seqs:  make([]int32, a.blockSize()),
+		seqs:  make([]int, a.blockSize()),
 	}
 }
 
@@ -120,7 +120,7 @@ func (a *Run[T]) blockSize() int {
 // property of a chunk on its own, and the one chunk holding a cell whose
 // sequence could not be read would otherwise keep every chunk behind it. The
 // list is short once this is working, which is the point of it.
-func (a *Run[T]) Release(dead func(seq int32) bool, poison func([]T)) {
+func (a *Run[T]) Release(dead func(seq int) bool, poison func([]T)) {
 	var kept int
 	for _, c := range a.full {
 		if c.unknown || !c.finished(dead) {
@@ -160,7 +160,7 @@ func (a *Run[T]) Recycle(poison func([]T)) {
 
 // finished reports whether every cell of the chunk is done with, moving the
 // cursor over the ones that are.
-func (c *runChunk[T]) finished(dead func(seq int32) bool) bool {
+func (c *runChunk[T]) finished(dead func(seq int) bool) bool {
 	for c.checked < c.used && dead(c.seqs[c.checked]) {
 		c.checked++
 	}
