@@ -230,8 +230,11 @@ func TestTheParserVocabularyGapIsMeasured(t *testing.T) {
 	// on an '&' or a '*' with no name, and `undefined directive value`.
 	//
 	// It came down to 25 on 2026-11-26, over the conformance-suites v0.0.3
-	// corpus.
-	const ceiling = 25
+	// corpus, and to 22 the same day when parseAnchorName, parseAlias and
+	// parseDirectiveName dropped their `... name is not scalar value` checks:
+	// parseScalarValue returns a node or an error, so none of the three could
+	// fire.
+	const ceiling = 22
 
 	if len(unreached) > ceiling {
 		t.Errorf("%d templates unreached, and the ceiling is %d: either a new message arrived with no "+

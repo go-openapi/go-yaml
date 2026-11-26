@@ -150,9 +150,6 @@ func (p *Parser) parseDirectiveName(ctx context) (*ast.DirectiveNode, error) {
 	if err != nil {
 		return nil, err
 	}
-	if directiveName == nil {
-		return nil, yamlerrors.NewSyntax("unexpected directive. directive name is not scalar value", ctx.currentToken().RawToken())
-	}
 	directive.Name = directiveName
 	return directive, nil
 }

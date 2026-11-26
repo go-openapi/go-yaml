@@ -435,9 +435,6 @@ func (p *Parser) parseAnchorName(ctx context) (*ast.AnchorNode, error) {
 	if err != nil {
 		return nil, err
 	}
-	if anchorName == nil {
-		return nil, yamlerrors.NewSyntax("unexpected anchor. anchor name is not scalar value", ctx.currentToken().RawToken())
-	}
 	anchor.Name = anchorName
 	// The name opens here, before its node is read, so an alias inside that node names it: "&x [ *x ]" builds a cycle.
 	p.anchors.openName(anchorNameOf(anchorName), anchor)
@@ -458,9 +455,6 @@ func (p *Parser) parseAlias(ctx context) (*ast.AliasNode, error) {
 	aliasName, err := p.parseScalarValue(ctx, ctx.currentToken())
 	if err != nil {
 		return nil, err
-	}
-	if aliasName == nil {
-		return nil, yamlerrors.NewSyntax("unexpected alias. alias name is not scalar value", ctx.currentToken().RawToken())
 	}
 	alias.Value = aliasName
 

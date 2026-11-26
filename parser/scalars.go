@@ -74,6 +74,9 @@ func (p *Parser) parseTokenNode(ctx context, tk *group.TapeToken) (ast.Node, err
 	return p.resolveTimestamp(ctx, tk, node), nil
 }
 
+// parseScalarValue builds the scalar node tk opens.
+//
+// It returns a node or an error, never neither, so a caller has no nil node to check for.
 func (p *Parser) parseScalarValue(ctx context, tk *group.TapeToken) (ast.ScalarNode, error) {
 	if tk.Group != nil {
 		switch tk.GroupType() {
