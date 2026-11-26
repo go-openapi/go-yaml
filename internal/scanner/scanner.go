@@ -789,7 +789,8 @@ func (s *Scanner) progress(ctx *Context, num int32) {
 //
 // A "<<" after the text of a plain scalar belongs to that text: "a<<: 1" is the key "a<<", and "x <<: 1" the key "x <<".
 func (s *Scanner) scanMergeKey(ctx *Context) bool {
-	if !ctx.isMergeKey() || ctx.existsBuffer() {
+	if !ctx.isMergeKey() || ctx.existsBuffer() || s.inAnchorName('<') {
+		// After '&' or '*', "<<" opens the name: "&<<: x" anchors x under the name "<<:".
 		return false
 	}
 
@@ -802,7 +803,8 @@ func (s *Scanner) scanMergeKey(ctx *Context) bool {
 }
 
 func (s *Scanner) scanSequence(ctx *Context) (bool, error) {
-	if ctx.existsBuffer() {
+	if ctx.existsBuffer() || s.inAnchorName('-') {
+		// After '&' or '*', a '-' is the name's first character: "&- x" anchors x under the name "-".
 		return false, nil
 	}
 

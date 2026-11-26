@@ -21,7 +21,7 @@ import "github.com/go-openapi/go-yaml/token"
 // Outside a flow collection the '-' is a sequence entry, so this returns nil there and the entry scan claims it.
 // Inside one, a '-' before a blank was left to that scan: "[- a]" read as [[a]] and "{a: -" over "}" as {a: [null]}.
 func (s *Scanner) scanFlowDash(ctx *Context) error {
-	if ctx.existsBuffer() || !s.isFlowMode() {
+	if ctx.existsBuffer() || !s.isFlowMode() || s.inAnchorName('-') {
 		return nil
 	}
 

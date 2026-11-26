@@ -155,6 +155,8 @@ func TestParseAnchorNamesTakeEveryAnchorChar(t *testing.T) {
 			"@", "#", `"`, "'", "`", "%", "@x", "x@", ":",
 			// Each of these opens a tag, a block scalar, an anchor or an alias elsewhere.
 			"!", "!x", "!!", "!<!foo>", "|", "|x", ">", ">x", "&", "&x", "*", "*x",
+			// These open a sequence entry, an explicit key or a merge key elsewhere.
+			"-", "-x", "?", "?x", "<<", "<<:",
 		} {
 			source := "a: &" + name + " 1\nb: *" + name + "\n"
 
@@ -165,6 +167,19 @@ func TestParseAnchorNamesTakeEveryAnchorChar(t *testing.T) {
 			var got any
 			require.NoErrorf(t, yaml.Unmarshal([]byte(source), &got), "%q", source)
 			assert.Equal(t, map[string]any{"a": uint64(1), "b": uint64(1)}, got, "%q", source)
+		}
+	})
+
+	t.Run("in a flow collection and in a block sequence", func(t *testing.T) {
+		for source, want := range map[string]any{
+			"[&- x, *-]\n":       []any{"x", "x"},
+			"{&? k: v, j: *?}\n": map[string]any{"k": "v", "j": "k"},
+			"- &- x\n- *-\n":     []any{"x", "x"},
+			"- &? x\n- *?\n":     []any{"x", "x"},
+		} {
+			var got any
+			require.NoErrorf(t, yaml.Unmarshal([]byte(source), &got), "%q", source)
+			assert.Equal(t, want, got, "%q", source)
 		}
 	})
 

@@ -91,7 +91,8 @@ func (s *Scanner) scanMapDelim(ctx *Context) (bool, error) {
 }
 
 func (s *Scanner) scanMapKey(ctx *Context) (bool, error) {
-	if ctx.existsBuffer() {
+	if ctx.existsBuffer() || s.inAnchorName('?') {
+		// After '&' or '*', a '?' is the name's first character: "&? x" anchors x under the name "?".
 		return false, nil
 	}
 
