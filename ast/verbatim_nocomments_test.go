@@ -56,7 +56,9 @@ import (
 // seeds 3272, 11972, 14525, 15706 and 16559 each hold one, a multi-line implicit key, and
 // yaml/yaml-reference-parser, libfyaml and go.yaml.in/yaml/v3 refuse each of them. The 16620 included one seed that a
 // tag-led key after an empty nested value had kept out.
-const withoutCommentsDocuments = 16615
+//
+// 16615 -> 16591 on 2026-11-26 with conformance-suites v0.0.3, whose corpus holds 210 fewer cases. None differs.
+const withoutCommentsDocuments = 16591
 
 func TestVerbatimRebuildsTheCorpusParsedWithoutComments(t *testing.T) {
 	t.Parallel()

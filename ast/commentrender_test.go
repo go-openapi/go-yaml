@@ -29,7 +29,9 @@ import (
 //     comment text and leave a "#" elsewhere opening a comment that did not.
 //
 // 6293 -> 9330 on 2026-11-23 with yamlcorpus/48, once a comment on a "?" line over a commented key stopped being lost.
-const commentedDocuments = 9330
+//
+// 9330 -> 9326 on 2026-11-26 with conformance-suites v0.0.3, whose corpus holds 210 fewer cases. None differs.
+const commentedDocuments = 9326
 
 // TestRenderingKeepsTheCommentsItWasGiven counts the comment tokens a document
 // holds, renders it, and counts them again.

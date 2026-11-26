@@ -42,7 +42,7 @@ type disagreement struct {
 // TestStateLedger checks this before it compares anything, so a regenerated corpus fails saying to re-baseline
 // instead of accusing the scanner. It earned that on 2026-09-10: 014db89 regenerated the corpus for two 1.1
 // number spellings, seven counts moved at once, and the check named the corpus instead of the scanner.
-const corpusFingerprint = "c335bdf21dab01b8"
+const corpusFingerprint = "04efa7cbc5970dff"
 
 // stateLedger records how often two pieces of the scanner's state that look like the same number disagree, over the
 // fuzz corpus.
@@ -117,12 +117,15 @@ var stateLedger = map[string]disagreement{ //nolint:gochecknoglobals // ok to st
 	//
 	//   - 925f98fd, a leading tab in a block scalar read as content: +1 / +2 / +1 / 0 / 0;
 	//   - b026af07, a tab in front of a quoted or flow key in an entry rejected: -31 / -31 / 0 / -5 / -3.
-	"buf.notSpaceCharPos==trimmed/plain": {0, 756111},
-	"buf.notSpaceCharPos==trimmed/block": {0, 3796},
+	//
+	// Re-measured the same day over conformance-suites v0.0.3, still all at 0: -221 / -216 / +5 / +1 / -101. The new
+	// corpus holds 210 fewer cases, most of them mutants that begin with a byte order mark.
+	"buf.notSpaceCharPos==trimmed/plain": {0, 755890},
+	"buf.notSpaceCharPos==trimmed/block": {0, 3801},
 
 	// A mark past the end of the buffer made bufferedSrc slice a byte the last token wrote.
 	// Fixed; nothing may raise this.
-	"buf.notSpaceCharPos<=len(buf)": {0, 759907},
+	"buf.notSpaceCharPos<=len(buf)": {0, 759691},
 
 	// Both entries count a space opening a line where indentNum has stopped tracking the column, the second where a
 	// tab stands in the run before it. Nothing may raise either.
@@ -135,13 +138,13 @@ var stateLedger = map[string]disagreement{ //nolint:gochecknoglobals // ok to st
 	// marked as opening: past the closing quote, the space before "# lala" in "a: \"double" over "  quotes\" # lala"
 	// counted as indentation.
 	"indent.indentNum==column-1/tab":    {0, 8},
-	"indent.indentNum==column-1/spaces": {0, 99955},
+	"indent.indentNum==column-1/spaces": {0, 99956},
 
 	// bufferedToken assembles a token's extent from what the scanner already holds: where the origin began, how long
 	// it is, and the line the text ends on. It does not read the origin back to work the extent out.
 	// This compares that extent against token.MeasureOrigin's, which token.Make used.
 	// Nothing may raise it: a disagreement is a token pointing at the wrong stretch of source.
-	"token.extentMatchesTheOrigin": {0, 116453},
+	"token.extentMatchesTheOrigin": {0, 116352},
 }
 
 // TestStateLedger holds the scanner's state pairs to what they were measured at.
