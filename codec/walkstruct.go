@@ -1673,6 +1673,10 @@ func readWalkable(t reflect.Type, seen map[reflect.Type]bool, mode structfields.
 				// The field reads the whole mapping, which the walk passes entry by entry.
 				return false
 			}
+			if sf.IsString {
+				// The tree decoder reads a number held in a string, and rejects a plain one.
+				return false
+			}
 			if sf.IsInline && structfields.InlineTakesUnclaimedEntries(ft) {
 				// The walk meets an entry once and must place it then, through
 				// an index path named in structfields.Fields.flat. A map has no

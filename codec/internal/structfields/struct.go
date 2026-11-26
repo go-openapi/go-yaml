@@ -90,6 +90,9 @@ type Info struct {
 	IsOmitZero   bool
 	IsFlow       bool
 	IsInline     bool
+	// IsString records `json:",string"`: the field's number is written inside a string, as encoding/json/v2 writes it.
+	// Only a `json` tag sets it. [StringTakesNumber] tells whether the field's type allows it.
+	IsString bool
 	// namedBy records which tag wrote RenderName, for the conflict rule.
 	namedBy tagSource
 }
@@ -294,9 +297,8 @@ func readYAMLFlags(sf *Info, tag string, flags []string) error {
 // readJSONFlags applies the flags a `json` tag may carry, and ignores the rest
 // as encoding/json ignores one it does not define.
 //
-// encoding/json has three: `omitempty`, `omitzero` and `string`. The first two
-// mean here what they mean there. `string` is not supported yet:
-// a number field reads both a number and a quoted number, where encoding/json reads only the quoted one.
+// encoding/json has three: `omitempty`, `omitzero` and `string`. `omitzero` and `string` mean here what they mean in
+// encoding/json/v2.
 func readJSONFlags(sf *Info, flags []string) {
 	for _, opt := range flags {
 		switch opt {
@@ -304,7 +306,25 @@ func readJSONFlags(sf *Info, flags []string) {
 			sf.IsOmitEmpty = true
 		case "omitzero":
 			sf.IsOmitZero = true
+		case "string":
+			sf.IsString = true
 		}
+	}
+}
+
+// StringTakesNumber reports whether `json:",string"` applies to a field of type t: a number, or a pointer to one
+// at any depth, as in encoding/json/v2. v2 also rejects the option on a bool or a string, which v1 accepted.
+func StringTakesNumber(t reflect.Type) bool {
+	for t.Kind() == reflect.Pointer {
+		t = t.Elem()
+	}
+	switch t.Kind() {
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
+		reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr,
+		reflect.Float32, reflect.Float64:
+		return true
+	default:
+		return false
 	}
 }
 

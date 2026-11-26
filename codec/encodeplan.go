@@ -62,7 +62,7 @@ func planOf(structType reflect.Type, mode structfields.Mode) (*structPlan, error
 			index:    i,
 			info:     info,
 			plainKey: !token.IsNeedQuoted(info.RenderName) && !strings.ContainsAny(info.RenderName, "]},'\"\n:"),
-			streamed: info.AliasName == "" && info.AnchorName == "" && !info.IsAutoAnchor && !info.IsInline && !info.IsFlow,
+			streamed: info.AliasName == "" && info.AnchorName == "" && !info.IsAutoAnchor && !info.IsInline && !info.IsFlow && !info.IsString,
 		})
 		plan.inlineAnchor = plan.inlineAnchor || (info.IsInline && info.IsAutoAnchor)
 	}

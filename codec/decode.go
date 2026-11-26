@@ -2508,6 +2508,11 @@ func (d *Decoder) decodeStruct(dst reflect.Value, src ast.Node) error {
 			return nil
 		}
 
+		if found.sf.IsString && d.decodesStringField(found.sf, fieldValue, valueNode, &foundErr,
+			func(*yamlerrors.Error) string { return found.name(structType) }) {
+			return nil
+		}
+
 		prevEntry := d.enterEntry(keyNode.GetToken())
 		newFieldValue, err := d.createDecodedNewValue(fieldValue.Type(), fieldValue, valueNode)
 		d.entryKey = prevEntry

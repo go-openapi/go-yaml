@@ -1275,7 +1275,15 @@ func (e *Encoder) structField(
 		*ve = *e
 		ve.isFlowStyle = true
 	}
-	encoded, err := ve.encodeValue(fieldValue, column)
+	var (
+		encoded ast.Node
+		err     error
+	)
+	if sf.IsString {
+		encoded, err = ve.encodeStringNumber(sf, fieldValue, column)
+	} else {
+		encoded, err = ve.encodeValue(fieldValue, column)
+	}
 	if err != nil {
 		return out, false, err
 	}

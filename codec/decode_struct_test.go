@@ -1561,7 +1561,7 @@ func TestTheSupportedTagFlagsStillRead(t *testing.T) {
 // not, because encoding/json ignores a flag it does not know.
 func TestAnUnknownFlagInAJSONTagIsIgnored(t *testing.T) {
 	type jsonFlagged struct {
-		A string `json:"a,string"`
+		A string `json:"a,nosuchflag"` //nolint:staticcheck // the unknown flag is the subject of the test
 	}
 
 	var v jsonFlagged

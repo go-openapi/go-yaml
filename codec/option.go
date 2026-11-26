@@ -222,6 +222,9 @@ func UseStringKeys() DecodeOption {
 // A mapping key matches a field name exactly or matches nothing, in every mode, as in go.yaml.in/yaml/v3 and
 // encoding/json/v2. encoding/json's v1 also accepted a key that differs from a name only in case; this codec does not.
 //
+// The `json` tag's `,string` option reads a number from a string, as encoding/json/v2 does: `n: "12"` fills an int
+// and `n: 12` is rejected. It applies to a number or a pointer to one, and fails the decode of any other field.
+//
 // A field that neither tag names keeps its lowercased Go name. [UseInferredNames] changes that name.
 //
 // [WriteJSONTags] does the same for the encoder. Pass both, and a value read from a document is written back under
