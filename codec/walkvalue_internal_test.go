@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"io"
 	"reflect"
-	"strings"
 	"testing"
 
 	"github.com/go-openapi/testify/v2/assert"
@@ -109,102 +108,11 @@ func corpusSources() []corpusSource {
 	return srcs
 }
 
-// directiveNamedLikeAnAnchor reports whether src opens a line with a directive
-// whose name begins with "&". 6.8 puts "&" in ns-char, so the name is
-// well-formed and the directive is one an implementation ignores.
-func directiveNamedLikeAnAnchor(src string) bool {
-	// Split on both breaks and take a byte order mark off each line. 5.4 makes
-	// a lone "\r" a line break as much as "\n" is, and 5.2 puts a mark in front
-	// of the directives -- so a split on "\n" alone read
-	// "\ufeff%&YAML 1.2\r---\r!foo \"\"\r" as a single line beginning with the
-	// mark, found no directive in it, and let the document through.
-	for line := range strings.FieldsFuncSeq(src, isBreak) {
-		if strings.HasPrefix(strings.TrimPrefix(line, "\ufeff"), "%&") {
-			return true
-		}
-	}
-
-	return false
-}
-
-// mergesNothing reports whether the document writes a "<<" entry with nothing
-// after the colon on its line.
-//
-// The value may still arrive on a following line, so this over-matches -- and
-// deliberately: what it guards is a disagreement between two decode paths, and
-// a document wrongly held out here is one the rest of the suite still scores.
-// A predicate that under-matched would let the disagreement through.
-func mergesNothing(src string) bool {
-	for line := range strings.FieldsFuncSeq(src, isBreak) {
-		// A byte order mark ahead of it and a comment after it, both of which
-		// this missed on the first try: "\ufeff<<:" and "<<: # c2" are the same
-		// entry as "<<:". A leading mark has now broken three line predicates
-		// in this suite -- see directiveNamedLikeAnAnchor for the second.
-		line = strings.TrimPrefix(line, "\ufeff")
-		if cut := strings.IndexByte(line, '#'); cut >= 0 {
-			line = line[:cut]
-		}
-
-		if strings.TrimRight(strings.TrimLeft(line, " \t-"), " \t") == "<<:" {
-			return true
-		}
-	}
-
-	return false
-}
-
-// isBreak reports the characters 5.4 makes a line break.
-func isBreak(r rune) bool { return r == '\n' || r == '\r' }
-
 func TestWalkMatchesTheStream(t *testing.T) {
 	srcs := corpusSources()
 
-	var same, differ, bothErr, oneErr, skipped, heldOut int
+	var same, differ, bothErr, oneErr, heldOut int
 	for _, src := range srcs {
-		if strings.Contains(src.text, "&!") {
-			skipped++
-
-			continue
-		}
-		if strings.Contains(src.text, "? <<") {
-			// A merge key written the long way. In flow the tree merges it and
-			// the walk hands "<<" back, so the two paths give different values.
-			// yamlgen_test.TestDefectAMergeKeyWrittenTheLongWayDoesNotMerge
-			// pins both spellings and both paths. Held out until they agree.
-			skipped++
-
-			continue
-		}
-		if strings.Contains(src.text, "<<") && (strings.Contains(src.text, ",-") || strings.Contains(src.text, ", -")) {
-			// A "-" inside a flow merge sequence: the tree sees a sequence
-			// where the walk sees the mapping, so one refuses and the other
-			// merges. Held by the last subtest of
-			// yamlgen_test.TestDefectMergingNullIsReadByTheWalkAndRefusedByTheTree.
-			skipped++
-
-			continue
-		}
-		if mergesNothing(src.text) {
-			// "<<:" with no value asks to merge null. The walk drops the entry
-			// and hands back the mapping without it; the tree refuses the
-			// document with "null was used where mapping is expected".
-			// yamlgen_test.TestDefectMergingNullIsReadByTheWalkAndRefusedByTheTree
-			// pins both. Held out here until the two paths agree.
-			skipped++
-
-			continue
-		}
-		if directiveNamedLikeAnAnchor(src.text) {
-			// "%&AML 1.2" is a directive named "&AML", and the walk reads the
-			// "&AML" as an anchor and hands the "1.2" back as the whole
-			// document. The tree ignores the directive and reads the document
-			// under it. codec.TestDefectADirectiveNamedLikeAPropertyIsReadAsOne
-			// pins both. Held out here until the walk is fixed.
-			skipped++
-
-			continue
-		}
-
 		want, wantErr := decodedStream(src.text)
 		got, gotErr := walkedStream(src.text)
 
@@ -231,7 +139,7 @@ func TestWalkMatchesTheStream(t *testing.T) {
 				"%s: %q agrees now, so %s has closed: delete the hold-out", src.name, src.text, reason)
 		}
 	}
-	t.Logf("same=%d differ=%d bothErr=%d oneErr=%d skipped=%d heldOut=%d", same, differ, bothErr, oneErr, skipped, heldOut)
+	t.Logf("same=%d differ=%d bothErr=%d oneErr=%d heldOut=%d", same, differ, bothErr, oneErr, heldOut)
 	assert.Zero(t, differ, "documents the walk and the tree decode differently")
 	assert.Zero(t, oneErr, "documents only one of the walk and the tree refuses")
 }

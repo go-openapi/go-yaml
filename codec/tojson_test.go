@@ -647,12 +647,13 @@ func firstLine(text string) string {
 	return text
 }
 
-// directiveNamedLikeAnAnchorInText is codec.directiveNamedLikeAnAnchor, which
-// this file cannot reach across the package boundary.
+// directiveNamedLikeAnAnchorInText reports whether src opens a line with a
+// directive whose name begins with "&". 6.8 puts "&" in ns-char, so the name is
+// well-formed and the directive is one an implementation ignores.
 //
 // A byte order mark stands before the directives and a lone "\r" is a line
-// break, so neither a split on "\n" nor a prefix test on the whole text finds
-// the line -- the same two traps the other copy carries a comment about.
+// break (5.2, 5.4), so neither a split on "\n" nor a prefix test on the whole
+// text finds the line.
 func directiveNamedLikeAnAnchorInText(src string) bool {
 	for line := range strings.FieldsFuncSeq(src, func(r rune) bool { return r == '\n' || r == '\r' }) {
 		if strings.HasPrefix(strings.TrimPrefix(line, "\ufeff"), "%&") {
