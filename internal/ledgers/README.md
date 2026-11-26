@@ -10,7 +10,7 @@ that is not recorded, and fails again when a recorded defect stops showing. A fi
 
 ```
 ledgers/
-  ledger.go            Compare, the ratchet every ledger is held with
+  ledger.go            Compare and CompareNames, the ratchets every ledger is held with
   scanner/             one directory per package under measurement
     scan_test.go       helpers shared by that package's ledgers
     position_test.go   positionLedger
@@ -34,7 +34,8 @@ The scanner's ledgers and the five YAML Test Suite harnesses are here. `parser.k
 2. Copy the ledger variable and the test that measures it, with the comment that says what each entry is for.
    Leave behind the tests that are not ledgers: `internal/scanner/position_test.go` and `probe_test.go` each held one
    of each, and only the ledger half moved.
-3. Replace the comparison loop with `ledgers.Compare`. It wants a map holding only the names that show a defect, so
+3. Replace the comparison loop with `ledgers.Compare`, or `ledgers.CompareNames` when an entry records a reason and
+   not a measurement. Both want a map holding only the names that show a defect, so
    filter out the clean ones first -- `state_test.go` does that with `probe.Checks`.
 4. Copy whatever helpers the test needs. The packages under measurement keep their own test helpers unexported, and
    a `internal/.../internal/test*` package cannot be imported from here, so a short helper is copied rather than

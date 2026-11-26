@@ -11,6 +11,7 @@ import (
 	"github.com/go-openapi/testify/v2/require"
 
 	"github.com/go-openapi/go-yaml/codec"
+	"github.com/go-openapi/go-yaml/internal/ledgers"
 	yamltestsuite "github.com/go-openapi/go-yaml/internal/yamltestsuite"
 )
 
@@ -63,20 +64,16 @@ func TestSuiteToJSONTokens(t *testing.T) {
 			}
 			scored++
 
-			why := disagreement(t, test, got, err)
-			if why == "" {
-				agreed++
-				assert.NotContainsf(t, jsonTokenLedger, test.Name,
-					"%s: now converts as the suite says -- if that is a fix, delete the ledger entry", test.Name)
+			if why := disagreement(t, test, got, err); why != "" {
+				diverged[test.Name] = why
 
 				return
 			}
-
-			diverged[test.Name] = why
-			_, known := jsonTokenLedger[test.Name]
-			assert.Truef(t, known, "%s: not in the ledger: %s", test.Name, why)
+			agreed++
 		})
 	}
+
+	ledgers.CompareNames(t, "departure", diverged, jsonTokenLedger)
 
 	reportJSON(t, "ToJSONTokens", scored, agreed, refused, diverged, jsonTokenLedger)
 }
