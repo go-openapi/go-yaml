@@ -33,7 +33,7 @@ type fieldPlan struct {
 	// characters isNeedQuoted checks in a flow collection or for a literal block, and token.IsNeedQuoted passes it.
 	plainKey bool
 	// streamed records a field whose entry needs no look at its encoded value: no alias name, no anchor, not inline,
-	// not flow. A streamed encode writes its key and streams its value; it runs structField for any other field.
+	// not flow, and no `json` tag carrying `,string` or `,omitempty`. A streamed encode writes its key and streams its value; it runs structField for any other field.
 	streamed bool
 }
 
@@ -62,7 +62,8 @@ func planOf(structType reflect.Type, mode structfields.Mode) (*structPlan, error
 			index:    i,
 			info:     info,
 			plainKey: !token.IsNeedQuoted(info.RenderName) && !strings.ContainsAny(info.RenderName, "]},'\"\n:"),
-			streamed: info.AliasName == "" && info.AnchorName == "" && !info.IsAutoAnchor && !info.IsInline && !info.IsFlow && !info.IsString,
+			streamed: info.AliasName == "" && info.AnchorName == "" && !info.IsAutoAnchor &&
+				!info.IsInline && !info.IsFlow && !info.IsString && !info.IsOmitEmptyJSON,
 		})
 		plan.inlineAnchor = plan.inlineAnchor || (info.IsInline && info.IsAutoAnchor)
 	}

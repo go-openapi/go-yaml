@@ -141,3 +141,18 @@ func TestAStringOptionEncodesAsJSONV2Does(t *testing.T) {
 		assert.JSONEq(t, string(theirs), string(ours), "%s", out)
 	}
 }
+
+// TestAJSONOmitEmptyOmitsAsJSONV2Does compares the JSON our YAML converts to with v2's own output.
+func TestAJSONOmitEmptyOmitsAsJSONV2Does(t *testing.T) {
+	v := newOmitEmptyByJSON()
+	theirs, err := jsonv2.Marshal(v)
+	require.NoError(t, err)
+
+	// omitSaysZero has an untagged field, which encoding/json names verbatim.
+	out, err := codec.Marshal(v, codec.WriteJSONTags(true), codec.WriteInferredNames(true))
+	require.NoError(t, err)
+	ours, err := codec.ToJSON(out)
+	require.NoError(t, err)
+
+	assert.JSONEq(t, string(theirs), string(ours), "%s", out)
+}

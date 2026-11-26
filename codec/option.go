@@ -378,6 +378,10 @@ func UseJSONMarshaler() EncodeOption {
 // fields written into the mapping around it, not under a key of its own. The `yaml` tag still wins wherever a field
 // carries one.
 //
+// The `json` tag's flags follow encoding/json/v2. `,string` writes a number as a string, such as `n: "12"`.
+// `,omitempty` drops a field that encodes as null, an empty string, an empty mapping or an empty sequence, and keeps
+// false and 0. `yaml:",omitempty"` keeps the rule of go.yaml.in/yaml/v3, which drops false and 0 too.
+//
 // Without it the encoder writes the `yaml` tag's name, or the lowercased Go
 // name, as go.yaml.in/yaml/v3 does.
 func WriteJSONTags(write bool) EncodeOption {

@@ -1100,7 +1100,8 @@ func (e *Encoder) isOmittedByOmitEmptyOption(v reflect.Value) bool {
 	return false
 }
 
-// isOmittedByOmitEmptyTag reports whether the omitempty tag omits v.
+// isOmittedByOmitEmptyTag reports whether the omitempty flag of a `yaml` tag omits v. The flag of a `json` tag
+// follows encoding/json/v2 instead: see encodesEmpty.
 //
 // The rule is go.yaml.in/yaml/v3's isZero, line for line, and it stays so for compatibility with v3. It differs from
 // both versions of encoding/json:
@@ -1252,6 +1253,50 @@ func (e *Encoder) omitsField(sf *structfields.Info, fieldValue reflect.Value) bo
 	}
 }
 
+// encodeFieldValue encodes the value of the field sf, through the `json` tag's `,string` option where it is set. It
+// returns a nil node for a field that `json:",omitempty"` drops.
+func (e *Encoder) encodeFieldValue(sf *structfields.Info, fieldValue reflect.Value, column int) (ast.Node, error) {
+	var (
+		encoded ast.Node
+		err     error
+	)
+	if sf.IsString {
+		encoded, err = e.encodeStringNumber(sf, fieldValue, column)
+	} else {
+		encoded, err = e.encodeValue(fieldValue, column)
+	}
+	if err != nil {
+		return nil, err
+	}
+	if sf.IsOmitEmptyJSON && !sf.IsInline && encodesEmpty(encoded) {
+		return nil, nil
+	}
+
+	return encoded, nil
+}
+
+// encodesEmpty reports whether n is null, an empty string, an empty mapping or an empty sequence, through any tag.
+// `json:",omitempty"` drops a field whose value encodes as one, as encoding/json/v2 drops a field that encodes as
+// null, "", {} or []. A zero number, false, and a type whose IsZero returns true all encode as something else, and
+// stay.
+func encodesEmpty(n ast.Node) bool {
+	switch n := n.(type) {
+	case *ast.NullNode:
+		return true
+	case *ast.StringNode:
+		// The encoder writes the quotes into Value, so an empty string is one of these three spellings.
+		return n.Value == "" || n.Value == `""` || n.Value == `''`
+	case *ast.MappingNode:
+		return len(n.Values) == 0
+	case *ast.SequenceNode:
+		return len(n.Values) == 0
+	case *ast.TagNode:
+		return encodesEmpty(n.Value)
+	default:
+		return false
+	}
+}
+
 // fieldKey returns the key node a field is written under.
 func (e *Encoder) fieldKey(fp fieldPlan, column int) ast.MapKeyNode {
 	if fp.plainKey && !e.isJSONStyle {
@@ -1275,16 +1320,8 @@ func (e *Encoder) structField(
 		*ve = *e
 		ve.isFlowStyle = true
 	}
-	var (
-		encoded ast.Node
-		err     error
-	)
-	if sf.IsString {
-		encoded, err = ve.encodeStringNumber(sf, fieldValue, column)
-	} else {
-		encoded, err = ve.encodeValue(fieldValue, column)
-	}
-	if err != nil {
+	encoded, err := ve.encodeFieldValue(sf, fieldValue, column)
+	if err != nil || encoded == nil {
 		return out, false, err
 	}
 	key := e.fieldKey(fp, column)

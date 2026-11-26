@@ -87,9 +87,13 @@ type Info struct {
 	IsAutoAnchor bool
 	IsAutoAlias  bool
 	IsOmitEmpty  bool
-	IsOmitZero   bool
-	IsFlow       bool
-	IsInline     bool
+	// IsOmitEmptyJSON records `json:",omitempty"`, which follows encoding/json/v2: the encoder drops the field when it
+	// encodes as null, an empty string, an empty mapping or an empty sequence. IsOmitEmpty records the `yaml` flag,
+	// which follows go.yaml.in/yaml/v3.
+	IsOmitEmptyJSON bool
+	IsOmitZero      bool
+	IsFlow          bool
+	IsInline        bool
 	// IsString records `json:",string"`: the field's number is written inside a string, as encoding/json/v2 writes it.
 	// Only a `json` tag sets it. [StringTakesNumber] tells whether the field's type allows it.
 	IsString bool
@@ -297,13 +301,13 @@ func readYAMLFlags(sf *Info, tag string, flags []string) error {
 // readJSONFlags applies the flags a `json` tag may carry, and ignores the rest
 // as encoding/json ignores one it does not define.
 //
-// encoding/json has three: `omitempty`, `omitzero` and `string`. `omitzero` and `string` mean here what they mean in
+// encoding/json has three: `omitempty`, `omitzero` and `string`. All three mean here what they mean in
 // encoding/json/v2.
 func readJSONFlags(sf *Info, flags []string) {
 	for _, opt := range flags {
 		switch opt {
 		case "omitempty":
-			sf.IsOmitEmpty = true
+			sf.IsOmitEmptyJSON = true
 		case "omitzero":
 			sf.IsOmitZero = true
 		case "string":
