@@ -1,39 +1,38 @@
 # scanner ledgers
 
-Three ledgers, measuring `internal/scanner` from three angles. Read this before changing a number in any of them.
+Four ledgers measure `internal/scanner`, each checked with `ledgers.Compare`. Read this before changing a number in
+any of them. `../README.md` lists every ledger in the repository.
 
 | ledger | file | measures | over | runs |
 |---|---|---|---|---|
 | `positionLedger` | `position_test.go` | tokens whose position is malformed | the YAML Test Suite | always |
 | `offsetMissLedger` | `offset_test.go` | tokens whose `Offset` misses their own text | the YAML Test Suite | always |
+| `extentLedger` | `extent_test.go` | accepted documents whose token extents do not tile the source | the Test Suite and the fuzz corpus | always |
 | `stateLedger` | `state_test.go` | pairs of scanner state that should agree and do not | the fuzz corpus | `-tags yamlprobe` |
 
-All three are held by `ledgers.Compare`, which fails in both directions. The entries carry the reasoning; this file
-carries what is true of the three together.
+The entries carry the reasoning; this file carries what is true of the four together.
 
-## The two that measure over the Test Suite
+## Over the Test Suite
 
-`positionLedger` and `offsetMissLedger` read `internal/yamltestsuite`, which is a fixed set of documents. Their counts
-move only when the scanner moves, so a change to either number is a claim about the scanner and wants explaining in
-the entry.
+`positionLedger` and `offsetMissLedger` read `internal/yamltestsuite`, a fixed set of documents. Their counts move only
+when the scanner moves, so a change to either is a claim about the scanner and wants explaining in the entry. Both
+are empty.
 
-`positionLedger` is empty, and that is the interesting part: an empty ledger is a claim re-earned on every run. Keep
-it empty. `offsetMissLedger` is not, and its entry says what the remaining 18 misses are.
+## Over the fuzz corpus
 
-## The one that measures over the fuzz corpus
-
-`stateLedger` is different in a way that has misled before, so read this before touching a number in it.
-
-It runs over `internal/fuzzseeds`, which reads the corpus at
+`extentLedger` and `stateLedger` also read `internal/fuzzseeds`, which reads the corpus at
 `internal/testintegration/yamlcorpus/testdata/yaml-compact.jsonl.gz`. That file copies the corpus of
-`github.com/go-openapi/conformance-suites/yaml/corpus`, rewritten whenever that requirement moves, and it grows. **A count that moved does not mean the scanner moved.** On 2026-09-08 the
-corpus went from 621 KB to 992 KB and all three live entries drifted, with the scanner standing still.
+`github.com/go-openapi/conformance-suites/yaml/corpus`, rewritten whenever that requirement moves. **A count that moved
+does not mean the scanner moved.** On 2026-09-08 the corpus went from 621 KB to 992 KB and all three live entries of
+`stateLedger` drifted, with the scanner standing still.
 
-So before re-baselining:
+`stateLedger` compares the number of disagreements only. Its log line for each check reads `n of N (x%)`, and opens
+with the seed corpus's fingerprint, so two runs show whether they read the same corpus.
 
-1. **Read the ratio, not the count.** `lastIndentLevel==indentLevel`, retired 2026-11-20, went 2,729 -> 4,213 while its ratio went 3.26%
-   -> 3.25%. The count followed the corpus; nothing about the scanner changed. The test logs `n of N (x%)` for every
-   measured invariant, so the ratio is in the output of the failure you are looking at.
+Before changing a disagreement count:
+
+1. **Read the ratio, not the count.** `lastIndentLevel==indentLevel`, retired 2026-11-20, went 2,729 -> 4,213 while
+   its ratio went 3.26% -> 3.25%. The count followed the corpus; nothing about the scanner changed.
 2. **Separate the corpus from the scanner.** Put the corpus back as it was when the number was last written down and
    run again:
 
@@ -46,22 +45,9 @@ So before re-baselining:
 
    Before the tier was renamed, the file was `yaml-smoke.jsonl.gz`: use that name in `git show` for older commits.
 
-   If it passes, the corpus grew and the new count is the baseline. If it fails, the scanner moved, and that is a
-   finding rather than a number to update.
+   If it passes, the corpus moved and the new count is the baseline. If it fails, the scanner moved, and that is a
+   finding to explain, not a number to update.
 3. **Write down which it was**, in the entry, with both counts and both ratios.
 
-An entry of `0` means the pair must never disagree. Those are load-bearing: `state_test.go` measures a clean
-invariant the ledger names, at 0, precisely so a `0` entry keeps asserting something.
-
-`/tab` reads 100% by construction and always will -- `updateIndent` takes a tab in leading whitespace without counting
-it, so every space after a tab trips the probe. Reading that bucket as a count of anything else is a mistake made
-twice already.
-
-## Nothing here runs in CI
-
-`stateLedger` needs `-tags yamlprobe`, and no CI job passes it. It went red for a day before anyone noticed. Run it
-by hand after touching indentation, buffering or token extents:
-
-```sh
-go test -count=1 -tags yamlprobe ./internal/ledgers/scanner/
-```
+An entry of `0` means the pair must never disagree. `state_test.go` measures a clean check the ledger names, at 0, so
+a `0` entry keeps asserting something, and it fails if that check ran zero times.

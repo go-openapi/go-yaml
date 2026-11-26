@@ -11,7 +11,7 @@ import (
 	"github.com/go-openapi/testify/v2/assert"
 )
 
-// Compare holds a measurement against the ledger recording it, and fails in both directions.
+// Compare checks a measurement against the ledger recording it, and fails in both directions.
 //
 // measured carries only the names that show a defect, so a name absent from it is a name that came out clean.
 //
@@ -44,7 +44,7 @@ func Compare[T comparable](t *testing.T, what string, measured, known map[string
 	}
 }
 
-// CompareNames holds the names that show a defect against the ledger recording them, and fails in both directions.
+// CompareNames checks the names that show a defect against the ledger recording them, and fails in both directions.
 //
 // It is [Compare] for a ledger whose entries record why a case diverges, not a measurement of it. Only the names are
 // compared: measured maps each name to what was seen, and known maps it to the recorded reason, so each failure
