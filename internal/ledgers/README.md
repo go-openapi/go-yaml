@@ -17,6 +17,8 @@ ledgers/
     offset_test.go     offsetMissLedger
     extent_test.go     extentLedger
     state_test.go      stateLedger, behind -tags yamlprobe
+  parser/
+    key_test.go        keyLedger, behind -tags yamlprobe
   conformance/         the five YAML Test Suite harnesses and their ledgers; see its README
 ```
 
@@ -26,7 +28,7 @@ Until then it runs under `go test ./...` like everything else, and a change that
 
 ## Moving a ledger here
 
-The scanner's ledgers and the five YAML Test Suite harnesses are here. `parser.keyLedger` is still in `parser`.
+The scanner's ledgers, `keyLedger` and the five YAML Test Suite harnesses are here.
 `codec`'s `walkStreamHoldOuts` stays beside `codec`, because its test decodes with an unexported option, and the
 `yamlgen` ledger stays in the `internal/testintegration` module, which requires conformance-suites.
 

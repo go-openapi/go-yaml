@@ -6,7 +6,8 @@
 package parser_test
 
 import (
-	"sort"
+	"maps"
+	"slices"
 	"strings"
 	"testing"
 
@@ -14,6 +15,7 @@ import (
 	"github.com/go-openapi/testify/v2/require"
 
 	"github.com/go-openapi/go-yaml/internal/fuzzseeds"
+	"github.com/go-openapi/go-yaml/internal/ledgers"
 	"github.com/go-openapi/go-yaml/internal/probe"
 	"github.com/go-openapi/go-yaml/parser"
 )
@@ -21,7 +23,7 @@ import (
 // keyLedger records how often each mapping-key invariant of the parser fails over the fuzz corpus,
 // as the scanner's state ledger does for the scanner.
 //
-// TestKeyLedger holds each count exactly, in both directions.
+// TestKeyLedger checks each count with [ledgers.Compare], in both directions.
 // An entry that starts failing has lost an invariant.
 // An entry that stops failing may guard a check that can go, and its count comes down.
 var keyLedger = map[string]int64{ //nolint:gochecknoglobals // ok to store an immutable map as a global
@@ -34,9 +36,9 @@ var keyLedger = map[string]int64{ //nolint:gochecknoglobals // ok to store an im
 	"mapkey.stackTailIsOneMapping": 0,
 }
 
-// TestKeyLedger holds the parser's mapping-key invariants to the counts keyLedger records.
+// TestKeyLedger checks the parser's mapping-key invariants against the counts keyLedger records.
 //
-//	go test -tags yamlprobe -run TestKeyLedger ./parser/
+//	go test -tags yamlprobe -run TestKeyLedger ./internal/ledgers/parser/
 func TestKeyLedger(t *testing.T) {
 	seeds, err := fuzzseeds.All()
 	require.NoError(t, err)
@@ -52,33 +54,19 @@ func TestKeyLedger(t *testing.T) {
 	require.NotEmpty(t, checks, "the probe recorded nothing; is the yamlprobe tag on?")
 
 	// probe.Checks holds one ledger for the whole library,
-	// and a parse also runs the scanner, whose checks internal/scanner holds to its own ledger.
-	// This test reads only the parser's "mapkey." names.
-	names := make([]string, 0, len(checks))
-	for name := range checks {
-		if strings.HasPrefix(name, "mapkey.") {
-			names = append(names, name)
+	// and a parse also runs the scanner, whose checks internal/ledgers/scanner holds to its own ledger.
+	// This test reads only the parser's "mapkey." names: the ones that disagreed, and the ones the ledger records.
+	measured := make(map[string]int64)
+	for name, inv := range checks {
+		if _, recorded := keyLedger[name]; strings.HasPrefix(name, "mapkey.") && (inv.Failed > 0 || recorded) {
+			measured[name] = inv.Failed
+			t.Logf("%s: %d of %d %v", name, inv.Failed, inv.Tested, inv.Samples)
 		}
 	}
-	sort.Strings(names)
 
-	for _, name := range names {
-		inv := checks[name]
-		want, known := keyLedger[name]
-		if !known {
-			assert.Zerof(t, inv.Failed,
-				"%s is not in the ledger and disagreed %d times of %d: %v",
-				name, inv.Failed, inv.Tested, inv.Samples)
+	ledgers.Compare(t, "disagreements", measured, keyLedger)
 
-			continue
-		}
-		assert.Equalf(t, want, inv.Failed,
-			"%s disagreed %d times of %d, and the ledger records %d: %v",
-			name, inv.Failed, inv.Tested, want, inv.Samples)
-		t.Logf("%s: %d of %d", name, inv.Failed, inv.Tested)
-	}
-
-	for name := range keyLedger {
-		assert.Containsf(t, checks, name, "%s is in the ledger and nothing checks it", name)
+	for _, name := range slices.Sorted(maps.Keys(keyLedger)) {
+		assert.Positivef(t, checks[name].Tested, "%s is in the ledger and nothing checked it", name)
 	}
 }

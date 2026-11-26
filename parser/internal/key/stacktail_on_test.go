@@ -21,7 +21,7 @@ import (
 // stackTail is the invariant [key.Ledger] records under the yamlprobe tag: the
 // keys above a mapping's base belong to that mapping and to no other.
 //
-// TestKeyLedger in the parser holds it over the fuzz corpus and reads zero
+// TestKeyLedger in internal/ledgers/parser checks it over the fuzz corpus and reads zero
 // disagreements. A reading of zero leaves open whether the check can report
 // anything at all, so the second case below nests two mappings wrongly on
 // purpose and asserts that it does.
