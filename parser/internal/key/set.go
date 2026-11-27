@@ -4,6 +4,8 @@
 package key
 
 import (
+	"math"
+
 	"github.com/go-openapi/go-yaml/token"
 )
 
@@ -26,10 +28,19 @@ const spillAt = 64
 // "1.0" are an integer and a float. Comparing the characters alone read the
 // first pair as two keys and the second as one, and read "1" and "\"1\"" as one
 // where they are a number and a string.
+//
+// base is a uint32, so a ref takes 24 bytes and an index slot 40. A mapping
+// whose keys start past math.MaxUint32 keeps the scan: see Set.indexed.
 type mapKeyRef struct {
-	base int
+	base uint32
 	kind token.KeyKind
 	text string
+}
+
+// refAt returns the index ref of text, as a key of kind, in the mapping that
+// starts at base. Call it only where Set.indexed holds, which bounds base.
+func refAt(base int, kind token.KeyKind, text string) mapKeyRef {
+	return mapKeyRef{base: uint32(base), kind: kind, text: text}
 }
 
 // keyEntry is one key on the stack: its spelling and where it was written.
@@ -113,7 +124,7 @@ func (k *Set) UseJSONNames(on bool) { k.jsonNames = on }
 // match wins over a match by name.
 func (k *Set) Record(base int, text string, kind token.KeyKind, pos token.Position) (token.Position, bool, bool) {
 	f := keyFilter(text, kind)
-	if len(k.entries)-base >= spillAt {
+	if k.indexed(base) {
 		return k.recordIndexed(base, text, kind, pos, f)
 	}
 
@@ -139,8 +150,8 @@ func (k *Set) Record(base int, text string, kind token.KeyKind, pos token.Positi
 // ⚠️ The index answers only under UseJSONNames, which is what records the second entry per key; without it
 // the scan answers, and entries holds every key whether or not the mapping has spilled.
 func (k *Set) Holds(base int, text string) bool {
-	if k.jsonNames && k.index != nil && len(k.entries)-base >= spillAt {
-		_, held := k.index[mapKeyRef{base: base, kind: anyKind, text: text}]
+	if k.jsonNames && k.index != nil && k.indexed(base) {
+		_, held := k.index[refAt(base, anyKind, text)]
 
 		return held
 	}
@@ -161,15 +172,11 @@ func (k *Set) Holds(base int, text string) bool {
 // always those above its base. A mapping that never spilled is dropped by
 // truncating; only a spilled one has entries to delete.
 func (k *Set) Close(base int) {
-	if len(k.entries)-base >= spillAt {
+	if k.indexed(base) {
 		for i := base; i < len(k.entries); i++ {
-			delete(k.index, mapKeyRef{
-				base: base,
-				kind: token.KeyKind(k.filter[i]),
-				text: k.entries[i].text,
-			})
+			delete(k.index, refAt(base, token.KeyKind(k.filter[i]), k.entries[i].text))
 			if k.jsonNames {
-				delete(k.index, mapKeyRef{base: base, kind: anyKind, text: k.entries[i].text})
+				delete(k.index, refAt(base, anyKind, k.entries[i].text))
 			}
 		}
 	}
@@ -213,6 +220,15 @@ func (k *Set) recordByName(base int, text string, pos token.Position, f uint32) 
 	return token.Position{}, false, false
 }
 
+// indexed reports whether the mapping that starts at base keeps its keys in the
+// index: it holds spillAt keys or more, and base fits mapKeyRef.base.
+//
+// A mapping whose keys start past math.MaxUint32 keeps the scan. Four billion
+// open keys sit below it, and their entries alone take 128 GiB.
+func (k *Set) indexed(base int) bool {
+	return len(k.entries)-base >= spillAt && uint(base) <= math.MaxUint32
+}
+
 // push adds one key to the stack.
 func (k *Set) push(text string, pos token.Position, f uint32) {
 	k.filter = append(k.filter, f)
@@ -226,14 +242,14 @@ func (k *Set) recordIndexed(base int, text string, kind token.KeyKind, pos token
 		k.spill(base)
 	}
 
-	ref := mapKeyRef{base: base, kind: kind, text: text}
+	ref := refAt(base, kind, text)
 	if prev, defined := k.index[ref]; defined {
 		return prev, false, true
 	}
 	var nameAt token.Position
 	named := false
 	if k.jsonNames {
-		name := mapKeyRef{base: base, kind: anyKind, text: text}
+		name := refAt(base, anyKind, text)
 		if prev, defined := k.index[name]; defined {
 			nameAt, named = prev, true
 		} else {
@@ -256,14 +272,14 @@ func (k *Set) spill(base int) {
 		k.index = make(map[mapKeyRef]token.Position, spillAt*2)
 	}
 	for i := base; i < len(k.entries); i++ {
-		ref := mapKeyRef{base: base, kind: token.KeyKind(k.filter[i]), text: k.entries[i].text}
+		ref := refAt(base, token.KeyKind(k.filter[i]), k.entries[i].text)
 		if _, defined := k.index[ref]; !defined {
 			k.index[ref] = k.entries[i].at
 		}
 		if !k.jsonNames {
 			continue
 		}
-		name := mapKeyRef{base: base, kind: anyKind, text: k.entries[i].text}
+		name := refAt(base, anyKind, k.entries[i].text)
 		if _, defined := k.index[name]; !defined {
 			k.index[name] = k.entries[i].at
 		}
