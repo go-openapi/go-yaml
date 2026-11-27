@@ -8,6 +8,7 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/go-openapi/testify/v2/assert"
 	"github.com/go-openapi/testify/v2/require"
 
 	"github.com/go-openapi/go-yaml/ast"
@@ -279,4 +280,109 @@ func assertFieldUnshared(t *testing.T, doc, owner, field string, original, copie
 	require.NotEqualf(t, original.Pointer(), copied.Pointer(),
 		"%s: %s.%s is shared with what it was cloned from -- add it to Clone, or name it in the shared list with a reason",
 		doc, owner, field)
+}
+
+// TestFixedACloneKeepsItsCommentsInAVerbatimRender puts a clone carrying comments into a parsed tree.
+//
+// A clone's comments carry no token cut from the source, so the verbatim renderer booked them as comments a caller
+// added, for the descent to write. A node the source does not reach is written whole by the depth renderer, comments
+// included, and the descent never reaches it: the rendering came out right and failed with "# far was added to a node
+// this rendering does not reach". ErrMove's message names Clone as the remedy for a moved node.
+//
+// Inside a flow collection the error stays: "[a, c # cc, b]" would end the line on the rest of the collection.
+func TestFixedACloneKeepsItsCommentsInAVerbatimRender(t *testing.T) {
+	body := func(t *testing.T, src string) (*ast.File, ast.Node) {
+		t.Helper()
+
+		f, err := parser.ParseBytes([]byte(src), parser.WithComments())
+		require.NoErrorf(t, err, "%q", src)
+
+		return f, f.Docs[0].Body
+	}
+	mappingOf := func(t *testing.T, n ast.Node) *ast.MappingNode {
+		t.Helper()
+
+		m, ok := n.(*ast.MappingNode)
+		require.True(t, ok)
+
+		return m
+	}
+	sequenceOf := func(t *testing.T, n ast.Node) *ast.SequenceNode {
+		t.Helper()
+
+		s, ok := n.(*ast.SequenceNode)
+		require.True(t, ok)
+
+		return s
+	}
+
+	for _, tc := range []struct {
+		name, src, from, want string
+		edit                  func(t *testing.T, dst, from ast.Node)
+	}{
+		{
+			name: "a value with a line comment", src: "a: 1\nb: 2\n", from: "y: [1, 2] # far\n",
+			want: "a: [1, 2] # far\nb: 2\n",
+			edit: func(t *testing.T, dst, from ast.Node) {
+				mappingOf(t, dst).Values[0].Value = ast.Clone(mappingOf(t, from).Values[0].Value)
+			},
+		},
+		{
+			name: "a block mapping with comments under a key", src: "a: 1\nb: 2\n",
+			from: "m:\n  # inner head\n  x: 1 # inner line\n  y: 2\n",
+			want: "a:\n  # inner head\n  x: 1 # inner line\n  y: 2\nb: 2\n",
+			edit: func(t *testing.T, dst, from ast.Node) {
+				mappingOf(t, dst).Values[0].Value = ast.Clone(mappingOf(t, from).Values[0].Value)
+			},
+		},
+		{
+			name: "an entry put first", src: "a: 1\nb: 2\n", from: "# head\nz: 3 # tail\n",
+			want: "# head\nz: 3 # tail\na: 1\nb: 2\n",
+			edit: func(t *testing.T, dst, from ast.Node) {
+				m := mappingOf(t, dst)
+				entry, ok := ast.Clone(mappingOf(t, from).Values[0]).(*ast.MappingValueNode)
+				require.True(t, ok)
+				m.Values = append([]*ast.MappingValueNode{entry}, m.Values...)
+			},
+		},
+		{
+			name: "an entry put last", src: "a: 1\nb: 2\n", from: "# head\nz: 3 # tail\n",
+			want: "a: 1\nb: 2\n# head\nz: 3 # tail\n",
+			edit: func(t *testing.T, dst, from ast.Node) {
+				m := mappingOf(t, dst)
+				entry, ok := ast.Clone(mappingOf(t, from).Values[0]).(*ast.MappingValueNode)
+				require.True(t, ok)
+				m.Values = append(m.Values, entry)
+			},
+		},
+		{
+			name: "a block sequence entry", src: "- a\n- b\n", from: "- c # cc\n",
+			want: "- a\n- c # cc\n- b\n",
+			edit: func(t *testing.T, dst, from ast.Node) {
+				require.NoError(t, sequenceOf(t, dst).Insert(1, ast.Clone(sequenceOf(t, from).Values[0])))
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			_, from := body(t, tc.from)
+			f, dst := body(t, tc.src)
+			tc.edit(t, dst, from)
+
+			var out bytes.Buffer
+			require.NoError(t, ast.NewRenderer(ast.WithSource([]byte(tc.src))).VerbatimFile(&out, f))
+			assert.Equal(t, tc.want, out.String())
+		})
+	}
+
+	t.Run("a flow sequence entry with a line comment is still refused", func(t *testing.T) {
+		const src = "[a, b]\n"
+		_, from := body(t, "- c # cc\n")
+		f, dst := body(t, src)
+		require.NoError(t, sequenceOf(t, dst).Insert(1, ast.Clone(sequenceOf(t, from).Values[0])))
+
+		var out bytes.Buffer
+		err := ast.NewRenderer(ast.WithSource([]byte(src))).VerbatimFile(&out, f)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "# cc was added to a node this rendering does not reach")
+	})
 }

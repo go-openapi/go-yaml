@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"maps"
+	"slices"
 	"sort"
 	"strings"
 
@@ -625,6 +626,40 @@ func (vw *verbatimWriter) flushEdits() {
 		vw.applyEdits(len(vw.src) + 1)
 	}
 	vw.refuseUnwritten()
+}
+
+// wroteWhole records that the depth renderer wrote n, a node the source does not
+// reach, as text, outside a flow collection.
+//
+// collectEdits sees a comment there as one a caller added, since [Clone] and a
+// node built by hand carry no token cut from the source, and books it for the
+// descent to write. The descent never reaches n, so refuseUnwritten failed a
+// rendering that had written the comment: a clone of "[1, 2] # far" put in as a
+// value came out right with "# far was added to a node this rendering does not
+// reach". Inside a flow collection a line comment would end the line on the
+// rest of the collection, "[a, c # cc, b]", so the error stays there.
+//
+// Only a comment text holds is taken off the books, so one the depth renderer
+// left out still fails the rendering.
+func (vw *verbatimWriter) wroteWhole(n Node, text string) {
+	if vw.flow > 0 {
+		return
+	}
+	written := func(comment *CommentNode) bool {
+		return strings.Contains(text, comment.String())
+	}
+	eachNode(n, func(current Node) {
+		if comments, ok := vw.hoisted[current]; ok && !slices.ContainsFunc(comments, func(c *CommentNode) bool { return !written(c) }) {
+			delete(vw.hoisted, current)
+		}
+		eachCommentGroup(current, func(group *CommentGroupNode, _ bool) {
+			for _, comment := range group.Comments {
+				if written(comment) {
+					delete(vw.above, comment)
+				}
+			}
+		})
+	})
 }
 
 // refuseUnwritten fails the rendering where a comment a caller added never
@@ -2042,6 +2077,7 @@ func (r *Renderer) writeInPlaceOf(vw *verbatimWriter, n Node, underKey bool) {
 		brk := vw.breakNear(vw.cursor)
 		vw.raw(brk + withBreak(indentBlockWith(text, vw.lineIndent()+r.blockStep(n)), brk))
 		vw.dropping = true
+		vw.wroteWhole(n, text)
 
 		return
 	}
@@ -2056,6 +2092,7 @@ func (r *Renderer) writeInPlaceOf(vw *verbatimWriter, n Node, underKey bool) {
 	}
 	vw.raw(text)
 	vw.dropping = true
+	vw.wroteWhole(n, text)
 }
 
 // blockStep returns the indentation one level of nesting adds in front of a
@@ -2192,6 +2229,7 @@ func (r *Renderer) writeEntry(vw *verbatimWriter, entry Node, coll collection, i
 		vw.upTo(next.from)
 		vw.raw(withBreak(text, brk))
 		vw.raw(brk + indent)
+		vw.wroteWhole(entry, text)
 
 		return
 	}
@@ -2225,6 +2263,7 @@ func (r *Renderer) writeEntry(vw *verbatimWriter, entry Node, coll collection, i
 	}
 	vw.raw(lead)
 	vw.raw(withBreak(text, brk))
+	vw.wroteWhole(entry, text)
 	if vw.cursor < len(vw.src) || endsOnABreak(vw.src) {
 		// A document that ends without a line break keeps ending without one: the entry takes the last line, and
 		// the break goes in front of it, where the line before needs one.
