@@ -244,7 +244,15 @@ func (p *Parser) parseMapEntry(ctx context, keyTk *group.TapeToken) (*ast.Mappin
 		}
 	}
 
-	return p.mappingValue(childCtx, keyTk.Group.Last(), nil, key, value)
+	// The entry's token is its ':'. An explicit key written with none, "? a" alone or "? []: x" whose ':' belongs to
+	// the key's own mapping, gives the entry its '?', the key's first token, as MappingValueNode.Start documents. The
+	// group's last token was the key content's own: "a", or the "[" of "[]".
+	colon := keyTk.Group.Last()
+	if colon.Type() != token.MappingValueType {
+		colon = keyTk.Group.First()
+	}
+
+	return p.mappingValue(childCtx, colon, nil, key, value)
 }
 
 // explicitKeyValue reads the value of the entry that keyTk opens.

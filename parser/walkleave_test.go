@@ -155,7 +155,8 @@ func (r *blockMappingTokens) Leave(node ast.Node, _ parser.Closing) error {
 // TestAWalkLeavesABlockMappingOnItsFirstColon holds what ast.MappingNode.Start and parser.Visitor document: a block
 // mapping enters on its first entry's first token and leaves on that entry's ':', which a parse keeps.
 //
-// The ':' cannot be known at Enter in every case: "? a" holds none, and an explicit key may put it lines below.
+// The ':' cannot be known at Enter in every case: "? a" holds none, and an explicit key may put it lines below. An
+// entry with no ':' holds its '?', so "? a" enters and leaves on it.
 func TestAWalkLeavesABlockMappingOnItsFirstColon(t *testing.T) {
 	for _, tc := range []struct {
 		src           string
@@ -164,7 +165,8 @@ func TestAWalkLeavesABlockMappingOnItsFirstColon(t *testing.T) {
 		{"name: app\nport: 80\n", []string{`"name" at 1:1`}, []string{`":" at 1:5`}},
 		{"server:\n  host: x\n", []string{`"server" at 1:1`, `"host" at 2:3`}, []string{`":" at 2:7`, `":" at 1:7`}},
 		{"? long\n  key\n: v\n", []string{`"?" at 1:1`}, []string{`":" at 3:1`}},
-		{"? a\n", []string{`"?" at 1:1`}, []string{`"a" at 1:3`}},
+		{"? a\n", []string{`"?" at 1:1`}, []string{`"?" at 1:1`}},
+		{"? []: x\n", []string{`"?" at 1:1`, `"[" at 1:3`}, []string{`":" at 1:5`, `"?" at 1:1`}},
 	} {
 		t.Run(tc.src, func(t *testing.T) {
 			r := &blockMappingTokens{}

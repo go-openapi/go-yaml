@@ -25,7 +25,7 @@ func newMappingValueNode(ctx context, colonTk, entryTk *group.TapeToken, key ast
 	if _, explicit := key.(*ast.MappingKeyNode); explicit {
 		if colonTk.Type() != token.MappingValueType {
 			// An explicit key written in one group ends on the key and has no ':',
-			// so parseMapKeyValue passes the key's last token as colonTk.
+			// so parseMapEntry passes the key's "?" as colonTk.
 			// A comment on that token belongs to the key and is already attached there.
 			// Attaching it again would write it on the "?" line and on the ':' line.
 			return node, nil
