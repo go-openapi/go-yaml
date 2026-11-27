@@ -77,11 +77,11 @@ func TestFixedACommentAboveAScalarIsWrittenAboveIt(t *testing.T) {
 		// A tag standing on the empty node, with the next entry's comment
 		// between them: the comment stays the next entry's, as with no tag.
 		// The empty node took it, and its "null" came out under it.
-		{src: "k: !!null # c10\n# c11\nj: 1 # c12\n", want: "k: !!null null # c10\n# c11\nj: 1 # c12\n"},
-		{src: "k: !!null # c10\n  # c11\nj: 1\n", want: "k: !!null null # c10\n# c11\nj: 1\n"},
+		{src: "k: !!null # c10\n# c11\nj: 1 # c12\n", want: "k: !!null # c10\n# c11\nj: 1 # c12\n"},
+		{src: "k: !!null # c10\n  # c11\nj: 1\n", want: "k: !!null # c10\n# c11\nj: 1\n"},
 		{src: "k: !!str # c10\n  # c11\nj: 1\n", want: "k: !!str # c10\n# c11\nj: 1\n"},
 		{src: "k: !!map # c10\n  # c11\nj: 1\n", want: "k: !!map # c10\n# c11\nj: 1\n"},
-		{src: "- !!null # c10\n  # c11\n- x\n", want: "- !!null null # c10\n# c11\n- x\n"},
+		{src: "- !!null # c10\n  # c11\n- x\n", want: "- !!null # c10\n# c11\n- x\n"},
 		{src: "!!null # c10\n# c11\n", want: "!!null # c10\n# c11\n"},
 		// A value under the tag keeps the comment above it.
 		{src: "k: !!str # c10\n  # c11\n  x\nj: 1\n", want: "k: !!str # c10\n  # c11\n  x\nj: 1\n"},

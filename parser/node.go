@@ -281,7 +281,11 @@ func newTagDefaultScalarValueNode(ctx context, uri string, tag *token.Token) (as
 		}
 		node = n
 	case token.NullTag:
-		tk = group.NewSynthetic(token.New("null", "null", pos))
+		// The empty node is a null as it stands, so the token is the implicit null and the renderer writes nothing for
+		// it. With a "null" token, "k: !!null" over "j: 1" came back as "k: !!null null".
+		nullTk := token.New("null", "null", pos)
+		nullTk.Type = token.ImplicitNullType
+		tk = group.NewSynthetic(nullTk)
 		n, err := newNullNode(ctx, tk)
 		if err != nil {
 			return nil, err

@@ -361,7 +361,7 @@ default	suite/tags-for-root-objects	bfd660bb04efa944
 default	suite/tags-in-block-sequence	b3411ef39f905205
 default	suite/tags-in-explicit-mapping	40e5824d4ed0e8d7
 default	suite/tags-in-implicit-mapping	9b8846afab313dca
-default	suite/tags-on-empty-scalars	dc2b7ca76d3beb03
+default	suite/tags-on-empty-scalars	af92ac629d76d219
 default	suite/three-dashes-and-content-without-space	ecc1767d8fc992bb
 default	suite/three-dashes-and-content-without-space-1-3	6b704cba6cfb068e
 default	suite/three-explicit-integers-in-a-block-sequence	be2f840ff4c2e814
@@ -764,7 +764,7 @@ nocomments	suite/tags-for-root-objects	bfd660bb04efa944
 nocomments	suite/tags-in-block-sequence	b3411ef39f905205
 nocomments	suite/tags-in-explicit-mapping	40e5824d4ed0e8d7
 nocomments	suite/tags-in-implicit-mapping	9b8846afab313dca
-nocomments	suite/tags-on-empty-scalars	dc2b7ca76d3beb03
+nocomments	suite/tags-on-empty-scalars	af92ac629d76d219
 nocomments	suite/three-dashes-and-content-without-space	ecc1767d8fc992bb
 nocomments	suite/three-dashes-and-content-without-space-1-3	6b704cba6cfb068e
 nocomments	suite/three-explicit-integers-in-a-block-sequence	be2f840ff4c2e814
@@ -1167,7 +1167,7 @@ indent4	suite/tags-for-root-objects	a0d37ba05ad581d3
 indent4	suite/tags-in-block-sequence	b3411ef39f905205
 indent4	suite/tags-in-explicit-mapping	40e5824d4ed0e8d7
 indent4	suite/tags-in-implicit-mapping	9b8846afab313dca
-indent4	suite/tags-on-empty-scalars	dc2b7ca76d3beb03
+indent4	suite/tags-on-empty-scalars	af92ac629d76d219
 indent4	suite/three-dashes-and-content-without-space	ecc1767d8fc992bb
 indent4	suite/three-dashes-and-content-without-space-1-3	6b704cba6cfb068e
 indent4	suite/three-explicit-integers-in-a-block-sequence	be2f840ff4c2e814
@@ -1570,7 +1570,7 @@ indentseq	suite/tags-for-root-objects	4fe37bc2207a9225
 indentseq	suite/tags-in-block-sequence	b3411ef39f905205
 indentseq	suite/tags-in-explicit-mapping	40e5824d4ed0e8d7
 indentseq	suite/tags-in-implicit-mapping	9b8846afab313dca
-indentseq	suite/tags-on-empty-scalars	dc2b7ca76d3beb03
+indentseq	suite/tags-on-empty-scalars	af92ac629d76d219
 indentseq	suite/three-dashes-and-content-without-space	ecc1767d8fc992bb
 indentseq	suite/three-dashes-and-content-without-space-1-3	6b704cba6cfb068e
 indentseq	suite/three-explicit-integers-in-a-block-sequence	be2f840ff4c2e814
