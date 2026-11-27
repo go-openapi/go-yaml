@@ -62,9 +62,23 @@ func (p *Parser) parseTag(ctx context) (*ast.TagNode, error) {
 
 	ctx.goNext()
 
-	comment := p.parseHeadComment(ctx)
-
-	tagValue, err := p.parseTagValue(ctx, node.URI, tagRawTk, ctx.currentToken())
+	// The comment lines under a tag that ends its line go to the tag's value, unless the tag stands on the empty node
+	// there: the next entry has begun, or nothing follows. Then they stand after the entry, and stay on the tape for what
+	// comes next, as they do with no tag. Taken by the empty node, "k: !!null # c2" over "  # c3" over "j: 1" came back
+	// with a "null" written under "# c3".
+	//
+	// The decision comes before the comments are read: the cursor only moves forward. parseTagValue builds the empty
+	// node without moving it, so it is handed the token past the comments while the cursor stays on them.
+	var (
+		comment  *ast.CommentGroupNode
+		tagValue ast.Node
+	)
+	if after := ctx.nextNotCommentToken(); ctx.isComment() && p.tagStandsOnNothing(node.URI, tagRawTk, after) {
+		tagValue, err = p.parseTagValue(ctx, node.URI, tagRawTk, after)
+	} else {
+		comment = p.parseHeadComment(ctx)
+		tagValue, err = p.parseTagValue(ctx, node.URI, tagRawTk, ctx.currentToken())
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -89,6 +103,28 @@ func (p *Parser) parseTag(ctx context) (*ast.TagNode, error) {
 	p.anchors.retag(node)
 
 	return node, nil
+}
+
+// tagStandsOnNothing reports whether a tag whose line ends on a comment stands on the empty node, tk being the first
+// token past the comment lines under it: parseTagValue's answer for that token, on a line below the tag's.
+//
+// The empty node stands where tk closes the enclosing collection or opens its next entry, or where nothing follows. A
+// scalar tag, which may take a plain scalar from the line below, also needs tk to open an entry.
+func (p *Parser) tagStandsOnNothing(uri string, tagRawTk *token.Token, tk *group.TapeToken) bool {
+	if tk == nil || endsValue(tk) {
+		return true
+	}
+	if !p.descent.opensNextEntry(tk, int(tagRawTk.Position.Line)) {
+		return false
+	}
+
+	tag, _ := token.ReservedTagOf(uri)
+	switch tag {
+	case token.IntegerTag, token.FloatTag, token.StringTag, token.BinaryTag, token.TimestampTag, token.BooleanTag, token.NullTag:
+		return startsEntry(tk)
+	default:
+		return true
+	}
 }
 
 // spellsTheMergeKey reports whether value, under any anchor, is a "<<": the merge key, or the plain string the parse

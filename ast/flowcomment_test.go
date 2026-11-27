@@ -75,8 +75,16 @@ func TestFixedACommentAboveAScalarIsWrittenAboveIt(t *testing.T) {
 		{src: "- !foo # c2\n  # c3\n  \"rqSb\" # c4\n", want: "- !foo # c2\n    # c3\n    \"rqSb\" # c4\n"},
 		{src: "- &a1 # c2\n  K # c3\n", want: "- &a1 # c2\n    K # c3\n"},
 		// A tag standing on the empty node, with the next entry's comment
-		// between them.
-		{src: "k: !!null # c10\n# c11\nj: 1 # c12\n", want: "k: !!null # c10\n  # c11\n  null\nj: 1 # c12\n"},
+		// between them: the comment stays the next entry's, as with no tag.
+		// The empty node took it, and its "null" came out under it.
+		{src: "k: !!null # c10\n# c11\nj: 1 # c12\n", want: "k: !!null null # c10\n# c11\nj: 1 # c12\n"},
+		{src: "k: !!null # c10\n  # c11\nj: 1\n", want: "k: !!null null # c10\n# c11\nj: 1\n"},
+		{src: "k: !!str # c10\n  # c11\nj: 1\n", want: "k: !!str # c10\n# c11\nj: 1\n"},
+		{src: "k: !!map # c10\n  # c11\nj: 1\n", want: "k: !!map # c10\n# c11\nj: 1\n"},
+		{src: "- !!null # c10\n  # c11\n- x\n", want: "- !!null null # c10\n# c11\n- x\n"},
+		{src: "!!null # c10\n# c11\n", want: "!!null # c10\n# c11\n"},
+		// A value under the tag keeps the comment above it.
+		{src: "k: !!str # c10\n  # c11\n  x\nj: 1\n", want: "k: !!str # c10\n  # c11\n  x\nj: 1\n"},
 	} {
 		assertRendersAndSettles(t, tc.src, tc.want)
 	}
