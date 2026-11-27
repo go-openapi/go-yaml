@@ -340,15 +340,6 @@ func setHeadComment(cm *ast.CommentGroupNode, value ast.Node) error {
 	return attachComment(cm, value, true)
 }
 
-// setTrailingComment attaches a comment written after the node, as the comments closing a document are:
-// those between a directive and the "---" under it, and those under the document's own node.
-//
-// It differs from setHeadComment only on a node rendered on one line.
-// There a head comment goes to HeadComment and a trailing comment to Comment, so it is never written above the node.
-func setTrailingComment(cm *ast.CommentGroupNode, value ast.Node) error {
-	return attachComment(cm, value, false)
-}
-
 func attachComment(cm *ast.CommentGroupNode, value ast.Node, above bool) error {
 	if cm == nil {
 		return nil

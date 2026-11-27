@@ -68,6 +68,16 @@ type DocumentNode struct {
 	// dropped.
 	StartComment *CommentGroupNode
 	EndComment   *CommentGroupNode
+	// FootComment holds the comments written after the body, where the body has
+	// no slot of its own for them: a scalar, a block scalar or a flow collection
+	// at the root. "x" over "# note" holds "# note" here, and the renderer writes
+	// it below the body, before any "...". A block mapping or sequence keeps the
+	// comments after it in its own FootComment.
+	//
+	// They went to the body's own comment before, the slot of a comment on its
+	// line, so "x" over "# note" rendered as "x # note", and "|" over "  text"
+	// over "# note" as "| # note" over "  text".
+	FootComment *CommentGroupNode
 	// Anchors holds the node each anchor of this document names, under the
 	// anchor's name. The parser fills it as it reads, so a caller walking the
 	// tree as it is built sees the anchors that stand before it; it is nil for

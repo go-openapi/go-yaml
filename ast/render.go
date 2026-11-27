@@ -363,7 +363,7 @@ func (r *Renderer) document(n *DocumentNode) rendered {
 		parts = append(parts, r.withComment(leaf(n.Start.Value), n.StartComment))
 	}
 	if n.Body != nil {
-		parts = append(parts, r.documentBody(n.Body))
+		parts = append(parts, join(sepNone, r.documentBody(n.Body), r.footComment(n.FootComment)))
 	}
 	if n.End != nil {
 		parts = append(parts, r.withComment(leaf(n.End.Value), n.EndComment))

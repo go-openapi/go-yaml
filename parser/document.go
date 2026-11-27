@@ -145,11 +145,14 @@ func (p *Parser) parseDocument(ctx context) (*ast.DocumentNode, bool, error) {
 
 	// A document with nothing between its markers has no body.
 	// The first pull detects that, and reads no further.
-	var body ast.Node
+	var (
+		body ast.Node
+		foot *ast.CommentGroupNode
+	)
 
 	bodyCtx := ctx.withPull(p, p.reader.bodyToken)
 	if bodyCtx.currentToken() != nil {
-		body, err = p.parseDocumentBody(bodyCtx)
+		body, foot, err = p.parseDocumentBody(bodyCtx)
 		if err != nil {
 			return nil, false, err
 		}
@@ -175,6 +178,7 @@ func (p *Parser) parseDocument(ctx context) (*ast.DocumentNode, bool, error) {
 	}
 
 	node := ast.Document(start, body)
+	node.FootComment = foot
 	node.Schema = schema
 	// The comment on the marker's own line. A "---" is not a node, so nothing else collects it.
 	node.StartComment = markerComment(ctx, startTk)
@@ -193,22 +197,19 @@ func (p *Parser) parseDocument(ctx context) (*ast.DocumentNode, bool, error) {
 	return node, true, nil
 }
 
-func (p *Parser) parseDocumentBody(ctx context) (ast.Node, error) {
+// parseDocumentBody reads the document's node, and the comments written after it, which go to
+// [ast.DocumentNode.FootComment]: most often between a directive and the "---" below it, or under a root scalar.
+// They are not a second value.
+func (p *Parser) parseDocumentBody(ctx context) (ast.Node, *ast.CommentGroupNode, error) {
 	node, err := p.parseToken(ctx, ctx.currentToken())
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	// Comments may follow the document's node, most often between a directive and the "---" below it.
-	// They are not a second value.
-	if comment := p.parseFootComment(ctx, 1); comment != nil {
-		if err := setTrailingComment(comment, node); err != nil {
-			return nil, err
-		}
-	}
+	foot := p.parseFootComment(ctx, 1)
 	if ctx.next() {
-		return nil, yamlerrors.NewSyntax("a document holds one root node, and this stands past it", ctx.currentToken().RawToken())
+		return nil, nil, yamlerrors.NewSyntax("a document holds one root node, and this stands past it", ctx.currentToken().RawToken())
 	}
-	return node, nil
+	return node, foot, nil
 }
 
 // parseToken builds the node tk opens, and passes it to the onComplete hook.

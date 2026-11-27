@@ -114,6 +114,7 @@ func (d *DocumentNode) Clone() *DocumentNode {
 	cloned.End = d.End.Detached()
 	cloned.StartComment = d.StartComment.Clone()
 	cloned.EndComment = d.EndComment.Clone()
+	cloned.FootComment = d.FootComment.Clone()
 	cloned.Body = cloneNode(d.Body)
 
 	return &cloned

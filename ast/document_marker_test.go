@@ -77,7 +77,9 @@ func TestANodeRenderedAloneQuotesAMarkerInColumnZero(t *testing.T) {
 		node ast.Node
 		want string
 	}{
-		"three dashes":               {node: parsed(" ---\r # c1\r"), want: "'---' # c1"},
+		// "# c1" stands on the line after the node, so it is the document's
+		// FootComment, and the node rendered alone carries none.
+		"three dashes":               {node: parsed(" ---\r # c1\r"), want: "'---'"},
 		"three dots":                 {node: parsed(" ...\n"), want: "'...'"},
 		"dots and text":              {node: parsed("   ... x\n"), want: "'... x'"},
 		"a key at the root":          {node: parsed(" --- x: 1\n"), want: "'--- x': 1"},

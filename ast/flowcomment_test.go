@@ -89,14 +89,24 @@ func TestFixedACommentAboveAScalarIsWrittenAboveIt(t *testing.T) {
 // handed to setHeadComment, which now writes what it is given above the node.
 // Written above, "%FOO bar baz # Should be ignored" over "# with a warning."
 // came back with the warning line first, before the directive it follows.
-// setTrailingComment keeps them where a comment after a node goes.
+//
+// They go to ast.DocumentNode.FootComment, written below the body. Kept on the
+// body's own comment, a root block scalar's trailing comment came back on its
+// header line: "|" over "  literal" over "# Comment" as "| # Comment".
 func TestFixedADocumentsTrailingCommentStaysAfterIt(t *testing.T) {
 	for _, tc := range []struct{ src, want string }{
 		{
 			src:  "%FOO  bar baz # Should be ignored\n              # with a warning.\n--- \"foo\"\n",
 			want: "%FOO bar baz # Should be ignored\n# with a warning.\n---\n\"foo\"\n",
 		},
-		{src: "|\n  literal\n\n# Comment\n", want: "| # Comment\n  literal\n"},
+		{src: "|\n  literal\n\n# Comment\n", want: "|\n  literal\n\n# Comment\n"},
+		{src: "x\n# note\n", want: "x\n# note\n"},
+		{src: "[a]\n# note\n", want: "[a]\n# note\n"},
+		{src: "{a: 1}\n# note\n", want: "{a: 1}\n# note\n"},
+		{src: "&a |\n  text\n# note\n", want: "&a |\n  text\n# note\n"},
+		{src: "| # head\n  text\n# note\n", want: "| # head\n  text\n# note\n"},
+		{src: "|2-\n  a\n#c\n", want: "|2-\n  a\n#c\n"},
+		{src: "x\n# note\n...\n", want: "x\n# note\n...\n"},
 	} {
 		assertRendersAndSettles(t, tc.src, tc.want)
 	}

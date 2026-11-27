@@ -662,6 +662,51 @@ func (vw *verbatimWriter) wroteWhole(n Node, text string) {
 	})
 }
 
+// takeAddedFoot returns the comments a caller added to doc's FootComment, and
+// takes them off the comments collectEdits booked to go above their node.
+//
+// A foot comment goes below the body. Booked as a head comment, the way a
+// mapping's FootComment is, "x" with one added came back as "# added" over "x".
+func (vw *verbatimWriter) takeAddedFoot(doc *DocumentNode) []*CommentNode {
+	if doc.FootComment == nil {
+		return nil
+	}
+
+	var added []*CommentNode
+	for _, comment := range doc.FootComment.Comments {
+		if tk := comment.GetToken(); (tk != nil && tk.FromSource()) || !vw.above[comment] {
+			continue
+		}
+		delete(vw.above, comment)
+		added = append(added, comment)
+	}
+
+	return added
+}
+
+// writeAddedFoot writes the comments a caller added to doc's FootComment on
+// lines of their own after the body, below the foot comments the document
+// wrote, and ahead of any "...".
+func (vw *verbatimWriter) writeAddedFoot(doc *DocumentNode, added []*CommentNode) {
+	if len(added) == 0 || vw.err != nil {
+		return
+	}
+	for _, comment := range doc.FootComment.Comments {
+		if tk := comment.GetToken(); tk != nil && tk.FromSource() && !comment.Removed() {
+			vw.upTo(tk.EndOffset())
+		}
+	}
+
+	brk := vw.breakNear(vw.cursor)
+	vw.upTo(vw.restOfLine())
+	if !vw.atLineStart {
+		vw.raw(brk)
+	}
+	for _, comment := range added {
+		vw.raw(comment.String() + brk)
+	}
+}
+
 // refuseUnwritten fails the rendering where a comment a caller added never
 // reached the output.
 //
@@ -1187,6 +1232,11 @@ func (r *Renderer) write(vw *verbatimWriter, n Node) {
 	}
 
 	span := sourceExtent(n)
+	var foot []*CommentNode
+	if doc, isDoc := n.(*DocumentNode); isDoc {
+		// Taken before writeComments, which writes an added comment above its node.
+		foot = vw.takeAddedFoot(doc)
+	}
 	r.writeComments(vw, n, span, true)
 	defer r.writeComments(vw, n, span, false)
 
@@ -1194,6 +1244,7 @@ func (r *Renderer) write(vw *verbatimWriter, n Node) {
 	case *DocumentNode:
 		r.writeTokenOf(vw, v.Start, v)
 		r.writeInPlaceOf(vw, v.Body, false)
+		vw.writeAddedFoot(v, foot)
 		r.writeTokenOf(vw, v.End, v)
 	case *MappingNode:
 		r.writeMapping(vw, v)
@@ -1934,6 +1985,7 @@ func eachCommentGroup(n Node, fn func(group *CommentGroupNode, head bool)) {
 	switch node := n.(type) {
 	case *DocumentNode:
 		handGroup(fn, node.StartComment, true)
+		handGroup(fn, node.FootComment, true)
 		handGroup(fn, node.EndComment, false)
 	case *MappingNode:
 		handGroup(fn, node.StartComment, false)

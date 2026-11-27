@@ -64,6 +64,7 @@ func Walk(v Visitor, node Node) {
 		walkGroups(v, n.StartComment)
 		walkBase(v, &n.BaseNode)
 		walkChild(v, n.Body)
+		walkGroups(v, n.FootComment)
 		walkGroups(v, n.EndComment)
 	case *MappingNode:
 		walkBase(v, &n.BaseNode)
