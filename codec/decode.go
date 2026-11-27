@@ -947,7 +947,7 @@ func (d *Decoder) aliasTarget(n *ast.AliasNode) (ast.Node, string) {
 	return d.anchorNodeMap[name], name
 }
 
-func (d *Decoder) getArrayNode(node ast.Node) (ast.ArrayNode, error) {
+func (d *Decoder) getArrayNode(node ast.Node) (*ast.SequenceNode, error) {
 	d.stepIn()
 	defer d.stepOut()
 	if d.isExceededMaxDepth() {
@@ -974,7 +974,7 @@ func (d *Decoder) getArrayNode(node ast.Node) (ast.ArrayNode, error) {
 	if tag, ok := node.(*ast.TagNode); ok {
 		return d.getArrayNode(tag.Value)
 	}
-	arrayNode, ok := node.(ast.ArrayNode)
+	arrayNode, ok := node.(*ast.SequenceNode)
 	if !ok {
 		return nil, yamlerrors.NewUnexpectedNodeType(node.Type(), ast.SequenceType, node.GetToken())
 	}
@@ -1592,7 +1592,7 @@ func (d *Decoder) createDecodableValue(typ reflect.Type) reflect.Value {
 
 /*
 func (d *Decoder) keyToKeyNodeMap(node ast.Node, ignoreMergeKey bool) (map[string]ast.Node, error) {
-	m, err := d.keyToNodeMap(node, ignoreMergeKey, func(nodeMap *ast.MapNodeIter) ast.Node { return nodeMap.Key() })
+	m, err := d.keyToNodeMap(node, ignoreMergeKey, func(entry *ast.MappingValueNode) ast.Node { return entry.Key })
 	if err != nil {
 		return nil, err
 	}
@@ -1664,7 +1664,7 @@ func (d *Decoder) createDecodedNewValue(
 	return codecutils.CastToAssignableValue(newValue, typ, node)
 }
 
-func (d *Decoder) keyToNodeMap(node ast.Node, ignoreMergeKey bool, getKeyOrValueNode func(*ast.MapNodeIter) ast.Node) (map[string]ast.Node, error) {
+func (d *Decoder) keyToNodeMap(node ast.Node, ignoreMergeKey bool, getKeyOrValueNode func(*ast.MappingValueNode) ast.Node) (map[string]ast.Node, error) {
 	d.stepIn()
 	defer d.stepOut()
 	if d.isExceededMaxDepth() {
@@ -1683,14 +1683,13 @@ func (d *Decoder) keyToNodeMap(node ast.Node, ignoreMergeKey bool, getKeyOrValue
 	}
 	keyToNodeMap := map[string]ast.Node{}
 	var merged []map[string]ast.Node
-	mapIter := mapNode.MapRange()
-	for mapIter.Next() {
-		keyNode := mapIter.Key()
+	for _, entry := range astutils.EntriesOf(mapNode) {
+		keyNode := entry.Key
 		if keyNode.IsMergeKey() {
 			if ignoreMergeKey {
 				continue
 			}
-			mergeMap, err := d.mergedKeyToNodeMap(mapIter.Value(), ignoreMergeKey, getKeyOrValueNode)
+			mergeMap, err := d.mergedKeyToNodeMap(entry.Value, ignoreMergeKey, getKeyOrValueNode)
 			if err != nil {
 				return nil, err
 			}
@@ -1713,7 +1712,7 @@ func (d *Decoder) keyToNodeMap(node ast.Node, ignoreMergeKey bool, getKeyOrValue
 		}
 		// astutils.RefuseRepeats rejected a repeat not allowed by the parse.
 		// An allowed repeat keeps the last value.
-		keyToNodeMap[key] = getKeyOrValueNode(mapIter)
+		keyToNodeMap[key] = getKeyOrValueNode(entry)
 	}
 
 	// The own keys of a mapping win over the merged ones, on whichever side of the
@@ -1764,7 +1763,7 @@ func tagZero(tag token.ReservedTagKeyword) (any, error) {
 // both write "b". The YAML 1.1 merge spec gives the key to the mapping named first,
 // and does not reject the document.
 func (d *Decoder) mergedKeyToNodeMap(
-	node ast.Node, ignoreMergeKey bool, getKeyOrValueNode func(*ast.MapNodeIter) ast.Node,
+	node ast.Node, ignoreMergeKey bool, getKeyOrValueNode func(*ast.MappingValueNode) ast.Node,
 ) (map[string]ast.Node, error) {
 	d.stepIn()
 	defer d.stepOut()
@@ -1781,12 +1780,11 @@ func (d *Decoder) mergedKeyToNodeMap(
 	err := d.eachMergeSource(node, func(mapNode ast.MapNode) error {
 		// Read the own keys of the mapping first, then the entries brought in by its own "<<".
 		var merges []ast.Node
-		mapIter := mapNode.MapRange()
-		for mapIter.Next() {
-			keyNode := mapIter.Key()
+		for _, entry := range astutils.EntriesOf(mapNode) {
+			keyNode := entry.Key
 			if keyNode.IsMergeKey() {
 				if !ignoreMergeKey {
-					merges = append(merges, mapIter.Value())
+					merges = append(merges, entry.Value)
 				}
 
 				continue
@@ -1797,7 +1795,7 @@ func (d *Decoder) mergedKeyToNodeMap(
 				return err
 			}
 			if named {
-				hold(key, getKeyOrValueNode(mapIter))
+				hold(key, getKeyOrValueNode(entry))
 			}
 		}
 		for _, from := range merges {
@@ -1820,7 +1818,7 @@ func (d *Decoder) mergedKeyToNodeMap(
 }
 
 func (d *Decoder) keyToValueNodeMap(node ast.Node, ignoreMergeKey bool) (map[string]ast.Node, error) {
-	m, err := d.keyToNodeMap(node, ignoreMergeKey, func(nodeMap *ast.MapNodeIter) ast.Node { return nodeMap.Value() })
+	m, err := d.keyToNodeMap(node, ignoreMergeKey, func(entry *ast.MappingValueNode) ast.Node { return entry.Value })
 	if err != nil {
 		return nil, err
 	}
@@ -2137,12 +2135,11 @@ func (d *Decoder) rangeMapEntries(src ast.Node, ignoreMergeKey bool, visit mapEn
 
 	var merges []ast.Node
 
-	mapIter := mapNode.MapRange()
-	for mapIter.Next() {
-		keyNode := mapIter.Key()
+	for _, entry := range astutils.EntriesOf(mapNode) {
+		keyNode := entry.Key
 		if keyNode.IsMergeKey() {
 			if !ignoreMergeKey {
-				merges = append(merges, mapIter.Value())
+				merges = append(merges, entry.Value)
 			}
 
 			continue
@@ -2155,7 +2152,7 @@ func (d *Decoder) rangeMapEntries(src ast.Node, ignoreMergeKey bool, visit mapEn
 		if !named {
 			continue
 		}
-		if err := visit(name, keyNode, mapIter.Value(), mapIter.KeyValue(), false); err != nil {
+		if err := visit(name, keyNode, entry.Value, entry, false); err != nil {
 			return err
 		}
 	}
@@ -2186,12 +2183,11 @@ func (d *Decoder) rangeMergedEntries(src ast.Node, ignoreMergeKey bool, visit ma
 	return d.eachMergeSource(src, func(mapNode ast.MapNode) error {
 		var merges []ast.Node
 
-		mapIter := mapNode.MapRange()
-		for mapIter.Next() {
-			keyNode := mapIter.Key()
+		for _, entry := range astutils.EntriesOf(mapNode) {
+			keyNode := entry.Key
 			if keyNode.IsMergeKey() {
 				if !ignoreMergeKey {
-					merges = append(merges, mapIter.Value())
+					merges = append(merges, entry.Value)
 				}
 
 				continue
@@ -2204,7 +2200,7 @@ func (d *Decoder) rangeMergedEntries(src ast.Node, ignoreMergeKey bool, visit ma
 			if !named {
 				continue
 			}
-			if err := visit(name, keyNode, mapIter.Value(), mapIter.KeyValue(), true); err != nil {
+			if err := visit(name, keyNode, entry.Value, entry, true); err != nil {
 				return err
 			}
 		}
@@ -2445,11 +2441,8 @@ func (d *Decoder) getMergeAliasName(src ast.Node) string {
 	if err != nil {
 		return ""
 	}
-	mapIter := mapNode.MapRange()
-	for mapIter.Next() {
-		key := mapIter.Key()
-		value := mapIter.Value()
-		if alias, isAlias := value.(*ast.AliasNode); isAlias && key.IsMergeKey() {
+	for _, entry := range astutils.EntriesOf(mapNode) {
+		if alias, isAlias := entry.Value.(*ast.AliasNode); isAlias && entry.Key.IsMergeKey() {
 			return alias.Value.GetToken().Value
 		}
 	}
@@ -2735,20 +2728,18 @@ func (d *Decoder) decodeArray(dst reflect.Value, src ast.Node) error {
 	if arrayNode == nil {
 		return nil
 	}
-	iter := arrayNode.ArrayRange()
 	arrayValue := reflect.New(dst.Type()).Elem()
 	arrayType := dst.Type()
 	elemType := arrayType.Elem()
 	idx := 0
 
 	var foundErr error
-	for iter.Next() {
-		v := iter.Value()
+	for v := range arrayNode.ArrayRange() {
 		if idx == arrayType.Len() {
 			// The array holds no more. The entries it holds are written, and the rest are dropped, as
 			// encoding/json drops them. Indexing past the end panicked.
 			if foundErr == nil {
-				foundErr = yamlerrors.NewOverflow(arrayType, fmt.Sprintf("a sequence of %d entries", iter.Len()), v.GetToken())
+				foundErr = yamlerrors.NewOverflow(arrayType, fmt.Sprintf("a sequence of %d entries", arrayNode.Len()), v.GetToken())
 			}
 
 			break
@@ -2797,14 +2788,12 @@ func (d *Decoder) decodeSlice(dst reflect.Value, src ast.Node) error {
 	if arrayNode == nil {
 		return nil
 	}
-	iter := arrayNode.ArrayRange()
 	sliceType := dst.Type()
-	sliceValue := reflect.MakeSlice(sliceType, 0, iter.Len())
+	sliceValue := reflect.MakeSlice(sliceType, 0, arrayNode.Len())
 	elemType := sliceType.Elem()
 
 	var foundErr error
-	for iter.Next() {
-		v := iter.Value()
+	for v := range arrayNode.ArrayRange() {
 		if elemType.Kind() == reflect.Pointer && ast.IsNull(v) {
 			// Set the pointer to nil.
 			sliceValue = reflect.Append(sliceValue, reflect.Zero(elemType))
@@ -2843,12 +2832,11 @@ func (d *Decoder) decodeMapItem(dst *MapItem, src ast.Node) error {
 	if err != nil {
 		return err
 	}
-	mapIter := mapNode.MapRange()
-	if !mapIter.Next() {
+	entries := astutils.EntriesOf(mapNode)
+	if len(entries) == 0 {
 		return nil
 	}
-	key := mapIter.Key()
-	value := mapIter.Value()
+	key, value := entries[0].Key, entries[0].Value
 	if key.IsMergeKey() {
 		leave := d.enterMerge()
 		err := d.decodeMapItem(dst, value)

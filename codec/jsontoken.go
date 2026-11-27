@@ -1270,12 +1270,12 @@ func (t *jsonTokener) treeEntries(n *ast.MappingNode) ([]treeEntry, bool) {
 				return nil, false
 			}
 		}
-		for it := src.MapRange(); it.Next(); {
-			name := t.keyName(it.Key())
+		for _, entry := range astutils.EntriesOf(src) {
+			name := t.keyName(entry.Key)
 			if held(name) {
 				continue
 			}
-			entries = append(entries, treeEntry{name: name, value: it.Value()})
+			entries = append(entries, treeEntry{name: name, value: entry.Value})
 		}
 	}
 

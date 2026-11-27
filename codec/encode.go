@@ -1366,10 +1366,8 @@ func (e *Encoder) structField(
 		// whether a field already writes the name. A struct holds fields,
 		// and flat records the field reached by each name.
 		fromMap := structfields.InlineTakesUnclaimedEntries(fieldValue.Type())
-		mapIter := mapNode.MapRange()
-		for mapIter.Next() {
-			mapKey := mapIter.Key()
-			mapValue := mapIter.Value()
+		for _, entry := range astutils.EntriesOf(mapNode) {
+			mapKey, mapValue := entry.Key, entry.Value
 			keyName := mapKey.GetToken().Value
 			if fromMap {
 				if fields.Claims(keyName) {

@@ -20,9 +20,9 @@ func LookupIn(mapping MapNode, name string) *MappingValueNode {
 		return nil
 	}
 
-	for iter := mapping.MapRange(); iter.Next(); {
-		if key, _ := KeyName(iter.Key()); key == name {
-			return iter.KeyValue()
+	for _, entry := range entriesOf(mapping) {
+		if key, _ := KeyName(entry.Key); key == name {
+			return entry
 		}
 	}
 
@@ -43,8 +43,8 @@ func LookupMerged(node Node, name string) *MappingValueNode {
 		return own
 	}
 
-	for iter := mapping.MapRange(); iter.Next(); {
-		merge := MergeOf(iter.KeyValue())
+	for _, entry := range entriesOf(mapping) {
+		merge := MergeOf(entry)
 		if merge.Verdict != Folds {
 			continue
 		}

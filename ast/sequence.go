@@ -5,6 +5,7 @@ package ast
 
 import (
 	"fmt"
+	"iter"
 	"slices"
 
 	"github.com/go-openapi/go-yaml/token"
@@ -19,35 +20,6 @@ func (n *SequenceEntryNode) String() string {
 		Entries:           []*SequenceEntryNode{n},
 		ValueHeadComments: []*CommentGroupNode{n.HeadComment},
 	})
-}
-
-// ArrayNode is a node whose values [ArrayNodeIter] ranges over: a [SequenceNode], or a [TagNode] on one.
-type ArrayNode interface {
-	ArrayRange() *ArrayNodeIter
-}
-
-// ArrayNodeIter ranges over the values of an [ArrayNode]. Call Next before the first Value.
-type ArrayNodeIter struct {
-	values []Node
-	idx    int
-}
-
-// Next advances the array iterator and reports whether there is another entry.
-// It returns false when the iterator is exhausted.
-func (m *ArrayNodeIter) Next() bool {
-	m.idx++
-	next := m.idx < len(m.values)
-	return next
-}
-
-// Value returns the value of the iterator's current array entry.
-func (m *ArrayNodeIter) Value() Node {
-	return m.values[m.idx]
-}
-
-// Len returns the number of values.
-func (m *ArrayNodeIter) Len() int {
-	return len(m.values)
 }
 
 // SequenceNode is a sequence, block or flow ("[a, b]").
@@ -231,12 +203,14 @@ func (n *SequenceNode) String() string {
 	return defaultRenderer.String(n)
 }
 
-// ArrayRange returns an iterator over the values of n.
-func (n *SequenceNode) ArrayRange() *ArrayNodeIter {
-	return &ArrayNodeIter{
-		idx:    startRangeIndex,
-		values: n.Values,
-	}
+// ArrayRange yields each value of n, in order.
+func (n *SequenceNode) ArrayRange() iter.Seq[Node] {
+	return slices.Values(n.Values)
+}
+
+// Len returns the number of values of n.
+func (n *SequenceNode) Len() int {
+	return len(n.Values)
 }
 
 // stringWithoutComment renders the sequence for use as a key. SequenceNode
@@ -283,12 +257,30 @@ type SequenceMergeValueNode struct {
 	values []MapNode
 }
 
-// MapRange returns an iterator over the entries of every mapping, in order.
-func (n *SequenceMergeValueNode) MapRange() *MapNodeIter {
-	ret := &MapNodeIter{idx: startRangeIndex}
-	for _, value := range n.values {
-		iter := value.MapRange()
-		ret.values = append(ret.values, iter.values...)
+// MapRange yields the key and the value of each entry of every mapping, in order.
+func (n *SequenceMergeValueNode) MapRange() iter.Seq2[MapKeyNode, Node] {
+	return keysAndValues(n.Entries())
+}
+
+// Entries yields each entry of every mapping, in order.
+func (n *SequenceMergeValueNode) Entries() iter.Seq[*MappingValueNode] {
+	return func(yield func(*MappingValueNode) bool) {
+		for _, value := range n.values {
+			for entry := range value.Entries() {
+				if !yield(entry) {
+					return
+				}
+			}
+		}
 	}
-	return ret
+}
+
+// Len returns the number of entries of every mapping.
+func (n *SequenceMergeValueNode) Len() int {
+	total := 0
+	for _, value := range n.values {
+		total += value.Len()
+	}
+
+	return total
 }

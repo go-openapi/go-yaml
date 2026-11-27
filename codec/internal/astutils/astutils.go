@@ -5,6 +5,7 @@ package astutils
 
 import (
 	"fmt"
+	"slices"
 
 	"github.com/go-openapi/go-yaml/ast"
 	yamlerrors "github.com/go-openapi/go-yaml/errors"
@@ -89,19 +90,36 @@ func EachEntryOwnFirst(n *ast.MappingNode, fn func(value ast.Node, merged bool) 
 	return nil
 }
 
+// EntriesOf returns the entries of n, in order.
+//
+// The codec ranges over this slice instead of n's iterators. Called through the [ast.MapNode] interface, an iterator
+// cannot be inlined, so the loop body moves to the heap with every variable it captures. In [EachMergedEntry] that
+// would put the map setToMapValue fills on the heap for each mapping of every document, merge or not. A
+// [ast.MappingNode] hands over its Values, and only a merge sequence builds a slice. The ast package keeps the same
+// function, unexported, for its own loops.
+func EntriesOf(n ast.MapNode) []*ast.MappingValueNode {
+	switch n := n.(type) {
+	case *ast.MappingNode:
+		return n.Values
+	case *ast.MappingValueNode:
+		return []*ast.MappingValueNode{n}
+	default:
+		return slices.Collect(n.Entries())
+	}
+}
+
 // MapEntriesOwnFirst returns the entries of a mapping: the ones it writes itself, then the ones a "<<" brings in,
 // each group in document order.
 //
 // It applies the order of [EachEntryOwnFirst] on the reflection path.
-// MapEntriesOwnFirst reads an [ast.MapNode] through its iterator,
+// MapEntriesOwnFirst reads an [ast.MapNode] through [EntriesOf],
 // and EachEntryOwnFirst reads an *ast.MappingNode through its Values. A reader that writes a field only where nothing stands yet
 // then gives an own entry precedence over a merged one.
 func MapEntriesOwnFirst(n ast.MapNode) []MapEntry {
 	var own, merged []MapEntry
 
-	iter := n.MapRange()
-	for iter.Next() {
-		entry := MapEntry{Key: iter.Key(), Value: iter.Value(), KeyValue: iter.KeyValue()}
+	for _, kv := range EntriesOf(n) {
+		entry := MapEntry{Key: kv.Key, Value: kv.Value, KeyValue: kv}
 		if key, isKey := entry.Key.(ast.MapKeyNode); isKey && key.IsMergeKey() {
 			entry.Merged = true
 			merged = append(merged, entry)
@@ -126,9 +144,8 @@ func EachMergedEntry(value ast.MapNode, fn func(ast.Node) error) error {
 		return EachEntryOwnFirst(n, func(v ast.Node, _ bool) error { return fn(v) })
 	}
 
-	iter := value.MapRange()
-	for iter.Next() {
-		if err := fn(iter.KeyValue()); err != nil {
+	for _, entry := range EntriesOf(value) {
+		if err := fn(entry); err != nil {
 			return err
 		}
 	}

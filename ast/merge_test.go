@@ -99,9 +99,14 @@ func TestMergeOfAnswersForEveryEntry(t *testing.T) {
 
 		// The order is the rule: reading them in turn and keeping the first
 		// writer gives an earlier mapping precedence over a later one.
-		first := got.Sources[0].MapRange()
-		require.True(t, first.Next())
-		assert.Equal(t, "1", first.Value().GetToken().Value)
+		var first ast.Node
+		for _, value := range got.Sources[0].MapRange() {
+			first = value
+
+			break
+		}
+		require.NotNil(t, first)
+		assert.Equal(t, "1", first.GetToken().Value)
 	})
 
 	t.Run("an anchor, an alias and a tag are read through", func(t *testing.T) {

@@ -71,9 +71,18 @@ Every node satisfies `ast.Node` — `String`, `GetToken`, `Type`, `GetComment`,
 | references | `AnchorNode`, `AliasNode` |
 | structure | `DocumentNode`, `DirectiveNode`, `TagNode`, `CommentNode`, `CommentGroupNode` |
 
-Four interfaces cut across them: `ScalarNode`, `MapNode`, `MapKeyNode`,
-`ArrayNode`. A `MappingNode` holds `Values []*MappingValueNode`, in document
+Three interfaces cut across them: `ScalarNode`, `MapNode`, `MapKeyNode`.
+A `MappingNode` holds `Values []*MappingValueNode`, in document
 order, each with a `Key` and a `Value`.
+
+A `MapNode` ranges over its entries with `MapRange` (key and value) or
+`Entries` (each `*MappingValueNode`), and `Len` counts them. A `SequenceNode`
+does the same with `ArrayRange` and `Len`:
+
+```go
+for key, value := range mapping.MapRange() { ... }
+for value := range sequence.ArrayRange() { ... }
+```
 
 ## Walking
 

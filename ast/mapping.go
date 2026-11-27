@@ -3,45 +3,48 @@
 
 package ast
 
-import "github.com/go-openapi/go-yaml/token"
+import (
+	"iter"
+	"slices"
 
-// MapNode is a node whose entries [MapNodeIter] ranges over: a [MappingNode], a [MappingValueNode] or a
-// [SequenceMergeValueNode].
-type MapNode interface {
-	MapRange() *MapNodeIter
-}
-
-// MapNodeIter ranges over the entries of a [MapNode]. Call Next before the first Key.
-type MapNodeIter struct {
-	values []*MappingValueNode
-	idx    int
-}
-
-const (
-	startRangeIndex = -1
+	"github.com/go-openapi/go-yaml/token"
 )
 
-// Next advances the map iterator and reports whether there is another entry.
-// It returns false when the iterator is exhausted.
-func (m *MapNodeIter) Next() bool {
-	m.idx++
-	next := m.idx < len(m.values)
-	return next
+// MapNode is a node holding mapping entries: a [MappingNode], a [MappingValueNode] or a [SequenceMergeValueNode].
+type MapNode interface {
+	// MapRange yields the key and the value of each entry, in order.
+	MapRange() iter.Seq2[MapKeyNode, Node]
+	// Entries yields each entry, in order. Use it where the entry's comments or its ':' token matter.
+	Entries() iter.Seq[*MappingValueNode]
+	// Len returns the number of entries.
+	Len() int
 }
 
-// Key returns the key of the iterator's current map node entry.
-func (m *MapNodeIter) Key() MapKeyNode {
-	return m.values[m.idx].Key
+// entriesOf returns the entries of n, in order, for a loop inside this package.
+//
+// Called through the [MapNode] interface, an iterator cannot be inlined, so the loop body moves to the heap with every
+// variable it captures: three allocations for each call of [LookupIn]. A [MappingNode] hands over its Values, and
+// only a merge sequence builds a slice. astutils.EntriesOf does the same for the codec.
+func entriesOf(n MapNode) []*MappingValueNode {
+	switch n := n.(type) {
+	case *MappingNode:
+		return n.Values
+	case *MappingValueNode:
+		return []*MappingValueNode{n}
+	default:
+		return slices.Collect(n.Entries())
+	}
 }
 
-// Value returns the value of the iterator's current map node entry.
-func (m *MapNodeIter) Value() Node {
-	return m.values[m.idx].Value
-}
-
-// KeyValue returns the current entry.
-func (m *MapNodeIter) KeyValue() *MappingValueNode {
-	return m.values[m.idx]
+// keysAndValues yields the key and the value of each entry that entries yields.
+func keysAndValues(entries iter.Seq[*MappingValueNode]) iter.Seq2[MapKeyNode, Node] {
+	return func(yield func(MapKeyNode, Node) bool) {
+		for entry := range entries {
+			if !yield(entry.Key, entry.Value) {
+				return
+			}
+		}
+	}
 }
 
 // DuplicateKey is one entry of a mapping whose key the mapping already held.
@@ -183,12 +186,19 @@ func (n *MappingNode) String() string {
 	return defaultRenderer.String(n)
 }
 
-// MapRange returns an iterator over the entries of n.
-func (n *MappingNode) MapRange() *MapNodeIter {
-	return &MapNodeIter{
-		idx:    startRangeIndex,
-		values: n.Values,
-	}
+// MapRange yields the key and the value of each entry of n, in order.
+func (n *MappingNode) MapRange() iter.Seq2[MapKeyNode, Node] {
+	return keysAndValues(n.Entries())
+}
+
+// Entries yields each entry of n, in order.
+func (n *MappingNode) Entries() iter.Seq[*MappingValueNode] {
+	return slices.Values(n.Values)
+}
+
+// Len returns the number of entries of n.
+func (n *MappingNode) Len() int {
+	return len(n.Values)
 }
 
 // stringWithoutComment renders the mapping for use as a key, where comments
@@ -307,10 +317,21 @@ func (n *MappingValueNode) String() string {
 	return defaultRenderer.String(n)
 }
 
-// MapRange returns an iterator over n, as its only entry.
-func (n *MappingValueNode) MapRange() *MapNodeIter {
-	return &MapNodeIter{
-		idx:    startRangeIndex,
-		values: []*MappingValueNode{n},
+// MapRange yields the key and the value of n, as its only entry.
+func (n *MappingValueNode) MapRange() iter.Seq2[MapKeyNode, Node] {
+	return func(yield func(MapKeyNode, Node) bool) {
+		yield(n.Key, n.Value)
 	}
+}
+
+// Entries yields n, as its only entry.
+func (n *MappingValueNode) Entries() iter.Seq[*MappingValueNode] {
+	return func(yield func(*MappingValueNode) bool) {
+		yield(n)
+	}
+}
+
+// Len returns 1: n is a single entry.
+func (n *MappingValueNode) Len() int {
+	return 1
 }
