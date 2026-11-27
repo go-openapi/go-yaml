@@ -250,7 +250,8 @@ func (p *Parser) parseTagValue(ctx context, uri string, tagRawTk *token.Token, t
 	if tk == nil {
 		return p.handNull(ctx, ctx.createImplicitNullToken(group.NewSynthetic(tagRawTk)))
 	}
-	if scalar := taggedScalar(tk); scalar != nil {
+	scalar := taggedScalar(tk)
+	if scalar != nil {
 		// The tag types the scalar, so resolveTimestamp leaves it the text it was written with.
 		defer p.descent.enterTagged(scalar.RawToken())()
 	}
@@ -259,21 +260,10 @@ func (p *Parser) parseTagValue(ctx context, uri string, tagRawTk *token.Token, t
 	// a "%TAG" line that repoints "!!" makes "!!seq" a local tag, which stands on whatever follows.
 	tag, _ := token.ReservedTagOf(uri)
 	switch tag {
-	case token.MappingTag, token.SetTag, token.SequenceTag, token.OrderedMapTag:
-		if p.descent.opensNextEntry(tk, int(tagRawTk.Position.Line)) {
-			// A collection tag ending its line takes the collection below only where that collection may be the
-			// value, as for a value written with no tag: indented past the key or the '-', or a block sequence at the
-			// key's own column. Elsewhere the tag stands on the empty node, and what follows is the next entry of the
-			// enclosing collection. "a: !!map" over "b: 1", both at column 1, read as {a: {b: 1}}, and "- !!seq"
-			// over "- b" as [[b]].
+	case token.MappingTag, token.SetTag:
+		if p.collectionTagEndsItsEntry(tk, tagRawTk) {
 			return newTagDefaultScalarValueNode(ctx, uri, tagRawTk)
 		}
-	default:
-		// nothing to do
-	}
-
-	switch tag {
-	case token.MappingTag, token.SetTag:
 		if !isMapToken(tk) {
 			return p.parseTaggedOtherKind(ctx, uri, tagRawTk, tk)
 		}
@@ -284,6 +274,9 @@ func (p *Parser) parseTagValue(ctx context, uri string, tagRawTk *token.Token, t
 	case token.IntegerTag, token.FloatTag, token.StringTag, token.BinaryTag, token.TimestampTag, token.BooleanTag, token.NullTag:
 		return p.parseScalarTagValue(ctx, uri, tagRawTk, tk)
 	case token.SequenceTag, token.OrderedMapTag:
+		if p.collectionTagEndsItsEntry(tk, tagRawTk) {
+			return newTagDefaultScalarValueNode(ctx, uri, tagRawTk)
+		}
 		if tag == token.OrderedMapTag {
 			// An ordered map's keys are unique across its entries, and each entry is a mapping of its own.
 			// The sequence under the tag takes the mark and has the ledger record every entry's key in one set.
@@ -302,12 +295,22 @@ func (p *Parser) parseTagValue(ctx context, uri string, tagRawTk *token.Token, t
 		// nothing to do
 	}
 
-	return p.parseUnresolvedTagValue(ctx, uri, tagRawTk, tk)
+	return p.parseUnresolvedTagValue(ctx, uri, tagRawTk, tk, scalar)
+}
+
+// collectionTagEndsItsEntry reports whether a collection tag ending its line stands on the empty node, because tk opens
+// the next entry of the enclosing collection.
+//
+// A collection tag ending its line takes the collection below only where that collection may be the value, as for a
+// value written with no tag: indented past the key or the '-', or a block sequence at the key's own column. "a: !!map"
+// over "b: 1", both at column 1, read as {a: {b: 1}}, and "- !!seq" over "- b" as [[b]].
+func (p *Parser) collectionTagEndsItsEntry(tk *group.TapeToken, tagRawTk *token.Token) bool {
+	return p.descent.opensNextEntry(tk, int(tagRawTk.Position.Line))
 }
 
 // parseScalarTagValue reads the node a scalar tag, such as "!!int" or "!!str", stands on: a block scalar on the
 // line below, the empty node where nothing follows, an anchor naming nothing, or a scalar.
-// A collection under a scalar tag goes to parseTaggedOtherKind.
+// A collection under a scalar tag is read as written, and keeps the tag, as parseTaggedOtherKind describes.
 func (p *Parser) parseScalarTagValue(ctx context, uri string, tagRawTk *token.Token, tk *group.TapeToken) (ast.Node, error) {
 	if tk.GroupType() == group.TokenGroupLiteral || tk.GroupType() == group.TokenGroupFolded {
 		// A block scalar written on the line below the tag.
@@ -325,7 +328,8 @@ func (p *Parser) parseScalarTagValue(ctx context, uri string, tagRawTk *token.To
 		return ctx.passed(p.parseAnchor(ctx.withGroup(p, group), group))
 	}
 	if opensCollection(tk) || isMapToken(tk) {
-		return p.parseTaggedOtherKind(ctx, uri, tagRawTk, tk)
+		// A collection under a scalar tag. The checks parseTaggedOtherKind makes first have all failed above.
+		return p.parseToken(ctx, tk)
 	}
 	if tk.Type() == token.TagType {
 		// No entry began since the tag, so this second one tags the same node. Left to parseScalarValue, a second tag
@@ -337,8 +341,10 @@ func (p *Parser) parseScalarTagValue(ctx context, uri string, tagRawTk *token.To
 }
 
 // parseUnresolvedTagValue reads the node a tag the core schema does not resolve stands on: the non-specific "!",
-// a local tag, or a "!!" tag a "%TAG" line repoints.
-func (p *Parser) parseUnresolvedTagValue(ctx context, uri string, tagRawTk *token.Token, tk *group.TapeToken) (ast.Node, error) {
+// a local tag, or a "!!" tag a "%TAG" line repoints. scalar is what [taggedScalar] returned for tk.
+func (p *Parser) parseUnresolvedTagValue(
+	ctx context, uri string, tagRawTk *token.Token, tk, scalar *group.TapeToken,
+) (ast.Node, error) {
 	if endsValue(tk) {
 		// A tag the core schema does not resolve (the non-specific "!", or a local tag),
 		// followed by punctuation that closes the enclosing collection, stands on the empty node: "[!]", "{a: !}".
@@ -357,7 +363,7 @@ func (p *Parser) parseUnresolvedTagValue(ctx context, uri string, tagRawTk *toke
 		// under "%TAG !! !local-", "!!int" names !local-int and resolves to nothing.
 		return ctx.passed(newStringNode(ctx, tk))
 	}
-	if scalar := anchoredScalar(tk); scalar != nil && resolvedBySchema(scalar) {
+	if tk.Group != nil && scalar != nil && resolvedBySchema(scalar) {
 		// The same rule, with an anchor between the tag and the scalar: "!foo &a1 true" is the string "true",
 		// as "!foo true" and "&a1 !foo true" are.
 		// The token is retyped before the node is built, as retypeAhead does for a schema that arrives late.
