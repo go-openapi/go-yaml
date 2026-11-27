@@ -1459,13 +1459,21 @@ func (r *Renderer) literal(n *LiteralNode) string {
 func (r *Renderer) literalAt(n *LiteralNode, lift int) string {
 	header := n.Start.Value
 
-	// The content is written at the renderer's own width, so a header that
-	// states a width must state the renderer's: "a: |1" over "  x" comes back
-	// as "a: |2" over "   x", holding the same " x". Carrying the source's
-	// digit over would leave it describing a layout that is gone, and the value
-	// would gain a column on every cycle. [Renderer.VerbatimFile] keeps the digit
-	// the document wrote.
-	if statedIndent(header) > 0 {
+	// A header that states a width keeps it, and the content is written at that
+	// width instead of the renderer's own: "a: |1" over "  x" comes back as
+	// written, holding " x". The width counts from the enclosing node, and the
+	// document root is lifted by one, so "|2-" at the root writes its content one
+	// column in. A header that states none takes the renderer's width.
+	//
+	// The content goes out relative to the line the header stands on, which lift
+	// columns separate from the enclosing node. Where the stated width is less
+	// than lift -- "k: # c" over "  !!str |1", whose header the renderer writes
+	// two columns in -- the content would stand left of that line, so the header
+	// states the renderer's width instead.
+	indent := r.indent
+	if stated := statedIndent(header); stated >= lift && stated > 0 {
+		indent = stated - lift
+	} else if stated > 0 {
 		header = restateIndent(header, r.indent+lift)
 	}
 
@@ -1487,8 +1495,6 @@ func (r *Renderer) literalAt(n *LiteralNode, lift int) string {
 		// survives being read back.
 		return withoutKeepChomping(header)
 	}
-
-	indent := r.indent
 
 	if isFolded(n.Start) {
 		// A folded scalar's value has lost its line structure -- that is what

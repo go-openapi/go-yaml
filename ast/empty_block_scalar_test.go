@@ -23,7 +23,8 @@ import (
 // leaves it empty, and the document then survives being read back.
 //
 // The header's break was counted as content until 2026-11-18, so "--- |1+" over
-// a final break read as "\n" and rendered as "|3+" over an empty line.
+// a final break read as "\n" and rendered as "|3+" over an empty line. The
+// width the header states is kept: "|1".
 // yaml/yaml-reference-parser, go.yaml.in/yaml/v3 and PyYAML all read it as "".
 func TestEmptyBlockScalarSurvivesRendering(t *testing.T) {
 	tests := map[string]struct {
@@ -32,11 +33,11 @@ func TestEmptyBlockScalarSurvivesRendering(t *testing.T) {
 	}{
 		"header ends the source": {
 			src:    "--- |1+",
-			render: "---\n|3\n",
+			render: "---\n|1\n",
 		},
 		"header ends the line": {
 			src:    "--- |1+\n",
-			render: "---\n|3\n",
+			render: "---\n|1\n",
 		},
 		"a break and a blank line": {
 			src:    "- |+\n   ",

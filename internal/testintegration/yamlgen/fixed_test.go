@@ -272,26 +272,31 @@ func TestFixedBlankLineUnderAStatedIndent(t *testing.T) {
 	}
 }
 
-// TestFixedStatedIndentFollowsTheContent: a block scalar that states its
-// indentation has the header rewritten when the content moves.
+// TestFixedTheContentFollowsTheStatedIndent: a block scalar that states its
+// indentation keeps the header the document wrote, and the renderer writes the
+// content at that width.
 //
-// The width is counted from the indentation of whatever encloses the scalar,
-// and the renderer writes the content at its own width, so carrying the
-// source's number over left the header describing a layout that was no longer
-// there -- the value gained a column on every cycle. A document encloses
+// The width is counted from the indentation of whatever encloses the scalar.
+// The renderer once wrote the content at its own width and carried the
+// source's number over, which left the header describing a layout that was no
+// longer there: the value gained a column on every cycle. It then rewrote the
+// number to its own width, so "|2" over " a" came back as "|3" over "  a",
+// the same value in a document the reader did not write. A document encloses
 // nothing, and the spec gives its node an indentation of -1, so at the root the
-// same content is stated one higher than anywhere else.
-func TestFixedStatedIndentFollowsTheContent(t *testing.T) {
+// content stands one column less than the number states.
+func TestFixedTheContentFollowsTheStatedIndent(t *testing.T) {
 	tests := map[string]struct {
 		source string
 		want   string
 	}{
-		"at the document root":         {"|2\n a\n", "|3\n  a\n"},
+		"at the document root":         {"|2\n a\n", "|2\n a\n"},
 		"already at the root width":    {"|3\n  a\n", "|3\n  a\n"},
-		"behind an anchor at the root": {"&a |2\n x\n", "&a |3\n  x\n"},
+		"behind an anchor at the root": {"&a |2\n x\n", "&a |2\n x\n"},
 		"under a mapping key":          {"k: |2\n   x\n", "k: |2\n   x\n"},
 		"under a sequence entry":       {"- |2\n   x\n", "- |2\n   x\n"},
-		"narrower than the renderer":   {"k: |1\n  x\n", "k: |2\n   x\n"},
+		"narrower than the renderer":   {"k: |1\n  x\n", "k: |1\n  x\n"},
+		"wider than the renderer":      {"k: |4\n     x\n", "k: |4\n     x\n"},
+		"a folded scalar at the root":  {">1\n folded\n", ">1\n folded\n"},
 
 		// A property stays on the line the header ends, so what it names is
 		// still indented from the start of that line and not from the property.
@@ -1751,16 +1756,23 @@ func TestFixedAMappingKeyWrittenEmptyIsRead(t *testing.T) {
 // the block scalar's entry, so the renderer wrote the two onto one line.
 func TestFixedABlockScalarInASequenceKeepsAnEmptyKeyApart(t *testing.T) {
 	for src, renders := range map[string]string{
-		"a:\n - &a1 |1-\n   \n:\n":    "a:\n- &a1 |2-\n   \n:\n",
-		"a:\n - |1-\n   \n:\n":        "a:\n- |2-\n   \n:\n",
-		"a:\n - &a1 |1-\n   x\n:\n":   "a:\n- &a1 |2-\n   x\n:\n",
-		"a:\n - &a1 |1\n   \n:\n":     "a:\n- &a1 |2\n   \n:\n",
-		"a:\n - &a1 |1-\n   \nb: 1\n": "a:\n- &a1 |2-\n   \nb: 1\n",
+		// The renderer writes the "-" in column 0, one left of the source, and the
+		// stated width counts from it, so the content moves left with it.
+		"a:\n - &a1 |1-\n   \n:\n":    "a:\n- &a1 |1-\n  \n:\n",
+		"a:\n - |1-\n   \n:\n":        "a:\n- |1-\n  \n:\n",
+		"a:\n - &a1 |1-\n   x\n:\n":   "a:\n- &a1 |1-\n  x\n:\n",
+		"a:\n - &a1 |1\n   \n:\n":     "a:\n- &a1 |1\n  \n:\n",
+		"a:\n - &a1 |1-\n   \nb: 1\n": "a:\n- &a1 |1-\n  \nb: 1\n",
 	} {
 		wellFormed(t, src)
 
 		once := renderOnce(t, src)
 		assert.Equal(t, renders, once, "%q", src)
+
+		var before, after any
+		require.NoErrorf(t, yaml.Unmarshal([]byte(src), &before), "%q", src)
+		require.NoErrorf(t, yaml.Unmarshal([]byte(once), &after), "%q", once)
+		assert.Equalf(t, before, after, "%q: the value survives", src)
 
 		reread, err := parser.ParseBytes([]byte(once), parser.WithComments())
 		require.NoErrorf(t, err, "%q: the rendering must parse", src)

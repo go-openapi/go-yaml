@@ -145,7 +145,8 @@ func TestFixedALastLineOfSpacesEndsABlockScalar(t *testing.T) {
 	t.Run("and inside a sequence entry, which is where the corpus found it", func(t *testing.T) {
 		file, err := parser.ParseBytes([]byte("k:\n - >1-\n  1\n "))
 		require.NoError(t, err)
-		assert.Equal(t, "k:\n- >2-\n  1", strings.TrimRight(file.Docs[0].String(), "\n"))
+		// The "-" moves to column 0 and the stated width counts from it: ">1-" over " 1" reads "1" as the source does.
+		assert.Equal(t, "k:\n- >1-\n 1", strings.TrimRight(file.Docs[0].String(), "\n"))
 	})
 }
 
