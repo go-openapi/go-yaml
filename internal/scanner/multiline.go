@@ -368,6 +368,14 @@ func (s *Scanner) scanMultiLineHeader(ctx *Context, header rune) (bool, error) {
 	// Cutting early said a block scalar's content began at the '|' or '>' that introduced it.
 	ctx.resetBuffer()
 
+	// A "---" or "..." at the start of the line below ends the block before any content, as readMultiLineBreak ends it
+	// after a content line: c-forbidden bars a marker from any content. Without this check "|" over "---" read as
+	// "---\n" in one document, where the block is empty and "---" opens a second document.
+	if ctx.isMultiLine() && foundDocumentSeparatorMarker(ctx.src[ctx.idx:]) {
+		s.emitMultiLine(ctx, ctx.getMultiLineState())
+		ctx.breakMultiLine()
+	}
+
 	return true, nil
 }
 

@@ -273,6 +273,33 @@ func decodeEmptyDocumentsKeepTheirPlaceCases() iter.Seq[decodeEmptyDocumentsKeep
 	})
 }
 
+// TestFixedAMarkerEndsABlockScalarOnItsFirstLine decodes a root block scalar whose first line is a document marker.
+//
+// c-forbidden bars "---" and "..." at column 1 from any content, so the marker ends the block, which is empty, and a
+// "---" opens a second document. The scanner checked for the marker after each content line, not after the header's
+// line, so "|" over "---" decoded as the one value "---\n", and ">-" over "---" over " , a" was accepted as
+// "---\n , a". Found by a conformance-suites property mutating a document marker into a block scalar.
+func TestFixedAMarkerEndsABlockScalarOnItsFirstLine(t *testing.T) {
+	for _, tc := range []struct {
+		src  string
+		want []any
+	}{
+		{src: "|\n---\n", want: []any{"", nil}},
+		{src: ">\n---\nx\n", want: []any{"", "x"}},
+		{src: "|\n...\n", want: []any{""}},
+		{src: "|\n  ---\n", want: []any{"---\n"}}, // indented, so content
+	} {
+		docs, err := decodeStreamAll(t, tc.src)
+		require.NoErrorf(t, err, "%q", tc.src)
+		assert.Equalf(t, tc.want, docs, "%q", tc.src)
+	}
+
+	// The second document opens with ",", which no plain scalar may.
+	_, err := decodeStreamAll(t, ">-\n---\n , a\n")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "a plain scalar cannot begin with ','")
+}
+
 // decodeDocumentCases covers document markers, line breaks, and documents whose entries end on a null value.
 func decodeDocumentCases() iter.Seq[decodeCase] {
 	return slices.Values([]decodeCase{

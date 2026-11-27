@@ -223,3 +223,91 @@ func documentMarkerTestCases() iter.Seq[testscanner.Case] {
 		},
 	})
 }
+
+// TestAMarkerEndsABlockScalarOnItsFirstLine checks a "---" or "..." at column 1 on the first line of a block scalar.
+//
+// The marker ends the scalar before any content, as it does on any later line: c-forbidden bars it from content.
+// Scanner.readMultiLineBreak looks for a marker after each content line, and Scanner.scanMultiLineHeader did not look
+// after the header's line, so "|" over "---" read as the value "---\n" in one document. An indented "---" and "---x"
+// stay content.
+func TestAMarkerEndsABlockScalarOnItsFirstLine(t *testing.T) {
+	t.Parallel()
+
+	runCases(t, blockFirstLineMarkerCases())
+}
+
+func blockFirstLineMarkerCases() iter.Seq[testscanner.Case] {
+	return slices.Values([]testscanner.Case{
+		{
+			Name: "block-first-line/literal-then-header",
+			YAML: "|\n---\n",
+			Tokens: []testscanner.WantToken{
+				{Type: token.LiteralType, Value: "|", Origin: "|\n"},
+				{Type: token.StringType, Value: "", Origin: ""},
+				{Type: token.DocumentHeaderType, Value: "---", Origin: "---"},
+			},
+		},
+		{
+			Name: "block-first-line/folded-then-header-and-content",
+			YAML: ">\n---\nx\n",
+			Tokens: []testscanner.WantToken{
+				{Type: token.FoldedType, Value: ">", Origin: ">\n"},
+				{Type: token.StringType, Value: "", Origin: ""},
+				{Type: token.DocumentHeaderType, Value: "---", Origin: "---"},
+				{Type: token.StringType, Value: "x", Origin: "\nx"},
+			},
+		},
+		{
+			Name: "block-first-line/stripped-folded-then-header",
+			YAML: ">-\n---\n",
+			Tokens: []testscanner.WantToken{
+				{Type: token.FoldedType, Value: ">-", Origin: ">-\n"},
+				{Type: token.StringType, Value: "", Origin: ""},
+				{Type: token.DocumentHeaderType, Value: "---", Origin: "---"},
+			},
+		},
+		{
+			Name: "block-first-line/literal-then-end",
+			YAML: "|\n...\n",
+			Tokens: []testscanner.WantToken{
+				{Type: token.LiteralType, Value: "|", Origin: "|\n"},
+				{Type: token.StringType, Value: "", Origin: ""},
+				{Type: token.DocumentEndType, Value: "...", Origin: "..."},
+			},
+		},
+		{
+			Name: "block-first-line/explicit-indent-then-header",
+			YAML: "|1\n---\n",
+			Tokens: []testscanner.WantToken{
+				{Type: token.LiteralType, Value: "|1", Origin: "|1\n"},
+				{Type: token.StringType, Value: "", Origin: ""},
+				{Type: token.DocumentHeaderType, Value: "---", Origin: "---"},
+			},
+		},
+		{
+			Name: "block-first-line/crlf-then-header",
+			YAML: "|\r\n---\r\n",
+			Tokens: []testscanner.WantToken{
+				{Type: token.LiteralType, Value: "|", Origin: "|\r\n"},
+				{Type: token.StringType, Value: "", Origin: ""},
+				{Type: token.DocumentHeaderType, Value: "---", Origin: "---"},
+			},
+		},
+		{
+			Name: "block-first-line/indented-dashes-are-content",
+			YAML: "|\n  ---\n",
+			Tokens: []testscanner.WantToken{
+				{Type: token.LiteralType, Value: "|", Origin: "|\n"},
+				{Type: token.StringType, Value: "---\n", Origin: "  ---\n"},
+			},
+		},
+		{
+			Name: "block-first-line/dashes-then-text-are-content",
+			YAML: "|\n---x\n",
+			Tokens: []testscanner.WantToken{
+				{Type: token.LiteralType, Value: "|", Origin: "|\n"},
+				{Type: token.StringType, Value: "---x\n", Origin: "---x\n"},
+			},
+		},
+	})
+}
