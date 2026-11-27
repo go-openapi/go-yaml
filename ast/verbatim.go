@@ -90,6 +90,14 @@ func WithTransform(fn TransformFunc) RenderOption {
 // Rendering without it lays a tree out by its depth, as every other method here
 // does and as an encoder needs. Rendering with it puts a document back the way it
 // was written.
+//
+// src must be the document the tree was parsed from. A token records the offsets
+// a scanner cut it at, not which document it came from, so the renderer cannot
+// tell another document's node from this one's. One that reaches past the end of
+// src returns [ErrNotInSource]. One whose offsets fall inside src is read as
+// this document's text, and the copy passes over it: the edit is lost and no
+// error says so. Put a [Clone] of a node from another parse in the tree
+// instead: a copy carries no offsets, and the renderer lays it out from the tree.
 func WithSource(src []byte) RenderOption {
 	return func(r *Renderer) { r.src = src }
 }
@@ -123,6 +131,10 @@ func (e extent) union(other extent) extent {
 
 	return e
 }
+
+// fits reports whether e lies within the first size bytes of a source. The copy indexes the source at a token's
+// offsets, so a token from another, longer document panicked it.
+func (e extent) fits(size int) bool { return e.to <= size }
 
 // sourceExtent returns what n covers in the document it was parsed from, and
 // reports nothing for a node built rather than read: a synthetic token carries
@@ -1504,8 +1516,14 @@ func (r *Renderer) writePendingBefore(vw *verbatimWriter, at int) {
 // the header's line takes one comment, and the next line is content. hoisted
 // holds those under the node that opens the header's line, for the descent to
 // write above it.
-func collectEdits(n Node, src []byte) (edits []pendingComment, above map[*CommentNode]bool, hoisted map[Node][]*CommentNode) {
+//
+// fits is false where a comment the tree holds lies past the end of src, and
+// nothing else is returned: settleAnchors would index src at it.
+func collectEdits(
+	n Node, src []byte,
+) (edits []pendingComment, above map[*CommentNode]bool, hoisted map[Node][]*CommentNode, fits bool) {
 	var out []pendingComment
+	outside := false
 	above = make(map[*CommentNode]bool)
 	hoisted = make(map[Node][]*CommentNode)
 	beside := make(map[int]bool)
@@ -1519,6 +1537,11 @@ func collectEdits(n Node, src []byte) (edits []pendingComment, above map[*Commen
 		for _, comment := range group.Comments {
 			tk := comment.Token
 			if tk != nil && tk.FromSource() {
+				if tk.EndOffset() > len(src) {
+					outside = true
+
+					continue
+				}
 				if comment.edit != commentAsWritten {
 					out = append(out, pendingComment{comment: comment, at: tk.Position.Offset()})
 				}
@@ -1562,13 +1585,16 @@ func collectEdits(n Node, src []byte) (edits []pendingComment, above map[*Commen
 		node = current
 		eachCommentGroup(current, onGroup)
 	})
+	if outside {
+		return nil, nil, nil, false
+	}
 
 	out = settleAnchors(n, src, out, above)
 	if len(out) > 1 {
 		sort.SliceStable(out, func(i, j int) bool { return out[i].at < out[j].at })
 	}
 
-	return out, above, hoisted
+	return out, above, hoisted, true
 }
 
 // lineOpener returns the innermost node under root that opens the line lit's
@@ -2273,6 +2299,12 @@ var ErrMove = errors.New("cannot write a node moved from where the document hold
 // an entry of a flow collection -- so that no line can be left out for it.
 var ErrRemove = errors.New("cannot leave out a removed node")
 
+// ErrNotInSource is returned by [Renderer.Verbatim] and [Renderer.VerbatimFile],
+// before anything is written, when the tree holds a token whose offsets reach
+// past the end of the source given to [WithSource]: the wrong source, or a node
+// taken from another parse. Put a [Clone] of such a node in the tree.
+var ErrNotInSource = errors.New("the tree holds a token past the end of the source it is rendered from")
+
 // collection describes the collection an inserted entry was put into: how to
 // reach its siblings, and whether a line break or a comma separates them.
 type collection struct {
@@ -2514,13 +2546,18 @@ func (r *Renderer) Verbatim(w io.Writer, n Node) error {
 	if r.src == nil || n == nil {
 		return nil
 	}
-
 	span := sourceExtent(n)
 	if !span.found() {
 		return nil
 	}
+	if !span.fits(len(r.src)) {
+		return ErrNotInSource
+	}
 
-	edits, above, hoisted := collectEdits(n, r.src)
+	edits, above, hoisted, fits := collectEdits(n, r.src)
+	if !fits {
+		return ErrNotInSource
+	}
 	vw := &verbatimWriter{
 		w: w, fn: r.transform, src: r.src, cursor: span.from,
 		edits: edits, above: above, hoisted: hoisted, roots: []Node{n},
@@ -2540,6 +2577,13 @@ func (r *Renderer) VerbatimFile(w io.Writer, f *File) error {
 	if r.src == nil || f == nil {
 		return nil
 	}
+	spans := make([]extent, len(f.Docs))
+	for i, doc := range f.Docs {
+		spans[i] = sourceExtent(doc)
+		if spans[i].found() && !spans[i].fits(len(r.src)) {
+			return ErrNotInSource
+		}
+	}
 
 	vw := &verbatimWriter{
 		w: w, fn: r.transform, src: r.src,
@@ -2547,7 +2591,10 @@ func (r *Renderer) VerbatimFile(w io.Writer, f *File) error {
 	}
 	for _, doc := range f.Docs {
 		vw.roots = append(vw.roots, doc)
-		edits, above, hoisted := collectEdits(doc, r.src)
+		edits, above, hoisted, fits := collectEdits(doc, r.src)
+		if !fits {
+			return ErrNotInSource
+		}
 		vw.edits = append(vw.edits, edits...)
 		for comment := range above {
 			vw.above[comment] = true
@@ -2558,9 +2605,9 @@ func (r *Renderer) VerbatimFile(w io.Writer, f *File) error {
 		sort.SliceStable(vw.edits, func(i, j int) bool { return vw.edits[i].at < vw.edits[j].at })
 	}
 
-	for _, doc := range f.Docs {
-		if span := sourceExtent(doc); span.found() {
-			vw.refuseMoved(doc, span)
+	for i, doc := range f.Docs {
+		if spans[i].found() {
+			vw.refuseMoved(doc, spans[i])
 		}
 		r.write(vw, doc)
 	}
