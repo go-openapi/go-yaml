@@ -5,6 +5,7 @@ package ast_test
 
 import (
 	"bytes"
+	"errors"
 	"testing"
 
 	"github.com/go-openapi/testify/v2/assert"
@@ -107,6 +108,9 @@ func TestVerbatimFileRefusesWhatItCannotWrite(t *testing.T) {
 			var out bytes.Buffer
 			err = ast.NewRenderer(ast.WithSource([]byte(tc.src))).VerbatimFile(&out, f)
 			require.ErrorIs(t, err, tc.want)
+			if errors.Is(tc.want, ast.ErrMove) {
+				assert.Contains(t, err.Error(), "ast.Clone", "the message names the remedy")
+			}
 		})
 	}
 }

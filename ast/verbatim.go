@@ -428,7 +428,7 @@ func (vw *verbatimWriter) refuseMoved(n Node, span extent) {
 	if tk := n.GetToken(); tk != nil {
 		line = int(tk.Position.Line)
 	}
-	vw.err = fmt.Errorf("%w: the %T on line %d comes after text the document wrote below it",
+	vw.err = fmt.Errorf("%w: the %T on line %d comes after text the document wrote below it; put an ast.Clone of it there instead",
 		ErrMove, n, line)
 }
 
@@ -2259,7 +2259,13 @@ var ErrInsert = errors.New("cannot write an inserted node")
 
 // ErrMove is returned by [Renderer.Verbatim] and [Renderer.VerbatimFile] when
 // the tree holds nodes of the document in a different order from the one the
-// document wrote them in.
+// document wrote them in: two entries or two documents swapped, an entry moved
+// into a later collection, or one node put in a second place.
+//
+// Use [Clone] to put a copy of the node in its new place. A copy has no place in
+// the source, so the renderer lays it out from the tree, as it does an inserted
+// node: its comments come along, but its spacing and quoting are the renderer's,
+// not the document's.
 var ErrMove = errors.New("cannot write a node moved from where the document holds it")
 
 // ErrRemove is returned by [Renderer.Verbatim] and [Renderer.VerbatimFile] when
