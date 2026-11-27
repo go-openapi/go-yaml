@@ -56,16 +56,8 @@ func decoderScientificNotationCases() iter.Seq[decoderScientificNotationCase] {
 			map[string]uint{"v": 1000},
 		},
 		{
-			"v: 1e-3",
-			map[string]uint{"v": 0},
-		},
-		{
 			"v: 1e3",
 			map[string]int{"v": 1000},
-		},
-		{
-			"v: 1e-3",
-			map[string]int{"v": 0},
 		},
 		{
 			"v: 1e3",
@@ -972,5 +964,71 @@ func decodeFloatRangeCases() iter.Seq[decodeCase] {
 			source: "v: .NAN\n",
 			value:  map[string]any{"v": math.NaN()},
 		},
+	})
+}
+
+// A float decoded into a Go integer came back wrong and with no error.
+//
+// The bound checks compared a float64 with math.MaxInt64 and math.MaxUint64,
+// which round up to 2^63 and 2^64 as floats, so a float at the bound passed and
+// the conversion wrapped: 2^63 read as math.MinInt64 on amd64. The signed case
+// had no lower bound, and a fraction was truncated, 1.5 reading as 1.
+//
+// A fraction into an integer is now a type mismatch, and a whole float outside
+// the type's range is an overflow.
+func TestFixedAFloatIntoAnIntegerIsExactOrRefused(t *testing.T) {
+	t.Run("a whole float in range keeps its value", func(t *testing.T) {
+		var v struct {
+			I  int64
+			N  int64
+			U  uint64
+			I8 int8
+		}
+		src := "i: 9.223372036854774784e18\nn: -9223372036854775808.0\nu: 1.8446744073709549568e19\ni8: -128.0\n"
+		require.NoError(t, codec.Unmarshal([]byte(src), &v))
+		assert.Equal(t, int64(9223372036854774784), v.I)
+		assert.Equal(t, int64(math.MinInt64), v.N)
+		assert.Equal(t, uint64(18446744073709549568), v.U)
+		assert.Equal(t, int8(math.MinInt8), v.I8)
+	})
+
+	for tc := range floatIntoAnIntegerRefusedCases() {
+		t.Run(tc.src, func(t *testing.T) {
+			dst := reflect.New(reflect.TypeOf(tc.into))
+			err := codec.Unmarshal([]byte(tc.src), dst.Interface())
+			require.ErrorIsf(t, err, tc.want, "decoded %v", dst.Elem().Interface())
+		})
+	}
+}
+
+// floatIntoAnIntegerRefusedCase holds a float, the integer type it is decoded
+// into, and the error that refuses it.
+type floatIntoAnIntegerRefusedCase struct {
+	src  string
+	into any
+	want error
+}
+
+func floatIntoAnIntegerRefusedCases() iter.Seq[floatIntoAnIntegerRefusedCase] {
+	type i64 = struct{ V int64 }
+	type u64 = struct{ V uint64 }
+	type i32 = struct{ V int32 }
+
+	return slices.Values([]floatIntoAnIntegerRefusedCase{
+		{"v: 9223372036854775808.0", i64{}, yamlerrors.ErrOverflow},   // 2^63
+		{"v: 9.223372036854775807e18", i64{}, yamlerrors.ErrOverflow}, // rounds to 2^63
+		{"v: -9223372036854777856.0", i64{}, yamlerrors.ErrOverflow},  // the float below -2^63
+		{"v: -1e300", i64{}, yamlerrors.ErrOverflow},
+		{"v: 18446744073709551616.0", u64{}, yamlerrors.ErrOverflow}, // 2^64
+		{"v: -1.0", u64{}, yamlerrors.ErrOverflow},
+		{"v: 2147483648.0", i32{}, yamlerrors.ErrOverflow},
+		{"v: .inf", i64{}, yamlerrors.ErrOverflow},
+		{"v: -.inf", u64{}, yamlerrors.ErrOverflow},
+		{"v: 1.5", i64{}, yamlerrors.ErrTypeMismatch},
+		{"v: -0.5", i64{}, yamlerrors.ErrTypeMismatch},
+		{"v: 1.5", u64{}, yamlerrors.ErrTypeMismatch},
+		{"v: 1e-3", i64{}, yamlerrors.ErrTypeMismatch},
+		{"v: .nan", i64{}, yamlerrors.ErrTypeMismatch},
+		{"v: .nan", u64{}, yamlerrors.ErrTypeMismatch},
 	})
 }

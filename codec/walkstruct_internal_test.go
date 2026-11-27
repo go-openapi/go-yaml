@@ -1078,7 +1078,7 @@ func aConvertedScalarKeepsTheWalkCases() iter.Seq[aConvertedScalarKeepsTheWalkCa
 		{name: "a date under an alias", src: "name: &d 2001-12-14\nplain: {k: *d}\nany: *d\n"},
 		{name: "a float into a string", src: "name: 1.5\n"},
 		{name: "a float into a uint", src: "leaf: {u: 2.0}\n"},
-		{name: "a float into an int", src: "leaf: {i: 1.5}\n"},
+		{name: "a float into an int", src: "leaf: {i: 2.0}\n"},
 		{name: "a number into a map value", src: "plain: {k: 1, j: true}\n"},
 		{name: "a number into a pointer", src: "leaf: {p: 1}\n"},
 		{name: "a number into a string", src: "name: 1\n"},

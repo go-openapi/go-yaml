@@ -1479,7 +1479,10 @@ func (d *Decoder) decodeValue(dst reflect.Value, src ast.Node) error {
 				return nil
 			}
 		case float64:
-			if vv <= math.MaxInt64 && !dst.OverflowInt(int64(vv)) {
+			if vv != math.Trunc(vv) {
+				return yamlerrors.NewTypeMismatch(valueType, reflect.TypeOf(v), src.GetToken())
+			}
+			if fitsInt64(vv) && !dst.OverflowInt(int64(vv)) {
 				dst.SetInt(int64(vv))
 				return nil
 			}
@@ -1488,13 +1491,13 @@ func (d *Decoder) decodeValue(dst reflect.Value, src ast.Node) error {
 			// int64, uint64 or float64, so no integer kind here can hold it. Fall
 			// through to the overflow error, which names the number.
 		case string: // Handle scientific notation.
-			if i, err := strconv.ParseFloat(vv, 64); err == nil {
-				if 0 <= i && i <= math.MaxUint64 && !dst.OverflowInt(int64(i)) {
-					dst.SetInt(int64(i))
-					return nil
-				}
-			} else { // It could not be parsed as a float.
+			i, err := strconv.ParseFloat(vv, 64)
+			if err != nil || i != math.Trunc(i) {
 				return yamlerrors.NewTypeMismatch(valueType, reflect.TypeOf(v), src.GetToken())
+			}
+			if fitsInt64(i) && !dst.OverflowInt(int64(i)) {
+				dst.SetInt(int64(i))
+				return nil
 			}
 		default:
 			return yamlerrors.NewTypeMismatch(valueType, reflect.TypeOf(v), src.GetToken())
@@ -1520,20 +1523,23 @@ func (d *Decoder) decodeValue(dst reflect.Value, src ast.Node) error {
 				return nil
 			}
 		case float64:
-			if 0 <= vv && vv <= math.MaxUint64 && !dst.OverflowUint(uint64(vv)) {
+			if vv != math.Trunc(vv) {
+				return yamlerrors.NewTypeMismatch(valueType, reflect.TypeOf(v), src.GetToken())
+			}
+			if fitsUint64(vv) && !dst.OverflowUint(uint64(vv)) {
 				dst.SetUint(uint64(vv))
 				return nil
 			}
 		case *big.Int, *big.Float:
 			// See the signed case above.
 		case string: // Handle scientific notation.
-			if i, err := strconv.ParseFloat(vv, 64); err == nil {
-				if 0 <= i && i <= math.MaxUint64 && !dst.OverflowUint(uint64(i)) {
-					dst.SetUint(uint64(i))
-					return nil
-				}
-			} else { // It could not be parsed as a float.
+			i, err := strconv.ParseFloat(vv, 64)
+			if err != nil || i != math.Trunc(i) {
 				return yamlerrors.NewTypeMismatch(valueType, reflect.TypeOf(v), src.GetToken())
+			}
+			if fitsUint64(i) && !dst.OverflowUint(uint64(i)) {
+				dst.SetUint(uint64(i))
+				return nil
 			}
 
 		default:
@@ -1556,6 +1562,21 @@ func (d *Decoder) decodeValue(dst reflect.Value, src ast.Node) error {
 		dst.Set(convertedValue)
 	}
 	return nil
+}
+
+// fitsInt64 reports whether the whole number f lies in the range of int64.
+//
+// The bounds are -2^63 and 2^63, which a float64 holds exactly. Compare with
+// math.MaxInt64 instead and the constant rounds up to 2^63, so 2^63 passes and
+// int64(f) wraps.
+func fitsInt64(f float64) bool {
+	return -(1<<63) <= f && f < 1<<63
+}
+
+// fitsUint64 reports whether the whole number f lies in the range of uint64.
+// The upper bound is 2^64, for the reason fitsInt64 gives.
+func fitsUint64(f float64) bool {
+	return 0 <= f && f < 1<<64
 }
 
 func (d *Decoder) createDecodableValue(typ reflect.Type) reflect.Value {
