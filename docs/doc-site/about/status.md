@@ -22,9 +22,10 @@ The parts that remain very much in flux are the `ast` and the `transform` packag
 - **Streaming.** Every entry point holds the whole document. `codec.NewDecoder`
   takes an `io.Reader`, but reads all of it on the first call to `Decode`, before
   it parses the first document.
-- **Documents of 2 GiB or more.** The scanner rejects a source of
-  2,147,483,647 bytes or more, because a `token.Position` stores its offsets as
-  `int32`.
+- **Documents of 1 TiB or more.** The scanner rejects a source of 1 TiB or
+  more, because a `token.Position` stores its offset in 40 bits. It also
+  rejects a line of 2 GiB or more, a line indented by 16,777,216 blanks or more,
+  and more than 2,147,483,646 line breaks.
 
 ## Not planned
 

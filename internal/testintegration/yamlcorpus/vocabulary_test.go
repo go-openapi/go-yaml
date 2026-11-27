@@ -209,9 +209,8 @@ func TestTheParserVocabularyGapIsMeasured(t *testing.T) {
 	//
 	// The third arrived on 2026-09-07, when Scanner.Init grew a refusal for a
 	// source at or above maxSourceLen. No document reaches it: the bound is
-	// math.MaxInt32 - 1, so provoking it costs two gigabytes. The bound is
-	// checked instead by sourceTooLong, which is a predicate of its own so that
-	// a test can read its edge at any size.
+	// 1 TiB less a byte. The bound is checked instead by sourceTooLong, which
+	// is a predicate of its own so that a test can read its edge at any size.
 	//
 	// Against those three, Style.ExplicitKeys reached `map key definition
 	// includes an implicit line break`, which nothing had provoked before: a

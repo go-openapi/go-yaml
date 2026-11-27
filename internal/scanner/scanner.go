@@ -20,8 +20,8 @@ import (
 //
 // # Performance
 //
-// The scanner counts offsets, lines and columns in int. [token.Position] stores lines and columns as int32, which
-// caps a source below 2 GiB. See maxSourceLen.
+// The scanner counts offsets, lines and columns in int. [token.Position] packs the offset in 40 bits, which caps a
+// source below 1 TiB, and stores lines and columns as int32. See maxSourceLen and lineLimits.
 type Scanner struct {
 	// quoted holds a rewritten quoted scalar. It is kept between tokens.
 	quoted []byte
@@ -104,7 +104,8 @@ type Scanner struct {
 // Init calls [Scanner.Reset] first, so it keeps the buffers a previous source grew and nothing else:
 // a Scanner reused for another source starts from the state of a new one, wherever the previous scan stopped.
 //
-// A source longer than maxSourceLen is refused, and [Scanner.Err] returns the refusal after the first read.
+// A source longer than maxSourceLen is refused, and so is one with a line, an indent or a line count a
+// [token.Position] cannot hold. [Scanner.Err] returns the refusal after the first read.
 func (s *Scanner) Init(src []byte) {
 	s.Reset()
 

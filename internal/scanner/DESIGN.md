@@ -147,9 +147,11 @@ block scalar whose content was whitespace.
 type `len` and `utf8.RuneCount` return, so counting converts nothing.
 
 `Position` stores `Line` and `Column` as int32, and packs `Offset` in 40 bits and `IndentNum` in 24. Lines and
-columns narrow in one place each: `posInt`, and `token.At`. The length of the source bounds both, and `Init`
-refuses a source at or above `maxSourceLen` (`math.MaxInt32 - 1`, leaving room for the column that stands one
-past the last byte of its line). `.golangci.yml` excludes gosec's G115 on that argument. See [`source.go`](source.go).
+columns narrow in one place each: `posInt`, and `token.At`. `Init` refuses a source longer than `maxSourceLen`
+(1 TiB less one byte, so the stream end's offset fits 40 bits). `lineLimits` bounds the rest in a second check,
+which returns at once for a source under 16 MiB: a line of 2 GiB or more, a line opening with 2^24 blanks or more,
+and more than `math.MaxInt32 - 1` line breaks. A column stands one past the last byte of its line, so each limit
+leaves one for it. `.golangci.yml` excludes gosec's G115 on that argument. See [`source.go`](source.go).
 
 Two things about a token's position are not obvious:
 
