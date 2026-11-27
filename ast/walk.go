@@ -5,9 +5,10 @@ package ast
 
 import "slices"
 
-// Visitor has Visit method that is invokded for each node encountered by Walk.
-// If the result visitor w is not nil, Walk visits each of the children of node with the visitor w,
-// followed by a call of w.Visit(nil).
+// Visitor receives each node [Walk] reaches.
+//
+// Visit returns the visitor for the node's children: Walk visits each child with it, or skips the children where it is
+// nil. Walk makes no call after a node's children, so a visitor learns that a node is done only from the next call.
 type Visitor interface {
 	Visit(node Node) Visitor
 }
