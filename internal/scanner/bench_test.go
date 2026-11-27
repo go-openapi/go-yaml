@@ -31,6 +31,10 @@ import (
 //
 // B/op and allocs/op both matter. The token stream builds most of the object graph a parse leaves behind, so an
 // allocation added here is one the whole pipeline carries.
+//
+// Each benchmark reuses one Scanner across its runs, as the parser does: Init calls Reset, which keeps the buffers.
+// A Scanner built for every run allocated itself and its first buffers each time, about 1 KiB and five allocations,
+// and on a small document that was most of B/op.
 
 // ==============================================================================================.
 
@@ -43,8 +47,8 @@ import (
 func BenchmarkScannerNextToken(b *testing.B) {
 	corpus.ForEachScanDocument(b, func(b *testing.B, src []byte) {
 		var tokens int64
+		var s scanner.Scanner
 		for b.Loop() {
-			var s scanner.Scanner
 			s.Init(src)
 
 			for {
@@ -64,8 +68,8 @@ func BenchmarkScannerNextToken(b *testing.B) {
 func BenchmarkScannerTokens(b *testing.B) {
 	corpus.ForEachScanDocument(b, func(b *testing.B, src []byte) {
 		var tokens int64
+		var s scanner.Scanner
 		for b.Loop() {
-			var s scanner.Scanner
 			s.Init(src)
 
 			for range s.Tokens() {
@@ -82,8 +86,8 @@ func BenchmarkScannerTokens(b *testing.B) {
 // That measurement constitutes a floor. All the others are measured against it.
 func BenchmarkScanInit(b *testing.B) {
 	corpus.ForEachScanDocument(b, func(b *testing.B, src []byte) {
+		var s scanner.Scanner
 		for b.Loop() {
-			var s scanner.Scanner
 			s.Init(src)
 		}
 	})
@@ -101,8 +105,8 @@ func BenchmarkScannerWorkloads(b *testing.B) {
 		b.Run(doc.Name, func(b *testing.B) {
 			b.SetBytes(int64(len(src)))
 			b.ReportAllocs()
+			var s scanner.Scanner
 			for b.Loop() {
-				var s scanner.Scanner
 				s.Init(src)
 				for {
 					if _, ok := s.NextToken(); !ok {
