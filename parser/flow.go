@@ -38,6 +38,11 @@ func (p *Parser) parseFlowMap(ctx context) (*ast.MappingNode, error) {
 	// The comment closing the "{" line hangs off the "{", and the loop below reads only comments in front of a token.
 	node.StartComment = openerComment(ctx, ctx.currentToken())
 
+	// The entries gather on the stack parseMap uses, so Values is taken once, at its length, when the '}' closes it.
+	// entryBase marks the start of this mapping's run on that stack.
+	entryBase := p.descent.entryBase()
+	defer p.descent.dropEntries(entryBase)
+
 	ctx.goNext() // Skip the '{'.
 
 	isFirst := true
@@ -64,7 +69,7 @@ func (p *Parser) parseFlowMap(ctx context) (*ast.MappingNode, error) {
 				return nil, yamlerrors.NewSyntax("a flow mapping entry is missing before ','", tk.RawToken())
 			}
 			entryTk = tk
-			if err := attachTrailingComment(ctx, entryTk, lastOf(node.Values)); err != nil {
+			if err := attachTrailingComment(ctx, entryTk, lastOf(p.descent.entriesFrom(entryBase))); err != nil {
 				return nil, err
 			}
 			ctx.goNext()
@@ -83,15 +88,15 @@ func (p *Parser) parseFlowMap(ctx context) (*ast.MappingNode, error) {
 		}
 
 		mapKeyTk := ctx.currentToken()
-		entered := len(node.Values)
+		entered := len(p.descent.entriesFrom(entryBase))
 		// The comment closing the key's line is staged against the group the key opens, not against the key's token,
 		// so the key's constructor finds nothing. It is taken here and put on the key below.
 		keyComment := ctx.takeLineComment(mapKeyTk)
 		p.markNodes(ctx)
-		if err := p.parseFlowMapEntryAt(ctx, node, tk, mapKeyTk, entryTk); err != nil {
+		if err := p.parseFlowMapEntryAt(ctx, tk, mapKeyTk, entryTk); err != nil {
 			return nil, err
 		}
-		if err := attachEntryComments(node, entered, keyComment, headComment); err != nil {
+		if err := attachEntryComments(p.descent.entriesFrom(entryBase), entered, keyComment, headComment); err != nil {
 			return nil, err
 		}
 		p.rewindNodes(ctx)
@@ -99,6 +104,9 @@ func (p *Parser) parseFlowMap(ctx context) (*ast.MappingNode, error) {
 	}
 	if node.End == nil {
 		return nil, p.unclosed("a flow mapping is not closed by '}'", node.Start)
+	}
+	if entries := p.descent.entriesFrom(entryBase); len(entries) != 0 {
+		node.Values = ctx.arena.MappingRun(entries)
 	}
 
 	// The comment closing the "}" line, as in "} # comment".
@@ -109,29 +117,29 @@ func (p *Parser) parseFlowMap(ctx context) (*ast.MappingNode, error) {
 	return node, nil
 }
 
-// parseFlowMapEntryAt reads the entry of the flow mapping node that mapKeyTk opens, after the ',' entryTk where there
-// is one, and holds it for the mapping: a key with its value grouped, a key a ':' follows, or a key standing alone.
-func (p *Parser) parseFlowMapEntryAt(ctx context, node *ast.MappingNode, tk, mapKeyTk, entryTk *group.TapeToken) error {
+// parseFlowMapEntryAt reads the entry of a flow mapping that mapKeyTk opens, after the ',' entryTk where there is one,
+// and holds it for the mapping: a key with its value grouped, a key a ':' follows, or a key standing alone.
+func (p *Parser) parseFlowMapEntryAt(ctx context, tk, mapKeyTk, entryTk *group.TapeToken) error {
 	switch mapKeyTk.GroupType() {
 	case group.TokenGroupMapKeyValue:
 		value, err := p.parseMapKeyValue(ctx.withGroup(p, mapKeyTk.Group), mapKeyTk.Group, entryTk)
 		if err != nil {
 			return err
 		}
-		p.holdFlowEntry(node, value)
+		p.hold(value)
 		ctx.goNext()
 	case group.TokenGroupMapKey:
 		mapValue, err := p.parseFlowMapPair(ctx, mapKeyTk, entryTk)
 		if err != nil {
 			return err
 		}
-		p.holdFlowEntry(node, mapValue)
+		p.hold(mapValue)
 	default:
 		entry, err := p.parseFlowMapBareKey(ctx, tk, mapKeyTk, entryTk)
 		if err != nil {
 			return err
 		}
-		p.holdFlowEntry(node, entry)
+		p.hold(entry)
 	}
 
 	return nil
@@ -234,9 +242,11 @@ func (p *Parser) parseFlowMapBareKey(ctx context, tk, mapKeyTk, entryTk *group.T
 
 // attachEntryComments puts the comment closing the key's line on the key, and the comment above the entry on the
 // entry read at index entered. A walk gathers no entries, so the length checks skip both there.
-func attachEntryComments(node *ast.MappingNode, entered int, keyComment *token.Token, headComment *ast.CommentGroupNode) error {
-	if keyComment != nil && len(node.Values) > entered {
-		if key := node.Values[entered].Key; key != nil && key.GetComment() == nil {
+func attachEntryComments(
+	entries []*ast.MappingValueNode, entered int, keyComment *token.Token, headComment *ast.CommentGroupNode,
+) error {
+	if keyComment != nil && len(entries) > entered {
+		if key := entries[entered].Key; key != nil && key.GetComment() == nil {
 			group := ast.CommentGroup([]*token.Token{keyComment})
 			group.SetPathNode(key.GetPathNode())
 			if err := key.SetComment(group); err != nil {
@@ -244,10 +254,10 @@ func attachEntryComments(node *ast.MappingNode, entered int, keyComment *token.T
 			}
 		}
 	}
-	if headComment != nil && len(node.Values) > entered {
+	if headComment != nil && len(entries) > entered {
 		// The comment introduces this entry, so it goes above it.
 		// A walk gathers no entries, so the length check above skips it there.
-		if err := node.Values[entered].SetComment(headComment); err != nil {
+		if err := entries[entered].SetComment(headComment); err != nil {
 			return err
 		}
 	}
@@ -428,6 +438,11 @@ func (p *Parser) parseFlowSequence(ctx context) (*ast.SequenceNode, error) {
 	p.keys.UnmarkEntry()
 	marks := entryMarks{orderedMap: orderedMap, merge: mergeMark, mergeSeq: mergeSeq}
 
+	// The elements gather on the stack parseSequence uses, so fillSequence allocates each slice once, when the ']'
+	// closes it. base indexes the start of this sequence's elements on the stack.
+	base := p.descent.seqBase()
+	defer p.descent.dropSeqEntries(base)
+
 	ctx.goNext() // Skip the '['.
 
 	// index counts the elements read. A walk gathers no element, so len(node.Values) cannot count them.
@@ -455,7 +470,7 @@ func (p *Parser) parseFlowSequence(ctx context) (*ast.SequenceNode, error) {
 				return nil, yamlerrors.NewSyntax("a flow sequence entry is missing before ','", tk.RawToken())
 			}
 			entryTk = tk
-			if err := attachTrailingComment(ctx, entryTk, lastOf(node.Values)); err != nil {
+			if err := attachTrailingComment(ctx, entryTk, lastValue(p.descent.seqEntriesFrom(base))); err != nil {
 				return nil, err
 			}
 			ctx.goNext()
@@ -483,13 +498,14 @@ func (p *Parser) parseFlowSequence(ctx context) (*ast.SequenceNode, error) {
 			return nil, err
 		}
 		index++
-		p.holdFlowElement(ctx, node, flowElement{value: value, entry: seqEntry, comma: rawOf(entryTk)}, headComment)
+		p.holdFlowElement(ctx, pendingEntry{value: value, entry: seqEntry, headComment: headComment, comma: rawOf(entryTk)})
 
 		isFirst = false
 	}
 	if node.End == nil {
 		return nil, p.unclosed("a flow sequence is not closed by ']'", node.Start)
 	}
+	fillSequence(node, p.descent.seqEntriesFrom(base))
 
 	// The comment closing the "]" line, as in "] # comment".
 	if err := setLineComment(ctx, node, ctx.currentToken()); err != nil {
@@ -536,39 +552,26 @@ func (p *Parser) parseFlowSequenceElement(
 	return value, seqEntry, nil
 }
 
-// flowElement is an element of a flow sequence as the parse reads it: the value, its entry, nil when the parse drops
-// comments, and the ',' written before it, nil on the first.
-type flowElement struct {
-	value ast.Node
-	entry *ast.SequenceEntryNode
-	comma *token.Token
-}
-
-// holdFlowElement appends an element to a flow sequence, with its head comment, its entry and its ','.
+// holdFlowElement keeps an element for the flow sequence being read.
 //
-// A walk that keeps nothing appends nothing: it has seen the element, so its node cells go back to the arena for the
+// A walk that keeps nothing holds nothing: it has seen the element, so its node cells go back to the arena for the
 // next one. Inside a key the elements are kept, so the key can be named by what it holds.
-func (p *Parser) holdFlowElement(ctx context, node *ast.SequenceNode, elem flowElement, headComment *ast.CommentGroupNode) {
+func (p *Parser) holdFlowElement(ctx context, elem pendingEntry) {
 	if p.walking() && p.keepsNothing() {
 		p.rewindNodes(ctx)
 
 		return
 	}
-	node.Values = append(node.Values, elem.value)
-	if headComment != nil {
-		node.ValueHeadComments = growHeadComments(node.ValueHeadComments, len(node.Values))
-		node.ValueHeadComments[len(node.Values)-1] = headComment
+	p.descent.holdSeqEntry(elem)
+}
+
+// lastValue returns the value of the last entry held, or nil when there is none.
+func lastValue(entries []pendingEntry) ast.Node {
+	if len(entries) == 0 {
+		return nil
 	}
-	if elem.entry != nil {
-		node.Entries = append(node.Entries, elem.entry)
-	}
-	if elem.comma != nil {
-		// Every element but the first follows a ',', so the cell of the first, nil, is opened with the second.
-		if node.Commas == nil {
-			node.Commas = make([]*token.Token, len(node.Values)-1, len(node.Values))
-		}
-		node.Commas = append(node.Commas, elem.comma)
-	}
+
+	return entries[len(entries)-1].value
 }
 
 // rawOf returns the token tk reads, or nil where there is no tk.
@@ -578,14 +581,4 @@ func rawOf(tk *group.TapeToken) *token.Token {
 	}
 
 	return tk.RawToken()
-}
-
-// holdFlowEntry keeps a flow mapping's entry for the node above it, or drops it on a walk where keepsNothing holds.
-//
-// As in hold, the key and its value have both been handed over, so the entry holds nothing the visitor has not seen.
-func (p *Parser) holdFlowEntry(node *ast.MappingNode, entry *ast.MappingValueNode) {
-	if p.walking() && p.keepsNothing() {
-		return
-	}
-	node.Values = append(node.Values, entry)
 }

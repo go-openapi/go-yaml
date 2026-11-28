@@ -81,16 +81,6 @@ func commentTokens(n *ast.CommentGroupNode) []*token.Token {
 	return tks
 }
 
-// growHeadComments returns the slice sized to hold a comment for every value so
-// far, keeping what is already in it.
-func growHeadComments(comments []*ast.CommentGroupNode, size int) []*ast.CommentGroupNode {
-	for len(comments) < size {
-		comments = append(comments, nil)
-	}
-
-	return comments
-}
-
 func (p *Parser) parseHeadComment(ctx context) *ast.CommentGroupNode {
 	tks := []*token.Token{}
 	for ctx.isComment() {

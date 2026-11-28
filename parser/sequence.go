@@ -22,16 +22,19 @@ func (p *Parser) hold(entry *ast.MappingValueNode) {
 
 // pendingEntry is one entry of a sequence being parsed, held until the sequence
 // closes and its slices can be sized at once.
+//
+// entry is nil when the parse drops comments. comma is the ',' written before an
+// element of a flow sequence, nil on the first and in a block sequence.
 type pendingEntry struct {
 	value       ast.Node
 	entry       *ast.SequenceEntryNode
 	headComment *ast.CommentGroupNode
+	comma       *token.Token
 }
 
 // fillSequence gives node the entries it was built from, allocating each slice once at its final length.
 //
-// ValueHeadComments stays nil when no entry carries a head comment.
-// Readers already meet a shorter slice: parseFlowSequence grows it only as far as its last commented entry.
+// ValueHeadComments stays nil when no entry carries a head comment, and Commas when no entry follows a ','.
 func fillSequence(node *ast.SequenceNode, entries []pendingEntry) {
 	if len(entries) == 0 {
 		return
@@ -42,21 +45,26 @@ func fillSequence(node *ast.SequenceNode, entries []pendingEntry) {
 		node.Entries = make([]*ast.SequenceEntryNode, len(entries))
 	}
 
-	var commented bool
+	var commented, separated bool
 	for i, held := range entries {
 		node.Values[i] = held.value
 		if node.Entries != nil {
 			node.Entries[i] = held.entry
 		}
 		commented = commented || held.headComment != nil
+		separated = separated || held.comma != nil
 	}
-	if !commented {
-		return
+	if commented {
+		node.ValueHeadComments = make([]*ast.CommentGroupNode, len(entries))
+		for i, held := range entries {
+			node.ValueHeadComments[i] = held.headComment
+		}
 	}
-
-	node.ValueHeadComments = make([]*ast.CommentGroupNode, len(entries))
-	for i, held := range entries {
-		node.ValueHeadComments[i] = held.headComment
+	if separated {
+		node.Commas = make([]*token.Token, len(entries))
+		for i, held := range entries {
+			node.Commas[i] = held.comma
+		}
 	}
 }
 
