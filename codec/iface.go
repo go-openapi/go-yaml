@@ -42,6 +42,17 @@ type GoYAMLMarshaler interface {
 // expects. [NodeUnmarshaler] receives the [ast.Node], which also carries the comments and each token's position.
 
 // Unmarshaler receives the YAML text of its value.
+//
+// The decoder renders data from the parsed node, so data never aliases the source document. Each call receives a new
+// slice, which UnmarshalYAML may keep without copying it.
+//
+// The text parses back as the same value, with the renderer's layout: a nested value starts at column 0, so a sequence
+// indented four spaces under its key passes as "- 1\n- 2". Data also differs from the source in these ways:
+//   - an alias is written out as the value its anchor names;
+//   - comments are dropped, unless the decoder was given [CommentToMap];
+//   - under YAML 1.1, data starts with "%YAML 1.1\n---\n", so it parses under the same version.
+//
+// Tags and quoting are kept: "h: !!str 3" passes "!!str 3".
 type Unmarshaler interface {
 	UnmarshalYAML(data []byte) error
 }

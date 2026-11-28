@@ -33,7 +33,8 @@ func RegisterCustomMarshaler[T any](marshaler func(T) ([]byte, error)) {
 }
 
 // RegisterCustomUnmarshaler makes every decoder decode a T with unmarshaler, which receives the YAML text of the node,
-// in place of any other decoding of T. Use [CustomUnmarshaler] to set it for one decoder only.
+// in place of any other decoding of T. The text is the one an [Unmarshaler] receives. Use [CustomUnmarshaler] to set
+// it for one decoder only.
 //
 // A [CustomUnmarshaler] option for the same type takes precedence.
 func RegisterCustomUnmarshaler[T any](unmarshaler func(*T, []byte) error) {

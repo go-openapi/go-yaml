@@ -263,7 +263,7 @@ func UseJSONUnmarshaler() DecodeOption {
 }
 
 // CustomUnmarshaler decodes every T with unmarshaler, which receives the YAML text of the node, in place of any other
-// decoding of T.
+// decoding of T. The text is the one an [Unmarshaler] receives.
 //
 // It takes precedence over a function registered for the same type with [RegisterCustomUnmarshaler].
 func CustomUnmarshaler[T any](unmarshaler func(*T, []byte) error) DecodeOption {
