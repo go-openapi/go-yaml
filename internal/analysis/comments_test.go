@@ -17,7 +17,7 @@ import (
 
 // TestCommentDensity reports how much of a workload is comment.
 //
-// Five of the six hold none: they were rewritten from JSON, which has no
+// Six of the seven hold none: they were rewritten from JSON, which has no
 // comment to carry over. Every other measurement in this package therefore
 // reports a parse that dropped comments at the door, and commented_swagger is
 // the one workload that does not. Run with -v for the table.

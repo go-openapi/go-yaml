@@ -52,7 +52,8 @@ func TestGroupingHoldsLittleInBlockStyle(t *testing.T) {
 
 	for _, set := range [][]corpusDoc{all, wide} {
 		for _, w := range set {
-			if w.Name == "flow_wide" || w.Name == "flow_long_scalars" || w.Name == "flow_nested" {
+			switch w.Name {
+			case "flow_wide", "flow_long_scalars", "flow_nested", "citm_catalog_flow":
 				continue
 			}
 

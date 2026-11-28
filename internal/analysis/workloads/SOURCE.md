@@ -1,9 +1,9 @@
 # YAML benchmark workloads
 
-Six documents the parser is measured on. Four are the JSON corpus every JSON
+Seven documents the parser is measured on. Four are the JSON corpus every JSON
 parser is compared on; the fifth is an OpenAPI specification, which is the shape
 this library actually meets; the sixth is that specification with comments
-written over it.
+written over it; the seventh is `citm_catalog` written in flow style.
 
 | file | shape | bytes |
 |------|-------|------:|
@@ -13,6 +13,7 @@ written over it.
 | `twitter_status.yaml.gz` | unicode-rich strings, mixed shapes | 506,987 |
 | `azure_swagger.yaml.gz` | an OpenAPI 2.0 specification | 544,150 |
 | `commented_swagger.yaml.gz` | the same specification, annotated | 601,617 |
+| `citm_catalog_flow.yaml.gz` | `citm_catalog` in flow style | 720,341 |
 
 ## Where they came from
 
@@ -33,8 +34,9 @@ go run ./gen -json ../../../../core/json/testdata/workloads -out testdata
 `gen/main.go` is the rewriting described below, so the stored files and the tool
 that made them do not drift apart.
 
-`commented_swagger.yaml.gz` needs no such checkout: it is written over the
-stored `azure_swagger.yaml.gz`. Leave `-json` out to rebuild only that one.
+`commented_swagger.yaml.gz` and `citm_catalog_flow.yaml.gz` need no such
+checkout: they are written over the stored `azure_swagger.yaml.gz` and
+`citm_catalog.yaml.gz`. Leave `-json` out to rebuild only those two.
 
 ```sh
 go run ./gen -out testdata
@@ -109,6 +111,39 @@ Comments were checked to change nothing else: `gen` decodes both documents with
 parser the corpus exists to measure -- and compares. It refuses to store a file
 that fails.
 
+## The flow-style workload
+
+The other six hold no flow collection with entries in it. `citm_catalog`,
+`golang_source` and `twitter_status` write thousands of `[]`, and a handful of
+one-element collections, so the code that reads a flow collection's entries
+runs almost never. A difference that shows only on flow-style documents, as
+JSON read as YAML is, cannot show on them.
+
+`citm_catalog_flow.yaml.gz` is `citm_catalog.yaml.gz` rewritten by
+`gen/flow.go`, with every collection in flow style, the top-level mapping
+included:
+
+| | count |
+|---|---:|
+| flow mappings | 10,937 (25,869 entries) |
+| flow sequences | 10,451 (11,908 elements; 8,695 empty) |
+| lines | 22,694, none over 80 columns |
+
+A collection that fits in 80 columns is written on one line,
+`{areaId: 205705999, blockIds: []}`. A longer one opens a line for each entry,
+indented two spaces past its bracket, with a `,` after every entry but the last.
+yaml.v3 writes each scalar, so a scalar is quoted wherever a plain one would end
+at a flow indicator or read as another type.
+
+The top-level mapping is a flow mapping too, so the file opens with `{` and
+closes with `}` at column 0. Under a block mapping, a flow value closed at
+column 0 is not valid YAML: every line of a flow collection in a block value
+must be indented past the block. yaml.v3 and goccy/go-yaml read that form
+anyway; this library and the YAML reference parser reject it.
+
+`gen` compares the value with the source's, through yaml.v3, and refuses to
+store a file that differs.
+
 ## The stress documents
 
 `testdata/stress/` holds eight documents built to be difficult rather than to resemble
@@ -117,8 +152,9 @@ purpose — a geomean over the corpus is meant to say what an ordinary document 
 fifty-thousand-key mapping in that average would stop it saying so.
 
 They exist because the ordinary corpus cannot size a token store that reclaims behind the
-parse. Not one of the five holds an anchor or a flow collection, and the widest level in any
-of them is 1,789 entries against 293,142 tokens. They would make any store look good.
+parse. Not one of the ordinary documents holds an anchor, only `citm_catalog_flow` holds a flow
+collection with entries, and the widest level in any of them is 1,789 entries against 293,142
+tokens. They would make any store look good.
 
 | document | bytes | tokens | widest map | widest seq | depth | anchors | peak | × source |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|

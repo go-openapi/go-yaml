@@ -19,8 +19,14 @@
 // the only workload that reaches the comment code at all: the scanner drops a
 // comment where the mode does not ask for one, the grouping lifts a line
 // comment out of the token stream, and the parse attaches it to a node
-// afterwards. Measure ParseComments on that one; the other five report what
+// afterwards. Measure ParseComments on that one; the others report what
 // the parser does when there is nothing to attach.
+//
+// citm_catalog_flow is citm_catalog written in flow style, from its top-level
+// mapping down: 10,937 flow mappings and 10,451 flow sequences, one entry a
+// line where a collection does not fit in 80 columns. It is the only workload
+// that reaches the flow collection code with entries in it. The others hold no
+// flow collection but "[]" and "{}", or one of a single element.
 package workloads
 
 import (

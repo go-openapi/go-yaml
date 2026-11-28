@@ -5,7 +5,6 @@ package main
 
 import (
 	"bytes"
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -40,7 +39,7 @@ func annotate(dir string) error {
 	}
 
 	out := injectComments(src)
-	if err := sameValue(src, out); err != nil {
+	if err := sameValue(src, out, "the comments"); err != nil {
 		return err
 	}
 
@@ -239,20 +238,21 @@ func commentLines(data []byte) int {
 	return n
 }
 
-// sameValue checks the comments changed nothing but the comments.
+// sameValue checks that a rewrite, named by change, left the value of the
+// document as it was.
 //
 // Read back with go.yaml.in/yaml/v3 rather than with this library, so the check
 // does not rest on the parser the corpus exists to measure.
-func sameValue(before, after []byte) error {
+func sameValue(before, after []byte, change string) error {
 	var a, b any
 	if err := v3.Unmarshal(before, &a); err != nil {
 		return fmt.Errorf("reading the source back: %w", err)
 	}
 	if err := v3.Unmarshal(after, &b); err != nil {
-		return fmt.Errorf("reading the annotated document back: %w", err)
+		return fmt.Errorf("reading the document back after %s: %w", change, err)
 	}
 	if !reflect.DeepEqual(a, b) {
-		return errors.New("the comments changed the document")
+		return fmt.Errorf("%s changed the document", change)
 	}
 
 	return nil

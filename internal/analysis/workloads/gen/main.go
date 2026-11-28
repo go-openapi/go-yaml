@@ -9,8 +9,9 @@
 //
 //	go run ./gen -json ../../../../../core/json/testdata/workloads -out ../testdata
 //
-// Leave -json out to rebuild only commented_swagger, which is written over the
-// stored azure_swagger and needs no checkout of go-openapi/core:
+// Leave -json out to rebuild only commented_swagger and citm_catalog_flow,
+// which are written over the stored azure_swagger and citm_catalog and need no
+// checkout of go-openapi/core:
 //
 //	go run ./gen -out testdata
 //
@@ -47,7 +48,8 @@ var sources = map[string]string{
 }
 
 func main() {
-	jsonDir := flag.String("json", "", "the workloads directory of a go-openapi/core checkout; leave it out to rebuild only "+commentedName)
+	jsonDir := flag.String("json", "", "the workloads directory of a go-openapi/core checkout; leave it out to rebuild only "+
+		commentedName+" and "+flowName)
 	outDir := flag.String("out", "testdata", "where to write the .yaml.gz files")
 	flag.Parse()
 
@@ -60,10 +62,15 @@ func main() {
 		}
 	}
 
-	// The commented workload is written over a stored one, so it is rebuilt
-	// whether or not the JSON corpus was rewritten just now.
+	// The commented and flow-style workloads are written over stored ones, so
+	// they are rebuilt whether or not the JSON corpus was rewritten just now.
 	if err := annotate(*outDir); err != nil {
 		fmt.Fprintf(os.Stderr, "gen: %s: %v\n", commentedName, err)
+		os.Exit(1)
+	}
+
+	if err := rewriteFlow(*outDir); err != nil {
+		fmt.Fprintf(os.Stderr, "gen: %s: %v\n", flowName, err)
 		os.Exit(1)
 	}
 

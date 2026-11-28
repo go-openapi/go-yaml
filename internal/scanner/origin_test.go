@@ -32,7 +32,7 @@ import (
 // The ends have to reach the end of the source, less the final line break, which closes the stream instead of
 // opening
 // a token.
-// ⚠️ It reaches what the six workloads hold and no more. None of them writes a
+// ⚠️ It reaches what the seven workloads hold and no more. None of them writes a
 // plain scalar continued by a "- " line, whose extents broke until
 // TestAPlainScalarContinuedByADashStartsWhereItsTextDoes, so the documents that
 // did passed here unnoticed. ledgers/scanner's extentLedger covers the Test
