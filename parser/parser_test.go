@@ -1455,9 +1455,9 @@ a:
 		{
 			`{"000":0000A,`,
 			`
-[1:13] a flow mapping entry must be followed by ':', ',' or '}'
+[1:1] a flow mapping is not closed by '}'
 >  1 | {"000":0000A,
-                   ^
+       ^
 `,
 		},
 	}

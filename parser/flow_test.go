@@ -300,6 +300,46 @@ func TestAnUnclosedFlowNamesTheReasonItEnded(t *testing.T) {
 	}
 }
 
+// TestFixedAFlowMappingCutAfterACommaNamesTheReason checks that a flow mapping whose tokens end after a ',' is
+// reported as a flow sequence is: by the scanner's complaint where the scanner stopped, and as unclosed otherwise.
+//
+// parseFlowMap read on past the ',' and took the missing token for a key with nothing after it, so it reported "a flow
+// mapping entry must be followed by ':', ',' or '}'" at the ','. A '}' at column 0 under a block key stops the scanner
+// on the last line, and the reader keeps back the key and ':' the grouping still held, so the ',' is the last token
+// the descent sees.
+func TestFixedAFlowMappingCutAfterACommaNamesTheReason(t *testing.T) {
+	const notIndented = "a flow collection continues on a line that is not indented past the one it started on"
+
+	for name, test := range map[string]struct {
+		source, want string
+		line, column int
+	}{
+		"closed at column 0 after a key and value": {
+			source: "a: {\n  b: x,\n  c: z\n}\n", want: notIndented, line: 4, column: 1,
+		},
+		"closed at column 0 after a key alone": {
+			source: "a: {\n  b: x,\n  c\n}\n", want: notIndented, line: 4, column: 1,
+		},
+		"the sequence of the same shape": {
+			source: "a: [\n  x,\n  z\n]\n", want: notIndented, line: 4, column: 1,
+		},
+		"input ending after the ','": {
+			source: "{a: 1,", want: "a flow mapping is not closed by '}'", line: 1, column: 1,
+		},
+		"input ending after the ',' and a space": {
+			source: "{a: 1, ", want: "a flow mapping is not closed by '}'", line: 1, column: 1,
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			_, err := parser.ParseBytes([]byte(test.source))
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), test.want)
+			assert.True(t, strings.HasPrefix(err.Error(), fmt.Sprintf("[%d:%d] ", test.line, test.column)),
+				"want the error at %d:%d, got %q", test.line, test.column, err.Error())
+		})
+	}
+}
+
 // longFlowSeq writes a flow sequence of at least minChars characters, on one line.
 func longFlowSeq(minChars int) string {
 	var b strings.Builder

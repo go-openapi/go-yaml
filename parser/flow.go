@@ -87,6 +87,12 @@ func (p *Parser) parseFlowMap(ctx context) (*ast.MappingNode, error) {
 			break
 		}
 
+		if ctx.isTokenNotFound() {
+			// The tape ends after the ',': the input does, or the scanner stopped on a token it could not read.
+			// unclosed returns the scanner's error where there is one.
+			break
+		}
+
 		mapKeyTk := ctx.currentToken()
 		entered := len(p.descent.entriesFrom(entryBase))
 		// The comment closing the key's line is staged against the group the key opens, not against the key's token,
